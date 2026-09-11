@@ -47,6 +47,8 @@ rank 1を先に開始し、rendezvous待機を確認してrank 0を開始する�
 
 現在の実施経過は[セットアップレポート](records/20260911-tp2-setup/WORKLOG.md)、構築計画は[ローカル計画書](docs/IMPLEMENTATION_PLAN.md)を参照する。どちらも非公開の作業資料で、単独checkoutには含まれない。
 
+GPU 1台での小型モデル統合は、Marlin W4A16＋NoPE参照経路で検査を通過した。[検証範囲](docs/validation.md#単体の小型モデル統合)と[単体統合レポート](records/20260911-single-node-fixture/WORKLOG.md)を参照する。全モデルの常用構成への昇格は未実施。
+
 ## 構成と検証範囲
 
 コードと固定取得依存はルート、説明は [docs/validation.md](docs/validation.md)、生成状態は `state/`。状態・ログ・重みはGitで追跡しない。
