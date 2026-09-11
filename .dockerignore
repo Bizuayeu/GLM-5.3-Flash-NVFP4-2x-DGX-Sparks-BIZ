@@ -1,0 +1,6 @@
+*
+!Dockerfile.reference
+!reference_attention.py
+!patch_nope_reference.py
+!LICENSES/
+!LICENSES/**

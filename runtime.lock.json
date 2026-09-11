@@ -1,0 +1,16 @@
+{
+  "image": "vllm/vllm-openai@sha256:b0501f99fec5136f248f78d5850977a2ec32d55cd9a665f4a9ffef24cbdf7fe5",
+  "source_tag": "glm53-flash-arm64-cu130",
+  "platform": "linux/arm64",
+  "source_commit": "385dce36bcee42309924a5ece951a96db3dce7f2",
+  "status": "candidate_native_nope_blocked",
+  "model": "nvidia/GLM-5.3-Flash-NVFP4",
+  "revision": "423acf37583782c51c142d145aef733d72943d93",
+  "patches": [],
+  "reference_candidate": {
+    "tag": "llllm/glm53-nvfp4:reference-385dce36",
+    "image_id_on_build_node": "sha256:781fdcabc2f7cb79207a72a336e147bc5e169883eea955ab1a5bd6ccaf54677b",
+    "validation": "attention_primitive_and_backend_only",
+    "full_model_inference_validated": false
+  }
+}
