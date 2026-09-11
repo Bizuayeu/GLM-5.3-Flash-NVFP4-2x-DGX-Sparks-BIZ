@@ -2,6 +2,8 @@
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
+This page records the MTP-off baseline. See the [MTP k=1 comparison](speculative-decoding.md#measured-k1-results) for the optional speculative profile.
+
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
 ## Initial matrix

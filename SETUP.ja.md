@@ -95,6 +95,8 @@ python tools/check_publication.py
 
 [実験の適用範囲](docs/validation.md#full-model-tp2-experimental-scope)と[初期ベンチ](docs/benchmarks.ja.md)には、同時実行1での実測結果があります。残る阻害要因は通常デプロイの検収とruntime／証跡の結び付けであり、全モデル実験が一度も成立していない状態ではありません。
 
+任意の[MTP k=1実験](docs/speculative-decoding.ja.md)も基礎API・同条件ベンチを通過しました。投機フラグだけではBF16 MTPの扱いが不正になるため、両ホストで別メタデータviewを準備します。手順に沿ってメモリと性能を比較し、MTPなしの基準も保持してください。
+
 起動せずに計画と事前条件を調べます。
 
 ```sh

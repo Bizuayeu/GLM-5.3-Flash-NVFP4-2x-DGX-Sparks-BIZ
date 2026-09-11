@@ -2,6 +2,8 @@
 
 [English／実行例](benchmarks.md) · [検証範囲](validation.md)
 
+本書はMTPなしの基準値です。任意の投機profileは[MTP k=1の比較結果](speculative-decoding.ja.md#k1の実測結果)を参照してください。
+
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
 ## 初期の測定条件

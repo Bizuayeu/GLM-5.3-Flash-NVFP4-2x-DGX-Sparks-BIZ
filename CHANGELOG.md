@@ -4,6 +4,7 @@
 
 ### Added
 
+- Opt-in MTP k=1 metadata-view preparation, BF16 draft configuration, CPU rejection checks and bilingual measured comparison/rollback guidance.
 - Initial full-model TP=2 serial-reference benchmark results and an independent checker rejecting incomplete runs even when the benchmark CLI exits zero.
 - Bilingual guides for commercial use, modification and redistribution, including upstream model MIT notices.
 - Official ZCode and experimental Claude Code connection plans with separate required end-to-end acceptance cases (not yet run).
@@ -26,6 +27,7 @@
 
 ### Validation status
 
+- Full-model TP=2 MTP k=1 completed the same 21 measured requests and 11 basic API checks. Faster decode costs about 7 GiB per rank and does not improve every workload; actual harnesses and distributed recovery remain unqualified.
 - Full 45-layer TP=2 loading, final-answer/tool API smoke and 21 measured benchmark requests completed under the documented serial reference profile. Harnesses and routine deployment remain unqualified.
 - Thinking-off is not used for the fixed GLM template. Final-answer/tool acceptance is distinct from exact reasoning-text and cross-batch numerical diagnostics; raw mismatches are preserved.
 - Two-host RoCE collective patterns passed; the final 256 MiB AllReduce measurement was 1.18–1.21 GB/s at MTU 1500, with a separate disk-checksum job active. This does not qualify full-model TP=2.
@@ -33,4 +35,4 @@
 - Rebuilt the reorganized Docker image and repeated the GPU component and long-input fixture checks through the packaged CLI successfully.
 - CUTLASS W4A4 completed generation but differed across tested execution geometries.
 - Batch invariance is unavailable for the pinned SM120 sparse-MLA backend.
-- **Full-model TP=2, production reliability, model quality and performance remain unvalidated.**
+- **Broader model quality, production reliability and performance beyond the documented experimental profiles remain unvalidated.**

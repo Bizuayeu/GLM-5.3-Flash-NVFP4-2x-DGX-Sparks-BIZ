@@ -95,6 +95,8 @@ Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-
 
 The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) now have evidence for one active sequence. The remaining blocker is routine deployment qualification and receipt/runtime binding, not lack of any full-model experiment.
 
+An optional [MTP k=1 experiment](docs/speculative-decoding.md) has also passed the basic API and matched benchmark cases. Prepare its separate metadata view on each host before enabling speculation; a flag alone misclassifies the BF16 MTP tensors. Follow the documented memory/performance comparison and preserve the MTP-off baseline.
+
 Inspect without launching:
 
 ```sh
