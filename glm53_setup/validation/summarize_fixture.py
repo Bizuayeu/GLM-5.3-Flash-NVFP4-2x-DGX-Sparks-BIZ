@@ -109,11 +109,15 @@ def assess_directory(directory):
     return assess_outputs(outputs)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     result = assess_directory(args.directory)
     (args.directory / "assessment.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result))
     raise SystemExit(0 if result["passed"] else 1)
+
+
+if __name__ == "__main__":
+    main()

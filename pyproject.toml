@@ -1,0 +1,15 @@
+[project]
+name = "glm53-flash-enterprise-setup"
+version = "0.1.0b1"
+description = "Beta setup and validation tools for GLM-5.3-Flash on two DGX Spark-class systems"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["records", "state", "upstream", "dist"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "BLE", "PLW1510"]

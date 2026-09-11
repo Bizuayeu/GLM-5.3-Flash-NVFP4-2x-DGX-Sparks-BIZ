@@ -1,58 +1,69 @@
-# GLM-5.3-Flash — NVIDIA NVFP4
+# GLM-5.3-Flash on 2× DGX Spark Enterprise Setup
 
-NVIDIA配布の公式NVFP4重みを取得・確認し、2台のGB10で動かすための独立リポジトリ。モデルIDと固定revisionは [download_model.py](download_model.py)、実行候補は [runtime.lock.json](runtime.lock.json) に保持する。**取得・準備・起動ガードを実装中。実重みTP=2推論は未検証。**
+**BETA — full-model TP=2 validation is not complete. This is not a production-qualified release.**
 
-## 取得と検証
+[日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md)
 
-リポジトリのルートでPython環境を作る。重みは既定のHugging Faceキャッシュに置く。
+A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on two DGX Spark-class GB10 systems. The focus is commercially usable licensing, pinned artifacts, observable checks, and reversible operations.
 
-```sh
+Original project code is **Apache-2.0**. Adapted MIT and Apache notices are retained. Model weights and container dependencies keep their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
+
+## What works in this beta
+
+| Scope | Status |
+|---|---|
+| Pinned checkpoint download and official checksum verification | Implemented |
+| Official ARM64 image preparation and reference-image build | Implemented |
+| Candidate-preserving NoPE reference attention | GPU-tested |
+| Four-layer, single-GB10 fixture with Marlin W4A16 | Tested generation and state comparisons passed, including an 8,705-token input |
+| Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria were not met |
+| Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
+| Full 45-layer model, TP=2, MTP, vision, production quality/performance | **Not validated** |
+
+The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
+
+## Prerequisites
+
+- Python 3.11+ for checkout-local tools. CPU checks run on Windows and Linux.
+- Linux ARM64, NVIDIA GPU-enabled Docker and a GB10 GPU for GPU validation.
+- Two suitable systems and a verified QSFP/RoCE path for the planned TP=2 configuration.
+- Storage on each deployment node for approximately 205 GB of model files, plus images, caches and optional fixtures. A full checkpoint does not fit one 128 GB node.
+
+## Start from a checkout
+
+Run these commands from this repository's root on the target Linux host:
+
+~~~sh
 python3 -m venv .venv
-.venv/bin/pip install -r requirements-hf.lock.txt
-.venv/bin/python download_model.py --background
-```
+. .venv/bin/activate
+python -m pip install -r requirements/huggingface.lock.txt
+python -m glm53_setup --help
+python -m glm53_setup --version
+~~~
 
-状態は `state/download-status.json`、ファイル台帳は `state/model-manifest.json`、ログは `state/download.log` に保存する。同じ取得処理を並行実行しない。
+This repository is a checkout-based operator toolkit, not a published PyPI package.
 
-`complete` は全ファイルの存在・サイズ・重み索引を確認した状態。公式チェックサムは次のコマンドで別途検証する。
+### Prepare assets
 
-```sh
-.venv/bin/hf cache verify nvidia/GLM-5.3-Flash-NVFP4 --revision 423acf37583782c51c142d145aef733d72943d93 --fail-on-missing-files --fail-on-extra-files --json
-```
+~~~sh
+python -m glm53_setup download --background
+python -m glm53_setup verify-download --hf .venv/bin/hf --output records/checksum --wait
+python -m glm53_setup prepare-image --background
+python -m glm53_setup build-reference
+~~~
 
-## TP=2の準備
+Downloads reuse the Hugging Face cache. A process lock prevents overlapping downloads; status is written atomically. A paused download causes the verification wait to exit instead of resuming it. These commands explicitly start work: do not run another download while transferring the same cache.
 
-```sh
-python3 prepare_image.py --background
-python3 -m unittest discover -s tests -v
-```
+The fixed model revision, base-image digest and local reference tag are in [config/runtime.lock.json](config/runtime.lock.json). Building the reference image does not start inference or qualify TP=2.
 
-公式ARM64イメージを固定digestで取得し、GPUの小規模計算とGLMアーキテクチャ登録を検査する。結果は`records/`に保存する。取得済みであってもGLMのロード・生成の合格とはしない。
+### Validate before serving
 
-[site.example.json](site.example.json)を`state/site.json`へコピーし、各ノードのrank、fabricのIPv4、NIC、HCA、RoCEv2 GIDを実物から設定する。例のGIDやIPを無確認で適用しない。
+Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
-```sh
-python3 service.py plan
-python3 service.py preflight
-python3 service.py start
-python3 service.py status
-python3 service.py stop
-```
+The TP=2 launcher is **not yet qualified**. It retains a validation gate and requires measured per-node network settings. This beta does not provide a completed TP=2 qualification workflow; do not fabricate its validation receipt. Use `service plan` and `service preflight` for inspection, and see [operations](docs/operations.md) for the remaining qualification steps.
 
-rank 1を先に開始し、rendezvous待機を確認してrank 0を開始する。APIはheadのloopbackのみで待ち受ける。起動には固定image・revisionの`state/kernel-validation.json`（`kind=tp2-kernel-validation`かつ`passed=true`）が必要。この記録は実kernel検証の結果であり、手で合格に書き換えない。QSFP未接続、モデル取得未完了、未検証image、メモリ不足の状態では起動しない。
+## Local data and contribution
 
-現在はP0（32K、同時1件、MTP/graphs/APC/vision無効）のみを実装している。停止したコンテナも保存するため、再作成前にはログを保存して対象コンテナを別名へ退避する。自動削除・自動restartは行わない。
+`state/`, `records/`, credentials, site-specific configuration and weights are excluded from Git and the Docker build context. Publish reviewed summaries, not raw local logs.
 
-公式イメージのnative NoPE経路はGB10で未成立。全候補を保持する`Dockerfile.reference`とGPU照合テストを追加したが、常用イメージへの昇格前である。現在の`service.py start`を検証記録の手書きで通過させない。詳細は[検証範囲](docs/validation.md)と[第三者通知](THIRD_PARTY_NOTICES.md)を参照する。
-
-現在の実施経過は[セットアップレポート](records/20260911-tp2-setup/WORKLOG.md)、構築計画は[ローカル計画書](docs/IMPLEMENTATION_PLAN.md)を参照する。どちらも非公開の作業資料で、単独checkoutには含まれない。
-
-GPU 1台での小型モデル統合は、Marlin W4A16＋NoPE参照経路で検査を通過した。[検証範囲](docs/validation.md#単体の小型モデル統合)と[単体統合レポート](records/20260911-single-node-fixture/WORKLOG.md)を参照する。全モデルの常用構成への昇格は未実施。
-
-## 構成と検証範囲
-
-コードと固定取得依存はルート、説明は [docs/validation.md](docs/validation.md)、生成状態は `state/`。状態・ログ・重みはGitで追跡しない。
-
-別ノードへキャッシュを複製するときは、`blobs` と `snapshots` の参照関係を保ち、複製先でもチェックサムを検査する。ファイル取得の成功は、GB10でのロード・生成・MTPの動作を保証しない。
-
-配布仕様と重みの利用条件は [NVIDIAモデルカード](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4) を参照する。
+[Contributing](CONTRIBUTING.md) describes CPU checks and the publication audit. [CHANGELOG.md](CHANGELOG.md) tracks changes; [LICENSE](LICENSE) and [NOTICE](NOTICE) define project licensing and attribution.

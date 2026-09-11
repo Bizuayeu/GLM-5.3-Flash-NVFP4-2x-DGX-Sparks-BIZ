@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from make_fixture import fixture_config, keep_tensor
+from glm53_setup.validation.make_fixture import fixture_config, keep_tensor
 
 
 class FixtureTests(unittest.TestCase):

@@ -1,0 +1,14 @@
+GLM-5.3-Flash on 2× DGX Spark Enterprise Setup
+Copyright 2026 the project contributors.
+
+Original setup and validation code is licensed under Apache License 2.0.
+
+This project adapts vLLM code and interfaces, Copyright contributors to the
+vLLM project, licensed under Apache License 2.0.
+
+The NoPE zero-padding adaptation follows the kingjones30 (Jones Lab) recipe,
+Copyright (c) 2026 kingjones30 (Jones Lab), licensed under the MIT License.
+Its notice is preserved in LICENSES/kingjones-MIT.txt.
+
+Model weights, CUDA components, and container dependencies retain their own
+licenses. They are not relicensed by this project. See THIRD_PARTY_NOTICES.md.

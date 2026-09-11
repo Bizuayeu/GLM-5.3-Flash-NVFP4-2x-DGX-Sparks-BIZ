@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from .config import ROOT, load_lock
 
 PROBE = """
 import json, importlib.metadata as m, platform
@@ -29,7 +29,7 @@ print(json.dumps(result))
 
 
 def run(record: Path):
-    lock = json.loads((ROOT / "runtime.lock.json").read_text(encoding="utf-8"))
+    lock = load_lock()
     image = lock["image"]
     record.mkdir(parents=True, exist_ok=True)
     status = {"started_at": datetime.now(timezone.utc).isoformat(), "image": image}
@@ -107,11 +107,13 @@ def run(record: Path):
         save()
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--record-dir", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.background and os.name != "posix":
+        parser.error("Background preparation requires Linux; use foreground mode here")
     record = (
         args.record_dir
         or ROOT
@@ -136,10 +138,13 @@ def main():
         process = subprocess.Popen(
             [
                 sys.executable,
-                str(Path(__file__).resolve()),
+                "-m",
+                "glm53_setup",
+                "prepare-image",
                 "--record-dir",
                 str(record),
             ],
+            cwd=ROOT,
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,

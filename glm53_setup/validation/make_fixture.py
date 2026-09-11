@@ -7,7 +7,7 @@ import json
 import shutil
 from pathlib import Path
 
-from download_model import MODEL, REVISION
+from ..config import MODEL, REVISION
 
 
 def keep_tensor(name):
@@ -50,11 +50,11 @@ def tensor_hash(tensor):
     return hashlib.sha256(memoryview(raw)).hexdigest()
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.source.name != REVISION:
         raise ValueError("Use the pinned original snapshot")
     if args.output.exists():

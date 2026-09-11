@@ -1,29 +1,66 @@
-# 取得と推論を分けて確認する
+# Validation
 
-取得処理は固定revisionに対し、ファイル台帳、全ファイルのサイズ、重みindexが参照する全shardの存在を確認する。公式ハッシュとの照合はREADMEの `hf cache verify` で行う。
+## Evidence, not production qualification
 
-実行イメージの準備とP0起動ガードは実装中。取得済みの状態からGB10の複数ノードへ進める際は、ロード時のピークメモリ、量子化カーネル、KVキャッシュ、集合通信、MTPの実ロードと採用を順に確認する必要がある。実重みTP=2のロード・生成はまだ合格していない。
+These observations used a GB10 GPU, vLLM source commit `385dce36bcee42309924a5ece951a96db3dce7f2`, and NVIDIA model revision `423acf37583782c51c142d145aef733d72943d93`. Private raw runs are not distributed; this is their reviewed summary.
 
-`python3 -m unittest discover -s tests -v`でCPU契約を検査する。ネットワーク設定、固定revision、検証記録、P0の引数、HFキャッシュmountが対象。GPU演算・NCCL・実モデル品質はこのテストの対象ではない。
+| Test | Observed result | Limit |
+|---|---|---|
+| Reference attention with real packed FP8 cache | Candidate widths 63/64/65/2048/2051/2176 checked; padding/empty rows handled; deliberate tail removal detected | Component check, not whole-model correctness |
+| Four-layer checkpoint | All 3,591 selected tensors byte-verified; original widths and 288 experts retained | Not a language-quality benchmark |
+| Marlin W4A16, one GPU | Load, generation, A→B→A replay, two-request batch token comparison and forced-prefill tests passed | Limited inputs, no production reliability claim |
+| Marlin, 8,705-token input | Crossed the measured 8,704-token attention manager block; forced-prefill next token matched; selected logprob difference 0.0031653 | Not every boundary or full context capacity |
+| CUTLASS W4A4 | Generation completed; numerical-invariance checks differed | Cause not isolated |
+| Batch-invariant mode | Rejected by SM120 sparse MLA; Triton MLA lacks sparse support | Not usable for this pinned stack |
 
-`prepare_image.py`は公式imageの取得とGPU smoke/モデル登録検査、`inspect_runtime.py`は実config検査を行う。いずれの結果も、`service.py`が必要とする`tp2-kernel-validation`の代わりにはしない。
+The probability tolerance was a provisional two-BF16-epsilon bound at the reference logprob magnitude. Exact replay, token agreement and tolerance-based comparisons are distinct checks. A truncated model can amplify numerical differences.
 
-## NoPE互換性の検査
+The packaged CLI and reorganized Docker build were also checked on GB10: the real-cache component test and the Marlin four-layer test at context 16,384 passed, including the 8,705-token boundary input. Both test containers exited successfully without OOM. This verifies the new package/worker import path, not cross-run bitwise equivalence or full-model TP=2.
 
-固定公式イメージではconfig解釈が通っても、GB10のnative sparse MLA呼出しはNoPE形状を拒否した。`probe_attention.py`でその差を再現する。
+Marlin changes the arithmetic: its [linear kernel](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/model_executor/kernels/linear/nvfp4/marlin.py) is W4A16, and its [MoE selector](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/model_executor/layers/fused_moe/oracle/nvfp4.py) selects W4A16 for MARLIN independently of the generic `use_a16` flag. Do not infer precision from that flag alone.
 
-`Dockerfile.reference`は全候補を保持するeager参照経路を組み込む検証用イメージ。実際のFP8キャッシュ書き込みを使う`tests/gpu_reference_attention.py`で、独立FP64計算との比較、page境界・2048超の候補数・padding、tail削除の検出、実backendとslot変換経由の一致を確認する。候補の削除は行わない。FP8キャッシュをFP32へ展開する丸めと、最終出力のBF16丸めを分けて検査する。
+vLLM [does not guarantee default reproducibility](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/docs/usage/reproducibility.md). This does not prove that our adapter is correct either: the W4A4 differences remain observations requiring investigation.
 
-この参照経路はhost同期とPyTorch演算を含み、CUDA graphsや常用性能を保証しない。attention単体の試験を、画像・MTP・全45層のロード・KDA全体・2rank集合通信の合格記録として流用してはいけない。常用profileへの昇格は、未了の統合検査の後に行う。
+## Reproduce the single-GPU fixture
 
-## 単体の小型モデル統合
+Use a Linux GB10 host and a verified checkpoint. Run from the checkout root. The example uses the default Hugging Face cache; adjust the host mount if yours differs.
 
-`make_fixture.py`は固定checkpointの先頭4層と共有language重みを、別の検証用checkpointへ切り出す。hidden/head幅・experts数・tensor bytesを維持し、各出力tensorのSHA-256を元と照合する。KDA 3層とNoPE MLA 1層を含み、MTPとvisionを含まない。元snapshotは書き換えない。
+~~~sh
+python -m glm53_setup build-reference
+mkdir -p state records/fixture-check state/fixture-cache
+IMAGE=glm53-enterprise:reference
+HF_CACHE=$HOME/.cache/huggingface
+REVISION=$(python -c 'from glm53_setup.config import REVISION; print(REVISION)')
+~~~
 
-`run_fixture.py`はこのmarker付きcheckpointだけを使い、`summarize_fixture.py`が生成結果の完全性・有限性、A→B→A再現、batch間・prefill/decode間の差を評価する。コマンドJSONを生成結果へ混ぜない。検査は固定イメージ内、GPU 1台、外部networkなし、メモリ上限付きで実施する。
+Create a separate four-layer checkpoint, reading the original cache without modifying it. The fixture contains approximately 7.46 GiB of tensors.
 
-確認結果は、**NoPE参照経路＋Marlin W4A16**で小型モデルのロード・生成・状態比較を通過。attention管理blockの8,704-token境界を越える8,705-token入力も確認した。一方、CUTLASS W4A4では生成できるが数値不変性の条件に未達があり、batch-invariantモードはSM120 sparse MLA非対応で起動を拒否した。元のW4A4構成とMarlin構成を同値とは扱わない。
+~~~sh
+docker run --name glm53-fixture-build --network none --memory 24g --memory-swap 24g -v "$HF_CACHE:/hf:ro" -v "$PWD/state:/data" --entrypoint python3 "$IMAGE" -m glm53_setup fixture-build --source "/hf/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/$REVISION" --output /data/four-layer
+~~~
 
-この検証は全45層・TP=2の合格ではない。数値結果、精度の根拠、実行コマンド、失敗の原因はローカルの[単体統合レポート](../records/20260911-single-node-fixture/WORKLOG.md)を参照する（単独checkoutには含まれない）。
+Use fresh output directories and container names for new experiments. Existing fixture output is never overwritten.
 
-重み配布元の想定ハードウェアや量子化形式は、そのままGB10上の動作証明にはならない。公開する性能値は、条件を揃えた実測結果が得られてから記載する。
+~~~sh
+docker run --name glm53-fixture-check --gpus all --network none --memory 32g --memory-swap 32g --shm-size 2g -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 -e VLLM_HOST_IP=127.0.0.1 -e GLOO_SOCKET_IFNAME=lo -e NVIDIA_TF32_OVERRIDE=0 -v "$PWD/state/four-layer:/fixture:ro" -v "$PWD/records/fixture-check:/out" -v "$PWD/state/fixture-cache:/root/.cache" --entrypoint python3 "$IMAGE" -m glm53_setup fixture-run --fixture /fixture --output /out --backend marlin --context 16384 --chunk 512
+python -m glm53_setup fixture-assess records/fixture-check
+~~~
+
+The 24/32 GiB budgets are test limits, not full-model requirements. Set an external experiment deadline and stop the specific test container if it is exceeded. Historical tests used 15 minutes. Containers and results are preserved.
+
+Use `--backend auto` or `--chunk 128` in a fresh run for diagnostic comparison. `passed=false` is not a passing numerical result even if all generations completed.
+
+## CPU and component checks
+
+~~~sh
+python -m unittest discover -s tests -v
+python tools/check_publication.py
+~~~
+
+CPU checks cover CLI dispatch without GPU imports, checkout-relative assets, revision/launch guards, fixture selection and result assessment. CPU CI does not run GPU tests or download weights.
+
+The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; use their `--help` inside the reference image. These component checks cannot substitute for TP=2 qualification.
+
+## Remaining qualification
+
+Full 45-layer loading, two-rank collectives, model quality, sustained mixed load, recovery, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn the one-GPU fixture result into a `tp2-kernel-validation` receipt.

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from summarize_fixture import assess_outputs
+from .summarize_fixture import assess_outputs
 
 
 def inspect_model(model):
@@ -73,7 +73,7 @@ def encode_output(output):
     }
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -81,7 +81,7 @@ def main():
     parser.add_argument("--context", type=int, choices=[2048, 16384], default=2048)
     parser.add_argument("--backend", choices=["auto", "marlin"], default="auto")
     parser.add_argument("--smoke", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     config = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     if (
@@ -122,7 +122,7 @@ def main():
         "kv_cache_memory_bytes": 512 * 1024**2,
         "gpu_memory_utilization": 0.20,
         "seed": 42,
-        "worker_extension_cls": "run_fixture.FixtureWorkerExtension",
+        "worker_extension_cls": "glm53_setup.validation.run_fixture.FixtureWorkerExtension",
         "kernel_config": {
             "enable_flashinfer_autotune": False,
             "enable_cutedsl_warmup": False,

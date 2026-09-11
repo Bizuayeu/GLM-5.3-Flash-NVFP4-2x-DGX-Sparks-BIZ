@@ -1,6 +1,0 @@
-FROM vllm/vllm-openai@sha256:b0501f99fec5136f248f78d5850977a2ec32d55cd9a665f4a9ffef24cbdf7fe5
-COPY reference_attention.py patch_nope_reference.py /opt/glm53/
-COPY LICENSES /opt/glm53/LICENSES
-RUN python3 /opt/glm53/patch_nope_reference.py
-ENV GLM53_REFERENCE_ATTENTION=1
-LABEL llllm.model="glm53-nvidia" llllm.attention="full-candidate-reference"

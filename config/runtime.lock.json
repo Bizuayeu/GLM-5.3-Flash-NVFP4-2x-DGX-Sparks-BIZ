@@ -8,8 +8,7 @@
   "revision": "423acf37583782c51c142d145aef733d72943d93",
   "patches": [],
   "reference_candidate": {
-    "tag": "llllm/glm53-nvfp4:reference-385dce36",
-    "image_id_on_build_node": "sha256:781fdcabc2f7cb79207a72a336e147bc5e169883eea955ab1a5bd6ccaf54677b",
+    "tag": "glm53-enterprise:reference",
     "validation": "single_node_four_layer_marlin_with_mla_boundary",
     "full_model_inference_validated": false
   }

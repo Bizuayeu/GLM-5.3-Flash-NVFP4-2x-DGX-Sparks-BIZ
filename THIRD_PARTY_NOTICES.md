@@ -1,17 +1,26 @@
-# 実行環境の出所
+# Third-party components and licensing
 
-実行候補の固定値は [runtime.lock.json](runtime.lock.json)。このリポジトリにモデル重みやCUDAバイナリを同梱しない。
+Original project code is licensed under [Apache-2.0](LICENSE). This does not replace upstream licenses. Preserve [NOTICE](NOTICE) and applicable license texts when distributing derived code or images.
 
-| 対象 | 出所・条件 | 今回の扱い |
+| Component | License / source | Treatment |
 |---|---|---|
-| NVIDIA GLM-5.3-Flash-NVFP4 | [固定モデルカード](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md)、MIT表記 | 公式cacheから読み取り。重みの再配布なし |
-| vLLM | [公式source commit](https://github.com/vllm-project/vllm/tree/385dce36bcee42309924a5ece951a96db3dce7f2)、Apache-2.0 | 公式コンテナをdigest固定。未改変 |
-| CUDA等コンテナ内依存 | 公式イメージに含まれる各ライセンス・通知 | イメージ内の通知を保持。全依存がApache/MITとは主張しない |
+| NVIDIA GLM-5.3-Flash-NVFP4 weights | MIT stated in the [pinned model card](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md) | Downloaded separately; not redistributed here |
+| vLLM | [Apache-2.0](LICENSES/vllm-Apache-2.0.txt), [pinned source](https://github.com/vllm-project/vllm/tree/385dce36bcee42309924a5ece951a96db3dce7f2) | Official image pinned by digest; two source files adapted in the reference image |
+| NoPE zero-padding recipe | [MIT, kingjones30 / Jones Lab](LICENSES/kingjones-MIT.txt) | Follows the recipe preserved in [amasu's pinned patch](https://github.com/amasu/glm53-flash-cluster/blob/0ab7ca7cb1067d4fcece9d525e5d90a9bbe33773/docker/labbuild/patch_mla.py) |
+| CUDA, FlashInfer, Torch, NCCL and other dependencies | Respective upstream licenses and image notices | Existing notices remain in the image; not all dependencies are Apache/MIT |
 
-Miaの現行AGPL実装、EXL3/TR3重み、DFlash2重みは実行環境に追加していない。workspaceなどMia固有の候補パッチは未採用。
+The NoPE adaptation zero-pads the unsupported positional portion and uses a candidate-preserving eager reference calculation. The recipe's candidate-removal portions are **not included**. Source hashes are checked before applying the patch; the image retains a manifest of modified-file hashes.
 
-## 参照attention用の候補イメージ
+Project notices are included under `/opt/glm53/`, with upstream texts in `/opt/glm53/LICENSES/`.
 
-`Dockerfile.reference`は固定公式baseにNoPE用のゼロ埋めと、全候補を保持する参照attentionを追加する。`patch_nope_reference.py`のゼロ埋め適合は、[kingjones30のMIT版](https://github.com/kingjones30/GLM-5.3-Flash-2x-DGX-Spark)を出所とするamasuの[固定patch](https://github.com/amasu/glm53-flash-cluster/blob/0ab7ca7cb1067d4fcece9d525e5d90a9bbe33773/docker/labbuild/patch_mla.py)を参考にしている。top-k候補削減部分は採用しない。
+## Intentionally absent
 
-元の[MIT通知](LICENSES/kingjones-MIT.txt)と[vLLM Apache-2.0通知](LICENSES/vllm-Apache-2.0.txt)を保持し、イメージの`/opt/glm53/LICENSES`にも配置する。変更対象の元source hashはパッチ内、変更後hashはイメージ内`glm53-reference-patch.json`に記録する。現在のGPU検証はattention単体とbackend経由までで、実モデル全体は未検証。
+- Mia's current AGPL distribution is not a dependency.
+- EXL3/TR3 weights with ShapleyMCG terms are not used.
+- DFlash2 draft weights with non-commercial/no-derivatives terms are not used.
+
+These are dependency choices, not claims about every possible use of those projects. A similarly named model or image is not automatically covered by this license.
+
+## Distribution boundary
+
+This repository distributes setup code, tests, pinned references and reviewed summaries. It does not distribute weights, credentials, local site settings or raw private logs. Redistributors of built containers or weights must preserve the terms and notices applicable to those artifacts.

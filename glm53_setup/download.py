@@ -1,5 +1,6 @@
 """Download the pinned NVIDIA GLM checkpoint into the shared Hugging Face cache."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -7,12 +8,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-MODEL = "nvidia/GLM-5.3-Flash-NVFP4"
-REVISION = "423acf37583782c51c142d145aef733d72943d93"
-STATE = Path(__file__).resolve().parent / "state"
+from .config import MODEL, REVISION, ROOT, STATE
+from .io import write_json
 
 
-def main():
+def download():
     from huggingface_hub import HfApi, snapshot_download
 
     STATE.mkdir(parents=True, exist_ok=True)
@@ -24,7 +24,7 @@ def main():
     }
 
     def save():
-        (STATE / "download-status.json").write_text(json.dumps(status, indent=2) + "\n")
+        write_json(STATE / "download-status.json", status)
 
     save()
     try:
@@ -39,7 +39,7 @@ def main():
         status["total_bytes"] = sum(item["bytes"] or 0 for item in files)
         save()
         print("Downloading:", MODEL, REVISION, status["total_bytes"], flush=True)
-        # Match the existing Gemma downloader's concurrency and timeout settings.
+        # Bound simultaneous shard downloads on unified-memory hosts.
         snapshot = Path(snapshot_download(MODEL, revision=REVISION, max_workers=2))
         for item in files:
             file = snapshot / item["path"]
@@ -72,21 +72,40 @@ def main():
         raise SystemExit(1)
 
 
-if __name__ == "__main__":
-    if "--background" in sys.argv:
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--background", action="store_true")
+    args = parser.parse_args(argv)
+    if args.background:
+        if os.name != "posix":
+            parser.error("Background jobs require Linux; use foreground mode here")
         STATE.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env.update(HF_XET_NUM_CONCURRENT_RANGE_GETS="4", HF_HUB_DOWNLOAD_TIMEOUT="120")
-        with (STATE / "download.log").open("w") as log:
+        with (STATE / "download.log").open("a", encoding="utf-8") as log:
             process = subprocess.Popen(
-                [sys.executable, __file__],
+                [sys.executable, "-m", "glm53_setup", "download"],
+                cwd=ROOT,
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        (STATE / "download.pid").write_text(str(process.pid) + "\n")
         print("Download PID:", process.pid)
     else:
-        main()
+        from filelock import FileLock, Timeout
+
+        STATE.mkdir(parents=True, exist_ok=True)
+        try:
+            with FileLock(STATE / "download.lock", timeout=0):
+                (STATE / "download.pid").write_text(str(os.getpid()) + "\n")
+                download()
+        except Timeout:
+            raise SystemExit(
+                "A download already owns this workspace; inspect its state"
+            ) from None
+
+
+if __name__ == "__main__":
+    main()

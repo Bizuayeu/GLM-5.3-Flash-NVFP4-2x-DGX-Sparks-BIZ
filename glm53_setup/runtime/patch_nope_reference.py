@@ -84,11 +84,11 @@ def prepare(package):
     return result
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path)
     parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     package = args.package or Path(sysconfig.get_paths()["purelib"]) / "vllm"
     outputs = prepare(package)
     manifest = {

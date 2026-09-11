@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from .config import ROOT, load_lock
 
 
 def validate_site(site):
@@ -130,9 +130,9 @@ def docker_args(site, lock, snapshot, cache, root):
         "--restart",
         "no",
         "--label",
-        "llllm.model=glm53-nvidia",
+        "glm53.setup.model=glm53-nvidia",
         "--label",
-        f"llllm.rank={site['rank']}",
+        f"glm53.setup.rank={site['rank']}",
         "--gpus",
         "all",
         "--network",
@@ -214,19 +214,21 @@ def preflight(site, lock, snapshot):
     }
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action", choices=["plan", "preflight", "start", "stop", "status"]
     )
     parser.add_argument("--site", type=Path, default=ROOT / "state/site.json")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     site = json.loads(args.site.read_text())
     validate_site(site)
     name = f"glm53-nvidia-rank{site['rank']}"
     if args.action in ("stop", "status"):
         info = json.loads(run("docker", "inspect", name))[0]
-        if (info["Config"].get("Labels") or {}).get("llllm.model") != "glm53-nvidia":
+        if (info["Config"].get("Labels") or {}).get(
+            "glm53.setup.model"
+        ) != "glm53-nvidia":
             raise SystemExit("Container is not owned by this deployment")
         if args.action == "stop":
             print(run("docker", "stop", name))
@@ -237,7 +239,7 @@ def main():
                 )
             )
         return
-    lock = json.loads((ROOT / "runtime.lock.json").read_text())
+    lock = load_lock()
     status = json.loads((ROOT / "state/download-status.json").read_text())
     snapshot = snapshot_from_state(status, lock)
     command = docker_args(

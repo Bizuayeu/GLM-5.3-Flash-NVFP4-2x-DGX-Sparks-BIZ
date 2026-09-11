@@ -2,18 +2,16 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from reference_attention import sparse_nope_reference, unpack_latent
+from ..runtime.reference_attention import sparse_nope_reference, unpack_latent
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     import torch
     from vllm import _custom_ops as ops
 

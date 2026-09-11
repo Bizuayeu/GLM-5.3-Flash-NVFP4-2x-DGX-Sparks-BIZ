@@ -1,6 +1,14 @@
 *
-!Dockerfile.reference
-!reference_attention.py
-!patch_nope_reference.py
+!docker/
+!docker/Dockerfile.reference
+!glm53_setup/
+!glm53_setup/**
+!config/
+!config/runtime.lock.json
+!pyproject.toml
+!LICENSE
+!NOTICE
 !LICENSES/
 !LICENSES/**
+**/__pycache__
+**/*.pyc

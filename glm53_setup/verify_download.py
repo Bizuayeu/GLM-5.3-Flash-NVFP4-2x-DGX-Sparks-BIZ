@@ -7,15 +7,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from download_model import MODEL, REVISION, STATE
+from .config import MODEL, REVISION, STATE
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hf", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wait", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.output.mkdir(parents=True, exist_ok=True)
     status_file = args.output / "checksum-status.json"
 
@@ -43,9 +43,10 @@ def main():
             raise SystemExit(1)
         if status["status"] == "complete":
             break
-        if status["status"] == "failed" or not args.wait:
-            save("failed", reason="download not complete")
-            raise SystemExit(1)
+        if status["status"] in ("failed", "paused") or not args.wait:
+            paused = status["status"] == "paused"
+            save("paused" if paused else "failed", reason="download not complete")
+            raise SystemExit(2 if paused else 1)
         # Polling cadence only; does not bound or retry downloads.
         time.sleep(30)
     save("verifying")

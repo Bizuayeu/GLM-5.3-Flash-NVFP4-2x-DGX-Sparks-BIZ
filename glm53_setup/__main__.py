@@ -1,0 +1,42 @@
+"""One checkout-local CLI; GPU dependencies are imported only by GPU commands."""
+
+import argparse
+import importlib
+import sys
+
+from .config import version
+
+COMMANDS = {
+    "download": "download",
+    "verify-download": "verify_download",
+    "prepare-image": "images",
+    "build-reference": "build_reference",
+    "service": "service",
+    "fixture-build": "validation.make_fixture",
+    "fixture-run": "validation.run_fixture",
+    "fixture-assess": "validation.summarize_fixture",
+    "inspect-runtime": "validation.inspect_runtime",
+    "probe-attention": "validation.probe_attention",
+    "test-reference": "validation.reference_check",
+    "patch-reference": "runtime.patch_nope_reference",
+}
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(prog="python -m glm53_setup", description=__doc__)
+    parser.add_argument("command", choices=COMMANDS, nargs="?")
+    parser.add_argument("--version", action="version", version=version())
+    if not argv or argv[0] in ("-h", "--help", "--version"):
+        parser.parse_args(argv)
+        if not argv:
+            parser.print_help()
+        return
+    if argv[0] not in COMMANDS:
+        parser.error("unknown command: " + argv[0])
+    module = importlib.import_module("glm53_setup." + COMMANDS[argv[0]])
+    module.main(argv[1:])
+
+
+if __name__ == "__main__":
+    main()
