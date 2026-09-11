@@ -12,6 +12,7 @@ COMMANDS = {
     "prepare-image": "images",
     "build-reference": "build_reference",
     "service": "service",
+    "startup": "startup",
     "fixture-build": "validation.make_fixture",
     "fixture-run": "validation.run_fixture",
     "fixture-assess": "validation.summarize_fixture",

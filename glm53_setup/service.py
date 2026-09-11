@@ -164,9 +164,9 @@ def run(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout
 
 
-def preflight(site, lock, snapshot):
+def fabric_checks(site):
     validate_site(site)
-    checks = {"snapshot_config": (snapshot / "config.json").is_file()}
+    checks = {}
     net = Path("/sys/class/net") / site["interface"]
     hca = Path("/sys/class/infiniband") / site["hca"]
     checks["fabric_link_up"] = (
@@ -194,6 +194,14 @@ def preflight(site, lock, snapshot):
         a.get("local") == site["local_ip"] for n in info for a in n.get("addr_info", [])
     )
     checks["rdma_devices"] = Path("/dev/infiniband").is_dir()
+    return checks
+
+
+def preflight(site, lock, snapshot):
+    checks = {
+        "snapshot_config": (snapshot / "config.json").is_file(),
+        **fabric_checks(site),
+    }
     receipt_path = ROOT / "state" / "kernel-validation.json"
     checks["kernel_validation"] = receipt_path.exists() and valid_kernel_receipt(
         json.loads(receipt_path.read_text()), lock

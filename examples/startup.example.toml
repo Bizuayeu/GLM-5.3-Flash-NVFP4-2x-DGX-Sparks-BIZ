@@ -1,0 +1,82 @@
+# GLM startup control / GLM起動設定（実験用、両ノードに同じ内容を配置）
+# Copy to state/startup.toml. Paths are relative to THIS FILE, or absolute.
+# state/startup.toml にコピー。相対パスはこのファイルの位置が基準。
+# Model/revision stay pinned by config/runtime.lock.json.
+schema_version = 1
+
+[runtime]
+# Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
+# 両ノードで確認したイメージID。aLLKV有効時のみ allkv_image を選択。
+reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+allkv_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+enforce_eager = true
+seed = 42
+# Text/tools only; TP=2, Marlin W4A16 and FP8 KV are this launcher's scope.
+# テキスト・ツール専用。TP=2、Marlin W4A16、FP8 KV の実験ランチャー。
+
+[context]
+max_model_len = 16384 # Input + generated tokens / 入出力合計の上限
+max_num_seqs = 1
+max_num_batched_tokens = 512
+chunked_prefill = true
+
+[cache]
+kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
+block_size = 256 # Requested size; runtime may align it / 実行時に整列される
+prefix_caching = false
+gpu_memory_utilization = 0.80
+
+[mtp]
+enabled = false # aLLKV併用には対応イメージが必要 / Combined use needs a compatible image
+num_speculative_tokens = 3 # Measured: 1, 3; other depths rejected
+# Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
+# HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
+view = "local-views/glm53-mtp-compatible"
+
+[allkv]
+enabled = false
+cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり
+tail = 512 # Last prompt tokens stay exact / 末尾の通常計算を残すトークン数
+skip_mla_queries = true
+# Projector must match cut/model; store outside Git. Mounted read-only.
+# cut・モデルに対応する学習済みprojectorを指定（Git対象外）。
+projector = "projector.pt"
+projector_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[api]
+port = 8893 # Loopback only / 127.0.0.1 にのみ公開
+master_port = 29554
+served_model_name = "glm-5.3-flash-nvidia"
+reasoning_parser = "glm45"
+tool_call_parser = "glm47"
+auto_tool_choice = true
+
+[generation]
+# Defaults used by `startup ask`; these are request options, not vLLM flags.
+# startup ask の既定値。サーバー起動フラグではなくリクエスト設定。
+temperature = 0.0
+max_tokens = 512
+reasoning_effort = "low"
+clear_thinking = true
+timeout_seconds = 600 # Same timeout as the measured experiment client
+
+[resources]
+# Existing experimental memory budgets; larger workloads need new measurement.
+# 実験時の予算を継承。規模を増やす場合は再計測。
+container_memory_gib = 112
+minimum_available_gib = 108
+reserve_gib = 8
+run_seconds = 1800 # Total bounded run INCLUDING load; raise for longer sessions
+# ロード時間込みの自動停止期限。長時間使う場合は起動前に延ばす。
+
+[[nodes]]
+local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)
+interface = "fabric0"
+hca = "roce0"
+gid_index = 3
+
+[[nodes]]
+local_ip = "10.53.0.2" # Rank 1 / worker; replace with measured values
+interface = "fabric0"
+hca = "roce0"
+gid_index = 3

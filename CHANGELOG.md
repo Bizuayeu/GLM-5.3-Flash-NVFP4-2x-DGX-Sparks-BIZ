@@ -4,6 +4,8 @@
 
 ### Added
 
+- Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware aLLKV opt-in.
+
 - Opt-in late-prefill attention-input approximation, teacher replay checks, bounded LLM-jp corpus sampling and diagonal/low-rank projector fitting, with bilingual experimental-scope guidance.
 
 - MTP k=3 example and matched comparison against k=1, including per-position acceptance and workload-dependent latency/throughput results.

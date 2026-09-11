@@ -27,6 +27,7 @@ class PublicCliTests(unittest.TestCase):
             ("prepare-image", "--record-dir"),
             ("build-reference", "--plan"),
             ("service", "--site"),
+            ("startup", "--config"),
             ("fixture-build", "--source"),
             ("fixture-run", "--fixture"),
             ("fixture-assess", "directory"),

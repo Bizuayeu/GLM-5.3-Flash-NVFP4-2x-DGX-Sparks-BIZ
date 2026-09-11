@@ -297,7 +297,13 @@ class AttentionInputExperiment:
             metadata = get_forward_context().attn_metadata[module.prefix]
             indices = metadata.non_spec_state_indices_tensor.reshape(-1).long()
             for kind, cache in zip(("conv", "recurrent"), module.kv_cache):
-                value = cache.index_select(0, indices).detach().float().cpu()
+                value = cache.index_select(0, indices)
+                if kind == "conv":
+                    # Prefill writes only the first kernel_width-1 slots. MTP
+                    # reserves extra rollback slots that are not live yet.
+                    axis = 2 if module._conv_state_dim_first else 1
+                    value = value.narrow(axis, 0, module.conv_size - 1)
+                value = value.detach().float().cpu()
                 key = (index, self.current_positions[-1], kind)
                 if spec.mode == "capture":
                     self.state_reference[key] = value
@@ -426,15 +432,27 @@ class AttentionInputExperiment:
 class LLKVWorkerExtension:
     """Explicit RPC entry points; no arbitrary source/eval is accepted."""
 
-    def llkv_configure(self, **kwargs):
+    def llkv_configure(self, allow_mtp=False, **kwargs):
         config = self.vllm_config
         if config.scheduler_config.max_num_seqs != 1:
             raise ValueError("LLKV experiments require max_num_seqs=1")
-        if config.speculative_config or config.cache_config.enable_prefix_caching:
-            raise ValueError("Speculation and prefix caching must be disabled")
+        if type(allow_mtp) is not bool:
+            raise ValueError("allow_mtp must be boolean")
+        speculative = config.speculative_config
+        if speculative and (
+            not allow_mtp
+            or speculative.method != "mtp"
+            or speculative.num_speculative_tokens not in (1, 3)
+        ):
+            raise ValueError("Only explicitly enabled MTP k=1/k=3 is supported")
+        if config.cache_config.enable_prefix_caching:
+            raise ValueError("Prefix caching must be disabled")
         if not config.model_config.enforce_eager:
             raise ValueError("LLKV experiments require eager execution")
         if not hasattr(self, "llkv_experiment"):
+            # get_model() is the target model, never model_runner.drafter.model.
+            # The constructor rejects any MTP layer in this module tree. Draft
+            # proposals/cache and acceptance/rollback remain owned by vLLM.
             self.llkv_experiment = AttentionInputExperiment(self.get_model())
         return self.llkv_experiment.configure(**kwargs)
 

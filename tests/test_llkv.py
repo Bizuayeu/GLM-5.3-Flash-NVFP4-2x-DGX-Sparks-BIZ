@@ -1,13 +1,77 @@
 """Contracts that keep experimental prefill changes out of decode/cache reuse."""
 
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from glm53_setup.runtime.llkv import AttentionInputExperiment, ExperimentSpec
+from glm53_setup.runtime.llkv import (
+    AttentionInputExperiment,
+    ExperimentSpec,
+    LLKVWorkerExtension,
+)
 
 
 class ExperimentSpecTests(unittest.TestCase):
+    def test_prefill_state_diagnostic_ignores_unused_mtp_conv_slots(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("Torch environment required")
+        for dim_first in (False, True):
+            experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
+            experiment.spec = ExperimentSpec("capture", 0, 5)
+            experiment.verify_state = True
+            experiment.current_positions = [0, 1, 2, 3]
+            experiment.state_reference = {}
+            experiment.state_errors = []
+            conv = torch.zeros((1, 8, 6) if dim_first else (1, 6, 8))
+            module = SimpleNamespace(
+                prefix="layer",
+                kv_cache=(conv, torch.zeros(1, 2, 2)),
+                _conv_state_dim_first=dim_first,
+                conv_size=4,
+            )
+            metadata = SimpleNamespace(non_spec_state_indices_tensor=torch.tensor([0]))
+            context = SimpleNamespace(attn_metadata={"layer": metadata})
+            fake = SimpleNamespace(get_forward_context=lambda: context)
+            with patch.dict(sys.modules, {"vllm.forward_context": fake}):
+                hook = experiment._state_hook(0)
+                hook(module, (), None)
+                conv.narrow(2 if dim_first else 1, 3, 3).fill_(123)
+                experiment.spec = ExperimentSpec("oracle", 0, 5)
+                hook(module, (), None)
+                self.assertTrue(
+                    all(row["max_abs"] == 0 for row in experiment.state_errors)
+                )
+                conv.narrow(2 if dim_first else 1, 0, 3).fill_(1)
+                hook(module, (), None)
+                self.assertEqual(experiment.state_errors[-2]["max_abs"], 1)
+
+    def test_mtp_verification_and_rollback_positions_are_never_approximated(self):
+        spec = ExperimentSpec("predict", 32, 1024, tail=512)
+        for positions in ([1023], [1024, 1025, 1026, 1027], [1025, 1026, 1027, 1028]):
+            self.assertEqual(spec.approximate_count(positions), 0)
+
+    def test_mtp_requires_explicit_opt_in_and_supported_method(self):
+        worker = LLKVWorkerExtension()
+        worker.vllm_config = SimpleNamespace(
+            scheduler_config=SimpleNamespace(max_num_seqs=1),
+            cache_config=SimpleNamespace(enable_prefix_caching=False),
+            model_config=SimpleNamespace(enforce_eager=True),
+            speculative_config=SimpleNamespace(method="mtp", num_speculative_tokens=3),
+        )
+        worker.get_model = lambda: "target-only"
+        with self.assertRaises(ValueError):
+            worker.llkv_configure()
+        with patch("glm53_setup.runtime.llkv.AttentionInputExperiment") as experiment:
+            worker.llkv_configure(allow_mtp=True, mode="off")
+            experiment.assert_called_once_with("target-only")
+            experiment.return_value.configure.assert_called_once_with(mode="off")
+        worker.vllm_config.speculative_config.method = "eagle"
+        with self.assertRaises(ValueError):
+            worker.llkv_configure(allow_mtp=True)
+
     def test_fully_protected_prompt_bypasses_loading_and_prediction(self):
         experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
         experiment.layers = [None, None]

@@ -19,6 +19,9 @@ def main(argv=None):
     )
     parser.add_argument("--cut", type=int, default=2)
     parser.add_argument("--skip-mla-queries", action="store_true")
+    parser.add_argument(
+        "--mtp", type=int, choices=[1, 3], help="Opt-in MTP coexistence check"
+    )
     args = parser.parse_args(argv)
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     config = json.loads((args.fixture / "config.json").read_text())
@@ -29,7 +32,12 @@ def main(argv=None):
     ):
         raise ValueError("A verified four-layer fixture is required")
     args.output.mkdir(parents=True, exist_ok=False)
-    report = {"status": "loading", "scope": "fixture-oracle-replay", "cases": []}
+    report = {
+        "status": "loading",
+        "scope": "fixture-oracle-replay",
+        "mtp": args.mtp,
+        "cases": [],
+    }
 
     def save():
         (args.output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -55,6 +63,13 @@ def main(argv=None):
         gpu_memory_utilization=0.20,
         seed=42,
         worker_extension_cls="glm53_setup.runtime.llkv.LLKVWorkerExtension",
+        speculative_config={
+            "method": "mtp",
+            "num_speculative_tokens": args.mtp,
+            "moe_backend": "triton",
+        }
+        if args.mtp
+        else None,
         kernel_config={
             "enable_flashinfer_autotune": False,
             "enable_cutedsl_warmup": False,
@@ -94,6 +109,7 @@ def main(argv=None):
                     "verify_state": True,
                     "skip_mlp": mode != "oracle_full_mlp",
                     "skip_mla_queries": args.skip_mla_queries,
+                    "allow_mtp": bool(args.mtp),
                 },
             )
             start = time.monotonic()
@@ -134,11 +150,25 @@ def main(argv=None):
             for row in mode["logprobs"]
             for v in row.values()
         )
+        case["state_finite"] = all(
+            error["finite"]
+            for mode in case["modes"].values()
+            for worker in mode["workers"]
+            for error in worker["state_errors"]
+        )
+        case["oracle_active_state_equal"] = all(
+            error["max_abs"] == 0
+            for mode in ("oracle_full_mlp", "oracle")
+            for worker in case["modes"][mode]["workers"]
+            for error in worker["state_errors"]
+        )
         case["passed"] = (
             case["baseline_token_equal"]
             and case["oracle_token_equal"]
             and case["finite"]
             and case["oracle_full_mlp_equal"]
+            and case["state_finite"]
+            and case["oracle_active_state_equal"]
         )
         save()
     report["passed"] = all(case["passed"] for case in report["cases"])

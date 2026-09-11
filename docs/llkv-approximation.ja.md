@@ -1,8 +1,10 @@
-# 後段Prefill近似 — 実験機能
+# aLLKV：後段Prefill近似 — 実験機能
 
 [English](llkv-approximation.md) · [基準ベンチ](benchmarks.ja.md)
 
 前段の表現から後段各層の正規化済みAttention入力を予測し、GLM本来のAttention処理でキャッシュと再帰状態を作る。過去tokenのMLP計算を省略し、生成時は全層を実行する。本体のcheckpointは変更せず、小さな補助器だけを学習する。
+
+機能名は **aLLKV（approximate Late-Layer KV）**。`a` は近似を表す。既存の `llkv-*` CLI・RPC名は互換性を保ち、起動設定では `[allkv]` と表記する。
 
 着想は[きしだ氏のQwen3実験](https://nowokay.hatenablog.com/entry/2026/09/11/120001)から。GLMへの適用には、独立した状態・品質の検査を設けている。
 
@@ -12,7 +14,9 @@
 
 ## 使用範囲
 
-- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。APC・MTP・sequence-parallel MoE・複数の制御クライアントは未対応。
+MTP併用は明示的に有効化する。四層fixture＋MTP k=3では3〜8,192トークンの8条件でcapture・通常・oracle・復帰後の出力tokenが一致した。初期の状態診断は未使用の畳み込み巻き戻し領域も含めていたため、prefillで使う範囲だけを比較するよう修正した。修正した診断の再確認と、フルモデル併用時の品質・速度評価は未実施。部品のtoken一致をフルモデルの品質保証とはしない。
+
+- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。APC・sequence-parallel MoE・複数の制御クライアントは未対応。MTP k=1/k=3との併用は `allow_mtp=true` を明示する。[起動設定TOML](startup-configuration.ja.md)では両機能の有効化から自動設定する。
 - 入力末尾の指定範囲は通常計算する。全入力が保護範囲に収まる場合は、補助器の読込・実行をせず通常経路へ戻す。
 - 過去の状態は近似になる。Decodeを全層で行っても、元モデルの確率分布が厳密に復元されるわけではない。
 - 実験用worker extensionであり、通常ランチャーや各コーディングハーネスの常用検収とは別。開発用RPCはloopbackに限定する。

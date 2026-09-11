@@ -1,8 +1,10 @@
-# Late-prefill approximation — experimental
+# aLLKV: approximate Late-Layer KV — experimental
 
 [日本語](llkv-approximation.ja.md) · [Baseline](benchmarks.md)
 
 This experiment predicts the normalized attention inputs of later GLM layers, builds their cache and recurrent state with the existing attention implementation, and skips historical MLP rows. Generation still executes all language layers. The checkpoint is unchanged; only a small auxiliary projector is fitted.
+
+The feature name is **aLLKV** (`a` for approximate). Existing `llkv-*` CLI and RPC identifiers remain compatible; the operator configuration uses `[allkv]`.
 
 The starting point was [Kishida's Qwen3 experiment](https://nowokay.hatenablog.com/entry/2026/09/11/120001). The GLM adaptation has its own state and quality tests.
 
@@ -12,7 +14,9 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 ## Operating scope
 
-- Eager, text-only, TP=2, one active sequence and one controlling client. Prefix caching, MTP, sequence-parallel MoE and concurrent controllers are unsupported.
+MTP coexistence is opt-in. A four-layer fixture with MTP k=3 completed eight prompt lengths from 3 to 8,192 tokens with matching capture/native/oracle/restored output tokens. Its initial diagnostic included unused convolution rollback slots; the diagnostic now compares only the live prefill window. The corrected diagnostic and full-model combined quality/performance assessment remain pending. Component token agreement is not a full-model quality claim.
+
+- Eager, text-only, TP=2, one active sequence and one controlling client. Prefix caching, sequence-parallel MoE and concurrent controllers are unsupported. MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically when both features are enabled.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
 - This is an experimental worker extension, not qualification of the routine deployment launcher or either coding harness. Keep its development RPC on loopback.

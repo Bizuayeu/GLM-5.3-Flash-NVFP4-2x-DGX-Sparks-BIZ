@@ -2,6 +2,8 @@
 
 [日本語](SETUP.ja.md) · [Project overview](README.md)
 
+The explicit experimental reference path uses [one startup TOML](docs/startup-configuration.md). The routine qualification procedure below remains separate.
+
 **This beta has experimental results for a serial full-model TP=2 reference profile. The routine launcher, full quality/reliability and harness acceptance remain unqualified; do not declare deployment complete from the experimental results.**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The initial scope is text and tool calls. Add image input only after that scope passes qualification.

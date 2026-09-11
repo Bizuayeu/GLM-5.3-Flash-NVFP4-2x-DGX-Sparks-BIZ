@@ -12,7 +12,9 @@ See [commercial use, modification and redistribution](docs/licensing.md) for per
 
 ## What works in this beta
 
-[Late-prefill approximation](docs/llkv-approximation.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
+[One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, aLLKV, generation and per-node settings for the experimental reference launcher and client.
+
+[aLLKV (late-prefill approximation)](docs/llkv-approximation.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
 
 | Scope | Status |
 |---|---|
