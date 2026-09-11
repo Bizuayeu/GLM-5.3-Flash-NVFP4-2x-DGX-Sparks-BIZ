@@ -8,6 +8,8 @@ A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkp
 
 Original project code is **Apache-2.0**. Adapted MIT and Apache notices are retained. Model weights and container dependencies keep their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
 
+See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets and remain untested.
+
 ## What works in this beta
 
 | Scope | Status |
@@ -19,6 +21,7 @@ Original project code is **Apache-2.0**. Adapted MIT and Apache notices are reta
 | Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria were not met |
 | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
 | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
+| ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
 | Full 45-layer model, TP=2, MTP, vision, production quality/performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).

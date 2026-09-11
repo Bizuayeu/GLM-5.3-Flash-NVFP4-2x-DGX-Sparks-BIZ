@@ -22,6 +22,7 @@ __pycache__/
 *.zip
 *.jsonl
 .ssh/
+.claude-local-test/
 *.pem
 *.key
 *.p12

@@ -78,7 +78,18 @@ def prepare(package):
         "            ), None\n"
         "        output = q.new_empty(\n",
     )
-    result = dict(zip(HASHES, [mla.encode(), backend.encode()], strict=True))
+    changed = (
+        "# Modified by GLM-5.3-Flash on 2x DGX Spark Enterprise Setup contributors.\n"
+        "# Changes: GLM NoPE zero-padding and candidate-preserving reference attention.\n"
+        "# Original vLLM notices below remain applicable; see distribution NOTICE.\n"
+    )
+    result = dict(
+        zip(
+            HASHES,
+            [(changed + mla).encode(), (changed + backend).encode()],
+            strict=True,
+        )
+    )
     for name, data in result.items():
         compile(data, name, "exec")
     return result

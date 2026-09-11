@@ -23,7 +23,7 @@ REQUIRED = {
     ".gitignore",
     ".dockerignore",
 }
-PRIVATE_DIRS = {"state", "records", "upstream", ".ssh", ".venv"}
+PRIVATE_DIRS = {"state", "records", "upstream", ".ssh", ".venv", ".claude-local-test"}
 PRIVATE_SUFFIXES = {
     ".safetensors",
     ".gguf",

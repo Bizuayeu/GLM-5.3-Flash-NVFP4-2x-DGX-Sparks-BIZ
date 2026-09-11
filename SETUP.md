@@ -120,6 +120,8 @@ After a future qualified workflow exists, verify at least:
 
 Use the qualified launcher, worker first then head, as described in [operations](docs/operations.md#full-model-launch-gate). Record both image IDs, source/model revisions, arguments, settings and start logs. Check the API through loopback or a reviewed SSH tunnel, then repeat text and harmless tool acceptance tests through the actual client.
 
+Run the [harness acceptance matrix](docs/harnesses.md) for **both official ZCode and Claude Code CLI**. Basic API success alone does not close either client target. Keep client versions, non-secret settings and separate case results. Review [artifact-specific licensing](docs/licensing.md) before distributing a deployment.
+
 Keep this service on a trusted network. The host-network containers expose distributed control ports to reachable peers; loopback API binding alone does not protect rendezvous. Public exposure, authentication/TLS, firewall policy and business availability requirements need their own deployment design. The word “Enterprise” in the project name is not a production certification.
 
 ## Completion checklist and AI handoff
@@ -134,6 +136,7 @@ Use **PASS / FAIL / PENDING / NOT RUN** with an evidence path for every item. Ne
 - [ ] Two-rank collective correctness and intended RDMA transport verified.
 - [ ] Full-model TP=2 qualification and matching runtime/receipt workflow completed.
 - [ ] Actual API text/tool acceptance, memory, performance and recovery checks passed.
+- [ ] ZCode and Claude Code each completed their required harness acceptance cases; failures/blockers remain visible.
 - [ ] Access boundary, logs, stop/restart procedure and operator handoff accepted.
 
 Keep a private `records/<run-id>/REPORT.md` containing: timestamp/timezone; objective and approved scope; host/rank inventory; Git commit/model revision/image IDs; each step's status, command, exit code and evidence path; decisions and tradeoffs; unexpected events/recovery; the checklist; unresolved blockers and exact next action. Redact secrets from reports and publish only reviewed summaries.

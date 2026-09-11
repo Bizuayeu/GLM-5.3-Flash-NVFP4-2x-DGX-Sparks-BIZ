@@ -1,0 +1,45 @@
+# Use, modification and redistribution
+
+[日本語](licensing.ja.md) · [Provenance and notices](../THIRD_PARTY_NOTICES.md)
+
+**Original repository code and documentation are Apache-2.0: commercial use, modification, and paid or free redistribution are permitted subject to its conditions. Weights, containers and harnesses retain separate terms.** This is an operational summary; the applicable license text and artifact version govern. Beta status describes maturity, not a non-commercial restriction.
+
+| Artifact | Business use / paid service | Private modification | Redistribution / sale | Obligations |
+|---|---|---|---|---|
+| Original setup code and docs | Permitted | Permitted; no general source-publication requirement | Permitted in source or object form | Apache text, applicable notices, prominent modified-file notices |
+| vLLM and adapted files | Permitted under Apache-2.0 | Same | Conditional permission | Preserve upstream notices and mark changes |
+| MIT portions from kingjones | Permitted | Permitted; no publication requirement | Permitted, including sale/sublicensing | Retain copyright and permission notice in copies/substantial portions |
+| Pinned NVIDIA GLM NVFP4 weights | Model card explicitly permits commercial/non-commercial use under MIT | MIT permits modification, including further training/conversion | Permitted subject to MIT notices | Preserve model card and upstream copyright/MIT notice; identify provenance |
+| Complete image containing CUDA and other dependencies | Subject to each component's terms | Do not treat SDK modification rights as Apache | **No blanket clearance for the image** | Review the actual component inventory, versions, redistributables and notices |
+| ZCode / Claude Code binaries | Subject to their product/service terms | No modification rights granted by this repository | No redistribution rights granted by this repository | Install separately from official sources; do not bundle credentials |
+
+Sources: [Apache sections 2–4 and 6–9](../LICENSE), [MIT text](../LICENSES/kingjones-MIT.txt), [pinned NVIDIA model card](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md).
+
+## Distributing Apache-covered material
+
+Supply the license, retain applicable upstream notices, and reproduce NOTICE attribution readably. **Mark each modified file; a changelog alone does not replace that requirement.** The patch generator adds change comments to modified vLLM files. Different terms for your modifications or a closed product can coexist with retained upstream obligations.
+
+Apache includes a limited contributor patent grant and a patent-litigation termination provision; it does not grant branding/endorsement rights. Warranty is disclaimed. Paid support can be offered on your own responsibility. Private use or providing an API does not itself create a general Apache/MIT source-publication obligation; delivering artifacts to customers triggers their distribution conditions.
+
+## Weight notices
+
+The pinned NVIDIA snapshot has no standalone LICENSE file; its README states MIT and commercial eligibility. We preserve the [upstream Z.AI license](https://huggingface.co/zai-org/GLM-5.3-Flash/blob/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a/LICENSE) as [LICENSES/ZAI-GLM-MIT.txt](../LICENSES/ZAI-GLM-MIT.txt), without claiming that file came from the NVIDIA snapshot.
+
+When redistributing weights, attach the model card and upstream MIT notice, identify the source/quantization/revision, and account for any additional code or training data you used. Place notices outside the exact Hugging Face snapshot so its official checksum/extra-file check remains reproducible. MIT does not guarantee output ownership, non-infringement or rights to your input data.
+
+## Images and harnesses
+
+The recommended distribution is **source, pinned references and build instructions**, with users obtaining weights, the official base and harnesses separately. Redistributing a completed image requires checking its actual dependencies, including CUDA redistributables and OS copyleft components. The [CUDA 13.0 SDK agreement](https://docs.nvidia.com/cuda/archive/13.0.0/eula/index.html) is one relevant source, not a substitute for every dependency's terms.
+
+ZCode follows its [terms](https://zcode.z.ai/en/terms); Claude Code follows the agreement referenced by its [LICENSE](https://github.com/anthropics/claude-code/blob/main/LICENSE.md). Apache-covered integration configuration does not relicense those applications. Local model licensing and hosted cloud-plan terms are separate.
+
+## Distribution checklist
+
+- [ ] Identify whether the deliverable contains source, weights, images or harnesses.
+- [ ] Keep LICENSE, NOTICE and applicable LICENSES texts.
+- [ ] Mark modified files and record provenance/revisions.
+- [ ] For weights, attach model/MIT notices and review added materials.
+- [ ] For images, review the actual component inventory and redistribution terms.
+- [ ] Exclude harness binaries, keys, credentials and private logs unless separately authorized and licensed.
+
+Connection design and technical acceptance are covered in [harness integration](harnesses.md).

@@ -120,6 +120,8 @@ python -m glm53_setup service preflight --site state/site.json
 
 検証済みの起動手順を用い、[運用文書](docs/operations.md#full-model-launch-gate)の順にworker、headを起動します。両機のイメージID、ソース・モデルrevision、引数、設定、起動ログを保存します。loopbackまたは検証したSSHトンネルでAPIへ接続し、実際のクライアントからテキスト・無害なツールの受け入れ試験を再実施します。
 
+**公式ZCodeとClaude Code CLIの両方**で[ハーネス受け入れ一覧](docs/harnesses.ja.md)を実施します。基礎APIだけの成功で完了にせず、クライアント版、設定の非秘密部分、各ケースの結果を別々に記録してください。配布する場合は[対象別のライセンス条件](docs/licensing.ja.md)も確認します。
+
 信頼できるネットワーク内で運用します。host networkのコンテナでは分散制御ポートが到達可能な相手へ露出するため、APIのloopback bindだけでrendezvousまで保護されるわけではありません。外部公開、認証・TLS、firewall、事業用の可用性は別途設計します。名称の「Enterprise」は本番認証を意味しません。
 
 ## 完了確認とAIへの引き継ぎ
@@ -134,6 +136,7 @@ python -m glm53_setup service preflight --site state/site.json
 - [ ] 2 rank collectiveのデータ正当性と意図したRDMA経路を確認した。
 - [ ] フルモデルTP=2を検証し、runtimeと整合する証跡生成手順が成立した。
 - [ ] 実APIでテキスト・ツール、メモリ、性能、復旧の受け入れに合格した。
+- [ ] ZCode／Claude Codeそれぞれの必須ハーネス試験を実施し、失敗・阻害要因も記録した。
 - [ ] アクセス境界、記録、停止・再起動、担当者への引き継ぎを確認した。
 
 非公開の`records/<run-id>/REPORT.md`に、日時・タイムゾーン、目的・許可範囲、host/rank一覧、Gitコミット・モデルrevision・イメージID、各工程の状態・コマンド・終了コード・証跡パス、判断理由とpros/cons、想定外の事象と復旧、チェックリスト、未解決事項と次の具体的作業を残します。秘密値を記録せず、公開はレビューした要約に限ります。

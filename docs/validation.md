@@ -63,6 +63,8 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
+Official ZCode and Claude Code CLI are separate, required targets in the [harness acceptance matrix](harnesses.md). All harness cases are currently NOT RUN; text/tool API checks and synthetic GPU tests do not substitute for these end-to-end cases.
+
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
 
 Full 45-layer loading, model-specific TP=2 kernels, model quality, sustained mixed load, recovery, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture or collective result into a `tp2-kernel-validation` receipt.

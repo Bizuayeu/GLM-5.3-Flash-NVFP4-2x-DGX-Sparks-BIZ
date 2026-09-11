@@ -8,6 +8,8 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 
 独自コードは **Apache-2.0**。取り込んだMIT・Apacheの通知を保持します。重みとコンテナ内依存にはそれぞれの条件が適用されます。[第三者通知](THIRD_PARTY_NOTICES.md)を参照してください。EXL3/TR3重み、DFlash2重み、Mia現行AGPL版を導入する構成ではありません。
 
+[商用利用・改造・再配布の整理](docs/licensing.ja.md)に、対象別の許諾範囲と義務をまとめています。[ハーネス連携](docs/harnesses.ja.md)では公式ZCodeと実験的なClaude Code接続を扱い、両方を必須の受け入れ対象にしています。実接続テストは未実施です。
+
 ## このベータ版で確認した範囲
 
 | 対象 | 状態 |
@@ -19,6 +21,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 | 標準CUTLASS W4A4のfixture | 生成は完了。検査した数値不変性の条件は未達 |
 | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
+| ZCode／Claude Codeのハーネス連携 | 必須の受け入れ項目を定義。**未実施** |
 | 全45層・TP=2・MTP・画像・本番品質/性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Bilingual guides for commercial use, modification and redistribution, including upstream model MIT notices.
+- Official ZCode and experimental Claude Code connection plans with separate required end-to-end acceptance cases (not yet run).
 - A reproducible two-rank PyTorch/NCCL diagnostic with transport interpretation and bilingual instructions.
 - A bilingual QSFP/NetworkManager hands-on guide covering Windows SSH access, persistent profiles, routing checks and recovery.
 - Named beta distribution: **GLM-5.3-Flash on 2× DGX Spark Enterprise Setup**.
@@ -15,6 +17,7 @@
 
 ### Changed
 
+- Add prominent modification notices to generated vLLM patch outputs without changing their executable syntax tree.
 - Grouped operator commands, validation tools, runtime adaptations, configuration and Docker assets by responsibility.
 - Centralized the model ID and revision in `config/runtime.lock.json`.
 - Serialized downloads with a process lock and atomic status updates; paused downloads terminate verification waits.

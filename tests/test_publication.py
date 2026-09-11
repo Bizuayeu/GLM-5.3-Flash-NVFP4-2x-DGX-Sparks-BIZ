@@ -6,6 +6,15 @@ from tools.check_publication import audit
 
 
 class PublicationTests(unittest.TestCase):
+    def test_harness_settings_are_not_public_even_if_explicitly_tracked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            name = ".claude-local-test/settings.json"
+            target = root / name
+            target.parent.mkdir()
+            target.write_text("{}", encoding="utf-8")
+            self.assertIn(f"private/generated path: {name}", audit(root, {name}))
+
     def test_locally_existing_private_link_is_not_public(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
