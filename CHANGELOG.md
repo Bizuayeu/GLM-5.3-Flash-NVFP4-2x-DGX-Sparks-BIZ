@@ -4,6 +4,7 @@
 
 ### Added
 
+- A reproducible two-rank PyTorch/NCCL diagnostic with transport interpretation and bilingual instructions.
 - A bilingual QSFP/NetworkManager hands-on guide covering Windows SSH access, persistent profiles, routing checks and recovery.
 - Named beta distribution: **GLM-5.3-Flash on 2× DGX Spark Enterprise Setup**.
 - Apache-2.0 license, preserved third-party notices, and English/Japanese entry documentation.
@@ -21,6 +22,7 @@
 
 ### Validation status
 
+- Two-host RoCE collective patterns passed; the final 256 MiB AllReduce measurement was 1.18–1.21 GB/s at MTU 1500, with a separate disk-checksum job active. This does not qualify full-model TP=2.
 - A single-GB10, four-layer fixture passed the tested generation/state-consistency cases using Marlin W4A16 and the candidate-preserving NoPE reference path.
 - Rebuilt the reorganized Docker image and repeated the GPU component and long-input fixture checks through the packaged CLI successfully.
 - CUTLASS W4A4 completed generation but differed across tested execution geometries.

@@ -63,4 +63,6 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
-Full 45-layer loading, two-rank collectives, model quality, sustained mixed load, recovery, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn the one-GPU fixture result into a `tp2-kernel-validation` receipt.
+The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
+
+Full 45-layer loading, model-specific TP=2 kernels, model quality, sustained mixed load, recovery, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture or collective result into a `tp2-kernel-validation` receipt.

@@ -87,7 +87,7 @@ python tools/check_publication.py
 
 実際にリンクしたEthernet interface、HCA、各IPv4に対応するRoCEv2 GIDを測り、[サイト設定](docs/operations.md#network-and-site-configuration)へ反映します。サンプル値はすべて仮値です。MTU 9000も経路全体で成立する場合に限ります。双方向を確認し、SSH/IP到達性とRDMA転送を区別します。
 
-重みをフルロードする前に、固定版の互換NCCL試験環境で2 rankのcollective正当性・性能を検証します。コマンド、ツール版、rank配置、transportログ、payloadサイズ、データ検査とエラー数、帯域実測を残します。指定RDMA経路の使用とデータ検査合格を確認してください。**このベータ版には、検証済みの2台collective試験ランチャーと帯域合格閾値はまだありません。** 試験方法・基準を先に決めて記録し、pingや基準のない帯域数値だけで合格にしません。
+重みをフルロードする前に、[2 rankのNCCL診断](docs/nccl-validation.ja.md)を実施します。コマンド、ツール版、rank配置、transportログ、payloadサイズ、データ検査、帯域実測を残し、指定RDMA経路の使用とデータ検査合格を確認してください。**本番向けの帯域合格閾値と、フルモデルの検証手順一式はまだありません。** 性能基準を先に決めて記録し、pingや基準のない帯域数値だけで性能合格にしません。
 
 **通過条件:** 実際の2 rank通信の正当性と経路を証明。未達なら根拠付きで未実施・失敗を明記。
 

@@ -87,7 +87,7 @@ Have a person physically connect the supported cable. Follow the vendor's networ
 
 Inventory the live Ethernet interface, HCA and RoCEv2 GID mapped to each local IPv4. Configure [per-host site settings](docs/operations.md#network-and-site-configuration). Treat every example value as a placeholder. MTU changes must work end-to-end; do not blindly set 9000. Test both directions and distinguish SSH/IP connectivity from RDMA transport.
 
-Before full weights are loaded, run a two-rank collective correctness/performance check using a pinned, compatible NCCL test environment. Save the command, tool version, rank placement, transport log, payload sizes, validation/error counts and measured bandwidth. Check that NCCL actually uses the intended RDMA interfaces and that data validation passes. **This beta does not yet ship a qualified two-host collective-test launcher or an accepted bandwidth threshold.** Agree on the test/criterion and document it before marking this step passed; a ping or an unexamined bandwidth number cannot close it.
+Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-validation.md). Save the command, tool version, rank placement, transport log, payload sizes, data checks and measured bandwidth. Confirm the intended RDMA interfaces and passing data checks. **This beta has no production bandwidth threshold or full-model qualification workflow.** Agree on the performance criterion and document it before accepting performance; a ping or an unexamined bandwidth number cannot close it.
 
 **Checkpoint:** correct two-rank collective data and intended transport demonstrated, or explicitly pending/failed with evidence.
 

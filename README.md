@@ -18,6 +18,7 @@ Original project code is **Apache-2.0**. Adapted MIT and Apache notices are reta
 | Four-layer, single-GB10 fixture with Marlin W4A16 | Tested generation and state comparisons passed, including an 8,705-token input |
 | Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria were not met |
 | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
+| Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
 | Full 45-layer model, TP=2, MTP, vision, production quality/performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).

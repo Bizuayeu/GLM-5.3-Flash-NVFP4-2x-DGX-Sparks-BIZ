@@ -18,6 +18,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 | Marlin W4A16による4層・GPU 1台のfixture | 生成・状態比較を通過。8,705-token入力も確認 |
 | 標準CUTLASS W4A4のfixture | 生成は完了。検査した数値不変性の条件は未達 |
 | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
+| 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全45層・TP=2・MTP・画像・本番品質/性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
