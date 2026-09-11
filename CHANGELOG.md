@@ -4,6 +4,8 @@
 
 ### Added
 
+- Opt-in late-prefill attention-input approximation, teacher replay checks, bounded LLM-jp corpus sampling and diagonal/low-rank projector fitting, with bilingual experimental-scope guidance.
+
 - MTP k=3 example and matched comparison against k=1, including per-position acceptance and workload-dependent latency/throughput results.
 - Opt-in MTP k=1 metadata-view preparation, BF16 draft configuration, CPU rejection checks and bilingual measured comparison/rollback guidance.
 - Initial full-model TP=2 serial-reference benchmark results and an independent checker rejecting incomplete runs even when the benchmark CLI exits zero.

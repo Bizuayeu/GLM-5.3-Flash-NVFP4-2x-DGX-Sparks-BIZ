@@ -12,6 +12,8 @@ See [commercial use, modification and redistribution](docs/licensing.md) for per
 
 ## What works in this beta
 
+[Late-prefill approximation](docs/llkv-approximation.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
+
 | Scope | Status |
 |---|---|
 | Pinned checkpoint download and official checksum verification | Implemented |

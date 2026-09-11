@@ -19,6 +19,9 @@ COMMANDS = {
     "probe-attention": "validation.probe_attention",
     "test-reference": "validation.reference_check",
     "patch-reference": "runtime.patch_nope_reference",
+    "llkv-fixture": "validation.run_llkv",
+    "llkv-corpus": "validation.llkv_corpus",
+    "llkv-train": "validation.train_llkv",
 }
 
 

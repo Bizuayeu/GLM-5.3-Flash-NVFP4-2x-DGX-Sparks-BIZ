@@ -12,6 +12,8 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 
 ## このベータ版で確認した範囲
 
+[後段Prefill近似](docs/llkv-approximation.ja.md)を、教師状態の復元・コーパス採取・補助器学習を含む実験経路として用意しています。品質・速度の検収は、下記の基準構成とは別に扱います。
+
 | 対象 | 状態 |
 |---|---|
 | 固定checkpointの取得・公式checksum確認 | 実装済み |

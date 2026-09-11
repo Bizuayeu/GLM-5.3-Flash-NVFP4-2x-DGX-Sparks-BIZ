@@ -34,6 +34,9 @@ class PublicCliTests(unittest.TestCase):
             ("probe-attention", "--output"),
             ("test-reference", "--output"),
             ("patch-reference", "--check"),
+            ("llkv-fixture", "--fixture"),
+            ("llkv-corpus", "--source-byte-limit"),
+            ("llkv-train", "--captures"),
         ]:
             with self.subTest(command=command):
                 result = self.invoke(command, "--help")
