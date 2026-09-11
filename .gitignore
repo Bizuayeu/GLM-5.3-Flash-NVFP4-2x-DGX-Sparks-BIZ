@@ -1,0 +1,17 @@
+# Local credentials and generated data
+.env
+.env.*
+!.env.example
+state/
+records/
+upstream
+.venv/
+__pycache__/
+*.pyc
+*.so
+*.log
+*.safetensors
+*.gguf
+*.bin
+# Private implementation diary; publish reviewed summaries under docs instead.
+/docs/IMPLEMENTATION_PLAN.md
