@@ -81,6 +81,8 @@ python tools/check_publication.py
 
 ## 5. ケーブル接続とfabric検証
 
+[QSFP・NetworkManagerのハンズオン](docs/qsfp-network.ja.md)で、PowerShellからのSSH、ケーブルとinterfaceの特定、片方ずつの設定・検証を進めます。
+
 物理接続は人が行います。管理接続を維持しながらメーカー手順に従って設定し、変更前のネットワーク設定と戻し方を保存します。両機の既存経路を確認せずに例示のサブネットを設定しません。
 
 実際にリンクしたEthernet interface、HCA、各IPv4に対応するRoCEv2 GIDを測り、[サイト設定](docs/operations.md#network-and-site-configuration)へ反映します。サンプル値はすべて仮値です。MTU 9000も経路全体で成立する場合に限ります。双方向を確認し、SSH/IP到達性とRDMA転送を区別します。

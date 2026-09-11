@@ -19,6 +19,8 @@ After the transfer, run `download` once to register and check the fixed snapshot
 
 ## Network and site configuration
 
+For physical connection and persistent IPv4 configuration, use the [QSFP hands-on guide](qsfp-network.md).
+
 Copy `examples/site.example.json` to `state/site.json` separately on each host. Replace all illustrative values with observations from that host:
 
 - rank 0 or 1, local fabric IPv4 and head fabric IPv4;

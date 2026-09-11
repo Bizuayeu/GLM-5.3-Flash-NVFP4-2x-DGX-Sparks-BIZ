@@ -4,6 +4,7 @@
 
 ### Added
 
+- A bilingual QSFP/NetworkManager hands-on guide covering Windows SSH access, persistent profiles, routing checks and recovery.
 - Named beta distribution: **GLM-5.3-Flash on 2× DGX Spark Enterprise Setup**.
 - Apache-2.0 license, preserved third-party notices, and English/Japanese entry documentation.
 - A unified `python -m glm53_setup` CLI for preparation, launch inspection and validation.

@@ -81,6 +81,8 @@ Run the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-g
 
 ## 5. Connect and qualify the fabric — cable required
 
+Follow the [QSFP and NetworkManager hands-on guide](docs/qsfp-network.md), starting with management SSH, cable/interface identification and one-host-at-a-time configuration.
+
 Have a person physically connect the supported cable. Follow the vendor's networking procedure while preserving management access. Record existing network configuration before a change and its restoration procedure. Do not assign an illustrative subnet until checking existing routes on both hosts.
 
 Inventory the live Ethernet interface, HCA and RoCEv2 GID mapped to each local IPv4. Configure [per-host site settings](docs/operations.md#network-and-site-configuration). Treat every example value as a placeholder. MTU changes must work end-to-end; do not blindly set 9000. Test both directions and distinguish SSH/IP connectivity from RDMA transport.
