@@ -2,7 +2,7 @@
 
 [日本語](harnesses.ja.md) · [Setup](../SETUP.md) · [Licensing](licensing.md)
 
-A harness is the client that manages conversation, files, tool execution, history and approvals; it is separate from the GPU inference server. **Official ZCode and Claude Code are both required acceptance targets. Every case below is currently NOT RUN.** Full-model TP=2 startup and basic API qualification are prerequisites.
+A harness is the client that manages conversation, files, tool execution, history and approvals; it is separate from the GPU inference server. **Official ZCode and Claude Code are both required acceptance targets. Their client cases remain NOT RUN; basic local API smoke has separate evidence.** Full-model TP=2 startup and API qualification are prerequisites.
 
 ## Connection design
 
@@ -57,7 +57,11 @@ This is a CLI plan. Desktop, web and Remote Control have different configuration
 
 ## Required acceptance matrix
 
-**All cases are NOT RUN. Complete the API group, then run every shared H case separately for ZCode and Claude Code.** Source availability or a truncated GPU fixture cannot replace actual requests and artifacts.
+For this fixed GLM template, keep thinking active. It always starts an assistant thinking block and does not read an off switch; avoid `thinking=false` / `enable_thinking=false`. The [model card](https://huggingface.co/zai-org/GLM-5.3-Flash) documents `reasoning_effort=low/high/max`, defaulting to max, and recommends `clear_thinking=true` for chat. Low effort is a chat test profile, not a claim to reproduce max-effort leaderboard scores. The matching parser/template leak is tracked in [vLLM #54744](https://github.com/vllm-project/vllm/issues/54744); [PR #54825](https://github.com/vllm-project/vllm/pull/54825) was open and unmerged when reviewed. Do not assume an arbitrary image includes it.
+
+Judge normal acceptance by final answers, structured tool calls, tool results and approval boundaries. Keep exact reasoning-text/token replay and cross-batch bitwise comparisons as separate numerical diagnostics. Preserve mismatches; do not treat every such mismatch as task failure or prove model correctness solely from matching final answers. Use one active sequence for golden checks and assess parallel throughput/quality separately.
+
+**ZCode/Claude Code client cases are NOT RUN. The local API has initial smoke evidence, but complete API matrix coverage remains pending, including Anthropic streaming and boundary/error cases.** Complete the API group, then run every shared H case separately for each harness. Source availability or a truncated GPU fixture cannot replace actual requests and artifacts.
 
 | ID | Target | Action and acceptance criterion |
 |---|---|---|
@@ -79,6 +83,7 @@ This is a CLI plan. Desktop, web and Remote Control have different configuration
 | H-08 | Both | Exercise the actual context boundary; explicit compaction/error without silent history loss; do not assume 200k/1M support |
 | H-09 | Both | Observe inference destinations; an unavailable local endpoint must not cause cloud inference fallback. Record ancillary traffic separately from claims of offline operation |
 | H-10 | Both | Complete the same small read/fix/test/report task; retain API traces, artifacts, correctness and latency |
+| H-11 | Both | Confirm the supported reasoning profile reaches the local service, no unsupported off flag is sent, and reasoning remains separate from final content; record unsupported effort mapping explicitly |
 
 For H-08, use the actual server limit. The candidate launcher sets 32,768; alignment with client context assumptions remains untested. Multi-agent, MCP and image workflows are later, separate tests.
 

@@ -1,6 +1,6 @@
 # Operations — beta
 
-**The full-model TP=2 deployment is not qualified yet.** Asset preparation and one-GPU diagnostics are usable; the guarded launcher is a candidate implementation.
+**Routine TP=2 deployment is not qualified yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md); the guarded routine launcher remains a candidate implementation.
 
 ## Acquire and verify once
 

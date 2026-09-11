@@ -1,6 +1,6 @@
 # GLM-5.3-Flash on 2× DGX Spark Enterprise Setup
 
-**BETA — full-model TP=2 validation is not complete. This is not a production-qualified release.**
+**BETA — a limited full-model TP=2 reference profile has been tested. Production and harness qualification are not complete.**
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md)
 
@@ -21,8 +21,9 @@ See [commercial use, modification and redistribution](docs/licensing.md) for per
 | Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria were not met |
 | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
 | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
+| Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
 | ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
-| Full 45-layer model, TP=2, MTP, vision, production quality/performance | **Not validated** |
+| MTP, vision, full application quality, production reliability and maximum performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
 

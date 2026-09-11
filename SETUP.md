@@ -2,7 +2,7 @@
 
 [日本語](SETUP.ja.md) · [Project overview](README.md)
 
-**This beta can prepare assets and run single-GPU diagnostics. Full-model TP=2 is not qualified. The current supported stopping point is “prepared; TP=2 qualification pending”, not “deployment complete”.**
+**This beta has experimental results for a serial full-model TP=2 reference profile. The routine launcher, full quality/reliability and harness acceptance remain unqualified; do not declare deployment complete from the experimental results.**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The initial scope is text and tool calls. Add image input only after that scope passes qualification.
 
@@ -92,6 +92,8 @@ Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-
 **Checkpoint:** correct two-rank collective data and intended transport demonstrated, or explicitly pending/failed with evidence.
 
 ## 6. Qualify the full model — current beta blocker
+
+The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) now have evidence for one active sequence. The remaining blocker is routine deployment qualification and receipt/runtime binding, not lack of any full-model experiment.
 
 Inspect without launching:
 

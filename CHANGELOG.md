@@ -4,6 +4,7 @@
 
 ### Added
 
+- Initial full-model TP=2 serial-reference benchmark results and an independent checker rejecting incomplete runs even when the benchmark CLI exits zero.
 - Bilingual guides for commercial use, modification and redistribution, including upstream model MIT notices.
 - Official ZCode and experimental Claude Code connection plans with separate required end-to-end acceptance cases (not yet run).
 - A reproducible two-rank PyTorch/NCCL diagnostic with transport interpretation and bilingual instructions.
@@ -25,6 +26,8 @@
 
 ### Validation status
 
+- Full 45-layer TP=2 loading, final-answer/tool API smoke and 21 measured benchmark requests completed under the documented serial reference profile. Harnesses and routine deployment remain unqualified.
+- Thinking-off is not used for the fixed GLM template. Final-answer/tool acceptance is distinct from exact reasoning-text and cross-batch numerical diagnostics; raw mismatches are preserved.
 - Two-host RoCE collective patterns passed; the final 256 MiB AllReduce measurement was 1.18–1.21 GB/s at MTU 1500, with a separate disk-checksum job active. This does not qualify full-model TP=2.
 - A single-GB10, four-layer fixture passed the tested generation/state-consistency cases using Marlin W4A16 and the candidate-preserving NoPE reference path.
 - Rebuilt the reorganized Docker image and repeated the GPU component and long-input fixture checks through the packaged CLI successfully.

@@ -1,6 +1,6 @@
 # GLM-5.3-Flash on 2× DGX Spark Enterprise Setup
 
-**BETA（ベータ版）— 全モデルのTP=2検証は未完了です。本番運用向けの検証済みリリースではありません。**
+**BETA（ベータ版）— 限定した参照profileで全モデルTP=2を試験済みです。本番運用・ハーネスの検収は未完了です。**
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.md) · [検証範囲](docs/validation.md) · [構成](docs/architecture.md)
 
@@ -21,8 +21,9 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 | 標準CUTLASS W4A4のfixture | 生成は完了。検査した数値不変性の条件は未達 |
 | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
+| 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
 | ZCode／Claude Codeのハーネス連携 | 必須の受け入れ項目を定義。**未実施** |
-| 全45層・TP=2・MTP・画像・本番品質/性能 | **未検証** |
+| MTP・画像・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
 

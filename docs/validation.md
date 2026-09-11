@@ -63,8 +63,16 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
-Official ZCode and Claude Code CLI are separate, required targets in the [harness acceptance matrix](harnesses.md). All harness cases are currently NOT RUN; text/tool API checks and synthetic GPU tests do not substitute for these end-to-end cases.
+Official ZCode and Claude Code CLI are separate, required targets in the [harness acceptance matrix](harnesses.md). Their end-to-end cases are NOT RUN; the basic API smoke below does not close the complete matrix or client integration cases.
 
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
 
-Full 45-layer loading, model-specific TP=2 kernels, model quality, sustained mixed load, recovery, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture or collective result into a `tp2-kernel-validation` receipt.
+Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, two-active-sequence acceptance, MTP, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
+
+## Full-model TP=2 experimental scope
+
+The reference image loaded all 45 language layers on two GB10 hosts with Marlin W4A16, eager execution, one active sequence, context 16,384 and 1 GiB KV per rank. The serial TP=2 four-layer fixture passed all existing state checks. With two active fixture sequences, one greedy path diverged at a near tie; that raw diagnostic remains failed and is separate from task-level acceptance.
+
+The full model passed basic served-ID, English/Japanese final-answer, OpenAI SSE, harmless automatic tool/argument/return, and Anthropic Messages/count_tokens smoke checks. Chat acceptance with low reasoning effort also passed these final-answer/tool criteria. Reasoning text differed on replay; it remains a diagnostic rather than a requirement for identical free-form wording. The unsupported thinking-off request caused parser/content mixing and is not an accepted configuration; see [harness settings](harnesses.md).
+
+[Official vLLM synthetic benchmarks](benchmarks.md) completed all planned measured requests. Test containers were stopped afterward. These results do not unlock the current routine launcher, establish full application quality or certify production deployment.
