@@ -67,7 +67,7 @@ Official ZCode and Claude Code CLI are separate, required targets in the [harnes
 
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
 
-Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, two-active-sequence acceptance, MTP k≥2, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
+Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, two-active-sequence acceptance, MTP depths other than k=1/k=3, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
 
 ## Full-model TP=2 experimental scope
 
@@ -78,3 +78,5 @@ The full model passed basic served-ID, English/Japanese final-answer, OpenAI SSE
 [Official vLLM synthetic benchmarks](benchmarks.md) completed all planned measured requests. Test containers were stopped afterward. These results do not unlock the current routine launcher, establish full application quality or certify production deployment.
 
 The [MTP k=1 candidate](speculative-decoding.md) subsequently passed its small loading fixture, all five matched full-model benchmark cases and the same 11 basic API checks. A separate metadata view preserves the original checkpoint while excluding its BF16 MTP layer from global NVFP4. The guide records draft acceptance, additional memory, workload-dependent gains and the unresolved distributed shutdown limitation. Actual ZCode and Claude Code acceptance remains separate.
+
+The same full-model benchmark and API cases also passed with k=3. Its [measured comparison](speculative-decoding.md#measured-k3-comparison) records per-position acceptance and effective cache alignment; it is preferred for further experimental evaluation but does not establish an optimal speculative depth or close the remaining gates.

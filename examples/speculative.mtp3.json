@@ -1,0 +1,5 @@
+{
+  "method": "mtp",
+  "num_speculative_tokens": 3,
+  "moe_backend": "triton"
+}

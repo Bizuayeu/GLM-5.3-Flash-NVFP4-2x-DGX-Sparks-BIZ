@@ -23,8 +23,8 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
 | ZCode／Claude Codeのハーネス連携 | 必須の受け入れ項目を定義。**未実施** |
-| BF16 draftのMTP k=1・同時実行1 | 基礎APIと同条件ベンチが合格。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
-| MTP k≥2・画像・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
+| BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
+| 他のMTP先読み数・画像・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
 

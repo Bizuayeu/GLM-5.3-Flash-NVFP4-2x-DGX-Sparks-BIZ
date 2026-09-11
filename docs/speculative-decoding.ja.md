@@ -2,7 +2,9 @@
 
 [English](speculative-decoding.md) · [MTPなしの基準値](benchmarks.ja.md)
 
-最初のTP=2 baselineは投機なしです。今回検証した候補は、取得済みNVIDIA checkpointに含まれるMTPによる1トークン先読み（k=1）です。別draftモデル、EXL3変換、DFlash2重みの取得は不要で、モデルライセンスは追加されません。既存の[成果物ごとのライセンス](licensing.ja.md)は引き続き適用されます。
+最初のTP=2 baselineは投機なしです。投機profileでは、取得済みNVIDIA checkpointに含まれるMTPを使います。別draftモデル、EXL3変換、DFlash2重みの取得は不要で、モデルライセンスは追加されません。既存の[成果物ごとのライセンス](licensing.ja.md)は引き続き適用されます。
+
+k=1とk=3の限定的な実験結果があります。現在の候補選択は[k=3の比較](#k3の比較結果)を参照してください。k=1は比較基準として保持します。
 
 ## フラグを足すだけでは足りない理由
 
@@ -30,7 +32,7 @@ python tools/prepare_mtp_view.py \
 --speculative-config "$(cat examples/speculative.mtp1.json)"
 ```
 
-[設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。本体のMarlin、eager、APCなし、同時実行1、比較対象のcontext/KV設定を維持します。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
+[設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。検証したk=3を使う場合は、`num_speculative_tokens`だけを3にした[speculative.mtp3.json](../examples/speculative.mtp3.json)へ置き換えます。本体のMarlin、eager、APCなし、同時実行1、比較対象のcontext/KV設定を維持します。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
 
 通常ランチャーの検収ガードを回避するための手順ではありません。元へ戻す場合は原snapshotを指定し、投機設定を外します。viewと試験記録は保持します。
 
@@ -61,6 +63,32 @@ runtimeのmodel memoryは各rank 95.17 GiBで、baselineより約6.97 GiB増え�
 
 基礎APIの11項目はすべて合格しました。最終回答の再現、日本語計算、SSE、自動ツール引数・戻り値、Messages、token countingを含みます。テキストは`stop`、ツール要求は`tool_calls`、Messagesは`end_turn`で終了しました。推論文は再実行で異なり、診断扱いを維持します。出力分布全体の同等性や広範な品質を証明したものではありません。
 
-**判断:** 次のテキスト・ツール・ハーネス評価に使う、明示選択の実験profileとしてk=1を残します。短い入力のdecodeは約1.69倍ですが、8,192入力・64出力では全体throughputが約1.3%低下し、TTFTは24.387→26.257秒へ増えました。比較用、およびメモリ余裕が少ない場合やprefill中心の用途にはMTPなしも残します。k≥2、実際の同時実行2、graphs、APC、画像、両ハーネスは未検証です。
+k=1の短い入力のdecodeはMTPなしの約1.69倍ですが、8,192入力・64出力では全体throughputが約1.3%低下し、TTFTは24.387→26.257秒へ増えました。比較用、およびメモリ余裕が少ない場合やprefill中心の用途にはMTPなしも残します。次の評価で使う候補は、後述のk=3比較で判断します。
 
 試験サーバーは両台とも停止し、メモリは回復しました。rank 0は終了コード0、rank 1はcontrollerのDocker stop猶予後に137で終了し、`OOMKilled=false`でした。分散構成の正常停止・復旧は未検収です。通常ランチャーへの昇格や、その検収証跡の発行は行っていません。
+
+## k=3の比較結果
+
+2026-09-12（Asia/Tokyo）の別実行で、先読み数だけを1→3へ変更しました。同じイメージ・checkpoint view・負荷条件・context/KV/chunk指定を維持しています。runtimeがattention blockを4,352→4,608 tokenへ自動調整しましたが、これはk=3の結果でありKV予算の手動調整ではありません。ロードと初期化を含むAPI準備時間は約924秒でした。
+
+| 入力token | client同時数 | k=3のTTFT中央値（秒） | decode k=1 → k=3（token/s） | 全体出力 k=1 → k=3（token/s） |
+|---:|---:|---:|---:|---:|
+| 32 | 1 | 0.376 | 24.14 → 30.30 | 22.15 → 26.35 |
+| 2,048 | 1 | 6.628 | 22.37 → 30.14 | 6.85 → 7.34 |
+| 8,192 | 1 | 26.427 | 20.55 → 22.25 | 2.18 → 2.19 |
+| 32 | 2 | 2.602 | 23.54 → 25.41 | 21.38 → 22.61 |
+| 2,048 | 2 | 15.305 | 21.49 → 27.04 | 6.80 → 7.19 |
+
+位置別採択率の分母は全draft step数であり、直前の位置が採択された場合だけの条件付き確率ではありません。前述と同じくwarmupを含むcounter区間です。
+
+| case | 1個目 | 2個目 | 3個目 | 平均採択長 |
+|---|---:|---:|---:|---:|
+| short-c1 | 88.2% | 77.6% | 76.3% | 3.42 |
+| medium-c1 | 75.3% | 67.1% | 58.8% | 3.01 |
+| long-c1 | 65.7% | 45.7% | 36.2% | 2.48 |
+| short-c2 | 70.3% | 64.6% | 52.5% | 2.87 |
+| medium-c2 | 73.1% | 62.8% | 54.5% | 2.90 |
+
+21測定要求すべてが64 tokenを出力し、エラーなし、基礎APIの11項目もすべて合格しました。推論文の逐語一致は再びfalseで、広範な出力同等性やハーネス本体の検収とは区別します。model memoryは95.17 GiB/rankを維持。host空き最小は7.33/10.12 GiBで、余裕不足による監視停止・OOM killはありません。試験後は両台とも停止し、rank 1は今回もDocker stop猶予後に137で終了したため、復旧の検収は残ります。
+
+**判断:** 次の実験的なテキスト・ツール・ハーネス評価にはk=3を優先し、k=1とMTPなしの比較基準も保持します。今回のk=1比では短文decodeが25.5%、中程度の入力が34.7%改善しました。長文の全体throughput差は0.45%に留まり、再現性のある改善とは断定せず、TTFTも微増しています。少数要求・別実行の比較であり、最適値を統計的に探した試験ではありません。k=2とk≥4は未試験で、k=3がk=4に勝つとは言えません。実際の同時実行2、graphs、APC、画像、両ハーネス、常用デプロイは未検収です。

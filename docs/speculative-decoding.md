@@ -2,7 +2,9 @@
 
 [日本語](speculative-decoding.ja.md) · [Baseline benchmarks](benchmarks.md)
 
-The first TP=2 baseline used no speculation. The tested candidate uses the MTP tensors already in the pinned NVIDIA checkpoint, with one draft token (`k=1`). No external draft model, EXL3 conversion or DFlash2 weights are needed; this introduces no additional model license. Existing [artifact licenses](licensing.md) still apply.
+The first TP=2 baseline used no speculation. The speculative profiles use the MTP tensors already in the pinned NVIDIA checkpoint. No external draft model, EXL3 conversion or DFlash2 weights are needed; this introduces no additional model license. Existing [artifact licenses](licensing.md) still apply.
+
+Both k=1 and k=3 now have limited experimental evidence. Use [the k=3 comparison](#measured-k3-comparison) for the current candidate choice; k=1 remains the comparison baseline.
 
 ## Why a flag alone is insufficient
 
@@ -30,7 +32,7 @@ Serve the **view path**, with the existing tested TP=2 reference image/settings,
 --speculative-config "$(cat examples/speculative.mtp1.json)"
 ```
 
-The JSON is the [k=1 candidate](../examples/speculative.mtp1.json). It selects `mtp`, one speculative token and a separate `triton` MoE backend for the draft. Keep the target's Marlin configuration, eager mode, prefix caching disabled, one active sequence and the benchmark's context/KV settings. Mount the cache root read-only, including both original snapshot and view; mounting the view alone breaks its links.
+The JSON is the [k=1 candidate](../examples/speculative.mtp1.json). For the tested k=3 profile, use [speculative.mtp3.json](../examples/speculative.mtp3.json) instead; it changes only `num_speculative_tokens` to 3. Both select `mtp` and a separate `triton` MoE backend for the draft. Keep the target's Marlin configuration, eager mode, prefix caching disabled, one active sequence and the benchmark's context/KV settings. Mount the cache root read-only, including both original snapshot and view; mounting the view alone breaks its links.
 
 This is an experimental recipe, not a bypass of the routine launcher's qualification gate. To return to the baseline, use the original snapshot and omit the speculative configuration. Preserve the view and evidence.
 
@@ -61,6 +63,32 @@ The runtime reported 95.17 GiB model memory per rank, approximately 6.97 GiB mor
 
 All 11 basic API checks passed, including final-answer replay, Japanese arithmetic, SSE, automatic tool arguments/return, Messages and token counting. Text responses terminated with `stop`, the tool request with `tool_calls`, and Messages with `end_turn`. Reasoning wording differed on replay and remains diagnostic. These checks establish neither full output-distribution equivalence nor broad application quality.
 
-**Decision:** retain k=1 as an opt-in experimental profile for the next text/tool and harness evaluations. Short-input decode improved about 1.69×, but 8,192-input/64-output aggregate throughput fell about 1.3% and TTFT rose from 24.387 to 26.257 seconds. Retain the MTP-off baseline for comparison and memory-constrained or prefill-heavy use. k≥2, two active sequences, graphs, prefix caching, images and both actual harnesses remain unvalidated.
+Short-input k=1 decode improved about 1.69× over MTP off, but 8,192-input/64-output aggregate throughput fell about 1.3% and TTFT rose from 24.387 to 26.257 seconds. Retain the MTP-off baseline for comparison and memory-constrained or prefill-heavy use. The subsequent k=3 comparison below determines the candidate for further evaluation.
 
 Both trial servers were stopped and host memory recovered. Rank 0 exited zero; rank 1 exited 137 after the controller's Docker stop grace period, with `OOMKilled=false`. Distributed graceful shutdown/recovery remains unqualified. This experiment does not promote the routine launcher or produce its qualification receipt.
+
+## Measured k=3 comparison
+
+A separate run on 2026-09-12 (Asia/Tokyo) changed only the speculative-token argument from 1 to 3. The same image, checkpoint view, workload and requested context/KV/chunk settings were retained. The runtime automatically enlarged the aligned attention block from 4,352 to 4,608 tokens; this is a consequence of k=3, not a manually tuned KV budget. API readiness took about 924 seconds, including loading and initialization.
+
+| Input tokens | Client concurrency | k=3 median TTFT (s) | Decode k=1 → k=3 (token/s) | Aggregate output k=1 → k=3 (token/s) |
+|---:|---:|---:|---:|---:|
+| 32 | 1 | 0.376 | 24.14 → 30.30 | 22.15 → 26.35 |
+| 2,048 | 1 | 6.628 | 22.37 → 30.14 | 6.85 → 7.34 |
+| 8,192 | 1 | 26.427 | 20.55 → 22.25 | 2.18 → 2.19 |
+| 32 | 2 | 2.602 | 23.54 → 25.41 | 21.38 → 22.61 |
+| 2,048 | 2 | 15.305 | 21.49 → 27.04 | 6.80 → 7.19 |
+
+Per-position acceptance is accepted tokens at that position divided by all draft steps, not conditional acceptance after the previous position. The same warmup-inclusive metric windows apply.
+
+| Case | Position 1 | Position 2 | Position 3 | Mean acceptance length |
+|---|---:|---:|---:|---:|
+| short-c1 | 88.2% | 77.6% | 76.3% | 3.42 |
+| medium-c1 | 75.3% | 67.1% | 58.8% | 3.01 |
+| long-c1 | 65.7% | 45.7% | 36.2% | 2.48 |
+| short-c2 | 70.3% | 64.6% | 52.5% | 2.87 |
+| medium-c2 | 73.1% | 62.8% | 54.5% | 2.90 |
+
+All 21 measured requests produced 64 tokens without errors, and all 11 basic API checks passed. Reasoning wording again differed on replay; broad output equivalence and actual harness acceptance remain separate. Model memory stayed at 95.17 GiB/rank. Minimum host available memory was 7.33/10.12 GiB, with no reserve-triggered stop or OOM kill. Both servers were stopped; rank 1 again required Docker's stop timeout (exit 137), so recovery qualification remains open.
+
+**Decision:** prefer k=3 for the next experimental text/tool and harness evaluations, while preserving k=1 and MTP-off references. In these samples, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7% over k=1. The long-input aggregate gain was only 0.45%, too small to establish a repeatable benefit, and its TTFT increased slightly. The measurements are small, separate runs, not a statistical optimum search. k=2 and k≥4 were not tested; no claim that k=3 beats k=4 is supported. Two active sequences, graphs, prefix caching, vision, both harnesses and routine deployment remain unqualified.

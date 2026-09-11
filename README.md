@@ -23,8 +23,8 @@ See [commercial use, modification and redistribution](docs/licensing.md) for per
 | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
 | ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
-| MTP k=1 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; [setup, gains and costs](docs/speculative-decoding.md) |
-| MTP k≥2, vision, full application quality, production reliability and maximum performance | **Not validated** |
+| MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
+| Other MTP depths, vision, full application quality, production reliability and maximum performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
 
