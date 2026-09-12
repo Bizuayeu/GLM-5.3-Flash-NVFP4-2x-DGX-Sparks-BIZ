@@ -214,3 +214,32 @@ After PP timing/quality completed, the second profiler start segfaulted during P
 The saved 64-input/one-output trace observed 92 NCCL events per rank with TP2 and 6 with PP2 (four send/receive, two broadcast). This includes prefill and is not PP decode events per token. TP's paired 1/33-output difference observed 1,743 kernels/token, 92 NCCL events/token and approximately 46–47 ms/token of summed GEMV GPU intervals. Durations can overlap and must not be added to wall latency. Reduced communication did not establish faster generation.
 
 Before profiling, minimum head available memory under PP was about 4.27 GiB, including load/warmup, close to the 4 GiB experiment guard. It fell further after the failure. Keep normal TP2 and the standard 8 GiB reserve unchanged; the PP option remains experimental, with full-model capacity and recovery unqualified.
+
+## Independent CPU synchronization reduction (P08)
+
+The same v28 image ran synchronous→asynchronous→restored synchronous index checks with TP2, one sequence, eager execution, context16,384, chunk512 and FP8 KV at 1 GiB per rank. MTP/LPA/fusion/EP/APC/Graphs were off. Asynchronous execution retains range checking through a device assertion. Inputs came from the retained LLM-jp validation stream, not the test split.
+
+After warmup, each one-output condition used five measurements and each 128-output condition three. Medians below cover the whole request; 128-output timings include prefill. Private run: `sync-v35-full`.
+
+| Input tokens | Output tokens | Synchronous seconds | Asynchronous | Restored sync |
+|---:|---:|---:|---:|---:|
+| 64 | 1 | 0.3574 | 0.3580 | 0.3570 |
+| 64 | 128 | 9.3019 | 9.0728 | 9.2734 |
+| 2,048 | 1 | 6.1305 | 6.1100 | 6.1257 |
+| 2,048 | 128 | 15.1617 | 14.8700 | 15.1425 |
+| 8,192 | 1 | 24.6281 | 24.5649 | 24.6000 |
+| 8,192 | 128 | 33.7452 | 33.3316 | 33.5738 |
+
+Every arm passed eight task answers, two tool round trips and SSE disconnect/follow-up checks. **Accept as an opt-in within this independent eager scope.** The 128-output improvement over both controls was approximately 2.2–2.5% for short inputs, 1.8–1.9% at 2K and 0.7–1.2% at 8K. Prefill-only differences were small. Keep `index_checks="auto"` as the default (synchronous in eager); MTP/LPA/fusion combinations require separate acceptance.
+
+After timing/quality, a fresh server process used one profiler start/stop. Six off/async/restored 1/33-output requests were separated by one-second idle gaps. Both ranks yielded six distinct GPU windows; off/restored kernel, launch and NCCL counts matched before computing deltas.
+
+| Events per additional output token | Sync | Async | Restored sync |
+|---|---:|---:|---:|
+| GPU kernels / launch APIs, both ranks | 1,743 | 1,754 | 1,743 |
+| NCCL, both ranks | 92 | 92 | 92 |
+| Copies, both ranks | 55 | 33 | 55 |
+| CPU synchronization APIs, rank 0 | 23 | 1 | About 23 |
+| CPU synchronization APIs, rank 1 | 22 | 0 | About 22 |
+
+Kernel launches increased: this small gain is associated with reduced synchronization/copying, distinct from kernel fusion. Edge-window synchronization counts can include profiler control; the restored fraction of about 0.03 events/token is not interpreted as changed model work. Invalid-index device assertions can invalidate the CUDA context. This limited test does not certify general recovery or enterprise quality.

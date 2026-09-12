@@ -111,11 +111,13 @@ A bounded tiling follow-up (`benchmark_fused_tiles`, private run `fused-tiles-v1
 
 The prototypes reduce launches and temporary allocation, but **do not provide a measured speed benefit**. Keep them for reproduction; do not connect them to startup, claim full-model acceptance, or treat the already useful P03 unpack fusion as rejected. Reopen P04 with a materially different execution strategy supported by profiling, rather than further blind tile sweeps.
 
-### Shared-head Tensor Core candidate — prepared, GPU validation pending
+### Shared-head Tensor Core candidate — not adopted
 
 `runtime.fused_nope_dot.dot_nope_tf32x3` is a separate follow-up: each program shares decoded K/V across 16 query heads and uses explicit `tf32x3` matrix products, with FP32 softmax/accumulation and BF16 output. It is not IEEE-equivalent arithmetic; [Triton's dot API](https://triton-lang.org/main/python-api/generated/triton.language.dot.html) defines the precision selection. The benchmark records PTX hashes and checks that TF32 MMA instructions were emitted. It preserves all supplied candidates and shares the existing shape/device/range checks.
 
-The new FP64, empty-row and sole-tail-candidate tests require GPU execution. `benchmark_query_chunks --tf32x3-attention --heads 16` or `--heads 32` selects this experiment in a fresh output directory. At this checkpoint it has **not run on GPU and has no speed or model-quality result**. Serving remains unchanged; the earlier SIMT/query-chunk rejections stand. Run this component only when model experiments have released the GPU.
+The GPU FP64, empty-row and sole-tail-candidate tests passed in `dot-component-v33-results`. The same image `7cb5f93…` ran the isolated component without model weights; all timed outputs were finite and within the predeclared bounds. PTX contained TF32 MMA instructions. However, compilation reported 1,522/1,530 register spills for 16/32 heads, and the kernel was substantially slower. At 512 query rows, reference versus TF32x3 took approximately 63.75→962.42 ms with 16 heads and 68.95→1,945.97 ms with 32 heads. This implementation is **not adopted**; it has no full-model integration or speedup claim. The register-spill evidence is retained for any future redesign.
+
+`benchmark_query_chunks --tf32x3-attention --heads 16` or `--heads 32` reproduces the component in a fresh output directory. Source archive SHA256: `290dd45b32997ecb101e237db74485fbc0437339e1a0419761209b46cf49077d`. Serving remains unchanged and the earlier SIMT/query-chunk rejections stand.
 
 ## Pipeline fixture preparation and startup (P17)
 

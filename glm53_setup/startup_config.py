@@ -76,6 +76,12 @@ def validate(profile):
             "EP observer requires independent eager TP2, no other worker/MTP/APC"
         )
     runtime = profile["runtime"]
+    if runtime["index_checks"] not in ("auto", "sync", "async"):
+        raise ValueError(
+            "index_checks must be auto, sync or async; checks cannot be disabled"
+        )
+    if not runtime["enforce_eager"] and runtime["index_checks"] == "sync":
+        raise ValueError("Graph execution requires asynchronous index checks")
     if runtime["pipeline_parallel_size"] not in (1, 2):
         raise ValueError("Only PP sizes 1 and 2 are supported")
     split = runtime["pipeline_split_layer"]
@@ -202,12 +208,19 @@ def environment(profile, rank):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
         result["GLM53_FUSED_UNPACK"] = "1"
-    if not profile["runtime"]["enforce_eager"]:
+    if asynchronous_index_checks(profile):
         result["GLM53_ASYNC_INDEX_CHECKS"] = "1"
     if profile["runtime"]["pipeline_parallel_size"] == 2:
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
     return result
+
+
+def asynchronous_index_checks(profile):
+    runtime = profile["runtime"]
+    return runtime["index_checks"] == "async" or (
+        runtime["index_checks"] == "auto" and not runtime["enforce_eager"]
+    )
 
 
 def serve_args(profile, rank, model_path):

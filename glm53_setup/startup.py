@@ -164,6 +164,10 @@ def preflight(profile, config_path, rank):
         checks["decode_graph_support"] = "GLM53_DECODE_GRAPH_API=1" in (
             image["Config"].get("Env") or []
         )
+    if settings.asynchronous_index_checks(profile):
+        checks["async_index_check_support"] = "GLM53_ASYNC_INDEX_CHECK_API=1" in (
+            image["Config"].get("Env") or []
+        )
     if profile["lpa"]["enabled"]:
         checks["lpa_worker"] = "GLM53_LPA_API=2" in (image["Config"].get("Env") or [])
     checks["reference_attention"] = (

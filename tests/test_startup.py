@@ -14,6 +14,27 @@ class StartupConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/startup.example.toml")
 
+    def test_index_check_mode_is_explicit_without_disabling_validation(self):
+        self.assertNotIn(
+            "GLM53_ASYNC_INDEX_CHECKS", config.environment(self.profile, 0)
+        )
+        self.profile["runtime"]["index_checks"] = "async"
+        config.validate(self.profile)
+        for rank in (0, 1):
+            self.assertEqual(
+                config.environment(self.profile, rank)["GLM53_ASYNC_INDEX_CHECKS"], "1"
+            )
+            self.assertIn(
+                "--enforce-eager", config.serve_args(self.profile, rank, "/hf/model")
+            )
+        self.profile["runtime"]["index_checks"] = "disabled"
+        with self.assertRaises(ValueError):
+            config.validate(self.profile)
+        self.profile["runtime"]["index_checks"] = "sync"
+        self.profile["runtime"]["enforce_eager"] = False
+        with self.assertRaisesRegex(ValueError, "Graph"):
+            config.validate(self.profile)
+
     def test_toml_validation_stays_at_load_and_command_boundaries(self):
         with patch.object(config, "validate", wraps=config.validate) as validate:
             config.load(ROOT / "examples/startup.example.toml")

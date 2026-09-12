@@ -28,6 +28,8 @@ The model/revision and build base stay in [runtime.lock.json](../config/runtime.
 
 `validation.expert_worker=true` exposes the typed `expert_info` diagnostic for actual placement, kernel and parameter metadata. It supports the independent eager TP2 baseline and EP arms with up to two sequences; other validation workers, MTP/LPA/APC and PP are excluded. Layer hashing begins only after an explicit `pipeline_observe` RPC. Do not install those hooks during performance measurement. This is an experimental local control endpoint, not an enterprise qualification receipt.
 
+`runtime.index_checks` accepts `auto` (the default), `sync` or `async`. Auto preserves synchronous checks in eager execution and selects asynchronous checks for Graphs. Explicit async enables the independently measured eager path; it requires `GLM53_ASYNC_INDEX_CHECK_API=1`. Checks are always performed. Invalid indices in async mode can invalidate the CUDA context, requiring both ranks to restart. Graphs reject explicit sync. MTP/LPA/fusion combinations still need their own acceptance results; the default remains auto.
+
 Before changing context or concurrency, review [KV capacity and RAM requirements](#kv-capacity-and-ram-requirements).
 
 Inspect generated commands from the checkout root (also works on Windows):
