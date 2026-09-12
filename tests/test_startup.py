@@ -36,6 +36,16 @@ class StartupConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "LPA requires max_num_seqs=1"):
             config.validate(self.profile)
 
+    def test_kernel_profiling_omits_frontend_and_duplicate_summary_materialization(
+        self,
+    ):
+        self.profile["profiling"]["enabled"] = True
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        options = json.loads(args[args.index("--profiler-config") + 1])
+        self.assertTrue(options["ignore_frontend"])
+        self.assertFalse(options["torch_profiler_dump_cuda_time_total"])
+        self.assertFalse(options["torch_profiler_record_shapes"])
+
     def test_no_deadline_is_valid_but_negative_or_boolean_is_not(self):
         self.profile["resources"]["run_seconds"] = 0
         config.validate(self.profile)
@@ -43,6 +53,14 @@ class StartupConfigTests(unittest.TestCase):
             self.profile["resources"]["run_seconds"] = invalid
             with self.assertRaises(ValueError):
                 config.validate(self.profile)
+
+    def test_reasoning_levels_follow_the_glm_model_contract(self):
+        for effort in ("low", "high", "max"):
+            self.profile["generation"]["reasoning_effort"] = effort
+            config.validate(self.profile)
+        self.profile["generation"]["reasoning_effort"] = "medium"
+        with self.assertRaises(ValueError):
+            config.validate(self.profile)
 
     def test_unlimited_run_keeps_memory_protection_and_timed_run_expires(self):
         for seconds, reason, sleeps in [

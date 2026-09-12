@@ -25,6 +25,7 @@ enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
 # カーネル計測用。通常の速度比較はfalseで実行する。
 
 [cache]
+fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
 prefix_caching = false

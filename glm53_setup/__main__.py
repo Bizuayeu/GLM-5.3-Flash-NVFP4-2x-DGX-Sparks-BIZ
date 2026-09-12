@@ -25,6 +25,7 @@ COMMANDS = {
     "lpa-train": "validation.train_lpa",
     "freedombench": "validation.freedombench",
     "profile-assess": "validation.profile_trace",
+    "indexer-overlap": "validation.indexer_overlap",
 }
 
 

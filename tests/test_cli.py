@@ -40,6 +40,7 @@ class PublicCliTests(unittest.TestCase):
             ("lpa-train", "--captures"),
             ("freedombench", "--benchmark-dir"),
             ("profile-assess", "--prefill-control"),
+            ("indexer-overlap", "capture"),
         ]:
             with self.subTest(command=command):
                 result = self.invoke(command, "--help")

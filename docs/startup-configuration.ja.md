@@ -9,7 +9,7 @@
 | `runtime` | 通常／LPA用の固定イメージID、eager実行、seed |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
-| `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率 |
+| `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率、実験用unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
 | `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー |
@@ -67,6 +67,8 @@ run_seconds = 0
 旧コマンド・旧設定名・旧イメージへのフォールバックはありません。新ソースをホストへ置くだけでは稼働中のイメージは変わらないため、再ビルドと実機検証を行います。
 
 ## LPAとMTP・制約
+
+`cache.fused_unpack=false` が既定で、Torchの参照変換を使います。有効にすると、656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理します。イメージに `GLM53_FUSED_UNPACK_SUPPORTED=1` が必要で、preflightで確認します。まだ実験候補であり、部品の数値一致・attentionと状態の検査・トレースを止めたフルモデルA/Bを経て採否を決めます。候補集合の変更や層間のKV共有は行いません。
 
 `mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したLPA workerを含むイメージが必要で、旧LPAイメージは併用指定を拒否します。
 

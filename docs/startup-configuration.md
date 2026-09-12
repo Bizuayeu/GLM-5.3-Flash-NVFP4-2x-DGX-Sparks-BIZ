@@ -9,7 +9,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 | `runtime` | Immutable reference/LPA image IDs, eager execution, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
 | `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
-| `cache` | KV bytes per rank, requested block size, prefix cache, memory utilization |
+| `cache` | KV bytes per rank, requested block size, prefix cache, memory utilization, experimental fused unpack |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
 | `lpa` | Enable approximation, first layer, exact tail, query omission, projector and checksum |
 | `api` | Loopback/rendezvous ports, served name and parsers |
@@ -65,6 +65,8 @@ This enables a run without a scheduled stop, not a 24/7 availability guarantee. 
 Use a freshly built image with `GLM53_LPA_API=2`, `glm53_setup.runtime.lpa.LPAWorkerExtension`, `lpa_configure` / `lpa_report`, and `/lpa/projector.pt`. Preflight rejects images without that marker. There is no old-command or old-image fallback. Rebuild from current source, verify the image ID on both hosts and update the configured image before starting.
 
 ## Feature combinations and limits
+
+`cache.fused_unpack=false` keeps the Torch reference conversion. Opting in selects a single Triton kernel for the 656-byte MLA cache record's FP8 latent conversion and FP32 scale multiplication. It requires an image with `GLM53_FUSED_UNPACK_SUPPORTED=1`; preflight rejects other images. This candidate is experimental: component equivalence, attention/state checks and unprofiled full-model A/B measurements are required before adoption. It does not change selected candidates or share KV between layers.
 
 Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting. LPA selects `runtime.lpa_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware LPA worker; old LPA images reject it.
 

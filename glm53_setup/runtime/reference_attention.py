@@ -5,12 +5,18 @@ The packed cache layout follows vLLM's Apache-2.0 concat_and_cache_ds_mla_kernel
 and a future correctness-first fallback, never advertised as a fast kernel.
 """
 
+import os
+
 
 def unpack_latent(packed):
     import torch
 
     if packed.dtype != torch.uint8 or packed.shape[-1] != 656:
         raise ValueError("Expected the 656-byte fp8_ds_mla record")
+    if os.environ.get("GLM53_FUSED_UNPACK") == "1":
+        from glm53_setup.runtime.fused_unpack import unpack_latent_cuda
+
+        return unpack_latent_cuda(packed)
     values = packed[..., :512].contiguous().view(torch.float8_e4m3fn).float()
     scales = packed[..., 512:528].contiguous().view(torch.float32)
     return (values.reshape(*values.shape[:-1], 4, 128) * scales.unsqueeze(-1)).flatten(

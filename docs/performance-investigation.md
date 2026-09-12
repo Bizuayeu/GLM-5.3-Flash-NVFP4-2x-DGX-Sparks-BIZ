@@ -31,6 +31,8 @@ Use traces to prioritize kernel work. CUDA events in LPA's layer profiler do not
 
 ## Throughput versus determinism
 
+The first implemented launch-reduction candidate is `cache.fused_unpack`: one Triton kernel replaces intermediate FP8 copies, FP32 conversion, scale copies and multiplication when unpacking gathered MLA cache records. It leaves attention candidates and FP32 attention arithmetic unchanged. The default is off. Exhaustive FP8-code and scale tests are a component gate; fixture state comparisons and full-model unprofiled A/B runs remain separate acceptance gates.
+
 Use a separate no-LPA profile for `context.max_num_seqs > 1`; the LPA hook requires one contiguous sequence. Start with two and then four active sequences only if resource and task checks pass. A near-tie greedy divergence is a numerical/reproducibility diagnostic, not automatically a task-quality failure. Preserve it while judging content, tool arguments, finish reasons, cross-request isolation, cancellation and resource safety independently. Report aggregate throughput and each request's latency/quality; do not compare aggregate rates to single-request decode.
 
 ## Task grouping experiment
@@ -46,3 +48,5 @@ TP=2 versus PP=2 is relevant for two memory-constrained nodes. It is **not curre
 Before adding a PP profile, implement/validate intermediate-state transport on a small fixture with LPA/MTP disabled. Check layer allocation, KDA/MLA state, mHC boundaries, rank memory and failure recovery. Only then compare the full model against TP with identical precision, prompts and memory budgets. MTP/LPA are later PP extensions. Count actual communication events rather than assuming a layers-times-two collective count.
 
 No PP result, graph speedup or fused-kernel qualification is claimed by this plan.
+
+[Indexer reuse/reindex](indexer-reuse.md) is a separate staged candidate: cost and overlap first, then request-scoped selection reuse with cache updates preserved. It must be evaluated jointly with LPA before claiming cumulative gains.

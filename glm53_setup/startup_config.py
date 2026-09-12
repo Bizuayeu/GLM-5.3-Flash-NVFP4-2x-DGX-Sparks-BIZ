@@ -73,7 +73,7 @@ def validate(profile):
         raise ValueError("temperature must be nonnegative")
     if profile["generation"]["max_tokens"] >= profile["context"]["max_model_len"]:
         raise ValueError("Reserve context space for the input prompt")
-    if profile["generation"]["reasoning_effort"] not in {"low", "medium", "high"}:
+    if profile["generation"]["reasoning_effort"] not in {"low", "high", "max"}:
         raise ValueError(
             "Use a supported reasoning_effort; thinking-off is unqualified"
         )
@@ -135,6 +135,8 @@ def environment(profile, rank):
     )
     if profile["lpa"]["enabled"]:
         result["VLLM_SERVER_DEV_MODE"] = "1"
+    if profile["cache"]["fused_unpack"]:
+        result["GLM53_FUSED_UNPACK"] = "1"
     return result
 
 
@@ -208,6 +210,8 @@ def serve_args(profile, rank, model_path):
                     "torch_profiler_record_shapes": False,
                     "torch_profiler_with_memory": False,
                     "torch_profiler_use_gzip": True,
+                    "ignore_frontend": True,
+                    "torch_profiler_dump_cuda_time_total": False,
                 }
             ),
         ]
