@@ -63,6 +63,19 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
+    if profile["runtime"]["expert_parallel"] and (
+        profile["lpa"]["enabled"]
+        or profile["mtp"]["enabled"]
+        or profile["cache"]["prefix_caching"]
+        or profile["cache"]["fused_unpack"]
+        or not profile["runtime"]["enforce_eager"]
+        or profile["context"]["max_num_seqs"] > 2
+    ):
+        # cc-defer: independent EP with up to two sequences; extend combinations
+        # only after their resource and quality gates pass.
+        raise ValueError(
+            "EP requires eager, at most two sequences, no LPA/MTP/fusion/APC"
+        )
     if profile["validation"]["component_worker"] and (
         profile["lpa"]["enabled"]
         or profile["mtp"]["enabled"]
@@ -251,6 +264,8 @@ def serve_args(profile, rank, model_path):
                 }
             ),
         ]
+    if profile["runtime"]["expert_parallel"]:
+        args.append("--enable-expert-parallel")
     return args
 
 

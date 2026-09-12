@@ -4,6 +4,9 @@
 
 ### Added
 
+- Experimental deferred-mHC pipeline buffers and source-pinned common-cache-layout selection, retaining unsuccessful PP startup evidence and pending GPU qualification.
+- Matched task-order measurements with a scoped decision against dedicated task grouping for the tested workload.
+
 - Independent prefill chunk sweep with throughput/maximum-ITL tradeoffs and separate 16K x two capacity evidence.
 - FP32 NoPE fusion and bounded tile/query-chunk diagnostics, retaining negative speed results despite fewer launches and intermediates.
 

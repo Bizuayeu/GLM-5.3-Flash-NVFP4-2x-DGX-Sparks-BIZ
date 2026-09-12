@@ -6,7 +6,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 
 | Category | Controls |
 |---|---|
-| `runtime` | Immutable reference/LPA image IDs, eager/decode Graph execution, seed |
+| `runtime` | Immutable reference/LPA image IDs, eager/decode Graph execution, independent expert parallelism, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
 | `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
 | `validation` | Exclusive component worker for CUDA/indexer experiments before LPA/MTP integration |
@@ -21,6 +21,8 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
 ## Commands
+
+`runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget. It requires an image with `GLM53_EXPERT_PARALLEL_API=1`; this marker identifies configuration support, not successful EP qualification. Initial scope is eager, one/two sequences and no MTP/LPA/fusion/APC. Existing TOMLs must explicitly include the new key; no silent missing-key fallback is provided. See the [independent EP plan](performance-investigation.md#expert-parallel-p21) before use.
 
 Before changing context or concurrency, review [KV capacity and RAM requirements](#kv-capacity-and-ram-requirements).
 

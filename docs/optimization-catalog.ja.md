@@ -47,10 +47,10 @@
 | P11 Prefill chunk × Kpool／indexer | chunk予算を変え、pool・tail・cache境界とその前後で通常／分割処理を比較 | 長文prefillと混合負荷のITLを改善し、状態・候補の取り扱いを維持 | **128は不採用、1024はthroughput候補。** 2K全体出力改善と最長ITL悪化を併記。既定512、1024の16K×2容量は確認済み。[実測](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
 | P12 同時ストリーム計測 | client×1／×2／×4とserverのactive seq数を別記し、TTFT・queue・個別ITL・aggregateを同じ表にする | 単発と並列のtradeoff、待ち行列、長文投入による停止を検出 | **待ち行列と実batchを区別して測定済み。** P13でactive2と複数decode行を確認。[実測](benchmarks.ja.md#標準batchingの独立評価) |
 | P13 標準batching | LPAなしのseqs=2→4で実batch重複を確認。逐語決定性とタスク品質を分けて検収 | aggregate throughput向上と、個別レイテンシ・メモリの増減把握 | **限定throughput用途の2系列を受入。** 内容・tool確認と16K×2容量確認は別記。既定1系列、4系列・併用は未検収。[実測](benchmarks.ja.md#標準batchingの独立評価) |
-| P14 同種タスクbatching | コード／翻訳／要約の同種groupと混在groupを、長さ・同時数・投入量を揃えて比較 | expert重複や投機採択が変わり、aggregateが改善する可能性 | **比較計画あり、未検収。** 実expert選択・待機時間も観測し、タスク名だけで重み再利用を断定しない。[性能調査](performance-investigation.md#task-grouping-experiment) |
+| P14 同種タスクbatching | コード／翻訳／要約の同種groupと混在groupを、長さ・同時数・投入量を揃えて比較 | expert重複や投機採択が変わり、aggregateが改善する可能性 | **今回の用途では不採用。** 小規模な投入順比較の改善は約0.7〜0.9%。expert経路・課題完遂品質は未検収。標準batchingを維持。[実測](benchmarks.ja.md#同種タスクの投入順比較p14) |
 | P15 コンテキスト長sweep | 入力長とKV予算を独立に変える。8K→32K→128K→262,144は検討する測定点であり、事前に容量と対応を確認 | TTFT・decode・memoryが悪化する地点と運用可能範囲を可視化 | **系統的sweep未了。** 設定可能な長さと実要求の検収を分ける。実測範囲から段階拡張。[起動設定](startup-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md) |
 | P16 CSA2：候補Reuse／Reindex | 層間候補の再利用・限定再採点・shared poolを比較。各層のKVと必須cache更新は保持 | indexerの削減可能な計算を減らす仮説。候補coverageと全体時間で判断 | **部品検証・観測済み、serving適用は保留。** 今回はop時間割合が小さく、8K相当のshared-pool部品も遅い。大きい文脈で全コスト・coverage・品質が成立した場合のみ再評価。[CSA2詳細](indexer-reuse.md)／[実測](component-validation.md#indexer-observation) |
-| P17 TP=2／PP=2 | PPの中間tensor・mHC post/comb転送を実装・fixture検証後、同じ精度と負荷で比較 | 通信待ち削減の可能性と、stageの直列化・不均衡による損失を測る | **前提調査済み、A/B未了。** 固定GLMはPPを無効化しており、起動オプションだけでは比較不能。まずLPA/MTPなし。[性能調査](performance-investigation.md#tp-versus-pp) |
+| P17 TP=2／PP=2 | PPの中間tensor・mHC post/comb転送を実装・fixture検証後、同じ精度と負荷で比較 | 通信待ち削減の可能性と、stageの直列化・不均衡による損失を測る | **部品実装・PP1対照完了、PP2は未受入。** 初回layout拒否を修正。再試行中にhead管理接続を失い、原因・最終状態の確認待ち。全モデルA/B未実施。[検証記録](component-validation.md#pipeline-fixture-preparation-and-startup-p17) |
 | P18 MTP＋LPA＋fusion、必要ならGraphs | 単独と組合せを同じ資産・課題で比較。復帰対照を含め、実際のLPA作動・投機採択・captureを記録 | 改善の相互作用を測り、品質・メモリ・復旧の回帰を検出 | **結合検証中、確定結果なし。** 三者併用の効果を単体の改善率から推定しない。Graphsは対応後の別条件。[CUDA実測の残工程](component-validation.md#reproduction-and-remaining-integration) |
 | P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **未検収、現LPAとは非対応。** coldの高速化とcache hitの効果を分離。[LPA使用範囲](lpa.ja.md#使用範囲) |
 | P20 Indexer workspace適正化 | 実shape・chunk・MTP深さ別の最大必要量を測り、過剰予約がある場合に限定して縮小 | host/KVの余裕を増やし、不要な割当を抑える | **条件付き候補、独立した効果の検収なし。** P16の候補削減とは別施策。上流で解消済みなら追加patch不要。[性能調査](performance-investigation.md) |
@@ -59,7 +59,7 @@
 
 | 施策名 | 内容 | 期待される効果・見る指標 | 現在地／検証先 |
 |---|---|---|---|
-| P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験。固定GB10/Marlinの対応確認後、既定offの設定と起動・検査経路を実装 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **未実装・未検証。** P13の検証済み2系列は採用する方向。EPは改善と資源条件の確認後に別途採否を決める。[実装・検証手順](performance-investigation.md#expert-parallel-p21) |
+| P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験。固定GB10/Marlinの対応確認後、既定offの設定と起動・検査経路を実装 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **既定offの設定・CPU契約を実装、GPU未検証。** 固定Marlinの対応宣言とexpert map経路を確認。実配置・数値・速度・資源を測るまで採用しない。[実装・検証手順](performance-investigation.md#expert-parallel-p21) |
 
 P12は測定軸、P13はscheduler設定、P14は投入順序の実験です。同じ改善を三つに数えません。また、MTPは単一系列でも複数の投機行をまとめて検証できるため、GEMM寄りの仕事を得る前提が必ずしも`max_num_seqs > 1`ではありません。
 
