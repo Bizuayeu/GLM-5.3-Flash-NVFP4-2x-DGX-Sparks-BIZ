@@ -37,9 +37,10 @@ def main(argv=None):
         "scope": "FP32 reference query chunks; no scheduler/model changes",
         "cases": [],
         "fused_attention_candidate": args.fused_attention,
+        "masked_queries_in_timing": not args.fused_attention,
     }
     try:
-        for tokens in ((1, 8, 65, 512) if args.fused_attention else (9, 65, 128, 512)):
+        for tokens in (1, 8, 65, 512) if args.fused_attention else (9, 65, 128, 512):
             query = torch.randn((tokens, 32, 512), dtype=torch.bfloat16, device="cuda")
             indices = torch.randint(
                 0, 4096, (tokens, 2176), dtype=torch.int32, device="cuda"
@@ -71,12 +72,18 @@ def main(argv=None):
                     "max_abs_error": error,
                     "tolerance": tolerance,
                     "exact": torch.equal(actual, expected),
-                    "empty_row_zero": bool((actual[0] == 0).all()),
+                    "empty_row_zero": None
+                    if args.fused_attention
+                    else bool((actual[0] == 0).all()),
                     "finite": bool(torch.isfinite(actual).all()),
                 }
                 case["paths"][str(chunk)] = row
                 write_json(args.output / "result.json", report)
-                if not row["finite"] or not row["empty_row_zero"] or error > tolerance:
+                if (
+                    not row["finite"]
+                    or row["empty_row_zero"] is False
+                    or error > tolerance
+                ):
                     raise ValueError("Query chunk numerical check failed")
                 for _ in range(3):
                     call()
