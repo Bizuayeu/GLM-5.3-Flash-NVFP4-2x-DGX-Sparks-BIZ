@@ -4,6 +4,8 @@
 
 ### Added
 
+- An eight-layer, byte-verified fixture option for valid hybrid-cache PP stage boundaries, plus attention/KDA-state hashes and actual expert-placement observation.
+
 - Experimental deferred-mHC pipeline buffers and source-pinned common-cache-layout selection, retaining unsuccessful PP startup evidence and pending GPU qualification.
 - Matched task-order measurements with a scoped decision against dedicated task grouping for the tested workload.
 

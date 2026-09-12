@@ -1,4 +1,4 @@
-"""Build and byte-verify a four-layer checkpoint without altering source weights."""
+"""Build and byte-verify a small checkpoint without altering source weights."""
 
 import argparse
 import copy
@@ -10,35 +10,39 @@ from pathlib import Path
 from ..config import MODEL, REVISION
 
 
-def keep_tensor(name):
+def keep_tensor(name, layers=4):
     prefix = "model.language_model.layers."
     if name.startswith(prefix):
         layer = name[len(prefix) :].split(".", 1)[0]
         if not layer.isdigit():
             raise ValueError("Unexpected layer key: " + name)
-        return int(layer) < 4
+        return int(layer) < layers
     return name.startswith(("model.language_model.", "lm_head."))
 
 
-def fixture_config(source):
+def fixture_config(source, layers=4):
+    if type(layers) is not int or layers not in (4, 8):
+        raise ValueError("Fixture layers must be 4 or 8")
     config = copy.deepcopy(source)
     text = config["text_config"]
-    expected = ["linear_attention"] * 3 + ["deepseek_sparse_attention"]
-    if config["model_type"] != "glm5_next" or text["layer_types"][:4] != expected:
+    expected = (["linear_attention"] * 3 + ["deepseek_sparse_attention"]) * (
+        layers // 4
+    )
+    if config["model_type"] != "glm5_next" or text["layer_types"][:layers] != expected:
         raise ValueError("Expected the pinned GLM KDA/KDA/KDA/MLA prefix")
     config["_test_fixture_only"] = True
     config["_fixture_source"] = {
         "model": MODEL,
         "revision": REVISION,
-        "layers": [0, 1, 2, 3],
+        "layers": list(range(layers)),
     }
-    text["num_hidden_layers"] = 4
+    text["num_hidden_layers"] = layers
     text["num_nextn_predict_layers"] = 0
     for key in ["layer_types", "mlp_layer_types", "indexer_types"]:
-        text[key] = text[key][:4]
+        text[key] = text[key][:layers]
     for key in ["kda_layers", "full_attn_layers"]:
         text["linear_attn_config"][key] = [
-            i for i in text["linear_attn_config"][key] if i < 4
+            i for i in text["linear_attn_config"][key] if i < layers
         ]
     return config
 
@@ -54,6 +58,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--layers", type=int, choices=(4, 8), default=4)
     args = parser.parse_args(argv)
     if args.source.name != REVISION:
         raise ValueError("Use the pinned original snapshot")
@@ -62,11 +67,13 @@ def main(argv=None):
     from safetensors import safe_open
     from safetensors.torch import save_file
 
-    config = fixture_config(json.loads((args.source / "config.json").read_text()))
+    config = fixture_config(
+        json.loads((args.source / "config.json").read_text()), args.layers
+    )
     index = json.loads((args.source / "model.safetensors.index.json").read_text())[
         "weight_map"
     ]
-    selected = {k: v for k, v in index.items() if keep_tensor(k)}
+    selected = {k: v for k, v in index.items() if keep_tensor(k, args.layers)}
     args.output.mkdir(parents=True)
     for filename in [
         "tokenizer.json",
@@ -147,7 +154,7 @@ def main(argv=None):
         json.dumps(
             {
                 "status": "complete",
-                "layers": 4,
+                "layers": args.layers,
                 "tensor_count": len(manifest),
                 "total_bytes": total_bytes,
                 "all_tensor_bytes_verified": True,

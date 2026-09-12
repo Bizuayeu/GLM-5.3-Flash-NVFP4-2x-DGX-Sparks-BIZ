@@ -5,6 +5,36 @@ from glm53_setup.validation.make_fixture import fixture_config, keep_tensor
 
 
 class FixtureTests(unittest.TestCase):
+    def test_eight_layer_fixture_keeps_one_sparse_layer_per_pp_stage(self):
+        pattern = ["linear_attention"] * 3 + ["deepseek_sparse_attention"]
+        source = {
+            "model_type": "glm5_next",
+            "text_config": {
+                "layer_types": pattern * 2 + ["linear_attention"],
+                "mlp_layer_types": ["dense"] * 3 + ["sparse"] * 6,
+                "indexer_types": ["full"] * 9,
+                "linear_attn_config": {
+                    "kda_layers": [0, 1, 2, 4, 5, 6, 8],
+                    "full_attn_layers": [3, 7],
+                },
+            },
+        }
+        before = copy.deepcopy(source)
+        result = fixture_config(source, layers=8)
+        self.assertEqual(source, before)
+        self.assertEqual(result["_fixture_source"]["layers"], list(range(8)))
+        self.assertEqual(result["text_config"]["num_hidden_layers"], 8)
+        self.assertEqual(result["text_config"]["layer_types"], pattern * 2)
+        self.assertEqual(
+            result["text_config"]["linear_attn_config"]["kda_layers"],
+            [0, 1, 2, 4, 5, 6],
+        )
+        self.assertTrue(keep_tensor("model.language_model.layers.7.x", layers=8))
+        self.assertFalse(keep_tensor("model.language_model.layers.8.x", layers=8))
+        for layers in (True, 0, 5, 45):
+            with self.assertRaises(ValueError):
+                fixture_config(source, layers=layers)
+
     def test_selects_only_first_four_layers_and_shared_language_weights(self):
         for name in [
             "model.language_model.layers.0.x",
