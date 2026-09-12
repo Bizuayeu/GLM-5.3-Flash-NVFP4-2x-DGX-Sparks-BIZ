@@ -10,6 +10,8 @@ schema_version = 1
 reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 lpa_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 enforce_eager = true
+# false: opt-in uncompiled prefill + full decode Graphs (one seq, no LPA/MTP/APC).
+# falseはdecodeのみGraph化。対応イメージが必要。併用構成は別検収。
 seed = 42
 # Text/tools only; TP=2, Marlin W4A16 and FP8 KV are this launcher's scope.
 # テキスト・ツール専用。TP=2、Marlin W4A16、FP8 KV の実験ランチャー。

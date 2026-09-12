@@ -6,7 +6,7 @@
 
 | カテゴリ | 管理するもの |
 |---|---|
-| `runtime` | 通常／LPA用の固定イメージID、eager実行、seed |
+| `runtime` | 通常／LPA用の固定イメージID、eager／decode Graph実行、seed |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
 | `validation` | LPA/MTPとの結合前にCUDA・indexerを調べる専用worker |
@@ -68,6 +68,10 @@ run_seconds = 0
 旧コマンド・旧設定名・旧イメージへのフォールバックはありません。新ソースをホストへ置くだけでは稼働中のイメージは変わらないため、再ビルドと実機検証を行います。
 
 ## LPAとMTP・制約
+
+`runtime.enforce_eager=true` が既定です。`false` は実験用のdecode Graph経路を明示的に選び、`CompilationMode.NONE`・`FULL_DECODE_ONLY`・capture size `[1]` を渡します。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。単体検証の範囲は同時1シーケンス・LPA/MTP/APCなしで、融合は独立設定です。これは全モデルの受入完了を意味しません。併用と複数系列は後段の検収まで起動設定で拒否します。
+
+Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。既定のeager経路は従来の同期検査を維持します。
 
 `validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。
 

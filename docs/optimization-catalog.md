@@ -67,9 +67,15 @@ FreedomBench measures agreement with its authors' answers on a limited set of qu
 
 1. **Establish a new native reference.** Check model/revision, licenses, runtime, SM support, quantization and cache layouts. Reassess old patches; mark upstream-resolved work unnecessary rather than automatically porting it.
 2. **Move from components to the full model.** Separate exact arithmetic tests from approximation quality. Validate fixture state, then matched full-model A/B/A; separate tracing from final timing.
-3. **Change one item, then combine.** Evaluate P01/P02/P03 independently. For P18 measure feasible off/on combinations and identify unsupported ones. Do not simultaneously change batching, long-context capacity or PP.
-4. **Decide on quality and speed together.** Separate exact text, task/tool correctness, refusals and incomplete execution. Establish workload/thresholds before results; E02/E03 precede enterprise qualification.
+3. **Decide on each component, then combine at the end.** Evaluate each initiative independently through an adopt/defer/reject decision. Hold prerequisite components fixed in both arms and change one initiative per comparison. Once candidates are selected, use P18 for intended operating combinations and necessary off controls. Do not repeat the entire integration matrix after every component; retain existing combined runs as preliminary evidence. Do not simultaneously change batching, long-context capacity or PP.
+4. **Separate functional acceptance from performance adoption.** Infrastructure such as Graphs may be accepted with little speed gain once correctness, resource limits and recovery are verified within its supported scope. Adoption as an acceleration requires a reproducible gain. Decide default enablement and final integration qualification separately. Distinguish exact text, task/tool correctness, refusals and incomplete execution; establish workload/thresholds before results. E02/E03 precede enterprise qualification.
 5. **Retain negative decisions.** Record noise-level effects, slowdowns, capacity/quality failures or upstream obsolescence with reopening criteria. Preserve old results in Git and create new runs instead of overwriting them.
+
+### Functional acceptance and defaults
+
+Record **functional acceptance with its tested scope / performance adoption / default on or off / integration pending or qualified** separately. “Functionally accepted; speed difference within noise; default off; integration pending” is a valid outcome. Component or truncated-fixture success does not qualify the full model.
+
+For P06, check memory retained for graphs, startup capture time, supported shapes and buffer lifetimes, and recovery from failures. Graphs is not a side-effect-free setting. Check LPA prefill and MTP speculative paths in P18; speed alone does not justify graphing every path. See PyTorch's [CUDA Graph constraints and memory management](https://docs.pytorch.org/docs/main/notes/cuda.html#cuda-graphs).
 
 ### Shared comparison record
 
@@ -77,7 +83,7 @@ Use these fields in the next version's experiment report; this is not a new conf
 
 | Field | Record |
 |---|---|
-| Target and decision | Initiative ID, old/new version, intended workload/metric, predeclared criteria, adopt/defer/reject and reason |
+| Target and decision | Initiative ID, old/new version, intended workload/metric, predeclared criteria, adopt/defer/reject and reason; separate functional scope, performance adoption, defaults and integration qualification |
 | Fixed assets | Model revision, source commit, both rank images, runtime/backend, arithmetic, template/tokenizer, projector/view and license inventory reference |
 | Effective configuration | Profile fingerprint, TP/PP, active sequences, chunk, KV dtype/capacity, context, actual MTP/LPA/fusion/graph/APC state |
 | Workload | Corpus/task/question hash and split, request IDs, actual input/output tokens, effort/sampling, order/concurrency/actual overlap and other load |

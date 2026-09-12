@@ -6,7 +6,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 
 | Category | Controls |
 |---|---|
-| `runtime` | Immutable reference/LPA image IDs, eager execution, seed |
+| `runtime` | Immutable reference/LPA image IDs, eager/decode Graph execution, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
 | `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
 | `validation` | Exclusive component worker for CUDA/indexer experiments before LPA/MTP integration |
@@ -66,6 +66,10 @@ This enables a run without a scheduled stop, not a 24/7 availability guarantee. 
 Use a freshly built image with `GLM53_LPA_API=2`, `glm53_setup.runtime.lpa.LPAWorkerExtension`, `lpa_configure` / `lpa_report`, and `/lpa/projector.pt`. Preflight rejects images without that marker. There is no old-command or old-image fallback. Rebuild from current source, verify the image ID on both hosts and update the configured image before starting.
 
 ## Feature combinations and limits
+
+`runtime.enforce_eager=true` remains the default. Setting it to `false` explicitly selects experimental decode Graphs with `CompilationMode.NONE`, `FULL_DECODE_ONLY` and capture size `[1]`. Prefill is uncompiled; the image must carry `GLM53_DECODE_GRAPH_API=1`. Independent evaluation currently requires one sequence and no LPA/MTP/APC; fusion remains a separate setting. This is not full-model acceptance. Startup rejects combined and multi-sequence Graph configurations until their later qualification.
+
+The Graph path checks internal candidate-index bounds asynchronously on the GPU. Invalid indices cause a device assertion rather than being ignored; unlike a regular Python exception, this can render the CUDA context unusable. Stop and reinitialize both ranks after such a failure. Include retained Graph memory and startup capture time in comparisons. Default eager execution retains synchronous checks.
 
 `validation.component_worker=true` selects an explicitly separate observer/validation worker, requiring an image with `GLM53_COMPONENT_API=1`. It requires eager execution, one sequence, no LPA/MTP and no prefix caching. Its typed RPCs collect bounded indexer observations and toggle exact unpack fusion between exclusive requests for A/B/A tests. This is a diagnostic profile, not an enabled Reuse/Reindex serving mode; use one controlling client.
 

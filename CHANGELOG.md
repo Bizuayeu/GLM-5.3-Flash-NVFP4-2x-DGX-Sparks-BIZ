@@ -31,6 +31,9 @@
 
 ### Changed
 
+- Separate per-initiative functional acceptance, performance adoption and defaults; defer final combination qualification until candidates are selected.
+- Make experimental non-eager startup explicitly select uncompiled prefill and single-sequence decode Graphs, with image checks and deferred-combination guards. Full-model qualification remains pending.
+
 - Make LPA canonical across modules, worker class, RPCs, mount path, tests and documentation; require the current image contract without legacy interfaces.
 - Validate startup profiles at load/command boundaries, removing repeated full-schema validation during serve-argument assembly.
 

@@ -104,6 +104,14 @@ def validate(profile):
         profile["cache"]["prefix_caching"] or not profile["runtime"]["enforce_eager"]
     ):
         raise ValueError("LPA requires eager execution and prefix caching disabled")
+    if not profile["runtime"]["enforce_eager"] and (
+        profile["mtp"]["enabled"]
+        or profile["cache"]["prefix_caching"]
+        or profile["context"]["max_num_seqs"] != 1
+    ):
+        # cc-defer: independent serial target Graph evaluation only; extend after
+        # the corresponding MTP/APC/batching integration is qualified.
+        raise ValueError("Graph experiments require one sequence, no MTP/prefix cache")
     for rank in (0, 1):
         service.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
@@ -147,6 +155,8 @@ def environment(profile, rank):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
         result["GLM53_FUSED_UNPACK"] = "1"
+    if not profile["runtime"]["enforce_eager"]:
+        result["GLM53_ASYNC_INDEX_CHECKS"] = "1"
     return result
 
 
@@ -201,6 +211,17 @@ def serve_args(profile, rank, model_path):
                     "method": "mtp",
                     "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
                     "moe_backend": "triton",
+                }
+            ),
+        ]
+    if not profile["runtime"]["enforce_eager"]:
+        args += [
+            "--compilation-config",
+            json.dumps(
+                {
+                    "mode": 0,  # CompilationMode.NONE in the pinned runtime.
+                    "cudagraph_mode": "FULL_DECODE_ONLY",
+                    "cudagraph_capture_sizes": [1],
                 }
             ),
         ]

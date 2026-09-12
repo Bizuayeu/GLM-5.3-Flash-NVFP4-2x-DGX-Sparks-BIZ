@@ -36,6 +36,41 @@ class StartupConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "LPA requires max_num_seqs=1"):
             config.validate(self.profile)
 
+    def test_graphs_are_explicit_uncompiled_decode_with_checked_indices(self):
+        eager_env = config.environment(self.profile, 0)
+        self.assertNotIn("GLM53_ASYNC_INDEX_CHECKS", eager_env)
+        self.profile["runtime"]["enforce_eager"] = False
+        config.validate(self.profile)
+        for rank in (0, 1):
+            args = config.serve_args(self.profile, rank, "/hf/model")
+            self.assertNotIn("--enforce-eager", args)
+            self.assertEqual(
+                json.loads(args[args.index("--compilation-config") + 1]),
+                {
+                    "mode": 0,
+                    "cudagraph_mode": "FULL_DECODE_ONLY",
+                    "cudagraph_capture_sizes": [1],
+                },
+            )
+            self.assertEqual(
+                config.environment(self.profile, rank)["GLM53_ASYNC_INDEX_CHECKS"], "1"
+            )
+            self.assertNotIn(
+                "GLM53_FUSED_UNPACK", config.environment(self.profile, rank)
+            )
+
+    def test_graph_combination_scope_is_explicit_until_integration(self):
+        for section, key, value in (
+            ("mtp", "enabled", True),
+            ("cache", "prefix_caching", True),
+            ("context", "max_num_seqs", 2),
+        ):
+            p = copy.deepcopy(self.profile)
+            p["runtime"]["enforce_eager"] = False
+            p[section][key] = value
+            with self.assertRaisesRegex(ValueError, "Graph"):
+                config.validate(p)
+
     def test_component_worker_is_an_explicit_independent_diagnostic(self):
         self.profile["validation"]["component_worker"] = True
         config.validate(self.profile)

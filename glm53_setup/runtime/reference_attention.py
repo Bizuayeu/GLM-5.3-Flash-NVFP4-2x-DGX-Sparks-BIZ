@@ -35,10 +35,18 @@ def sparse_nope_reference(query, packed_cache, physical_indices, scale):
     if packed_cache.dtype != torch.uint8 or packed_cache.shape[-1] != 656:
         raise ValueError("Expected packed fp8_ds_mla cache")
     flat_cache = packed_cache.reshape(-1, 656)
-    if bool((physical_indices >= flat_cache.shape[0]).any().item()):
-        raise ValueError("Candidate points outside cache")
-    if bool((physical_indices < -1).any().item()):
-        raise ValueError("Only -1 is a padding index")
+    if os.environ.get("GLM53_ASYNC_INDEX_CHECKS") == "1":
+        # Backend-generated indices are an internal invariant. A violation in
+        # this opt-in path terminates the CUDA context; it is never ignored.
+        torch._assert_async(
+            ((physical_indices >= -1) & (physical_indices < flat_cache.shape[0])).all(),
+            "Invalid sparse MLA physical index",
+        )
+    else:
+        if bool((physical_indices >= flat_cache.shape[0]).any().item()):
+            raise ValueError("Candidate points outside cache")
+        if bool((physical_indices < -1).any().item()):
+            raise ValueError("Only -1 is a padding index")
     output = torch.empty_like(query)
     # Eight query rows cap gather scratch at ~34 MiB for a 2176-entry table.
     # This is an explicit memory/throughput tradeoff, not a scheduler knob.

@@ -152,6 +152,10 @@ def preflight(profile, config_path, rank):
         checks["fused_unpack_support"] = "GLM53_FUSED_UNPACK_SUPPORTED=1" in (
             image["Config"].get("Env") or []
         )
+    if not profile["runtime"]["enforce_eager"]:
+        checks["decode_graph_support"] = "GLM53_DECODE_GRAPH_API=1" in (
+            image["Config"].get("Env") or []
+        )
     if profile["lpa"]["enabled"]:
         checks["lpa_worker"] = "GLM53_LPA_API=2" in (image["Config"].get("Env") or [])
     checks["reference_attention"] = (
