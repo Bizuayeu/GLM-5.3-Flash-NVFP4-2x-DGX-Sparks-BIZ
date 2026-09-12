@@ -14,12 +14,20 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 ## Operating scope
 
-MTP coexistence is opt-in. A four-layer fixture with MTP k=3 completed eight prompt lengths from 3 to 8,192 tokens with matching capture/native/oracle/restored output tokens. Its initial diagnostic included unused convolution rollback slots; the diagnostic now compares only the live prefill window. The corrected diagnostic and full-model combined quality/performance assessment remain pending. Component token agreement is not a full-model quality claim.
+MTP coexistence is opt-in. The corrected four-layer MTP3/fused-unpack/async fixture passed eight lengths from 3 to 8,192 tokens, including active KDA state comparisons, in `integration-fixture-v36`. The subsequent [serial full-model comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) records its limited task, timing, capacity and cancellation acceptance. Component token agreement is not a general full-model quality claim.
 
 - Eager, text-only, TP=2, one active sequence and one controlling client. Prefix caching, sequence-parallel MoE and concurrent controllers are unsupported. MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically when both features are enabled.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
 - This is an experimental worker extension, not qualification of the routine deployment launcher or either coding harness. Keep its development RPC on loopback.
+
+### Why APC is currently disabled
+
+This is an implementation and validation restriction, not a fundamental incompatibility. LPA changes cached KV and KDA state, while the current adapter does not distinguish its mode, cut, projector identity or approximation boundary in prefix-cache reuse. A cache produced with approximation must not silently enter an LPA-off control or a different projector configuration.
+
+The approximation boundary is `prompt_length - tail`. Extending a conversation can move positions that were previously computed normally into the new approximation region. Reusing their old states can therefore differ from recomputing the new request with its declared LPA settings. Keeping such states could be a separate approximation policy, but it has not been designed or qualified here.
+
+A compatible implementation would first separate caches by computation policy and reuse only blocks with compatible approximation boundaries. It must also validate KDA checkpoints, resumed suffix positions, skipped-query accounting and the capture/oracle diagnostics on real cache hits. The hook already uses absolute token positions; that alone does not establish APC compatibility. Both startup validation and the worker reject the combination until those contracts are implemented. APC can then save repeated-prefix work while LPA reduces eligible uncached prefill, with benefits measured rather than added algebraically.
 
 ## Reproduce the components
 
