@@ -26,7 +26,7 @@
 
 **P13の追加観測：** 1→2→1系列の独立比較で、短文／2K入力・64出力tokenの同時2要求についてthroughput改善と限定タスクの一致を確認しました。別の容量試験では16,320入力＋64出力を2要求同時に完了しました。**性能・品質・容量の検収範囲は分け、設定上限を変えてもKVが自動増額されるとは扱いません。** [実測と容量条件](benchmarks.ja.md#標準batchingの独立評価)を併記します。
 
-**P05の追加観測：** ゼロ埋めによるnative attentionの直接適用は、候補幅2176のdecode非対応と数値検査未達により不採用です。prefill限定試験も最初の形状で拒否され、未検収です。候補を削って合わせる変更は行っていません。[部品検査](component-validation.md#direct-padded-native-attention-probe)。
+**P05の判断：不採用。** 候補幅2176のdecode非対応、数値検査未達、prefill限定試験の形状拒否を踏まえ、今回のbackend選定は終了します。候補を削って合わせる変更は行っていません。再評価は上流の対応変更時とし、他施策へ進みます。[部品検査](component-validation.md#direct-padded-native-attention-probe)。
 
 ## 性能施策一覧
 

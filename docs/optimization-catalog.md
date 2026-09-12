@@ -26,7 +26,7 @@ The observed division of benefit is primarily decode for MTP, long-input prefill
 
 **P13 update:** Independent 1→2→1-sequence comparisons established throughput improvement and limited task agreement for the short/2K-input, 64-output-token workload with two concurrent requests. A separate capacity check completed two concurrent 16,320-input/64-output requests. **Keep performance, quality and capacity scopes distinct; changing configured limits does not automatically enlarge KV reservation.** See [measurements and capacity conditions](benchmarks.md#independent-active-batching).
 
-**P05 update:** Direct zero-padded native attention is not adopted: the decode path rejected candidate width 2176 and the numerical checks did not pass. A prefill-only probe also rejected its first shape and remains unqualified. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
+**P05 decision: not adopted.** Candidate width 2176 was unsupported for decode, numerical checks failed, and the prefill-only probe rejected its first shape. Close this backend-selection attempt and move to other initiatives; reopen after relevant upstream support changes. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
 
 ## Performance initiatives
 

@@ -24,8 +24,12 @@ def unpack_latent(packed):
     )
 
 
-def sparse_nope_reference(query, packed_cache, physical_indices, scale):
+def sparse_nope_reference(
+    query, packed_cache, physical_indices, scale, *, query_chunk=8
+):
     """Compute all supplied candidates with FP32 softmax, in eager query chunks."""
+    if type(query_chunk) is not int or query_chunk not in (8, 32, 64):
+        raise ValueError("query_chunk must be one of the experimental sizes 8, 32, 64")
     import torch
 
     if query.ndim != 3 or query.shape[-1] != 512:
@@ -48,19 +52,25 @@ def sparse_nope_reference(query, packed_cache, physical_indices, scale):
         if bool((physical_indices < -1).any().item()):
             raise ValueError("Only -1 is a padding index")
     output = torch.empty_like(query)
-    # Eight query rows cap gather scratch at ~34 MiB for a 2176-entry table.
-    # This is an explicit memory/throughput tradeoff, not a scheduler knob.
-    for start in range(0, query.shape[0], 8):
-        indices = physical_indices[start : start + 8]
+    # Default eight rows cap FP32 KV scratch at ~34 MiB for 2176 candidates.
+    # The larger experimental sizes trade memory for fewer launches; they are
+    # independent of the scheduler's prefill chunk budget.
+    for start in range(0, query.shape[0], query_chunk):
+        indices = physical_indices[start : start + query_chunk]
         valid = indices >= 0
         kv = unpack_latent(flat_cache[indices.clamp_min(0).long()])
         logits = (
-            torch.matmul(query[start : start + 8].float(), kv.transpose(-1, -2)) * scale
+            torch.matmul(
+                query[start : start + query_chunk].float(), kv.transpose(-1, -2)
+            )
+            * scale
         )
         logits.masked_fill_(~valid[:, None, :], float("-inf"))
         empty = ~valid.any(dim=-1)
         logits[empty] = 0
         probability = torch.softmax(logits, dim=-1)
         probability.masked_fill_(~valid[:, None, :], 0)
-        output[start : start + 8] = torch.matmul(probability, kv).to(query.dtype)
+        output[start : start + query_chunk] = torch.matmul(probability, kv).to(
+            query.dtype
+        )
     return output
