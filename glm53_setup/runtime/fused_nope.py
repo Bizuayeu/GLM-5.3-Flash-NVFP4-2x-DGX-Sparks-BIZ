@@ -57,9 +57,17 @@ def _attention(
     tl.store(Output + (token * HEADS + head) * 512 + columns, result)
 
 
-def fused_nope_attention(query, packed_cache, physical_indices, scale):
+def fused_nope_attention(
+    query, packed_cache, physical_indices, scale, *, tile=16, warps=4, diagnostics=None
+):
     import torch
 
+    if (
+        type(tile) is not int
+        or type(warps) is not int
+        or (tile, warps) not in ((8, 4), (16, 4), (16, 8), (32, 8))
+    ):
+        raise ValueError("Unsupported experimental attention tile")
     if query.ndim != 3 or query.shape[-1] != 512 or query.dtype != torch.bfloat16:
         raise ValueError("Expected BF16 NoPE query [tokens, heads, 512]")
     if (
@@ -97,7 +105,7 @@ def fused_nope_attention(query, packed_cache, physical_indices, scale):
     if query.shape[0] and query.shape[1]:
         # Sixteen keys × 512 columns bounds register pressure. Head is the
         # fast grid axis so CTAs for one query can reuse KV through L2.
-        _attention[(query.shape[1], query.shape[0])](
+        kernel = _attention[(query.shape[1], query.shape[0])](
             query,
             cache,
             physical_indices,
@@ -109,8 +117,14 @@ def fused_nope_attention(query, packed_cache, physical_indices, scale):
             query.shape[1],
             physical_indices.shape[1],
             scale,
-            BLOCK_K=16,
-            num_warps=4,
+            BLOCK_K=tile,
+            num_warps=warps,
             enable_fp_fusion=False,
         )
+        if diagnostics is not None:
+            diagnostics.update(
+                registers=kernel.n_regs,
+                spills=kernel.n_spills,
+                shared_bytes=kernel.metadata.shared,
+            )
     return output

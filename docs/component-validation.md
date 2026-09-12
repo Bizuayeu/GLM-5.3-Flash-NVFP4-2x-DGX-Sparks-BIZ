@@ -79,3 +79,34 @@ The direct path **did not pass**. At 32 heads, tested widths 63/64/65/2048 had n
 **Decision:** do not adopt this direct backend substitution. Zero RoPE padding alone is insufficient; truncating candidates to 2048 is not acceptable. A separate kernel extension or candidate-preserving composition would require new numerical/state and performance tests. No native-attention speedup is claimed from this run.
 
 A subsequent prefill-only probe (`native-prefill-v16`, driver SHA256 `171b013c59cd5ffb3acc45143236b5ff541c740e33a2ab4cafc3f35f80ad903b`) used 65 query rows and caller-zeroed output, with intended suffix-only valid candidates and empty rows. The library rejected the first configuration: `GLM_NSA`, 32 heads, top-k 128, page size 64. It exited 1 without OOM before any parity case completed. The 2176-candidate prefill case and timing stages were not reached; this does not prove every prefill shape unsupported. Prefill-only substitution remains unqualified, with no serving changes.
+
+## NoPE attention fusion and query batching (P04)
+
+On 2026-09-13 (Asia/Tokyo), two independent GB10 component experiments used image `e18f7ae…`, 32 heads, latent width 512, 2,176 candidate entries per query and packed FP8 cache with arbitrary FP32 scales. Neither changes the serving backend. Synchronous index-range checks remained enabled; Graphs and unpack fusion were off in the reference. Each timing is the median of five batches of ten calls after three warmups, synchronized around each batch. Profiling was separate.
+
+**Larger reference query chunks — not adopted.** `benchmark_query_chunks` at source `10d0fc6`, private run `query-components-v17`, compared internal chunks 8/32/64. This differs from the scheduler chunk in P11. Padding, empty rows and single-tail candidates passed the predefined numerical bound; some nine-query results were not bitwise equal. At 512 queries, all results were bitwise equal, but larger chunks were slower and used more temporary memory:
+
+| Internal query chunk | Median call (ms) | Extra peak live allocation (MiB) | GPU kernels per call |
+|---:|---:|---:|---:|
+| 8 | 70.473 | 133.42 | 1,348 |
+| 32 | 80.245 | 488.75 | 340 |
+| 64 | 81.382 | 956.39 | 172 |
+
+Keep the internal default at eight. Fewer launches alone did not improve this workload.
+
+**FP32 fused attention — not adopted.** `fused_nope_attention` and `benchmark_query_chunks --fused-attention` at source `99c7427`, private run `fused-nope-components-v18`, combine cache decoding, FP32 score reduction, online softmax and value accumulation without materializing gathered KV. The kernel preserves all candidates and uses 64-bit addressing. Separate GPU tests compared against FP64 for widths 0/17/65/2048/2051/2176, including noncontiguous queries, exact empty-row zero and a sole valid tail candidate. The declared bound was `2 * BF16 epsilon * max(1, max(abs(reference)))`, not bitwise equivalence or a guarantee of two ulps at every output magnitude.
+
+The timing workload below has fully valid candidate entries; empty-row checks were separate. Query-chunk timings above use masked rows and should not be treated as the identical workload.
+
+| Query rows | Reference (ms) | Fused FP32 (ms) | Reference / fused extra live allocation (MiB) | Reference / fused kernels per call |
+|---:|---:|---:|---:|---:|
+| 1 | 0.192 | 0.446 | 9.93 / 0.031 | 27 / 5 |
+| 8 | 1.060 | 1.945 | 79.42 / 0.250 | 25 / 5 |
+| 65 | 8.787 | 13.566 | 120.27 / 2.031 | 195 / 5 |
+| 512 | 68.154 | 105.006 | 134.24 / 16.000 | 1,348 / 5 |
+
+All outputs were finite and within the declared bound; maximum absolute differences ranged from 0.000122 to 0.000488. The five GPU kernels include range checking around the fused attention kernel. The measured synchronization API count remained four for both paths, including benchmark synchronization. These are component-call counts, not full-model kernels per generated token.
+
+A bounded tiling follow-up (`benchmark_fused_tiles`, private run `fused-tiles-v19b`) tested tile/warps 8/4, 16/4, 16/8 and 32/8. All passed the same bound and compiled without register spills. Best one-query time was 0.389 ms; best 512-query time was 105.039 ms. Neither beat the reference measurements. The initial `fused-tiles-v19` attempt failed at container mount setup before GPU execution; its record is retained separately.
+
+The prototypes reduce launches and temporary allocation, but **do not provide a measured speed benefit**. Keep them for reproduction; do not connect them to startup, claim full-model acceptance, or treat the already useful P03 unpack fusion as rejected. Reopen P04 with a materially different execution strategy supported by profiling, rather than further blind tile sweeps.

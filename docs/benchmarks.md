@@ -123,3 +123,29 @@ Private run `capacity-v14-16kx2` used the same two-sequence profile and 1 GiB KV
 | Minimum available memory | Rank 0 approximately 11.64 GiB; rank 1 approximately 12.83 GiB |
 
 This establishes observed capacity for 16K × two in this fixed configuration. Output length was fixed with `ignore_eos`; it does not certify long-document understanding, steady-state speed, another input/output split or a configuration with MTP or other additions. Recheck after changing KV bytes, context, concurrency, cache format or runtime.
+
+## Independent prefill chunk evaluation (P11)
+
+On 2026-09-12–13 (Asia/Tokyo), the two-sequence profile above changed only `max_num_batched_tokens`: 512→128→1024→512. This is the scheduler token budget, separate from the attention implementation's query chunk. Each arm completed all 18 measured requests (32/2,048 inputs, one/two clients, 64 outputs), eight calculation/extraction answers and two concurrent tool round trips. Image and serving source match P13. Additional private runs are `batching-v14-chunk128`, `batching-v14-chunk1024` and `batching-v14-chunk512restore`.
+
+Aggregate output tokens/second:
+
+| Input tokens | Concurrent clients | 512 control | 128 | 1024 | Restored 512 |
+|---:|---:|---:|---:|---:|---:|
+| 32 | 1 | 13.677 | 13.663 | 13.547 | 13.590 |
+| 32 | 2 | 24.347 | 24.313 | 24.307 | 24.724 |
+| 2,048 | 1 | 6.068 | 4.560 | 6.347 | 6.068 |
+| 2,048 | 2 | 7.628 | 5.023 | 8.062 | 7.623 |
+
+Latency for 2K inputs and two concurrent clients:
+
+| Metric | 512 control | 128 | 1024 | Restored 512 |
+|---|---:|---:|---:|---:|
+| Median TTFT (seconds) | 7.005 | 13.363 | 7.132 | 7.023 |
+| Median TPOT (ms) | 153.33 | 200.31 | 138.46 | 153.51 |
+| p95 ITL (ms) | 107.23 | 602.08 | 80.44 | 110.13 |
+| Longest observed ITL (seconds) | 1.551 | 0.687 | 2.790 | 1.562 |
+
+**Decision:** reject 128 for this workload: its shorter maximum pause comes with worse prefill and throughput. Chunk 1024 improves 2K aggregate throughput over both 512 controls by approximately 4.6% with one client and 5.7% with two. Single-client TTFT improves from about 6.1 to 5.6 seconds. However, the longest two-client pause grows from about 1.56 to 2.79 seconds. Retain **1024 as a throughput candidate where that pause is acceptable**, and keep the default at 512. Better p95 does not imply fewer noticeable interruptions. These small samples establish neither an SLA nor steady-state long-context performance.
+
+A separate 1024 capacity run, `capacity-v17-chunk1024-16kx2`, completed two requests each using 16,320 input plus 64 output tokens. Maximum active requests was two, peak KV utilization about 58.1%, additional preemptions zero, post-run KV utilization zero, and a follow-up request completed. KV remained fixed at 1 GiB per rank. Long-document quality and combinations with LPA/MTP/fusion/Graphs/APC remain separate gates.
