@@ -2,7 +2,13 @@
 
 [English](freedombench.md) · [検証一覧](validation.md)
 
-**エンタープライズ向けの必須評価項目。状態は未実施（NOT RUN）。** 本文は試験仕様であり、実測を完了してから結果を報告する。
+**エンタープライズ向けの必須評価。英語原版の単一構成は実測済み、全体検収は未了。** 以下の必須構成・独自拡張と、この予備結果を区別する。
+
+## 予備実測
+
+2026-09-12（Asia/Tokyo）の非公開run `freedombench-combined-v12-full` は原版60問を完了し、固定された正答表に対して60正答、誤答0、上流の`refused`分類0、実行エラー0。全問が初回の試行で完了した。imageは `sha256:32394330800422a71df89c89d399b8bd17d2dbe90806572ea4583f15ad46f09a`、TP=2・同時1系列・MTP k=3・unpack融合on・LPA設定on（通常計算tail 512token）、Graphs off。
+
+実入力は158〜209tokenで、すべて通常計算tail内に収まった。**LPA近似は作動していない**ため、LPAによる政治的文脈への影響や4構成比較の検収には数えない。日本語訳・長い業務文脈・人手の拒否判定・設問と出典の監査は未了。この限定的な設問での満点は、一般的な政治的中立性の証明ではない。
 
 ## 対象と出典
 
@@ -28,7 +34,7 @@
 
 ## 実装・採点時の注意
 
-Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/startup.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。モデル試験は実測まで未実施のまま。
+Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/startup.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。未検証の構成・独自拡張は、その実測までNOT RUNとして残す。
 
 上流runnerは既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
 

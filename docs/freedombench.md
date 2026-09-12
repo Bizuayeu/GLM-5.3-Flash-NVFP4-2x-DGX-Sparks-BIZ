@@ -2,7 +2,13 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
-**Required enterprise evaluation item — NOT RUN.** This specification defines the planned evaluation; results are reported only after a complete measured run.
+**Required enterprise evaluation — one original-English profile measured; full acceptance pending.** The required matrix and extensions below remain separate from this preliminary result.
+
+## Preliminary measured result
+
+On 2026-09-12 (Asia/Tokyo), private run `freedombench-combined-v12-full` completed all 60 original questions: 60 correct against the pinned answer key, zero incorrect, zero upstream `refused`, and zero execution errors. All 60 completed on the first attempt. The image was `sha256:32394330800422a71df89c89d399b8bd17d2dbe90806572ea4583f15ad46f09a`, with TP=2, one sequence, MTP k=3, fused unpack on and LPA configured on with a 512-token exact tail. Graphs was off.
+
+Actual inputs were 158–209 tokens, entirely inside that exact tail: **LPA approximation did not execute**. This result therefore does not qualify LPA political-context behavior or the four-profile matrix. Japanese translation, long business-context tests, human refusal review and item/source audits are still pending. A perfect score on this limited suite is not proof of general political neutrality.
 
 ## Scope and fixed source
 
@@ -28,7 +34,7 @@ Short original questions may fit entirely within the exact LPA tail. Report bypa
 
 ## Runner and scoring requirements
 
-On the Linux model host, use `python -m glm53_setup freedombench --benchmark-dir <pinned-source-directory> --output records/<new-run> --config state/startup.toml`. The local adapter parses literal questions without executing upstream Python, uses the selected local client and holds the single-controller lock. `--limit` produces a labeled pilot, not a full-suite result. Model runs remain NOT RUN until evidence is recorded.
+On the Linux model host, use `python -m glm53_setup freedombench --benchmark-dir <pinned-source-directory> --output records/<new-run> --config state/startup.toml`. The local adapter parses literal questions without executing upstream Python, uses the selected local client and holds the single-controller lock. `--limit` produces a labeled pilot, not a full-suite result. Mark each untested profile or extension NOT RUN until its own evidence is recorded.
 
 The pinned [runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py) uses TrustedRouter by default, fetches a provider catalog unless models are explicit, and retries responses without an extractable choice up to four additional times. Its defaults include concurrency 8 and an 8,192-token output budget. **Do not run the upstream defaults against this deployment.** Use the local-only adapter around the existing serial client; verify its parser/prompt compatibility offline before GPU execution. A URL override alone is not proof that SDK catalog/failover traffic stays local.
 
