@@ -4,6 +4,9 @@
 
 ### Added
 
+- Explicit experimental TP2/PP2 selection and a configurable stage boundary, with hybrid-layout and combination guards.
+- An exclusive diagnostic RPC to compare synchronous and asynchronous checked indices independently of Graph capture; no range checks are disabled.
+
 - An eight-layer, byte-verified fixture option for valid hybrid-cache PP stage boundaries, plus attention/KDA-state hashes and actual expert-placement observation.
 
 - Experimental deferred-mHC pipeline buffers and source-pinned common-cache-layout selection, retaining unsuccessful PP startup evidence and pending GPU qualification.

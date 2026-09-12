@@ -63,6 +63,24 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
+    runtime = profile["runtime"]
+    if runtime["pipeline_parallel_size"] not in (1, 2):
+        raise ValueError("Only PP sizes 1 and 2 are supported")
+    split = runtime["pipeline_split_layer"]
+    if not 4 <= split <= MODEL_LAYERS - 2:
+        raise ValueError("PP stage boundaries must retain an MLA layer in both stages")
+    if runtime["pipeline_parallel_size"] == 2 and (
+        runtime["expert_parallel"]
+        or not runtime["enforce_eager"]
+        or profile["lpa"]["enabled"]
+        or profile["mtp"]["enabled"]
+        or profile["cache"]["prefix_caching"]
+        or profile["cache"]["fused_unpack"]
+        or profile["context"]["max_num_seqs"] != 1
+    ):
+        # cc-defer: independent serial PP evaluation; extend only after the
+        # matching optimization and batching combination is qualified.
+        raise ValueError("PP2 requires eager, one sequence, no EP/LPA/MTP/fusion/APC")
     if profile["runtime"]["expert_parallel"] and (
         profile["lpa"]["enabled"]
         or profile["mtp"]["enabled"]
@@ -170,6 +188,9 @@ def environment(profile, rank):
         result["GLM53_FUSED_UNPACK"] = "1"
     if not profile["runtime"]["enforce_eager"]:
         result["GLM53_ASYNC_INDEX_CHECKS"] = "1"
+    if profile["runtime"]["pipeline_parallel_size"] == 2:
+        split = profile["runtime"]["pipeline_split_layer"]
+        result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
     return result
 
 
@@ -266,6 +287,9 @@ def serve_args(profile, rank, model_path):
         ]
     if profile["runtime"]["expert_parallel"]:
         args.append("--enable-expert-parallel")
+    if profile["runtime"]["pipeline_parallel_size"] == 2:
+        args[args.index("--tensor-parallel-size") + 1] = "1"
+        args += ["--pipeline-parallel-size", "2"]
     return args
 
 

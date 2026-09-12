@@ -121,4 +121,42 @@ The first two-stage attempt (`pipeline-v17-pp2-a`) loaded stage weights but fail
 
 The retry (`pipeline-v17-pp2-b`) is **not accepted**. After temporary SSH unavailability cleared without a reboot, its log confirmed a mismatch between stage-local Mamba cache specs; both containers had exited without OOM. The fixed GLM cache grouping also explicitly requires an MLA layer on every stage that has Mamba layers. A four-layer model split 2+2 is therefore an unsuitable PP fixture. Do not relax those cache contracts to make it run, or infer the cause of the SSH interruption from this model failure.
 
-The fixture builder now accepts `--layers 8`, providing one KDA/KDA/KDA/MLA block per stage. Both nodes built and byte-verified all 17,526 selected tensors (25,606,617,384 bytes) against the pinned original weights. A new eight-layer comparison uses the original `b9ae526…` PP image on both sides; the layout-intersection patch is unnecessary when both stages declare the same support. Its observer records finite attention outputs and active KDA conv/recurrent state as well as transfer hashes. Sender/receiver agreement, state comparisons and full-model TP/PP performance remain outstanding. PP is not exposed as a normal startup option.
+The fixture builder accepts `--layers 8`, providing one KDA/KDA/KDA/MLA block per stage. Both nodes built and byte-verified all 17,526 selected tensors (25,606,617,384 bytes) against the pinned original weights. The eight-layer comparison uses the original `b9ae526…` PP image on both sides; the layout-intersection patch is unnecessary when both stages declare the same support. Its observer records finite attention outputs and active KDA conv/recurrent state as well as transfer hashes. The [experimental startup](startup-configuration.md) can select PP with a matching image; full-model acceptance remains separate.
+
+### Eight-layer PP observations
+
+Private runs `pipeline-v23-control-a` and `pipeline-v23-pp2-a` completed 64/2,048/8,192 input tokens, 16 output tokens and three repetitions per length. Both used eager TP=1, chunk512, context16,384, FP8 KV512 MiB per rank, no MTP/LPA/fusion/APC and identical image/fixture bytes. The control retained all eight layers on one GPU; PP2 placed layers0–3 and4–7 on separate GPUs. Observation-source SHA256: `44fcceb70214a951df0e33739fd7a4b11288f517469d083a848e05db9bf671d4`; driver SHA256: `a2d0410e98af0bdd337653911e733f156d8b875926de4e4222accacb7e9f36c2`.
+
+All **198 stage transfers** matched every byte hash, shape and dtype of hidden/residual/post/comb on sender and receiver. All nine generated token sequences matched the PP1 control, and all observed tensors were finite. At64 tokens, layer outputs, active KDA state and chosen-token logprobs also matched exactly.
+
+Longer inputs were not bitwise invariant. Across 1,584 layer observations containing 2,376 active KDA tensor observations, 677 layer rows differed between PP1 and PP2. The first difference was at layer 6 of the first 2K prefill chunk, beyond the transfer boundary. Both PP1 and PP2 also showed internal repeat variation despite repeated token sequences:
+
+| Input tokens | Maximum cross-arm chosen-logprob difference | Maximum PP1 repeat difference | Maximum PP2 repeat difference |
+|---:|---:|---:|---:|
+| 64 | 0 | 0 | 0 |
+| 2,048 | 0.06609 | 0.06527 | 0.06480 |
+| 8,192 | 0.18685 | 0.18307 | 0.18979 |
+
+This does not establish strict numerical equivalence, negligible error or unrestricted language quality. It also does not identify a transfer defect: the actual transmitted tensors match, while repeat variability exists without PP. Retain the diagnostic and compare matched-prefix numerical differences against the baseline before stronger acceptance claims.
+
+Both runs stopped without OOM. Minimum host available RAM was 71.82 GiB for the 48 GiB-capped PP1 control and 87.69/39.71 GiB for the 32 GiB-capped PP2 ranks; the host reserve was 4 GiB. These minima include loading/warmup, not only steady inference. Head stopped with exit 0; peer still required forced termination (exit 137). Observer hashes introduce synchronization and CPU copies, so this is **not a TP2-versus-PP2 speed benchmark**. Full-model performance, longer-run recovery and optimization combinations remain unqualified.
+
+## Independent expert placement fixture (P21)
+
+The same byte-verified eight-layer model ran TP=2/PP=1 with EP off, on and restored off (`expert-v24-off-a`, `expert-v24-on-a`, `expert-v24-off-b`). Each arm used the same `b9ae526…` image, eager, one sequence, chunk512, context16,384, FP8 KV512 MiB per rank and no MTP/LPA/fusion/APC. Every arm completed three repetitions at 64/2,048/8,192 input tokens with 16 outputs and finite observed tensors. These truncated-model runs do not measure language-task quality.
+
+Actual `RoutedExperts` objects in all five MoE layers confirmed the intended transition. EP off retained 288 tensor-sharded experts per rank; EP on placed 144 complete experts per rank, with disjoint ownership covering all 288. `MarlinExperts` was selected throughout. MoE TP size changed 2→1 and EP size 1→2, while model TP remained 2 and DP/SP remained 1. The fixed runtime's `use_all2all_kernels` was false in this topology; no DeepEP invocation is claimed. Restored off recovered the original ownership. The observer also recorded actual loaded parameter shapes, dtypes and byte counts.
+
+Ready-time Torch allocation was approximately 12.682 GiB per rank and reservation 14.896 GiB in all arms. This is evidence for the small fixture, not a full-model memory guarantee. All containers stopped without OOM; head exited 0 and peer 137.
+
+Generated tokens matched across arms at 64 and 2K input. At 8K, every arm varied between its own repetitions, and both off→on and off→restored pairs diverged after 2/4/2 common output tokens. Maximum shared-prefix logprob differences were:
+
+| Input tokens | Off versus EP on | Off versus restored off |
+|---:|---:|---:|
+| 64 | 0.11011 | 0.08337 |
+| 2,048 | 0.22505 | 0.08900 |
+| 8,192 | 0.06813 | 0.06038 |
+
+EP's 2K probability difference is larger than the restored baseline difference, so this is not a claim of numerical equivalence. Keep the 8K baseline variability and the EP delta visible. **Placement, loading and bounded execution are demonstrated; performance adoption and full-model task quality remain pending.** The next comparison must judge actual task answers, capacity and latency with EP as the only changed setting. The diagnostic hashes synchronize/copy tensors and must be disabled for speed measurements.
+
+EP observer SHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a51541642`; validation driver SHA256: `a12c8aa6705e3df670853ff391bddfea2ff039c72e64b36387117a7e8405a0dc`. Full raw responses and state observations remain private.

@@ -144,6 +144,10 @@ def preflight(profile, config_path, rank):
         service.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
+    if profile["runtime"]["pipeline_parallel_size"] == 2:
+        checks["pipeline_support"] = "GLM53_PIPELINE_API=1" in (
+            image["Config"].get("Env") or []
+        )
     if profile["runtime"]["expert_parallel"]:
         checks["expert_parallel_support"] = "GLM53_EXPERT_PARALLEL_API=1" in (
             image["Config"].get("Env") or []

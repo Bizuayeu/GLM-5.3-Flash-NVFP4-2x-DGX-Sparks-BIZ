@@ -6,7 +6,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 
 | Category | Controls |
 |---|---|
-| `runtime` | Immutable reference/LPA image IDs, eager/decode Graph execution, independent expert parallelism, seed |
+| `runtime` | Immutable image IDs, eager/decode Graph execution, independent EP/PP and stage boundary, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
 | `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
 | `validation` | Exclusive component worker for CUDA/indexer experiments before LPA/MTP integration |
@@ -23,6 +23,8 @@ The model/revision and build base stay in [runtime.lock.json](../config/runtime.
 ## Commands
 
 `runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget. It requires an image with `GLM53_EXPERT_PARALLEL_API=1`; this marker identifies configuration support, not successful EP qualification. Initial scope is eager, one/two sequences and no MTP/LPA/fusion/APC. Existing TOMLs must explicitly include the new key; no silent missing-key fallback is provided. See the [independent EP plan](performance-investigation.md#expert-parallel-p21) before use.
+
+`runtime.pipeline_parallel_size=1` retains TP=2. Setting it to2 selects TP=1/PP=2 on the same two nodes and requires `GLM53_PIPELINE_API=1`. `pipeline_split_layer` sets the first stage's layer count; the default candidate24 produces stages24/21, each with21 MoE layers in this pinned model. It is not a memory-fit guarantee. Both stages must contain MLA, so this checkpoint accepts boundaries4–43. Initial scope is one sequence, eager and no EP/MTP/LPA/fusion/APC. The [small-fixture observations](component-validation.md#eight-layer-pp-observations) do not qualify full-model speed, long-context numerical equivalence or production use. Include both keys explicitly when updating a TOML.
 
 Before changing context or concurrency, review [KV capacity and RAM requirements](#kv-capacity-and-ram-requirements).
 

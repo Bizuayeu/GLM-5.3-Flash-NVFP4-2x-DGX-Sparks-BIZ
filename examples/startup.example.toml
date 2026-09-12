@@ -14,9 +14,12 @@ enforce_eager = true
 # falseはdecodeのみGraph化。対応イメージが必要。併用構成は別検収。
 expert_parallel = false # Independent TP2/DP1 EP experiment; needs matching image
 # EP単体比較用。MTP/LPA/fusion/Graphs/APCとの併用は別検収。
+pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
+pipeline_split_layer = 24 # PP2 stage0 layers [0,24), stage1 [24,45)
+# PP2は各stageにMLAが必要。24/21層は各21 MoE層を配置する候補で、容量保証ではない。
 seed = 42
-# Text/tools only; TP=2, Marlin W4A16 and FP8 KV are this launcher's scope.
-# テキスト・ツール専用。TP=2、Marlin W4A16、FP8 KV の実験ランチャー。
+# Text/tools only; Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
+# テキスト・ツール専用。Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 
 [context]
 max_model_len = 16384 # Input + generated tokens / 入出力合計の上限
