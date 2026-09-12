@@ -12,6 +12,7 @@ from glm53_setup.io import write_json
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--fused-attention", action="store_true")
     args = parser.parse_args(argv)
     args.output.mkdir(parents=True, exist_ok=False)
     os.environ.update(GLM53_FUSED_UNPACK="0", GLM53_ASYNC_INDEX_CHECKS="0")
@@ -21,6 +22,8 @@ def main(argv=None):
     from glm53_setup.validation.profile_trace import read_trace, summarize_trace
 
     torch.manual_seed(42)
+    if args.fused_attention:
+        from glm53_setup.runtime.fused_nope import fused_nope_attention
     torch.backends.cuda.matmul.allow_tf32 = False
     packed = torch.zeros((4096, 656), dtype=torch.uint8, device="cuda")
     packed[:, :512] = (
@@ -33,22 +36,26 @@ def main(argv=None):
         "status": "running",
         "scope": "FP32 reference query chunks; no scheduler/model changes",
         "cases": [],
+        "fused_attention_candidate": args.fused_attention,
     }
     try:
-        for tokens in (9, 65, 128, 512):
+        for tokens in ((1, 8, 65, 512) if args.fused_attention else (9, 65, 128, 512)):
             query = torch.randn((tokens, 32, 512), dtype=torch.bfloat16, device="cuda")
             indices = torch.randint(
                 0, 4096, (tokens, 2176), dtype=torch.int32, device="cuda"
             )
-            indices[0] = -1
-            indices[1, :-1] = -1
-            indices[2, ::2] = -1
+            if not args.fused_attention:
+                indices[0] = -1
+                indices[1, :-1] = -1
+                indices[2, ::2] = -1
             expected = sparse_nope_reference(query, packed, indices, 512**-0.5)
             case = {"query_tokens": tokens, "candidates": 2176, "paths": {}}
             report["cases"].append(case)
-            for chunk in (8, 32, 64):
+            for chunk in (8, "fused") if args.fused_attention else (8, 32, 64):
 
                 def call():
+                    if chunk == "fused":
+                        return fused_nope_attention(query, packed, indices, 512**-0.5)
                     return sparse_nope_reference(
                         query, packed, indices, 512**-0.5, query_chunk=chunk
                     )
