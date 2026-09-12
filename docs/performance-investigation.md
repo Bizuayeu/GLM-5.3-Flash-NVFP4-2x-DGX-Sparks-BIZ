@@ -1,5 +1,7 @@
 # Performance investigation
 
+The [performance and quality catalog](optimization-catalog.md) ([日本語](optimization-catalog.ja.md)) owns the initiative list, dated baseline and next-version comparison fields. This document owns the detailed investigation procedures.
+
 These are measurement hypotheses, not diagnosed bottlenecks or promised speedups. Keep prefill latency, per-request decode latency and aggregate throughput separate. Nominal LPDDR bandwidth alone does not establish the cost of quantized MoE routing, sparse attention, scheduling or communication.
 
 Measured component/full-target results and their limits are recorded in [component validation](component-validation.md).
