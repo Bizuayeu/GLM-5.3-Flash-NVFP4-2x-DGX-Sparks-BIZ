@@ -168,3 +168,18 @@ Generated tokens matched across arms at 64 and 2K input. At 8K, every arm varied
 EP's 2K probability difference is larger than the restored baseline difference, so this is not a claim of numerical equivalence. Keep the 8K baseline variability and the EP delta visible. **This fixture demonstrates placement, loading and bounded execution.** The subsequent [full-model comparison](benchmarks.md#independent-expert-parallel-evaluation-p21) passed its limited task/capacity checks but did not justify performance adoption. The diagnostic hashes synchronize/copy tensors and were disabled for full-model speed measurements.
 
 EP observer SHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a51541642`; validation driver SHA256: `a12c8aa6705e3df670853ff391bddfea2ff039c72e64b36387117a7e8405a0dc`. Full raw responses and state observations remain private.
+
+## Independent prefix-cache fixture (P19)
+
+`apc-fixture-v41-off/on/restored` used the byte-verified four-layer fixture with the V36 image recorded in [serial integration](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18). All arms used TP1/eager, one sequence, context16,384, chunk512 and FP8 KV512 MiB. MTP, LPA, fused unpack and async index checks were off. APC was the changed setting. All arms completed 13 input lengths, three cold/warm pairs per length, 16 output tokens per request and an interleaved-input check, then exited 0 without OOM. Host RAM minima were 89.20/98.04/100.48 GiB under a 32 GiB container cap and 4 GiB reserve.
+
+Although the requested block size was 256, the actual common cache block was 8,704 tokens. Warm requests through 8,704 input tokens reported zero cached tokens; 8,705 and 16,319 inputs each reused 8,704 tokens. The shorter no-hit results must not be counted as successful cache reuse or a quality check of that reuse.
+
+| Input tokens | APC-on cold median | APC-on warm median | Warm cached tokens |
+|---:|---:|---:|---:|
+| 8,705 | 2.5634 s | 0.2518 s | 8,704 |
+| 16,319 | 4.5622 s | 2.2750 s | 8,704 |
+
+These fixture request times include 16 output tokens and may include shape-specific JIT in a first sample; they are not full-model performance claims. Through 8,705 inputs, generated tokens matched across all arms. At 16,319, every arm varied at the first token between the same two candidates: an exact tie or a 0.03125 logprob lead. Off/on pairs matched 3/6 times, while off/restored matched 5/6. Maximum within-arm shared-prefix logprob deltas were about 0.0632. Other lengths also showed probability variation without cache hits; no bitwise equivalence or cause attribution is claimed.
+
+**Actual cache reuse and bounded execution are demonstrated; full-model adoption is pending.** The interleaved prompts were only 2K and had no hits, so they do not establish isolation of positively cached requests. A full-model comparison must include real hits, distinct long documents, tool continuation, resource/cancellation checks and restored controls. Driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`. The default APC setting remains off, and LPA/APC remains unsupported.
