@@ -38,6 +38,8 @@ class PublicCliTests(unittest.TestCase):
             ("lpa-fixture", "--fixture"),
             ("lpa-corpus", "--source-byte-limit"),
             ("lpa-train", "--captures"),
+            ("freedombench", "--benchmark-dir"),
+            ("profile-assess", "--prefill-control"),
         ]:
             with self.subTest(command=command):
                 result = self.invoke(command, "--help")

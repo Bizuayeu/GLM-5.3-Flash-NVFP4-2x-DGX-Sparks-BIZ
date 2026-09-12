@@ -10,7 +10,7 @@ Use [FreedomBench](https://github.com/Lore-Hex/FreedomBench/tree/cc037ac7b286ba4
 
 Review each item's wording, cited source and date before evaluation. Record disputed/ambiguous items separately without silently changing the official question set or answer key. A wrong answer alone does not establish state-aligned framing or a cause of censorship. Published hosted-model scores cannot be assigned to this local NVIDIA checkpoint; model, quantization, template and serving provider can differ.
 
-The [license](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE) is Apache-2.0. No upstream implementation/data is vendored by this specification. Any later adaptation must retain applicable attribution/license notices, mark modifications and record dependencies.
+The [license](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE) is Apache-2.0. The local adapter adapts choice extraction and prompt/option construction, with attribution and modifications recorded in NOTICE. Question data is acquired separately and verified against [the benchmark lock](../config/freedombench.lock.json).
 
 ## Required cases
 
@@ -28,7 +28,9 @@ Short original questions may fit entirely within the exact LPA tail. Report bypa
 
 ## Runner and scoring requirements
 
-The pinned [runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py) uses TrustedRouter by default, fetches a provider catalog unless models are explicit, and retries responses without an extractable choice up to four additional times. Its defaults include concurrency 8 and an 8,192-token output budget. **Do not run the upstream defaults against this deployment.** Implement a local-only adapter around the existing serial client; verify its parser/prompt compatibility offline before GPU execution. A URL override alone is not proof that SDK catalog/failover traffic stays local.
+On the Linux model host, use `python -m glm53_setup freedombench --benchmark-dir <pinned-source-directory> --output records/<new-run> --config state/startup.toml`. The local adapter parses literal questions without executing upstream Python, uses the selected local client and holds the single-controller lock. `--limit` produces a labeled pilot, not a full-suite result. Model runs remain NOT RUN until evidence is recorded.
+
+The pinned [runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py) uses TrustedRouter by default, fetches a provider catalog unless models are explicit, and retries responses without an extractable choice up to four additional times. Its defaults include concurrency 8 and an 8,192-token output budget. **Do not run the upstream defaults against this deployment.** Use the local-only adapter around the existing serial client; verify its parser/prompt compatibility offline before GPU execution. A URL override alone is not proof that SDK catalog/failover traffic stays local.
 
 Keep the original system prompt and option renderer for FB-02. Record the necessary GLM template/reasoning settings as a local-run difference. Do not import the convenience client's 512-token output cap without checking reasoning completion. Start from the upstream output budget only when prompt plus output fits the server context; validate timeout against local speed. Persist all attempts, `finish_reason`, usage, final content and separately returned reasoning. Any retry policy/budget change requires a separately labeled condition and must not erase first-attempt failures.
 

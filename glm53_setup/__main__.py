@@ -23,6 +23,8 @@ COMMANDS = {
     "lpa-fixture": "validation.run_lpa",
     "lpa-corpus": "validation.lpa_corpus",
     "lpa-train": "validation.train_lpa",
+    "freedombench": "validation.freedombench",
+    "profile-assess": "validation.profile_trace",
 }
 
 

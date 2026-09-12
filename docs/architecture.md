@@ -31,7 +31,3 @@ The reference image modifies two vLLM source files only after checking their ful
 ## Validation boundaries
 
 Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model TP=2 qualification are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot open the TP=2 launch gate.
-
-## Migrating the earlier development layout
-
-Root-level scripts have been replaced by `python -m glm53_setup <command>`. The lock moved to `config/`, site examples to `examples/`, fixed dependencies to `requirements/`, and the Dockerfile to `docker/`. Local `state/` and `records/` keep their existing locations. Historical run commands remain historical evidence; new runs use the current CLI and a fresh output directory.

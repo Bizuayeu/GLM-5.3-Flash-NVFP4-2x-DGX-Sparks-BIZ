@@ -10,5 +10,16 @@ The NoPE zero-padding adaptation follows the kingjones30 (Jones Lab) recipe,
 Copyright (c) 2026 kingjones30 (Jones Lab), licensed under the MIT License.
 Its notice is preserved in LICENSES/kingjones-MIT.txt.
 
+The NoPE zero-padding patch structure is adapted from amasu/glm53-flash-cluster,
+docker/labbuild/patch_mla.py at 0ab7ca7cb1067d4fcece9d525e5d90a9bbe33773,
+licensed under Apache License 2.0. This project changes the model/environment
+guards and attention fallback; it does not include candidate-removal patches.
+The source license is retained in LICENSES/amasu-Apache-2.0.txt.
+
 Model weights, CUDA components, and container dependencies retain their own
 licenses. They are not relicensed by this project. See THIRD_PARTY_NOTICES.md.
+
+FreedomBench choice extraction, prompt construction and option ordering are
+adapted from FreedomBench by Lore Hex Corp, Apache License 2.0, revision
+cc037ac7b286ba4f910309162367d856cbd25d58. Local changes add pinned-data checks,
+local-only transport and separate coverage, truncation and error accounting.

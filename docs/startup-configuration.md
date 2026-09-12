@@ -8,6 +8,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 |---|---|
 | `runtime` | Immutable reference/LPA image IDs, eager execution, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
+| `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
 | `cache` | KV bytes per rank, requested block size, prefix cache, memory utilization |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
 | `lpa` | Enable approximation, first layer, exact tail, query omission, projector and checksum |
@@ -69,4 +70,4 @@ Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared
 
 LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.
 
-Scope: TP=2, text/tools, one active sequence, Marlin W4A16, FP8 KV. LPA requires eager execution and no prefix caching. MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](lpa.md) and [MTP](speculative-decoding.md) for evidence.
+Scope: TP=2, text/tools, Marlin W4A16, FP8 KV. LPA requires one active sequence, eager execution and no prefix caching. No-LPA throughput profiles may use more sequences with separate quality/resource checks; see [performance investigation](performance-investigation.md). MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](lpa.md) and [MTP](speculative-decoding.md) for evidence.
