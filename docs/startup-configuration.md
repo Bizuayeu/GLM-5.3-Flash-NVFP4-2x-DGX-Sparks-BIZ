@@ -22,6 +22,8 @@ The model/revision and build base stay in [runtime.lock.json](../config/runtime.
 
 ## Commands
 
+Before changing context or concurrency, review [KV capacity and RAM requirements](#kv-capacity-and-ram-requirements).
+
 Inspect generated commands from the checkout root (also works on Windows):
 
 ```sh
@@ -60,6 +62,20 @@ run_seconds = 0
 ```
 
 This enables a run without a scheduled stop, not a 24/7 availability guarantee. Automatic host-startup integration, coordinated two-rank recovery and redundant failover remain unimplemented. The foreground supervisor must remain alive; production/harness qualification is still pending.
+
+## KV capacity and RAM requirements
+
+**Retaining B requests simultaneously at their maximum total length C requires capacity for B×C tokens.** `max_model_len` bounds input plus generated tokens per request; `max_num_seqs` limits concurrency. Setting both does not reserve or qualify that worst-case capacity.
+
+This launcher's `cache.kv_cache_memory_bytes` sets a **fixed KV-pool byte budget shared by requests on each rank**. With a 1 GiB setting, changing concurrency from one to two leaves 1 GiB per rank. It is neither 1 GiB per request nor one freely combined pool across both nodes. Explicit bytes override utilization-based KV sizing; `gpu_memory_utilization` is not a total-RAM safety cap in this mode. [vLLM configuration](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
+
+Live requests consume pool blocks according to retained input and generated tokens. Qualifying maximum-length concurrency requires testing that maximum, including output budgets. GLM combines sparse MLA, IndexPool and per-sequence KDA state: use the pinned runtime's cache specs, block alignment, per-group capacities and state slots rather than applying a generic dense-attention bytes/token formula. Include additional speculative state when enabling MTP.
+
+On each node, weights, KV/cache state, activation/indexer workspaces, MTP/Graph allocations, CPU/OS/other load and operating reserve must fit unified RAM. Fixed KV bytes do not fix every other allocation: context, chunks and concurrency can enlarge other buffers. Container limits and `reserve_gib` protect the host; they do not certify fit or uninterrupted operation.
+
+Insufficient KV can cause startup rejection or runtime waiting, preemption and recomputation. The fixed pool does not automatically expand to meet demand. Other allocations or an insufficient RAM budget can still cause OOM or guard stops. [vLLM preemption](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
+
+Retain the runtime's reported capacity/concurrency estimates, then test the intended input-plus-output length × concurrency while observing preemption, both ranks' minimum free memory, OOM and guard stops. A current preflight pass does not replace this maximum-capacity test. See the [independent batching measurements](benchmarks.md#independent-active-batching) for actual coverage.
 
 ## Current image contract
 

@@ -19,6 +19,8 @@ seed = 42
 [context]
 max_model_len = 16384 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
+# Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
+# 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
 max_num_batched_tokens = 512
 chunked_prefill = true
 
@@ -32,9 +34,13 @@ component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP in
 [cache]
 fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
+# Fixed shared pool per rank, NOT per request; does not grow with context/batch.
+# 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
 prefix_caching = false
 gpu_memory_utilization = 0.80
+# Explicit kv_cache_memory_bytes overrides utilization-based KV sizing.
+# 上のKVバイト数指定が優先される。この比率をRAM全体の保護上限とは扱わない。
 
 [mtp]
 enabled = false # LPA併用には対応イメージが必要 / Combined use needs a compatible image

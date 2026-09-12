@@ -24,6 +24,10 @@ The observed division of benefit is primarily decode for MTP, long-input prefill
 
 **P06 update after the baseline (2026-09-12):** Independent Graph startup settings and a candidate image are implemented. A truncated fixture without fusion/LPA/MTP demonstrated capture/replay but diverged from eager output tokens at 2K input. Numerical acceptance and full-model progression are paused; eager remains the default. See [observations, pinned assets and resumption criteria](component-validation.md#independent-decode-graph-fixture). This update is separate from the dated baseline rows below.
 
+**P13 update:** Independent 1→2→1-sequence comparisons established throughput improvement and limited task agreement for the measured short/2K-input, 64-output-token workload with two concurrent requests. Acceptance is limited to that workload; **it does not reserve or qualify KV capacity for configured maximum context × concurrency**. See [measurements and capacity conditions](benchmarks.md#independent-active-batching).
+
+**P05 update:** Direct zero-padded native attention is not adopted: the decode path rejected candidate width 2176 and the numerical checks did not pass. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
+
 ## Performance initiatives
 
 Expected effects are hypotheses. A measured result applies to its documented conditions, not automatically to production, language quality or combined configurations. Preserve IDs across model versions, including unsuccessful candidates.

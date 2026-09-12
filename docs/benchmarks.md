@@ -2,7 +2,7 @@
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
-This page records the MTP-off baseline. See the [MTP k=1 comparison](speculative-decoding.md#measured-k1-results) for the optional speculative profile.
+This page records the MTP-off baseline and independent batching measurements. See the [MTP k=1 comparison](speculative-decoding.md#measured-k1-results) for the optional speculative profile.
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -78,3 +78,48 @@ All five cases completed and independently passed count/metric checks: 21 measur
 The result is for the profile above, using source commit `1816722` and reference image ID `sha256:c4f0aa51b70b85ec86cdf12a25468a443475dfe5b67216c92f8bd906df22b0c3` built from the pinned base. The image is not published to a registry. Two clients add queueing latency with one active server sequence; they do not establish parallel-batch performance. Longer inputs primarily increase prefill time in these samples.
 
 vLLM reported about 88.2 GiB of model memory per rank. In the benchmark run, host available memory stayed above approximately 11.6/12.5 GiB; neither rank was OOM-killed. These are a limited synthetic baseline, not a maximum-throughput or production-quality claim. Both harnesses remain untested.
+
+## Independent active batching
+
+On 2026-09-12 (Asia/Tokyo), A/B/A changed only server `max_num_seqs`: **1 → 2 → 1**. All arms used source `eb30095`, image `sha256:e18f7ae02e96beeb9af954a4e5600ce6ff534d9f91a9fcc2e440a4d91350c494`, TP=2, Marlin W4A16, FP8 KV 1 GiB per rank, context 16,384 and chunk 512. MTP/LPA/fusion/Graphs/APC and tracing were off. Each arm ran the pinned random benchmark with seed 42, one warmup, 64 fixed output tokens and three measured requests per client-concurrency unit. All 18 measured requests per arm completed with the expected output count and finite metrics. Private run IDs: `batching-v14-serial`, `batching-v14-batch2`, `batching-v14-restored`.
+
+**Capacity and measurement scope:** the shared KV budget remained fixed at 1 GiB per rank, not multiplied by concurrency. Speed comparisons covered **up to 2,048 input + 64 output = 2,112 tokens per request at two concurrent requests**. A separate [maximum-length capacity check](#maximum-length-capacity-check) also completed 16,384-token requests × two. Distinguish the runtime's reported 58,254-token capacity / 3.56 maximum-length concurrency estimate from observed coverage. See [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements).
+
+Aggregate output tokens/s, including prefill and queueing:
+
+| Input tokens | Clients | Server seqs=1 | Server seqs=2 | Restored seqs=1 |
+|---:|---:|---:|---:|---:|
+| 32 | 1 | 13.477 | 13.677 | 13.826 |
+| 32 | 2 | 13.656 | 24.347 | 13.796 |
+| 2,048 | 1 | 6.072 | 6.068 | 6.047 |
+| 2,048 | 2 | 6.067 | 7.628 | 6.069 |
+
+With two clients, measured active requests rose from one to two only in the seqs=2 arm. The short-input engine-step histogram recorded 183 steps with 2–8 tokens, versus zero in both serial arms; with MTP off and fixed 32-token prefill, this corroborates actual batched decode. Merely opening two client streams did not do so. Running-request gauges were sampled every 250 ms, with before/after engine-step counters retained.
+
+Latency tradeoffs for two clients (median TTFT / median per-request TPOT):
+
+| Input tokens | Server seqs=1 | Server seqs=2 | Restored seqs=1 |
+|---:|---:|---:|---:|
+| 32 | 4.929 s / 70.18 ms | 0.489 s / 74.20 ms | 4.892 s / 69.59 ms |
+| 2,048 | 16.645 s / 70.99 ms | 7.005 s / 153.33 ms | 16.653 s / 70.55 ms |
+
+The higher 2K TPOT includes pauses while other requests prefill; it does not mean every decode interval doubled. Its median ITL was 73.27 ms versus 70.73/70.13 ms in the serial arms, while longer stalls increased the per-request average. Preserve the detailed interval samples; these few requests are not an SLA.
+
+Each arm also passed four deterministic answer/extraction cases at client concurrency 1 and 2 (eight answers), plus two concurrent tool round trips with distinct order IDs and returned confirmation codes. This is limited task evidence, not general language-quality, cancellation or tenant-isolation qualification. Host available memory stayed above 11.4 GiB on rank 0 and 12.5 GiB on rank 1 across all arms, with a 4 GiB test guard and no OOM. Rank 0 stopped with exit 0; rank 1 still required forced termination (exit 137, not OOM) during the controlled stop.
+
+**Decision:** accept independent seqs=2 within the tested 32/2,048-input, 64-output-token workload at at most two concurrent requests: roughly 76–78% more short-input aggregate output and 26% more at 2K versus the serial controls. Retain seqs=1 as the default and latency control. LPA remains incompatible with this multi-sequence profile. MTP/fusion/Graphs combinations, four sequences, long-context quality/performance, sustained load and recovery require separate gates. This does not grant enterprise or routine-service qualification.
+
+### Maximum-length capacity check
+
+Private run `capacity-v14-16kx2` used the same two-sequence profile and 1 GiB KV budget per rank. Two different segments of the LLM-jp validation token stream were submitted as token IDs; each completed **16,320 input + 64 output = 16,384 tokens**, for a total request budget of 32,768 tokens. APC was off, so this did not depend on prefix sharing.
+
+| Check | Observation |
+|---|---|
+| Completed requests and actual usage | 2/2, each 16,384 tokens |
+| Maximum active requests | 2 |
+| Peak KV utilization | Approximately 58.1% |
+| Additional preemptions | 0 |
+| After completion | KV utilization returned to zero; a subsequent 32-input/1-output request completed |
+| Minimum available memory | Rank 0 approximately 11.64 GiB; rank 1 approximately 12.83 GiB |
+
+This establishes observed capacity for 16K × two in this fixed configuration. Output length was fixed with `ignore_eos`; it does not certify long-document understanding, steady-state speed, another input/output split or a configuration with MTP or other additions. Recheck after changing KV bytes, context, concurrency, cache format or runtime.
