@@ -165,3 +165,31 @@ On 2026-09-13 (Asia/Tokyo), the P13 two-sequence, chunk512 profile with optimiza
 **Decision: do not adopt dedicated task-order control for this workload.** Gains of about 0.7–0.9% in one small A/B/A do not establish repeatability or justify a dedicated scheduler. Retain standard batching. Actual expert choices and homogeneous engine batches were not directly observed, so this ordering comparison neither demonstrates nor disproves expert reuse. Other lengths, task counts and concurrency require separate experiments.
 
 Private run: `task-grouping-v20b`. The fixed vLLM CustomDataset preserves JSONL order with `--disable-shuffle`; `--skip-chat-template` avoids retemplating the rendered inputs. The initial run failed before benchmark requests because the base image lacked the optional JSONL-reader dependency. The retry retained the serving image and added only pandas 2.3.3, pytz 2025.2 and tzdata 2025.2 to a client-only derivative after checking official wheel hashes. Client image: `sha256:4b5a2146c2015b00a5653e54efebcd40a29b12d77c309fdc57476be7523cfa25`; driver SHA256: `31e7b5c2e42a1ff2b85744ca1d25d5b6a00e705ac47f6879fffa79f7db9454b5`.
+
+## Independent Expert Parallel evaluation (P21)
+
+On 2026-09-13 (Asia/Tokyo), the full 45-layer model ran EP off→on→off with TP=2, DP=1 and two active sequences. All arms fixed source `ec9b86b`, image `sha256:7cb5f93f879da2c3cbbcadaf51d04d6567d778675033501f16afa645d43820a2`, Marlin W4A16, FP8 KV at 1 GiB per rank, context 16,384 and chunk512. MTP/LPA/fusion/Graphs/APC were off. Actual placement was inspected by RPC before timing; no layer-hash hooks or active profiler ran during benchmarks.
+
+The fixed vLLM random benchmark used seed42, 64 output tokens, one warmup request and **five requests per unit of client concurrency**. All 30 measured requests per arm completed with valid output counts and finite metrics. This differs from P13's repetition count and must not be treated as the same run. Private records: `full-v28-ep-off`, `full-v28-ep-on`, `full-v28-ep-restored`.
+
+| Input tokens | Concurrent clients | EP off output tokens/s | EP on | Restored off |
+|---:|---:|---:|---:|---:|
+| 32 | 1 | 13.426 | 13.154 | 13.738 |
+| 32 | 2 | 25.129 | 23.673 | 24.361 |
+| 2,048 | 1 | 6.082 | 6.000 | 6.050 |
+| 2,048 | 2 | 7.650 | 7.494 | 7.637 |
+
+Median TTFT / median TPOT with two clients:
+
+| Input tokens | EP off | EP on | Restored off |
+|---:|---:|---:|---:|
+| 32 | 0.414s / 73.35ms | 0.498s / 77.43ms | 0.490s / 74.65ms |
+| 2,048 | 6.973s / 153.35ms | 7.069s / 157.64ms | 6.996s / 153.38ms |
+
+**Decision: do not adopt EP for performance on this two-sequence short/2K workload.** All four cases were slower than both off controls; short-input two-client throughput declined about 2.8–5.8%. Retain the standard batching decision and the experimental EP setting with default off. Do not generalize to other concurrency or MTP combinations.
+
+Actual objects in all 42 MoE layers on both ranks verified 288 tensor-sharded experts→144 complete local experts→restored off, disjoint EP ownership covering all 288 experts, and `MarlinExperts`. Every arm passed eight calculation/extraction answers and two tool round trips. Separate `capacity-v28-ep-*` runs each completed two 16,320-input/64-output requests: active maximum two, peak KV utilization about 58.1%, zero extra preemptions, zero post-run KV usage and a successful follow-up. These are scoped quality/capacity observations.
+
+SSE checks disconnected after three nonempty chunks and verified early generation stop before the 256-token limit, zero running/waiting requests and KV usage, no normal/error completion increment, and a successful follow-up in every arm. **The pinned vLLM internal-abort path removes request state before normal completion statistics, so its abort counter need not increase.** The initial baseline evaluator incorrectly required that increment and failed. That record was retained; after source inspection and evaluator checks, only cancellation was rerun on the same live configuration (`full-v28-ep-off-recheck-v29`). Completed timing/quality results were reused, and EP on/restored used the same corrected cancellation criterion.
+
+Resource limits were 112 GiB per container and a 4 GiB host reserve. Minimum available RAM was about 11.47/12.77 GiB in the baseline and 11.61/12.57 GiB with EP on. No OOM occurred and subsequent restarts completed, but peer shutdown still required forced termination with exit137. Production recovery and long-running operation remain unqualified.

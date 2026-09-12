@@ -59,7 +59,7 @@
 
 | 施策名 | 内容 | 期待される効果・見る指標 | 現在地／検証先 |
 |---|---|---|---|
-| P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験。固定GB10/Marlinの対応確認後、既定offの設定と起動・検査経路を実装 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **既定offの設定・CPU契約を実装、GPU未検証。** 固定Marlinの対応宣言とexpert map経路を確認。実配置・数値・速度・資源を測るまで採用しない。[実装・検証手順](performance-investigation.md#expert-parallel-p21) |
+| P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **今回の性能施策として不採用・既定off。** 全モデルA/B/Aの全4ケースで両off対照より遅い。限定品質・切断復帰・16K×2容量は通過。別負荷・併用は別検収。[実測](benchmarks.ja.md#expert-parallel-の独立評価p21) |
 
 P12は測定軸、P13はscheduler設定、P14は投入順序の実験です。同じ改善を三つに数えません。また、MTPは単一系列でも複数の投機行をまとめて検証できるため、GEMM寄りの仕事を得る前提が必ずしも`max_num_seqs > 1`ではありません。
 

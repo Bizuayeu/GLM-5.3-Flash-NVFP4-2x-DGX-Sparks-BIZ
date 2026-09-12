@@ -49,7 +49,7 @@ Report per-request quality and queue delay, aggregate throughput, completion cov
 
 ## Expert Parallel (P21)
 
-**Status: default-off startup configuration and CPU contracts implemented; GPU EP not tested (2026-09-13).** This is separate from the accepted [two-active-sequence batching experiment](benchmarks.md#independent-active-batching) and from distribution-only startup acceptance on another node pair. EP does not require waiting for that new pair; use an authorized idle pair with verified resources.
+**Status: full-model independent A/B/A completed; EP not adopted for the tested workload, default off (2026-09-13).** See [measurements and scoped quality/capacity results](benchmarks.md#independent-expert-parallel-evaluation-p21). This is separate from the accepted [two-active-sequence batching experiment](benchmarks.md#independent-active-batching) and from distribution-only startup acceptance on another node pair. The procedure below records how the comparison is made.
 
 The pinned FusedMoE parallel config maps TP=2/DP=1 plus EP to two partitions of complete experts. Marlin's declared parallel support accepts this configuration, and its execution path accepts an expert map. With DP/PCP/SP all one, `use_all2all_kernels` is false even with EP enabled; do not assume this experiment invokes DeepEP or removes all collectives. These are source-level compatibility findings, not proof of successful loading, ownership or numerical behavior. The [startup option](startup-configuration.md) requires a matching image marker and rejects untested optimization combinations.
 
