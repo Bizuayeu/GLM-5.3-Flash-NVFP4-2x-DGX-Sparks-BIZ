@@ -18,9 +18,23 @@ def summarize_trace(payload):
         e
         for e in events
         if e.get("cat") in {"cuda_runtime", "cuda_driver"}
+        and e.get("ph") == "X"
         and "launch" in e.get("name", "").lower()
     ]
     communication = [e for e in kernels if "nccl" in e.get("name", "").lower()]
+    synchronizations = [
+        e
+        for e in events
+        if e.get("cat") in {"cuda_runtime", "cuda_driver"}
+        and e.get("ph") == "X"
+        and "synchronize" in e.get("name", "").lower()
+    ]
+    duration_by_name = Counter()
+    for event in kernels:
+        duration_by_name[event["name"]] += event.get("dur", 0)
+    copies = [e for e in events if e.get("cat") == "gpu_memcpy" and e.get("ph") == "X"]
+    byte_counts = [e.get("args", {}).get("bytes") for e in copies]
+    known_bytes = [n for n in byte_counts if type(n) in (int, float) and n >= 0]
     return {
         "kernel_events": len(kernels),
         "launch_api_events": len(launches),
@@ -28,7 +42,18 @@ def summarize_trace(payload):
         "summed_kernel_duration_us": sum(e.get("dur", 0) for e in kernels),
         "summed_nccl_duration_us": sum(e.get("dur", 0) for e in communication),
         "summed_launch_api_duration_us": sum(e.get("dur", 0) for e in launches),
+        "synchronization_api_events": len(synchronizations),
+        "synchronization_api_names": dict(Counter(e["name"] for e in synchronizations)),
+        "summed_synchronization_api_duration_us": sum(
+            e.get("dur", 0) for e in synchronizations
+        ),
         "kernel_names": dict(Counter(e["name"] for e in kernels)),
+        "kernel_duration_us_by_name": dict(duration_by_name.most_common()),
+        "memcpy_events": len(copies),
+        "memcpy_names": dict(Counter(e.get("name", "unknown") for e in copies)),
+        "summed_memcpy_duration_us": sum(e.get("dur", 0) for e in copies),
+        "memcpy_known_bytes": sum(known_bytes),
+        "memcpy_events_without_byte_count": len(copies) - len(known_bytes),
         "duration_semantics": "summed events may overlap; not wall-clock latency",
     }
 

@@ -5,6 +5,9 @@
 !glm53_setup/**
 !config/
 !config/runtime.lock.json
+!config/freedombench.lock.json
+!examples/
+!examples/startup.example.toml
 !pyproject.toml
 !LICENSE
 !NOTICE

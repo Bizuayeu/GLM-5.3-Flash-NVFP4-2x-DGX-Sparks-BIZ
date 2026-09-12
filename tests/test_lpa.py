@@ -20,6 +20,7 @@ class ExperimentSpecTests(unittest.TestCase):
             self.skipTest("Torch environment required")
         for dim_first in (False, True):
             experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
+            experiment.torch = torch
             experiment.spec = ExperimentSpec("capture", 0, 5)
             experiment.verify_state = True
             experiment.current_positions = [0, 1, 2, 3]
