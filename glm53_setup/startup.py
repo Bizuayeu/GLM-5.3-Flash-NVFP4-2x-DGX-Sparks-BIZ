@@ -148,7 +148,7 @@ def preflight(profile, config_path, rank):
         checks["pipeline_support"] = "GLM53_PIPELINE_API=1" in (
             image["Config"].get("Env") or []
         )
-    if profile["runtime"]["expert_parallel"]:
+    if profile["runtime"]["expert_parallel"] or profile["validation"]["expert_worker"]:
         checks["expert_parallel_support"] = "GLM53_EXPERT_PARALLEL_API=1" in (
             image["Config"].get("Env") or []
         )

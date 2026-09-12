@@ -63,6 +63,18 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
+    if profile["validation"]["expert_worker"] and (
+        profile["validation"]["component_worker"]
+        or profile["runtime"]["pipeline_parallel_size"] != 1
+        or profile["lpa"]["enabled"]
+        or profile["mtp"]["enabled"]
+        or profile["cache"]["prefix_caching"]
+        or not profile["runtime"]["enforce_eager"]
+        or profile["context"]["max_num_seqs"] > 2
+    ):
+        raise ValueError(
+            "EP observer requires independent eager TP2, no other worker/MTP/APC"
+        )
     runtime = profile["runtime"]
     if runtime["pipeline_parallel_size"] not in (1, 2):
         raise ValueError("Only PP sizes 1 and 2 are supported")
@@ -182,7 +194,11 @@ def environment(profile, rank):
         VLLM_NO_USAGE_STATS="1",
         DO_NOT_TRACK="1",
     )
-    if profile["lpa"]["enabled"] or profile["validation"]["component_worker"]:
+    if (
+        profile["lpa"]["enabled"]
+        or profile["validation"]["component_worker"]
+        or profile["validation"]["expert_worker"]
+    ):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
         result["GLM53_FUSED_UNPACK"] = "1"
@@ -268,6 +284,11 @@ def serve_args(profile, rank, model_path):
         args += [
             "--worker-extension-cls",
             "glm53_setup.runtime.component_worker.ComponentWorker",
+        ]
+    if profile["validation"]["expert_worker"]:
+        args += [
+            "--worker-extension-cls",
+            "glm53_setup.validation.expert_worker.ExpertFixtureWorker",
         ]
     if profile["profiling"]["enabled"]:
         args += [

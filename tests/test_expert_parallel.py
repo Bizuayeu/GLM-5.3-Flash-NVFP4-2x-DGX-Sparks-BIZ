@@ -40,6 +40,31 @@ class ExpertParallelConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "EP"):
                 config.validate(trial)
 
+    def test_expert_observer_is_explicit_and_separate_from_other_workers(self):
+        self.profile["validation"]["expert_worker"] = True
+        self.profile["context"]["max_num_seqs"] = 2
+        config.validate(self.profile)
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertEqual(
+            args[args.index("--worker-extension-cls") + 1],
+            "glm53_setup.validation.expert_worker.ExpertFixtureWorker",
+        )
+        self.assertEqual(
+            config.environment(self.profile, 0)["VLLM_SERVER_DEV_MODE"], "1"
+        )
+        for section, key, value in (
+            ("validation", "component_worker", True),
+            ("runtime", "pipeline_parallel_size", 2),
+            ("mtp", "enabled", True),
+            ("lpa", "enabled", True),
+            ("cache", "prefix_caching", True),
+            ("runtime", "enforce_eager", False),
+        ):
+            trial = copy.deepcopy(self.profile)
+            trial[section][key] = value
+            with self.assertRaises(ValueError):
+                config.validate(trial)
+
 
 if __name__ == "__main__":
     unittest.main()

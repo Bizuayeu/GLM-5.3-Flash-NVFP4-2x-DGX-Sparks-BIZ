@@ -9,7 +9,7 @@
 | `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
-| `validation` | LPA/MTPとの結合前にCUDA・indexerを調べる専用worker |
+| `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率、実験用unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
 | `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
@@ -25,6 +25,8 @@
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.md#expert-parallel-p21)を参照してください。
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.md#eight-layer-pp-observations)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
+
+`validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。実験用のローカル制御経路であり、企業利用の認定ではありません。
 
 コンテキスト長や同時数を変更する前に、[KV容量とRAMの条件](#kv容量とramの条件)も確認してください。
 

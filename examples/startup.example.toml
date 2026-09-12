@@ -35,6 +35,7 @@ enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
 
 [validation]
 component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP integration
+expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
 
 [cache]
 fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
