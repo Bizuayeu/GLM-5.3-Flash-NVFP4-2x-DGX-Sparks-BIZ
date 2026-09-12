@@ -24,6 +24,9 @@ chunked_prefill = true
 enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
 # カーネル計測用。通常の速度比較はfalseで実行する。
 
+[validation]
+component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP integration
+
 [cache]
 fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク

@@ -63,6 +63,16 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
+    if profile["validation"]["component_worker"] and (
+        profile["lpa"]["enabled"]
+        or profile["mtp"]["enabled"]
+        or profile["context"]["max_num_seqs"] != 1
+        or profile["cache"]["prefix_caching"]
+        or not profile["runtime"]["enforce_eager"]
+    ):
+        raise ValueError(
+            "Component validation requires eager, one sequence, no LPA/MTP/prefix cache"
+        )
     if profile["lpa"]["enabled"] and profile["context"]["max_num_seqs"] != 1:
         raise ValueError(
             "LPA requires max_num_seqs=1; use a separate no-LPA throughput profile"
@@ -133,7 +143,7 @@ def environment(profile, rank):
         VLLM_NO_USAGE_STATS="1",
         DO_NOT_TRACK="1",
     )
-    if profile["lpa"]["enabled"]:
+    if profile["lpa"]["enabled"] or profile["validation"]["component_worker"]:
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
         result["GLM53_FUSED_UNPACK"] = "1"
@@ -198,6 +208,11 @@ def serve_args(profile, rank, model_path):
         args += [
             "--worker-extension-cls",
             "glm53_setup.runtime.lpa.LPAWorkerExtension",
+        ]
+    if profile["validation"]["component_worker"]:
+        args += [
+            "--worker-extension-cls",
+            "glm53_setup.runtime.component_worker.ComponentWorker",
         ]
     if profile["profiling"]["enabled"]:
         args += [

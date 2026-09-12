@@ -9,6 +9,7 @@
 | `runtime` | 通常／LPA用の固定イメージID、eager実行、seed |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
+| `validation` | LPA/MTPとの結合前にCUDA・indexerを調べる専用worker |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率、実験用unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
 | `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
@@ -67,6 +68,8 @@ run_seconds = 0
 旧コマンド・旧設定名・旧イメージへのフォールバックはありません。新ソースをホストへ置くだけでは稼働中のイメージは変わらないため、再ビルドと実機検証を行います。
 
 ## LPAとMTP・制約
+
+`validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。
 
 `cache.fused_unpack=false` が既定で、Torchの参照変換を使います。有効にすると、656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理します。イメージに `GLM53_FUSED_UNPACK_SUPPORTED=1` が必要で、preflightで確認します。まだ実験候補であり、部品の数値一致・attentionと状態の検査・トレースを止めたフルモデルA/Bを経て採否を決めます。候補集合の変更や層間のKV共有は行いません。
 

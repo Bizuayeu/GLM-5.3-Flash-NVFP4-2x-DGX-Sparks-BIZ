@@ -36,6 +36,20 @@ class StartupConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "LPA requires max_num_seqs=1"):
             config.validate(self.profile)
 
+    def test_component_worker_is_an_explicit_independent_diagnostic(self):
+        self.profile["validation"]["component_worker"] = True
+        config.validate(self.profile)
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertEqual(
+            args[args.index("--worker-extension-cls") + 1],
+            "glm53_setup.runtime.component_worker.ComponentWorker",
+        )
+        for feature in ("lpa", "mtp"):
+            self.profile[feature]["enabled"] = True
+            with self.assertRaises(ValueError):
+                config.validate(self.profile)
+            self.profile[feature]["enabled"] = False
+
     def test_kernel_profiling_omits_frontend_and_duplicate_summary_materialization(
         self,
     ):

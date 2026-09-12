@@ -144,6 +144,10 @@ def preflight(profile, config_path, rank):
         service.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
+    if profile["validation"]["component_worker"]:
+        checks["component_worker"] = "GLM53_COMPONENT_API=1" in (
+            image["Config"].get("Env") or []
+        )
     if profile["cache"]["fused_unpack"]:
         checks["fused_unpack_support"] = "GLM53_FUSED_UNPACK_SUPPORTED=1" in (
             image["Config"].get("Env") or []
