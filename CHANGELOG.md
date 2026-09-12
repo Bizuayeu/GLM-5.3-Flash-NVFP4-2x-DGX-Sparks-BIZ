@@ -4,6 +4,9 @@
 
 ### Added
 
+- Independently tested CUDA unpack fusion and CSA2 research components: bounded indexer capture, request-local candidate reuse, candidate selection/tail expansion, and native-backed shared-pool scoring. Component benchmarks distinguish numerical correctness from actual speed gains.
+- An explicit component-validation startup profile and full-target CUDA A/B/A/indexer-overlap driver, separate from LPA/MTP integration.
+
 - Required, not-yet-run FreedomBench enterprise evaluation plan, separating original scoring, political refusals, execution/format errors, Japanese use and long-context source fidelity across LPA/MTP profiles.
 
 - Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware LPA opt-in.
