@@ -69,7 +69,7 @@ Official ZCode and Claude Code CLI are separate, required targets in the [harnes
 
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
 
-Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, two-active-sequence acceptance, MTP depths other than k=1/k=3, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
+The [independent two-active-sequence evaluation](benchmarks.md#independent-active-batching) has limited task, throughput and 16K×2 capacity evidence. Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, batching combinations, MTP depths other than k=1/k=3, graphs, prefix caching and vision remain unvalidated. Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
 
 ## Full-model TP=2 experimental scope
 

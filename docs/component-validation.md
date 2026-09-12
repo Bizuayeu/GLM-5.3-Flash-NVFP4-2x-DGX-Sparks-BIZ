@@ -165,6 +165,6 @@ Generated tokens matched across arms at 64 and 2K input. At 8K, every arm varied
 | 2,048 | 0.22505 | 0.08900 |
 | 8,192 | 0.06813 | 0.06038 |
 
-EP's 2K probability difference is larger than the restored baseline difference, so this is not a claim of numerical equivalence. Keep the 8K baseline variability and the EP delta visible. **Placement, loading and bounded execution are demonstrated; performance adoption and full-model task quality remain pending.** The next comparison must judge actual task answers, capacity and latency with EP as the only changed setting. The diagnostic hashes synchronize/copy tensors and must be disabled for speed measurements.
+EP's 2K probability difference is larger than the restored baseline difference, so this is not a claim of numerical equivalence. Keep the 8K baseline variability and the EP delta visible. **This fixture demonstrates placement, loading and bounded execution.** The subsequent [full-model comparison](benchmarks.md#independent-expert-parallel-evaluation-p21) passed its limited task/capacity checks but did not justify performance adoption. The diagnostic hashes synchronize/copy tensors and were disabled for full-model speed measurements.
 
 EP observer SHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a51541642`; validation driver SHA256: `a12c8aa6705e3df670853ff391bddfea2ff039c72e64b36387117a7e8405a0dc`. Full raw responses and state observations remain private.
