@@ -1,10 +1,10 @@
-# aLLKV：後段Prefill近似 — 実験機能
+# LPA：後段Prefill近似 — 実験機能
 
 [English](llkv-approximation.md) · [基準ベンチ](benchmarks.ja.md)
 
 前段の表現から後段各層の正規化済みAttention入力を予測し、GLM本来のAttention処理でキャッシュと再帰状態を作る。過去tokenのMLP計算を省略し、生成時は全層を実行する。本体のcheckpointは変更せず、小さな補助器だけを学習する。
 
-機能名は **aLLKV（approximate Late-Layer KV）**。`a` は近似を表す。既存の `llkv-*` CLI・RPC名は互換性を保ち、起動設定では `[allkv]` と表記する。
+機能名は **LPA（Late-prefill approximation）**。起動設定は `[lpa]`、CLIは `lpa-fixture`・`lpa-corpus`・`lpa-train` と表記する。既存の `llkv-*` コマンド・RPC名・文書URLも互換性を保つ。旧イメージでは再ビルドまで従来のCLI名を使う。
 
 着想は[きしだ氏のQwen3実験](https://nowokay.hatenablog.com/entry/2026/09/11/120001)から。GLMへの適用には、独立した状態・品質の検査を設けている。
 
@@ -26,11 +26,11 @@ MTP併用は明示的に有効化する。四層fixture＋MTP k=3では3〜8,192
 GPUコマンドは教師と同じ固定reference image内で実行する。helpとコーパス採取にはTorchは不要。
 
 ```sh
-python -m glm53_setup llkv-corpus --output records/corpus-ja --documents 512
-python -m glm53_setup llkv-corpus --subset en-wiki --output records/corpus-en --documents 128
-python -m glm53_setup llkv-corpus --subset code --shard 300 --output records/corpus-code --documents 128
-python -m glm53_setup llkv-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
-python -m glm53_setup llkv-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
+python -m glm53_setup lpa-corpus --output records/corpus-ja --documents 512
+python -m glm53_setup lpa-corpus --subset en-wiki --output records/corpus-en --documents 128
+python -m glm53_setup lpa-corpus --subset code --shard 300 --output records/corpus-code --documents 128
+python -m glm53_setup lpa-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
+python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
 ```
 
 文書数・rank・ridgeはpilot用の値で、最適値ではない。採取器はLLM-jp corpusのrevisionを固定し、出典metaを保持して転送量に上限を置く。正規化した全文hashでtrain/validation/testを分ける。コードはdatasetの元リポジトリ別ライセンス情報からMIT/Apache/BSD/ISC表記のものを選ぶ。コーパス全体を本リポジトリのApacheライセンスとして扱わず、出力した出典・各subsetの条件を保持する。[LLM-jp corpusの説明](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3)を参照。

@@ -1,4 +1,4 @@
-"""Run a bounded, serial TP=2 reference experiment from one TOML file."""
+"""Run a serial TP=2 reference experiment with a configurable lifetime."""
 
 import argparse
 import hashlib
@@ -27,7 +27,7 @@ def write_json(path, value):
 
 
 def projector_path(profile, config_path):
-    return (config_path.parent / profile["allkv"]["projector"]).resolve()
+    return (config_path.parent / profile["lpa"]["projector"]).resolve()
 
 
 def model_path(profile, cache):
@@ -82,7 +82,7 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
     ]
-    if profile["allkv"]["enabled"]:
+    if profile["lpa"]["enabled"]:
         args += ["-v", f"{projector_path(profile, config_path)}:/llkv/projector.pt:ro"]
     for key, value in settings.environment(profile, rank).items():
         args += ["-e", f"{key}={value}"]
@@ -134,11 +134,11 @@ def preflight(profile, config_path, rank):
             view.get("source_revision") == lock["revision"]
             and view.get("weight_bytes_modified") is False
         )
-    if profile["allkv"]["enabled"]:
+    if profile["lpa"]["enabled"]:
         with projector_path(profile, config_path).open("rb") as stream:
             checks["projector_sha256"] = (
                 hashlib.file_digest(stream, "sha256").hexdigest()
-                == profile["allkv"]["projector_sha256"]
+                == profile["lpa"]["projector_sha256"]
             )
     image = json.loads(
         service.run("docker", "image", "inspect", settings.selected_image(profile))
@@ -159,7 +159,8 @@ def preflight(profile, config_path, rank):
 
 
 def supervise(profile, name, record):
-    deadline = time.monotonic() + profile["resources"]["run_seconds"]
+    seconds = profile["resources"]["run_seconds"]
+    deadline = time.monotonic() + seconds if seconds else None
     try:
         with (record / "resources.jsonl").open("a", encoding="utf-8") as log:
             while True:
@@ -172,9 +173,8 @@ def supervise(profile, name, record):
                     + "\n"
                 )
                 log.flush()
-                if (
-                    available < profile["resources"]["reserve_gib"]
-                    or time.monotonic() > deadline
+                if available < profile["resources"]["reserve_gib"] or (
+                    deadline is not None and time.monotonic() >= deadline
                 ):
                     write_json(
                         record / "stop-reason.json",
@@ -214,7 +214,7 @@ def post(profile, path, body):
 
 def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
-    if not profile["allkv"]["enabled"]:
+    if not profile["lpa"]["enabled"]:
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
     allowed = {
@@ -308,7 +308,8 @@ def main(argv=None):
                         f"glm53-startup-r{args.rank}-RUN",
                     ),
                     "generation": profile["generation"],
-                    "allkv": profile["allkv"],
+                    "resources": profile["resources"],
+                    "lpa": profile["lpa"],
                 },
                 indent=2,
             )
@@ -384,7 +385,7 @@ def main(argv=None):
         },
     )
     print(
-        "Supervising experiment in foreground; Ctrl+C or deadline stops this rank.",
+        "Supervising in foreground; Ctrl+C, low memory or an enabled deadline stops this rank.",
         flush=True,
     )
     supervise(profile, name, record)

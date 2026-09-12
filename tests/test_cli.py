@@ -38,6 +38,9 @@ class PublicCliTests(unittest.TestCase):
             ("llkv-fixture", "--fixture"),
             ("llkv-corpus", "--source-byte-limit"),
             ("llkv-train", "--captures"),
+            ("lpa-fixture", "--fixture"),
+            ("lpa-corpus", "--source-byte-limit"),
+            ("lpa-train", "--captures"),
         ]:
             with self.subTest(command=command):
                 result = self.invoke(command, "--help")

@@ -1,10 +1,10 @@
-# aLLKV: approximate Late-Layer KV — experimental
+# LPA: Late-prefill approximation — experimental
 
 [日本語](llkv-approximation.ja.md) · [Baseline](benchmarks.md)
 
 This experiment predicts the normalized attention inputs of later GLM layers, builds their cache and recurrent state with the existing attention implementation, and skips historical MLP rows. Generation still executes all language layers. The checkpoint is unchanged; only a small auxiliary projector is fitted.
 
-The feature name is **aLLKV** (`a` for approximate). Existing `llkv-*` CLI and RPC identifiers remain compatible; the operator configuration uses `[allkv]`.
+The feature name is **LPA (Late-prefill approximation)**. The operator configuration uses `[lpa]`; `lpa-fixture`, `lpa-corpus` and `lpa-train` are the current CLI names. Existing `llkv-*` commands, RPC identifiers and document URLs remain compatible. Older images expose only the legacy CLI names until rebuilt.
 
 The starting point was [Kishida's Qwen3 experiment](https://nowokay.hatenablog.com/entry/2026/09/11/120001). The GLM adaptation has its own state and quality tests.
 
@@ -26,11 +26,11 @@ MTP coexistence is opt-in. A four-layer fixture with MTP k=3 completed eight pro
 Use the same fixed reference image as the teacher for GPU commands; CLI help and corpus sampling do not require Torch.
 
 ```sh
-python -m glm53_setup llkv-corpus --output records/corpus-ja --documents 512
-python -m glm53_setup llkv-corpus --subset en-wiki --output records/corpus-en --documents 128
-python -m glm53_setup llkv-corpus --subset code --shard 300 --output records/corpus-code --documents 128
-python -m glm53_setup llkv-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
-python -m glm53_setup llkv-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
+python -m glm53_setup lpa-corpus --output records/corpus-ja --documents 512
+python -m glm53_setup lpa-corpus --subset en-wiki --output records/corpus-en --documents 128
+python -m glm53_setup lpa-corpus --subset code --shard 300 --output records/corpus-code --documents 128
+python -m glm53_setup lpa-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
+python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
 ```
 
 The sampling sizes and rank/ridge values are pilot parameters, not established optima. The sampler pins the LLM-jp corpus revision, retains source metadata, limits compressed bytes read and partitions normalized document hashes into train/validation/test. The code sample uses the dataset's per-repository license metadata to retain MIT/Apache/BSD/ISC entries. It does not apply the repository's Apache license to all corpus data. Preserve the emitted attribution and subset licenses; see the [LLM-jp corpus README](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3).

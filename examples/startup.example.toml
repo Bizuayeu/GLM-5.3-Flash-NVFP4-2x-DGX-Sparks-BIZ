@@ -6,9 +6,9 @@ schema_version = 1
 
 [runtime]
 # Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
-# 両ノードで確認したイメージID。aLLKV有効時のみ allkv_image を選択。
+# 両ノードで確認したイメージID。LPA有効時のみ lpa_image を選択。
 reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-allkv_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+lpa_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 enforce_eager = true
 seed = 42
 # Text/tools only; TP=2, Marlin W4A16 and FP8 KV are this launcher's scope.
@@ -27,13 +27,13 @@ prefix_caching = false
 gpu_memory_utilization = 0.80
 
 [mtp]
-enabled = false # aLLKV併用には対応イメージが必要 / Combined use needs a compatible image
+enabled = false # LPA併用には対応イメージが必要 / Combined use needs a compatible image
 num_speculative_tokens = 3 # Measured: 1, 3; other depths rejected
 # Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
 # HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
 view = "local-views/glm53-mtp-compatible"
 
-[allkv]
+[lpa]
 enabled = false
 cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり
 tail = 512 # Last prompt tokens stay exact / 末尾の通常計算を残すトークン数
@@ -66,8 +66,8 @@ timeout_seconds = 600 # Same timeout as the measured experiment client
 container_memory_gib = 112
 minimum_available_gib = 108
 reserve_gib = 8
-run_seconds = 1800 # Total bounded run INCLUDING load; raise for longer sessions
-# ロード時間込みの自動停止期限。長時間使う場合は起動前に延ばす。
+run_seconds = 1800 # Seconds INCLUDING load; 0 disables the time limit
+# ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 
 [[nodes]]
 local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)

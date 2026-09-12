@@ -6,11 +6,11 @@
 
 | カテゴリ | 管理するもの |
 |---|---|
-| `runtime` | 通常／aLLKV用の固定イメージID、eager実行、seed |
+| `runtime` | 通常／LPA用の固定イメージID、eager実行、seed |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
-| `allkv` | aLLKV有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
+| `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限 |
@@ -47,10 +47,24 @@ python -m glm53_setup startup stop --rank 0
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。
 
-## aLLKVとMTP・制約
+## 自動停止と連続稼働
 
-`mtp.enabled` と `allkv.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。aLLKV有効時は `runtime.allkv_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したaLLKV workerを含むイメージが必要で、旧aLLKVイメージは併用指定を拒否します。
+`resources.run_seconds` はロード時間込みの自動停止期限（秒）です。**`0` で時間制限なし**、正の整数で指定秒数後に停止します。負数は受け付けません。どちらの場合も `resources.reserve_gib` によるメモリ保護は有効です。設定は起動時に読み込むため、ファイル編集だけでは起動中の監視プロセスの期限は変わりません。
 
-aLLKVはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→aLLKV解除まで行います。入力全体が `allkv.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。一般ハーネスや本番運用の認定は別です。
+```toml
+[resources]
+# 既存のresources節にある、この値を変更します。
+run_seconds = 0
+```
 
-範囲はTP=2・テキスト／ツール・同時1シーケンス・Marlin W4A16・FP8 KVです。aLLKVにはeager実行とprefix cache無効が必要です。MTPの下書き数は1と3に限定しています。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[aLLKV](llkv-approximation.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。
+これは予定時刻で停止しない設定であり、24時間365日の可用性を保証するものではありません。OS起動時の自動起動・障害時の両ランク協調再起動・冗長構成への切り替えは未実装です。前面の監視プロセスを維持する必要があり、本番・ハーネス検収も未完了です。
+
+旧 `[allkv]`・`[llkv]` と対応するイメージキーは `[lpa]`・`runtime.lpa_image` として読み込めます。新旧表記の混在は拒否します。表記だけの変更では起動中のfingerprintを維持し、値を変える場合は再起動が必要です。
+
+## LPAとMTP・制約
+
+`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したLPA workerを含むイメージが必要で、旧LPAイメージは併用指定を拒否します。
+
+LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。一般ハーネスや本番運用の認定は別です。
+
+範囲はTP=2・テキスト／ツール・同時1シーケンス・Marlin W4A16・FP8 KVです。LPAにはeager実行とprefix cache無効が必要です。MTPの下書き数は1と3に限定しています。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[LPA](llkv-approximation.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。

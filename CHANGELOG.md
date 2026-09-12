@@ -4,7 +4,7 @@
 
 ### Added
 
-- Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware aLLKV opt-in.
+- Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware LPA opt-in.
 
 - Opt-in late-prefill attention-input approximation, teacher replay checks, bounded LLM-jp corpus sampling and diagonal/low-rank projector fitting, with bilingual experimental-scope guidance.
 
@@ -23,6 +23,9 @@
 - English/Japanese setup runbooks with prerequisites, ordered gates, acceptance checklists and AI handoff instructions.
 
 ### Changed
+
+- Name the feature LPA (Late-prefill approximation), with `[lpa]` settings and `lpa-*` CLI aliases while preserving earlier settings and RPC compatibility.
+- Allow `resources.run_seconds = 0` to disable the run deadline while retaining low-memory protection; this does not add automatic restart or production availability qualification.
 
 - Add prominent modification notices to generated vLLM patch outputs without changing their executable syntax tree.
 - Grouped operator commands, validation tools, runtime adaptations, configuration and Docker assets by responsibility.

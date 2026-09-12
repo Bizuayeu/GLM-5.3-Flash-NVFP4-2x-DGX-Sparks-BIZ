@@ -4,7 +4,7 @@
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.md) · [検証範囲](docs/validation.md) · [構成](docs/architecture.md)
 
-[起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・aLLKV・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
+[起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
 
 NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動かすためのセットアップ・検証ツールです。商用利用できるライセンスを軸に、資産の固定、検査結果の記録、戻せる運用を重視します。
 
@@ -14,7 +14,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動�
 
 ## このベータ版で確認した範囲
 
-[aLLKV（後段Prefill近似）](docs/llkv-approximation.ja.md)を、教師状態の復元・コーパス採取・補助器学習を含む実験経路として用意しています。品質・速度の検収は、下記の基準構成とは別に扱います。
+[LPA（後段Prefill近似）](docs/llkv-approximation.ja.md)を、教師状態の復元・コーパス採取・補助器学習を含む実験経路として用意しています。品質・速度の検収は、下記の基準構成とは別に扱います。
 
 | 対象 | 状態 |
 |---|---|

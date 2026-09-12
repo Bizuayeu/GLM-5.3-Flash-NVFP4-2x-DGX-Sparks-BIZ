@@ -6,11 +6,11 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 
 | Category | Controls |
 |---|---|
-| `runtime` | Immutable reference/aLLKV image IDs, eager execution, seed |
+| `runtime` | Immutable reference/LPA image IDs, eager execution, seed |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
 | `cache` | KV bytes per rank, requested block size, prefix cache, memory utilization |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
-| `allkv` | Enable approximation, first layer, exact tail, query omission, projector and checksum |
+| `lpa` | Enable approximation, first layer, exact tail, query omission, projector and checksum |
 | `api` | Loopback/rendezvous ports, served name and parsers |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline |
@@ -47,10 +47,24 @@ python -m glm53_setup startup stop --rank 0
 
 Use `--rank 1` on the worker to inspect/stop it. All actions accept `--config path/to/settings.toml`. Restart both ranks after editing settings; the client refuses a profile different from the running container's fingerprint. Generation defaults apply to `startup ask`; external clients supply their own request options.
 
+## Runtime limit and continuous operation
+
+`resources.run_seconds` controls the automatic time limit in seconds, including loading. Set it to `0` for **no time limit**; positive integers retain a bounded session. Negative values are rejected. The `resources.reserve_gib` memory protection remains active in either mode. Settings are read at launch, so editing the file does not change an already running supervisor.
+
+```toml
+[resources]
+# Change this entry in the existing resources section:
+run_seconds = 0
+```
+
+This enables a run without a scheduled stop, not a 24/7 availability guarantee. Automatic host-startup integration, coordinated two-rank recovery and redundant failover remain unimplemented. The foreground supervisor must remain alive; production/harness qualification is still pending.
+
+Legacy `[allkv]` / `[llkv]` sections and their image keys load as `[lpa]` / `runtime.lpa_image`. Mixed spellings are rejected. Renaming alone preserves the running profile fingerprint; actual setting changes require a restart.
+
 ## Feature combinations and limits
 
-Set `mtp.enabled` and `allkv.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting. aLLKV selects `runtime.allkv_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware aLLKV worker; old aLLKV images reject it.
+Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting. LPA selects `runtime.lpa_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware LPA worker; old LPA images reject it.
 
-aLLKV needs per-request prompt length. The client tokenizes the actual template, configures aLLKV, generates, checks token-count agreement and resets aLLKV to off. Prompts fully covered by `allkv.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.
+LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.
 
-Scope: TP=2, text/tools, one active sequence, Marlin W4A16, FP8 KV. aLLKV requires eager execution and no prefix caching. MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [aLLKV](llkv-approximation.md) and [MTP](speculative-decoding.md) for evidence.
+Scope: TP=2, text/tools, one active sequence, Marlin W4A16, FP8 KV. LPA requires eager execution and no prefix caching. MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](llkv-approximation.md) and [MTP](speculative-decoding.md) for evidence.

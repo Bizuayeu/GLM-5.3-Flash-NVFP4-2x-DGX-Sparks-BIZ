@@ -3,7 +3,7 @@ import hashlib
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 from glm53_setup import startup
 from glm53_setup import startup_config as config
@@ -14,6 +14,63 @@ ROOT = Path(__file__).resolve().parents[1]
 class StartupConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/startup.example.toml")
+
+    def test_no_deadline_is_valid_but_negative_or_boolean_is_not(self):
+        self.profile["resources"]["run_seconds"] = 0
+        config.validate(self.profile)
+        for invalid in (-1, True):
+            self.profile["resources"]["run_seconds"] = invalid
+            with self.assertRaises(ValueError):
+                config.validate(self.profile)
+
+    def test_previous_names_load_as_lpa_and_conflicting_names_are_rejected(self):
+        for old in ("llkv", "allkv"):
+            legacy = copy.deepcopy(self.profile)
+            legacy[old] = legacy.pop("lpa")
+            legacy["runtime"][old + "_image"] = legacy["runtime"].pop("lpa_image")
+            with (
+                patch("pathlib.Path.open", mock_open()),
+                patch.object(
+                    config.tomllib, "load", side_effect=[legacy, self.profile]
+                ),
+            ):
+                self.assertEqual(config.load(Path("legacy.toml")), self.profile)
+            conflicting = copy.deepcopy(self.profile)
+            conflicting[old] = copy.deepcopy(conflicting["lpa"])
+            with (
+                patch("pathlib.Path.open", mock_open()),
+                patch.object(config.tomllib, "load", return_value=conflicting),
+                self.assertRaises(ValueError),
+            ):
+                config.load(Path("conflicting.toml"))
+
+    def test_unlimited_run_keeps_memory_protection_and_timed_run_expires(self):
+        for seconds, reason, sleeps in [
+            (0, "memory-reserve", 1),
+            (1800, "run-deadline", 0),
+        ]:
+            with self.subTest(seconds=seconds):
+                self.profile["resources"]["run_seconds"] = seconds
+                with (
+                    patch("pathlib.Path.open", mock_open()),
+                    patch.object(
+                        startup,
+                        "inspect_owned",
+                        return_value={"State": {"Running": True}},
+                    ),
+                    patch.object(startup, "available_gib", side_effect=[100, 7]),
+                    patch.object(startup.time, "monotonic", side_effect=[0, 1000000]),
+                    patch.object(startup.time, "sleep") as sleep,
+                    patch.object(startup, "write_json") as write,
+                    patch.object(startup.service, "run") as stop,
+                    patch.object(startup.subprocess, "run"),
+                ):
+                    startup.supervise(self.profile, "owned", Path("record"))
+                    write.assert_any_call(
+                        Path("record/stop-reason.json"), {"reason": reason}
+                    )
+                    stop.assert_called_once_with("docker", "stop", "owned")
+                    self.assertEqual(sleep.call_count, sleeps)
 
     def test_categories_control_both_ranks_and_context(self):
         self.profile["context"]["max_model_len"] = 8192
@@ -27,8 +84,8 @@ class StartupConfigTests(unittest.TestCase):
 
     def test_display_rename_keeps_running_profile_fingerprint(self):
         legacy = copy.deepcopy(self.profile)
-        legacy["llkv"] = legacy.pop("allkv")
-        legacy["runtime"]["llkv_image"] = legacy["runtime"].pop("allkv_image")
+        legacy["llkv"] = legacy.pop("lpa")
+        legacy["runtime"]["llkv_image"] = legacy["runtime"].pop("lpa_image")
         original = hashlib.sha256(
             json.dumps(
                 {"settings": legacy, "lock": config.load_lock()}, sort_keys=True
@@ -48,7 +105,7 @@ class StartupConfigTests(unittest.TestCase):
         )
         self.assertNotIn("--worker-extension-cls", args)
         self.profile["mtp"]["enabled"] = False
-        self.profile["allkv"]["enabled"] = True
+        self.profile["lpa"]["enabled"] = True
         args = config.serve_args(self.profile, 0, "/hf/model")
         self.assertIn("--worker-extension-cls", args)
         self.assertEqual(
@@ -61,7 +118,7 @@ class StartupConfigTests(unittest.TestCase):
         self.assertTrue(config.llkv_request(self.profile, 2048)["allow_mtp"])
 
     def test_command_mounts_mtp_view_and_projector_without_mutating_cache(self):
-        self.profile["allkv"]["enabled"] = True
+        self.profile["lpa"]["enabled"] = True
         self.profile["mtp"]["enabled"] = True
         path = ROOT / "state/startup.toml"
         args = startup.command(
@@ -80,7 +137,7 @@ class StartupConfigTests(unittest.TestCase):
         self.assertNotIn("--privileged", args)
 
     def test_request_resets_llkv_after_generation_failure(self):
-        self.profile["allkv"]["enabled"] = True
+        self.profile["lpa"]["enabled"] = True
         calls = []
 
         def sender(profile, path, body):
@@ -101,7 +158,7 @@ class StartupConfigTests(unittest.TestCase):
         self.assertEqual(calls[-1][1]["kwargs"]["mode"], "off")
 
     def test_request_discards_tokenization_mismatch(self):
-        self.profile["allkv"]["enabled"] = True
+        self.profile["lpa"]["enabled"] = True
         responses = [{"tokens": [1, 2]}, {}, {"usage": {"prompt_tokens": 3}}, {}]
         with patch.object(startup, "post", side_effect=responses) as sender:
             with self.assertRaisesRegex(ValueError, "Tokenization differs"):
@@ -139,20 +196,20 @@ class StartupConfigTests(unittest.TestCase):
             ("context", "typo", 123),
             ("cache", "gpu_memory_utilization", float("nan")),
             ("mtp", "num_speculative_tokens", 2),
-            ("allkv", "cut", 45),
-            ("allkv", "tail", 0),
+            ("lpa", "cut", 45),
+            ("lpa", "tail", 0),
             ("cache", "prefix_caching", True),
             ("runtime", "enforce_eager", False),
         ]:
             with self.subTest(section=section, key=key):
                 p = copy.deepcopy(self.profile)
-                p["allkv"]["enabled"] = True
+                p["lpa"]["enabled"] = True
                 p[section][key] = value
                 with self.assertRaises(ValueError):
                     config.validate(p)
 
     def test_request_uses_template_and_protects_short_prompt(self):
-        self.profile["allkv"]["enabled"] = True
+        self.profile["lpa"]["enabled"] = True
         body = config.request_body(
             self.profile, {"messages": [{"role": "user", "content": "hello"}]}
         )

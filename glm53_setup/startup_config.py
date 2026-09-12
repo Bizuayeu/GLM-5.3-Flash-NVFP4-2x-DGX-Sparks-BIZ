@@ -17,8 +17,10 @@ def load(path):
         profile = tomllib.load(stream)
     # Accept the initial spelling while operators migrate the same live profile.
     for table, old, new in [
-        (profile, "llkv", "allkv"),
-        (profile.get("runtime", {}), "llkv_image", "allkv_image"),
+        (profile, "llkv", "lpa"),
+        (profile, "allkv", "lpa"),
+        (profile.get("runtime", {}), "llkv_image", "lpa_image"),
+        (profile.get("runtime", {}), "allkv_image", "lpa_image"),
     ]:
         if old in table:
             if new in table:
@@ -54,7 +56,7 @@ def validate(profile):
     check(profile, schema, "startup")
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported startup schema_version")
-    for key in ("reference_image", "allkv_image"):
+    for key in ("reference_image", "lpa_image"):
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", profile["runtime"][key]):
             raise ValueError(f"runtime.{key} must be an immutable image ID")
     for section, keys in {
@@ -65,12 +67,13 @@ def validate(profile):
             "container_memory_gib",
             "minimum_available_gib",
             "reserve_gib",
-            "run_seconds",
         ),
     }.items():
         for key in keys:
             if profile[section][key] < 1:
                 raise ValueError(f"{section}.{key} must be positive")
+    if profile["resources"]["run_seconds"] < 0:
+        raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
     if profile["context"]["max_num_seqs"] != 1:
         raise ValueError("This experimental launcher supports max_num_seqs=1")
     if not 0 < profile["cache"]["gpu_memory_utilization"] <= 1:
@@ -88,7 +91,7 @@ def validate(profile):
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")
-    llkv = profile["allkv"]
+    llkv = profile["lpa"]
     if (
         not 0 <= llkv["cut"] < 45
         or not 1 <= llkv["tail"] <= profile["context"]["max_model_len"]
@@ -120,17 +123,17 @@ def site(profile, rank):
 
 
 def fingerprint(profile):
-    # Keep schema-v1 fingerprints stable across the user-facing aLLKV rename.
+    # Keep schema-v1 fingerprints stable across the user-facing LPA rename.
     canonical = copy.deepcopy(profile)
-    canonical["llkv"] = canonical.pop("allkv")
-    canonical["runtime"]["llkv_image"] = canonical["runtime"].pop("allkv_image")
+    canonical["llkv"] = canonical.pop("lpa")
+    canonical["runtime"]["llkv_image"] = canonical["runtime"].pop("lpa_image")
     value = {"settings": canonical, "lock": load_lock()}
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def selected_image(profile):
     return profile["runtime"][
-        "allkv_image" if profile["allkv"]["enabled"] else "reference_image"
+        "lpa_image" if profile["lpa"]["enabled"] else "reference_image"
     ]
 
 
@@ -143,7 +146,7 @@ def environment(profile, rank):
         VLLM_NO_USAGE_STATS="1",
         DO_NOT_TRACK="1",
     )
-    if profile["allkv"]["enabled"]:
+    if profile["lpa"]["enabled"]:
         result["VLLM_SERVER_DEV_MODE"] = "1"
     return result
 
@@ -202,7 +205,7 @@ def serve_args(profile, rank, model_path):
                 }
             ),
         ]
-    if profile["allkv"]["enabled"]:
+    if profile["lpa"]["enabled"]:
         args += [
             "--worker-extension-cls",
             "glm53_setup.runtime.llkv.LLKVWorkerExtension",
@@ -230,7 +233,7 @@ def request_body(profile, request):
 
 
 def llkv_request(profile, length):
-    llkv = profile["allkv"]
+    llkv = profile["lpa"]
     return {
         "mode": "predict" if llkv["enabled"] and length > llkv["tail"] else "off",
         "cut": llkv["cut"],
