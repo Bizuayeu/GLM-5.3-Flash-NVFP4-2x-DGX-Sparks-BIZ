@@ -22,6 +22,8 @@ The initial reference is two GB10 nodes, TP=2, Marlin W4A16, FP8 KV, candidate-p
 
 The observed division of benefit is primarily decode for MTP, long-input prefill for LPA, and prefill for current CUDA unpack fusion. Fusion is a first step at KV reconstruction, not completion of attention-body fusion or CUDA Graphs. CSA2 components are retained while model-serving integration is deferred.
 
+**P06 update after the baseline (2026-09-12):** Independent Graph startup settings and a candidate image are implemented. A truncated fixture without fusion/LPA/MTP demonstrated capture/replay but diverged from eager output tokens at 2K input. Numerical acceptance and full-model progression are paused; eager remains the default. See [observations, pinned assets and resumption criteria](component-validation.md#independent-decode-graph-fixture). This update is separate from the dated baseline rows below.
+
 ## Performance initiatives
 
 Expected effects are hypotheses. A measured result applies to its documented conditions, not automatically to production, language quality or combined configurations. Preserve IDs across model versions, including unsuccessful candidates.

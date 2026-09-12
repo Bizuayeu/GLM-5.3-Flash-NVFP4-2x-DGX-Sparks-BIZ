@@ -22,6 +22,8 @@
 
 現在の整理は、MTPが主にdecode、LPAが長文prefill、現行CUDA融合が主にprefillへ効いた、というものです。CUDA融合はKV復元部分の第一段階であり、NoPE attention本体の融合やGraphs対応の完了を意味しません。CSA2は部品を保持して実モデル適用を保留しています。
 
+**P06の追加観測（2026-09-12、上記基準点以後）：** 単体Graphの起動設定と候補イメージを実装。融合・LPA・MTPなしの小層fixtureでcapture/replayを確認しましたが、2K入力の生成tokenがeagerと分岐したため、数値受入と全モデルへの進行を保留しました。既定はeagerのままです。[観測・固定資産・再開条件](component-validation.md#independent-decode-graph-fixture)。下表の基準点の結果とは区別します。
+
 ## 性能施策一覧
 
 「期待効果」は検証する仮説です。「実測あり」も、その記録の条件での観測を指し、本番・品質・併用構成の検収を兼ねません。IDは次版でも維持し、結果が悪い施策も理由とともに残します。

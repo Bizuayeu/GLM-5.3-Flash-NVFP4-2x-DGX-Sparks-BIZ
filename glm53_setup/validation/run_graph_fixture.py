@@ -15,6 +15,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--graphs", action="store_true")
     parser.add_argument("--fused-unpack", action="store_true")
+    parser.add_argument("--async-index-checks", action="store_true")
     parser.add_argument("--mtp", type=int, choices=[1, 3])
     args = parser.parse_args(argv)
     config = json.loads((args.fixture / "config.json").read_text())
@@ -28,7 +29,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=False)
     os.environ.update(
         GLM53_FUSED_UNPACK="1" if args.fused_unpack else "0",
-        GLM53_ASYNC_INDEX_CHECKS="1" if args.graphs else "0",
+        GLM53_ASYNC_INDEX_CHECKS="1" if args.graphs or args.async_index_checks else "0",
         NVIDIA_TF32_OVERRIDE="0",
     )
     import glm53_reference
@@ -53,6 +54,7 @@ def main(argv=None):
         "scope": "four-layer fixture, no LPA; MTP/fusion recorded separately",
         "graphs_requested": args.graphs,
         "fused_unpack": args.fused_unpack,
+        "async_index_checks": args.graphs or args.async_index_checks,
         "mtp": args.mtp,
         "cases": [],
         "attention_source_sha256": hashlib.sha256(deployed).hexdigest(),
