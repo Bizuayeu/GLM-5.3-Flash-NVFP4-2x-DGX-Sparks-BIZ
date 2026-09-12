@@ -12,7 +12,10 @@ from glm53_setup.io import write_json
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--fused-attention", action="store_true")
+    candidates = parser.add_mutually_exclusive_group()
+    candidates.add_argument("--fused-attention", action="store_true")
+    candidates.add_argument("--tf32x3-attention", action="store_true")
+    parser.add_argument("--heads", type=int, choices=(16, 32), default=32)
     args = parser.parse_args(argv)
     args.output.mkdir(parents=True, exist_ok=False)
     os.environ.update(GLM53_FUSED_UNPACK="0", GLM53_ASYNC_INDEX_CHECKS="0")
@@ -22,7 +25,13 @@ def main(argv=None):
     from glm53_setup.validation.profile_trace import read_trace, summarize_trace
 
     torch.manual_seed(42)
-    if args.fused_attention:
+    fused = args.fused_attention or args.tf32x3_attention
+    candidate_name = "tf32x3" if args.tf32x3_attention else "fused"
+    if args.tf32x3_attention:
+        from glm53_setup.runtime.fused_nope_dot import (
+            dot_nope_tf32x3 as fused_nope_attention,
+        )
+    elif args.fused_attention:
         from glm53_setup.runtime.fused_nope import fused_nope_attention
     torch.backends.cuda.matmul.allow_tf32 = False
     packed = torch.zeros((4096, 656), dtype=torch.uint8, device="cuda")
@@ -34,28 +43,32 @@ def main(argv=None):
     packed[:, 512:528] = torch.rand((4096, 4), device="cuda").view(torch.uint8)
     report = {
         "status": "running",
-        "scope": "FP32 reference query chunks; no scheduler/model changes",
+        "scope": "isolated attention candidates; no scheduler/model changes",
         "cases": [],
-        "fused_attention_candidate": args.fused_attention,
-        "masked_queries_in_timing": not args.fused_attention,
+        "fused_attention_candidate": fused,
+        "candidate_precision": "tf32x3" if args.tf32x3_attention else "fp32",
+        "query_heads": args.heads,
+        "masked_queries_in_timing": not fused,
     }
     try:
-        for tokens in (1, 8, 65, 512) if args.fused_attention else (9, 65, 128, 512):
-            query = torch.randn((tokens, 32, 512), dtype=torch.bfloat16, device="cuda")
+        for tokens in (1, 8, 65, 512) if fused else (9, 65, 128, 512):
+            query = torch.randn(
+                (tokens, args.heads, 512), dtype=torch.bfloat16, device="cuda"
+            )
             indices = torch.randint(
                 0, 4096, (tokens, 2176), dtype=torch.int32, device="cuda"
             )
-            if not args.fused_attention:
+            if not fused:
                 indices[0] = -1
                 indices[1, :-1] = -1
                 indices[2, ::2] = -1
             expected = sparse_nope_reference(query, packed, indices, 512**-0.5)
             case = {"query_tokens": tokens, "candidates": 2176, "paths": {}}
             report["cases"].append(case)
-            for chunk in (8, "fused") if args.fused_attention else (8, 32, 64):
+            for chunk in (8, candidate_name) if fused else (8, 32, 64):
 
                 def call():
-                    if chunk == "fused":
+                    if chunk == candidate_name:
                         return fused_nope_attention(query, packed, indices, 512**-0.5)
                     return sparse_nope_reference(
                         query, packed, indices, 512**-0.5, query_chunk=chunk
@@ -72,12 +85,18 @@ def main(argv=None):
                     "max_abs_error": error,
                     "tolerance": tolerance,
                     "exact": torch.equal(actual, expected),
-                    "empty_row_zero": None
-                    if args.fused_attention
-                    else bool((actual[0] == 0).all()),
+                    "empty_row_zero": None if fused else bool((actual[0] == 0).all()),
                     "finite": bool(torch.isfinite(actual).all()),
                 }
                 case["paths"][str(chunk)] = row
+                if chunk == candidate_name:
+                    diagnostics = {}
+                    fused_nope_attention(
+                        query, packed, indices, 512**-0.5, diagnostics=diagnostics
+                    )
+                    row["kernel"] = diagnostics
+                    if args.tf32x3_attention and not diagnostics["tf32_mma"]:
+                        raise ValueError("TF32 MMA instructions were not emitted")
                 write_json(args.output / "result.json", report)
                 if (
                     not row["finite"]

@@ -8,11 +8,22 @@ import unittest
 )
 class FusedNopeTests(unittest.TestCase):
     def test_fp64_reference_and_tail_candidates(self):
+        self._check_attention("simt")
+
+    def test_tf32x3_head_group_against_fp64_and_tail_candidates(self):
+        self._check_attention("tf32x3")
+
+    def _check_attention(self, implementation):
         import torch
 
         if not torch.cuda.is_available():
             self.skipTest("CUDA required")
-        from glm53_setup.runtime.fused_nope import fused_nope_attention
+        if implementation == "simt":
+            from glm53_setup.runtime.fused_nope import fused_nope_attention
+        else:
+            from glm53_setup.runtime.fused_nope_dot import (
+                dot_nope_tf32x3 as fused_nope_attention,
+            )
         from glm53_setup.runtime.reference_attention import unpack_latent
 
         torch.manual_seed(71)

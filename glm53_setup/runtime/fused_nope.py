@@ -57,17 +57,10 @@ def _attention(
     tl.store(Output + (token * HEADS + head) * 512 + columns, result)
 
 
-def fused_nope_attention(
-    query, packed_cache, physical_indices, scale, *, tile=16, warps=4, diagnostics=None
-):
+def checked_cache(query, packed_cache, physical_indices):
+    """Shared shape/device/range contract for isolated attention candidates."""
     import torch
 
-    if (
-        type(tile) is not int
-        or type(warps) is not int
-        or (tile, warps) not in ((8, 4), (16, 4), (16, 8), (32, 8))
-    ):
-        raise ValueError("Unsupported experimental attention tile")
     if query.ndim != 3 or query.shape[-1] != 512 or query.dtype != torch.bfloat16:
         raise ValueError("Expected BF16 NoPE query [tokens, heads, 512]")
     if (
@@ -101,6 +94,21 @@ def fused_nope_attention(
         raise ValueError("Candidate points outside cache")
     if bool((physical_indices < -1).any().item()):
         raise ValueError("Only -1 is a padding index")
+    return cache
+
+
+def fused_nope_attention(
+    query, packed_cache, physical_indices, scale, *, tile=16, warps=4, diagnostics=None
+):
+    import torch
+
+    if (
+        type(tile) is not int
+        or type(warps) is not int
+        or (tile, warps) not in ((8, 4), (16, 4), (16, 8), (32, 8))
+    ):
+        raise ValueError("Unsupported experimental attention tile")
+    cache = checked_cache(query, packed_cache, physical_indices)
     output = torch.empty(query.shape, dtype=query.dtype, device=query.device)
     if query.shape[0] and query.shape[1]:
         # Sixteen keys × 512 columns bounds register pressure. Head is the

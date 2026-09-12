@@ -111,6 +111,12 @@ A bounded tiling follow-up (`benchmark_fused_tiles`, private run `fused-tiles-v1
 
 The prototypes reduce launches and temporary allocation, but **do not provide a measured speed benefit**. Keep them for reproduction; do not connect them to startup, claim full-model acceptance, or treat the already useful P03 unpack fusion as rejected. Reopen P04 with a materially different execution strategy supported by profiling, rather than further blind tile sweeps.
 
+### Shared-head Tensor Core candidate — prepared, GPU validation pending
+
+`runtime.fused_nope_dot.dot_nope_tf32x3` is a separate follow-up: each program shares decoded K/V across 16 query heads and uses explicit `tf32x3` matrix products, with FP32 softmax/accumulation and BF16 output. It is not IEEE-equivalent arithmetic; [Triton's dot API](https://triton-lang.org/main/python-api/generated/triton.language.dot.html) defines the precision selection. The benchmark records PTX hashes and checks that TF32 MMA instructions were emitted. It preserves all supplied candidates and shares the existing shape/device/range checks.
+
+The new FP64, empty-row and sole-tail-candidate tests require GPU execution. `benchmark_query_chunks --tf32x3-attention --heads 16` or `--heads 32` selects this experiment in a fresh output directory. At this checkpoint it has **not run on GPU and has no speed or model-quality result**. Serving remains unchanged; the earlier SIMT/query-chunk rejections stand. Run this component only when model experiments have released the GPU.
+
 ## Pipeline fixture preparation and startup (P17)
 
 The experimental source-pinned model patch propagates BF16 hidden/residual tensors and FP32 deferred mHC post/comb tensors across PP stages. The four-layer, single-GPU control (`pipeline-v17-control-a`) completed three repetitions at each of 64/2,048/8,192 input tokens with 16 outputs, finite chosen-token logprobs and the expected buffer shapes. Image: `sha256:b9ae526c6369b7bac909c2043853f60172e66eecc1b34e891b1faa607284eb4a`. This is a truncated-model control, not PP qualification or a language-quality result.
