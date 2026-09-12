@@ -4,6 +4,8 @@
 
 ### Added
 
+- An explicit default-off Expert Parallel implementation and independent validation plan, separating EP adoption from qualified two-sequence batching and distribution-only startup acceptance.
+
 - Independent batching A/B/A measurements and a separate 16K × two-request capacity check, with explicit fixed-KV/RAM conditions.
 - A padded native-attention component probe retaining failed numerical and unsupported-shape evidence before any serving change.
 

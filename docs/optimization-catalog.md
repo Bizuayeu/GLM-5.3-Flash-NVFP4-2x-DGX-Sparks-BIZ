@@ -55,6 +55,12 @@ Expected effects are hypotheses. A measured result applies to its documented con
 | P19 Prefix caching (APC) | Compare cold/warm repeated system/tools/history and different prefixes; check hybrid state, boundaries and isolation | Lower TTFT and repeated prefill in conversations | **Unqualified; incompatible with current LPA.** Distinguish cache hits from faster cold processing. [LPA scope](lpa.md) |
 | P20 Indexer workspace sizing | Measure peak requirements by shape/chunk/MTP depth; shrink only proven excess reservation | More host/KV headroom and fewer unnecessary allocations | **Conditional candidate; independent benefit unqualified.** Distinct from P16 selection changes; omit patches superseded upstream. [Investigation](performance-investigation.md) |
 
+**Additional initiative (2026-09-13):**
+
+| Initiative | Work | Expected effect / metric | Current status / procedure |
+|---|---|---|---|
+| P21 Expert Parallel | Independently switch expert-layer partitioning from TP to EP while retaining TP=2, DP=1, two active sequences and the fixed per-rank KV budget. Check pinned GB10/Marlin support before implementing default-off configuration, launch and validation paths | Expert compute efficiency and aggregate throughput, assessed with extra memory, communication, individual TTFT/ITL and quality | **Not implemented or tested.** Adoption of the qualified P13 two-sequence scope is intended; decide EP separately after measuring benefit and resource fit. [Implementation and validation](performance-investigation.md#expert-parallel-p21) |
+
 P12 is a measurement axis, P13 a scheduler setting, and P14 a workload-order experiment: do not count one gain three times. MTP can already verify multiple speculative rows within one sequence; GEMM-like work does not necessarily require `max_num_seqs > 1`.
 
 ## Enterprise quality and adoption gates

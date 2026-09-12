@@ -55,6 +55,12 @@
 | P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **未検収、現LPAとは非対応。** coldの高速化とcache hitの効果を分離。[LPA使用範囲](lpa.ja.md#使用範囲) |
 | P20 Indexer workspace適正化 | 実shape・chunk・MTP深さ別の最大必要量を測り、過剰予約がある場合に限定して縮小 | host/KVの余裕を増やし、不要な割当を抑える | **条件付き候補、独立した効果の検収なし。** P16の候補削減とは別施策。上流で解消済みなら追加patch不要。[性能調査](performance-investigation.md) |
 
+**追加施策（2026-09-13）：**
+
+| 施策名 | 内容 | 期待される効果・見る指標 | 現在地／検証先 |
+|---|---|---|---|
+| P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験。固定GB10/Marlinの対応確認後、既定offの設定と起動・検査経路を実装 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **未実装・未検証。** P13の検証済み2系列は採用する方向。EPは改善と資源条件の確認後に別途採否を決める。[実装・検証手順](performance-investigation.md#expert-parallel-p21) |
+
 P12は測定軸、P13はscheduler設定、P14は投入順序の実験です。同じ改善を三つに数えません。また、MTPは単一系列でも複数の投機行をまとめて検証できるため、GEMM寄りの仕事を得る前提が必ずしも`max_num_seqs > 1`ではありません。
 
 ## 企業利用の品質・採用ゲート
