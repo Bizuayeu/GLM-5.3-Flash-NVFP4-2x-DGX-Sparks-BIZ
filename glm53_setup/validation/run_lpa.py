@@ -62,7 +62,7 @@ def main(argv=None):
         kv_cache_memory_bytes=512 * 1024**2,
         gpu_memory_utilization=0.20,
         seed=42,
-        worker_extension_cls="glm53_setup.runtime.llkv.LLKVWorkerExtension",
+        worker_extension_cls="glm53_setup.runtime.lpa.LPAWorkerExtension",
         speculative_config={
             "method": "mtp",
             "num_speculative_tokens": args.mtp,
@@ -99,7 +99,7 @@ def main(argv=None):
         for mode in ("capture", "off", "oracle_full_mlp", "oracle", "off"):
             key = mode if mode not in case["modes"] else "restored"
             llm.collective_rpc(
-                "llkv_configure",
+                "lpa_configure",
                 kwargs={
                     "mode": "oracle" if mode == "oracle_full_mlp" else mode,
                     "cut": args.cut,
@@ -118,7 +118,7 @@ def main(argv=None):
             ]
             row = encode_output(result)
             row["seconds"] = time.monotonic() - start
-            row["workers"] = llm.collective_rpc("llkv_report")
+            row["workers"] = llm.collective_rpc("lpa_report")
             case["modes"][key] = row
             save()
         reference = case["modes"]["off"]

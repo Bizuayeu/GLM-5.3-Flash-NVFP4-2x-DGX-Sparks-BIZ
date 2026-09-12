@@ -13,6 +13,8 @@ from .io import write_json
 
 
 def download():
+    os.environ.setdefault("HF_XET_NUM_CONCURRENT_RANGE_GETS", "4")
+    os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
     from huggingface_hub import HfApi, snapshot_download
 
     STATE.mkdir(parents=True, exist_ok=True)
@@ -81,7 +83,6 @@ def main(argv=None):
             parser.error("Background jobs require Linux; use foreground mode here")
         STATE.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
-        env.update(HF_XET_NUM_CONCURRENT_RANGE_GETS="4", HF_HUB_DOWNLOAD_TIMEOUT="120")
         with (STATE / "download.log").open("a", encoding="utf-8") as log:
             process = subprocess.Popen(
                 [sys.executable, "-m", "glm53_setup", "download"],

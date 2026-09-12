@@ -53,7 +53,7 @@ Use `--backend auto` or `--chunk 128` in a fresh run for diagnostic comparison. 
 ## CPU and component checks
 
 ~~~sh
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 python tools/check_publication.py
 ~~~
 

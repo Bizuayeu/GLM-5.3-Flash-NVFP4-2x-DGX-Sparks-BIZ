@@ -2,7 +2,7 @@ import importlib.util
 import unittest
 from unittest.mock import Mock
 
-from glm53_setup.runtime.llkv_query import ReferenceQueryMask
+from glm53_setup.runtime.lpa_query import ReferenceQueryMask
 
 
 class QueryScopeTests(unittest.TestCase):

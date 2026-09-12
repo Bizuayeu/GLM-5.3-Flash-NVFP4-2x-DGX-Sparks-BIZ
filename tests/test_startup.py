@@ -1,5 +1,4 @@
 import copy
-import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -15,6 +14,28 @@ class StartupConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/startup.example.toml")
 
+    def test_toml_validation_stays_at_load_and_command_boundaries(self):
+        with patch.object(config, "validate", wraps=config.validate) as validate:
+            config.load(ROOT / "examples/startup.example.toml")
+            self.assertEqual(validate.call_count, 1)
+            validate.reset_mock()
+            config.serve_args(self.profile, 0, "/hf/model")
+            validate.assert_not_called()
+            startup.command(self.profile, ROOT / "state/startup.toml", 0, "test")
+            self.assertEqual(validate.call_count, 1)
+            validate.reset_mock()
+            self.profile["context"]["max_num_seqs"] = 0
+            with self.assertRaises(ValueError):
+                startup.command(self.profile, ROOT / "state/startup.toml", 0, "test")
+            self.assertEqual(validate.call_count, 1)
+
+    def test_throughput_sequences_are_separate_from_lpa_layout(self):
+        self.profile["context"]["max_num_seqs"] = 2
+        config.validate(self.profile)
+        self.profile["lpa"]["enabled"] = True
+        with self.assertRaisesRegex(ValueError, "LPA requires max_num_seqs=1"):
+            config.validate(self.profile)
+
     def test_no_deadline_is_valid_but_negative_or_boolean_is_not(self):
         self.profile["resources"]["run_seconds"] = 0
         config.validate(self.profile)
@@ -22,27 +43,6 @@ class StartupConfigTests(unittest.TestCase):
             self.profile["resources"]["run_seconds"] = invalid
             with self.assertRaises(ValueError):
                 config.validate(self.profile)
-
-    def test_previous_names_load_as_lpa_and_conflicting_names_are_rejected(self):
-        for old in ("llkv", "allkv"):
-            legacy = copy.deepcopy(self.profile)
-            legacy[old] = legacy.pop("lpa")
-            legacy["runtime"][old + "_image"] = legacy["runtime"].pop("lpa_image")
-            with (
-                patch("pathlib.Path.open", mock_open()),
-                patch.object(
-                    config.tomllib, "load", side_effect=[legacy, self.profile]
-                ),
-            ):
-                self.assertEqual(config.load(Path("legacy.toml")), self.profile)
-            conflicting = copy.deepcopy(self.profile)
-            conflicting[old] = copy.deepcopy(conflicting["lpa"])
-            with (
-                patch("pathlib.Path.open", mock_open()),
-                patch.object(config.tomllib, "load", return_value=conflicting),
-                self.assertRaises(ValueError),
-            ):
-                config.load(Path("conflicting.toml"))
 
     def test_unlimited_run_keeps_memory_protection_and_timed_run_expires(self):
         for seconds, reason, sleeps in [
@@ -82,20 +82,7 @@ class StartupConfigTests(unittest.TestCase):
             self.assertIn("--no-enable-prefix-caching", args)
             self.assertNotIn("--speculative-config", args)
 
-    def test_display_rename_keeps_running_profile_fingerprint(self):
-        legacy = copy.deepcopy(self.profile)
-        legacy["llkv"] = legacy.pop("lpa")
-        legacy["runtime"]["llkv_image"] = legacy["runtime"].pop("lpa_image")
-        original = hashlib.sha256(
-            json.dumps(
-                {"settings": legacy, "lock": config.load_lock()}, sort_keys=True
-            ).encode()
-        ).hexdigest()
-        self.assertEqual(config.fingerprint(self.profile), original)
-        self.profile["context"]["max_model_len"] = 8192
-        self.assertNotEqual(config.fingerprint(self.profile), original)
-
-    def test_mtp_and_llkv_select_distinct_startup_paths(self):
+    def test_mtp_and_lpa_select_distinct_startup_paths(self):
         self.profile["mtp"]["enabled"] = True
         args = config.serve_args(self.profile, 0, "/hf/mtp-view")
         spec = json.loads(args[args.index("--speculative-config") + 1])
@@ -115,7 +102,7 @@ class StartupConfigTests(unittest.TestCase):
         args = config.serve_args(self.profile, 0, "/hf/mtp-view")
         self.assertIn("--speculative-config", args)
         self.assertIn("--worker-extension-cls", args)
-        self.assertTrue(config.llkv_request(self.profile, 2048)["allow_mtp"])
+        self.assertTrue(config.lpa_request(self.profile, 2048)["allow_mtp"])
 
     def test_command_mounts_mtp_view_and_projector_without_mutating_cache(self):
         self.profile["lpa"]["enabled"] = True
@@ -129,14 +116,14 @@ class StartupConfigTests(unittest.TestCase):
             args,
         )
         self.assertIn(
-            str((path.parent / "projector.pt").resolve()) + ":/llkv/projector.pt:ro",
+            str((path.parent / "projector.pt").resolve()) + ":/lpa/projector.pt:ro",
             args,
         )
         self.assertEqual(args[args.index("--memory") + 1], "112g")
         self.assertNotIn("--rm", args)
         self.assertNotIn("--privileged", args)
 
-    def test_request_resets_llkv_after_generation_failure(self):
+    def test_request_resets_lpa_after_generation_failure(self):
         self.profile["lpa"]["enabled"] = True
         calls = []
 
@@ -217,12 +204,12 @@ class StartupConfigTests(unittest.TestCase):
             body["chat_template_kwargs"],
             {"reasoning_effort": "low", "clear_thinking": True},
         )
-        spec = config.llkv_request(self.profile, 100)
+        spec = config.lpa_request(self.profile, 100)
         self.assertEqual(spec["mode"], "off")
         self.assertEqual(spec["tail"], 100)
         self.assertEqual(
-            config.llkv_request(self.profile, 2048)["predictor_path"],
-            "/llkv/projector.pt",
+            config.lpa_request(self.profile, 2048)["predictor_path"],
+            "/lpa/projector.pt",
         )
         with self.assertRaises(ValueError):
             config.request_body(self.profile, {"messages": [], "stream": True})

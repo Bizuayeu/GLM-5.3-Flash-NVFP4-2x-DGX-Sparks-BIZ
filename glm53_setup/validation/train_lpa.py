@@ -5,6 +5,26 @@ import json
 import math
 from pathlib import Path
 
+from ..config import HIDDEN_SIZE, MODEL, MODEL_LAYERS, REVISION, TEACHER_PRECISION
+
+
+def validate_teacher(manifest):
+    expected = {
+        "model": MODEL,
+        "revision": REVISION,
+        "layers": MODEL_LAYERS,
+        "hidden_size": HIDDEN_SIZE,
+        "precision": TEACHER_PRECISION,
+    }
+    teacher = manifest.get("teacher")
+    if not isinstance(teacher, dict) or any(
+        teacher.get(k) != v for k, v in expected.items()
+    ):
+        raise ValueError(
+            "Capture manifest must attest the pinned teacher model, dimensions and precision"
+        )
+    return teacher
+
 
 def solve_projected_ridge(gram, cross, ridge):
     import torch
@@ -14,25 +34,6 @@ def solve_projected_ridge(gram, cross, ridge):
         gram.shape[0], device=gram.device, dtype=gram.dtype
     )
     return torch.linalg.solve(matrix, cross)
-
-
-def densify_affine_weights(weights):
-    """Exact algebraic export for the original residual-only experimental runtime."""
-    import torch
-
-    first = next(iter(weights.values()))
-    identity = torch.eye(
-        first["mean"].numel(), device=first["mean"].device, dtype=first["mean"].dtype
-    )
-    return {
-        layer: {
-            "mean": w["mean"],
-            "down": identity,
-            "up": torch.diag(w["scale"] - 1) + w["down"] @ w["up"],
-            "bias": w["bias"] + w["mean"] * (w["scale"] - 1),
-        }
-        for layer, w in weights.items()
-    }
 
 
 def cpu_weights(weights):
@@ -58,11 +59,6 @@ def main(argv=None):
     parser.add_argument("--rank", type=int, default=256)
     parser.add_argument("--ridge", type=float, default=0.001)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument(
-        "--dense-compat",
-        action="store_true",
-        help="Also export a larger artifact for the first runtime",
-    )
     args = parser.parse_args(argv)
     if args.rank < 1 or not math.isfinite(args.ridge) or args.ridge <= 0:
         parser.error("rank and ridge must be positive")
@@ -74,8 +70,9 @@ def main(argv=None):
     manifest = json.loads((args.captures / "result.json").read_text())
     if manifest["status"] != "complete":
         raise ValueError("Only a completed teacher collection can be fitted")
+    teacher = validate_teacher(manifest)
     cut = args.cut if args.cut is not None else manifest["cut"]
-    if not manifest["cut"] <= cut < 44:
+    if not manifest["cut"] <= cut < MODEL_LAYERS - 1:
         raise ValueError("Requested cut is outside the captured suffix")
     cases = manifest["cases"]
     train = [c for c in cases if c["split"] == "train"]
@@ -88,14 +85,14 @@ def main(argv=None):
         for p in first_dir.glob("layer-*.pt")
         if int(p.stem.split("-")[1]) >= cut
     )
-    if layers != list(range(cut, 45)):
+    if layers != list(range(cut, MODEL_LAYERS)):
         raise ValueError("Expected full-model suffix captures through layer 44")
 
     def read(case, layer):
         path = args.captures / case["id"] / "rank-0" / f"layer-{layer}.pt"
         tensor = torch.load(path, map_location="cpu", weights_only=True)
         if (
-            tensor.shape != (case["prompt_tokens"], 4096)
+            tensor.shape != (case["prompt_tokens"], HIDDEN_SIZE)
             or not torch.isfinite(tensor).all()
         ):
             raise ValueError("Invalid teacher activation tensor")
@@ -103,7 +100,7 @@ def main(argv=None):
 
     # Basis sampling uses only training documents; no validation/test token is fitted.
     sample = []
-    mean = torch.zeros(4096, device=args.device)
+    mean = torch.zeros(HIDDEN_SIZE, device=args.device)
     source_square = torch.zeros_like(mean)
     target_sum = {layer: torch.zeros_like(mean) for layer in layers[1:]}
     paired_sum = {layer: torch.zeros_like(mean) for layer in layers[1:]}
@@ -134,14 +131,15 @@ def main(argv=None):
     }
     del source_square, paired_sum, target_sum
     sampled = torch.cat(sample, dim=0) - mean
-    rank = min(args.rank, sampled.shape[0] - 1, 4096)
+    rank = min(args.rank, sampled.shape[0] - 1, HIDDEN_SIZE)
     _, _, down = torch.pca_lowrank(sampled, q=rank, center=False, niter=2)
     del sample, sampled
     gram = torch.zeros((rank, rank), device=args.device)
     cross = {
-        layer: torch.zeros((rank, 4096), device=args.device) for layer in layers[1:]
+        layer: torch.zeros((rank, HIDDEN_SIZE), device=args.device)
+        for layer in layers[1:]
     }
-    bias = {layer: torch.zeros(4096, device=args.device) for layer in layers[1:]}
+    bias = {layer: torch.zeros(HIDDEN_SIZE, device=args.device) for layer in layers[1:]}
     for number, case in enumerate(train):
         source = read(case, cut)
         projected = (source - mean) @ down
@@ -199,27 +197,17 @@ def main(argv=None):
         }
     artifact = {
         "cut": cut,
-        "layers": 45,
+        "layers": MODEL_LAYERS,
         "rank": rank,
         "ridge": args.ridge,
-        "teacher_revision": "423acf37583782c51c142d145aef733d72943d93",
-        "teacher_precision": "NVFP4-Marlin-W4A16",
+        "teacher_revision": teacher["revision"],
+        "teacher_precision": teacher["precision"],
         "seed": 42,
         "format_version": 2,
         "representation": "diagonal-low-rank",
         "weights": cpu_weights(weights),
     }
     torch.save(artifact, args.output / "projector.pt")
-    if args.dense_compat:
-        compatible = {
-            **artifact,
-            "format_version": 1,
-            "representation": "dense-residual-compatibility",
-            "rank": 4096,
-            "fitted_rank": rank,
-            "weights": cpu_weights(densify_affine_weights(weights)),
-        }
-        torch.save(compatible, args.output / "projector-compat.pt")
     summary = {
         "status": "complete",
         "cut": cut,

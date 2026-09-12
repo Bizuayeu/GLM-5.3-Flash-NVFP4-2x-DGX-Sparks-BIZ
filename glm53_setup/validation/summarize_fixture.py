@@ -99,8 +99,6 @@ def assess_directory(directory):
     outputs = {}
     for label in LABELS:
         path = directory / (label + ".json")
-        if label == "long" and not path.exists():
-            path = directory / "long-1300.json"
         outputs[label] = json.loads(path.read_text())
     if (directory / "long-forced.json").exists():
         outputs["long-forced"] = json.loads(

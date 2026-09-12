@@ -2,7 +2,7 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
-**Required enterprise evaluation item — NOT RUN.** This is a test specification, not an implemented runner or a result. GPU evaluation remains paused at the user's request.
+**Required enterprise evaluation item — NOT RUN.** This specification defines the planned evaluation; results are reported only after a complete measured run.
 
 ## Scope and fixed source
 

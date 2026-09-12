@@ -1,6 +1,6 @@
 import unittest
 
-from glm53_setup.validation.llkv_corpus import (
+from glm53_setup.validation.lpa_corpus import (
     accepted_code_license,
     document_key,
     split_for,

@@ -1,10 +1,10 @@
 # LPA: Late-prefill approximation — experimental
 
-[日本語](llkv-approximation.ja.md) · [Baseline](benchmarks.md)
+[日本語](lpa.ja.md) · [Baseline](benchmarks.md)
 
 This experiment predicts the normalized attention inputs of later GLM layers, builds their cache and recurrent state with the existing attention implementation, and skips historical MLP rows. Generation still executes all language layers. The checkpoint is unchanged; only a small auxiliary projector is fitted.
 
-The feature name is **LPA (Late-prefill approximation)**. The operator configuration uses `[lpa]`; `lpa-fixture`, `lpa-corpus` and `lpa-train` are the current CLI names. Existing `llkv-*` commands, RPC identifiers and document URLs remain compatible. Older images expose only the legacy CLI names until rebuilt.
+The feature name is **LPA (Late-prefill approximation)**. Configuration uses `[lpa]`; commands are `lpa-fixture`, `lpa-corpus` and `lpa-train`. Rebuild images against the [current image contract](startup-configuration.md#current-image-contract); old interfaces are not retained.
 
 The starting point was [Kishida's Qwen3 experiment](https://nowokay.hatenablog.com/entry/2026/09/11/120001). The GLM adaptation has its own state and quality tests.
 
@@ -37,11 +37,11 @@ The sampling sizes and rank/ridge values are pilot parameters, not established o
 
 ## Teacher collection and experimental control
 
-The reference-image server needs `--worker-extension-cls glm53_setup.runtime.llkv.LLKVWorkerExtension` and `VLLM_SERVER_DEV_MODE=1` for the private `/collective_rpc` endpoint. It accepts the named `llkv_configure` and `llkv_report` worker methods. No request may enter between configuration and the controlled request. Use the server's tokenizer and identical template settings to determine the actual prompt length.
+The reference-image server needs `--worker-extension-cls glm53_setup.runtime.lpa.LPAWorkerExtension` and `VLLM_SERVER_DEV_MODE=1` for the private `/collective_rpc` endpoint. It accepts the named `lpa_configure` and `lpa_report` worker methods. No request may enter between configuration and the controlled request. Use the server's tokenizer and identical template settings to determine the actual prompt length.
 
-`llkv_configure` takes `mode`, `cut`, `prompt_length`, `tail`, and, for prediction, `predictor_path`. Modes are `off`, `capture`, `oracle`, `identity`, and `predict`. The response distinguishes requested mode from effective mode. `capture` records teacher attention inputs; `oracle` reuses that exact prompt's capture to test state injection. `identity` is a diagnostic baseline, not a trained approximation.
+`lpa_configure` takes `mode`, `cut`, `prompt_length`, `tail`, and, for prediction, `predictor_path`. Modes are `off`, `capture`, `oracle`, `identity`, and `predict`. The response distinguishes requested mode from effective mode. `capture` records teacher attention inputs; `oracle` reuses that exact prompt's capture to test state injection. `identity` is a diagnostic baseline, not a trained approximation.
 
-`llkv_report(output=...)` writes `rank-N/layer-L.pt` tensors under a fresh directory. The trainer expects a completed collection `result.json` containing `cut` and `cases`, with each case carrying `id`, `split`, and `prompt_tokens`; tensors live at `<id>/rank-0/layer-L.pt`. Keep complete-document splits even when selecting interior code windows. The same wider capture can train a later cut. Fit on train only, select with validation, and reserve test for final evaluation.
+`lpa_report(output=...)` writes `rank-N/layer-L.pt` tensors under a fresh directory. The trainer expects a completed collection `result.json` containing `cut` and `cases`, with each case carrying `id`, `split`, and `prompt_tokens`; tensors live at `<id>/rank-0/layer-L.pt`. Keep complete-document splits even when selecting interior code windows. The same wider capture can train a later cut. Fit on train only, select with validation, and reserve test for final evaluation.
 
 `profile=true` records per-layer and attention/MLP CUDA event spans. Use a single output token when isolating prefill, and keep instrumentation off for final wall-time comparisons. Communication inside those modules is included in their spans, not measured as an independent term.
 

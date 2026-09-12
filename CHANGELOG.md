@@ -26,6 +26,9 @@
 
 ### Changed
 
+- Make LPA canonical across modules, worker class, RPCs, mount path, tests and documentation; require the current image contract without legacy interfaces.
+- Validate startup profiles at load/command boundaries, removing repeated full-schema validation during serve-argument assembly.
+
 - Name the feature LPA (Late-prefill approximation), with `[lpa]` settings and `lpa-*` CLI aliases while preserving earlier settings and RPC compatibility.
 - Allow `resources.run_seconds = 0` to disable the run deadline while retaining low-memory protection; this does not add automatic restart or production availability qualification.
 

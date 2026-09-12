@@ -5,10 +5,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from glm53_setup.runtime.llkv import (
+from glm53_setup.runtime.lpa import (
     AttentionInputExperiment,
     ExperimentSpec,
-    LLKVWorkerExtension,
+    LPAWorkerExtension,
 )
 
 
@@ -54,7 +54,7 @@ class ExperimentSpecTests(unittest.TestCase):
             self.assertEqual(spec.approximate_count(positions), 0)
 
     def test_mtp_requires_explicit_opt_in_and_supported_method(self):
-        worker = LLKVWorkerExtension()
+        worker = LPAWorkerExtension()
         worker.vllm_config = SimpleNamespace(
             scheduler_config=SimpleNamespace(max_num_seqs=1),
             cache_config=SimpleNamespace(enable_prefix_caching=False),
@@ -63,14 +63,14 @@ class ExperimentSpecTests(unittest.TestCase):
         )
         worker.get_model = lambda: "target-only"
         with self.assertRaises(ValueError):
-            worker.llkv_configure()
-        with patch("glm53_setup.runtime.llkv.AttentionInputExperiment") as experiment:
-            worker.llkv_configure(allow_mtp=True, mode="off")
+            worker.lpa_configure()
+        with patch("glm53_setup.runtime.lpa.AttentionInputExperiment") as experiment:
+            worker.lpa_configure(allow_mtp=True, mode="off")
             experiment.assert_called_once_with("target-only")
             experiment.return_value.configure.assert_called_once_with(mode="off")
         worker.vllm_config.speculative_config.method = "eagle"
         with self.assertRaises(ValueError):
-            worker.llkv_configure(allow_mtp=True)
+            worker.lpa_configure(allow_mtp=True)
 
     def test_fully_protected_prompt_bypasses_loading_and_prediction(self):
         experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)

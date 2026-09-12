@@ -8,6 +8,8 @@ rows. No runtime patch or GPU dependency is activated by importing this file.
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import REVISION, TEACHER_PRECISION
+
 
 @dataclass(frozen=True)
 class ExperimentSpec:
@@ -185,7 +187,7 @@ class AttentionInputExperiment:
         if skip_mla_queries and self.reference_mask is None:
             import glm53_reference
 
-            from .llkv_query import ReferenceQueryMask
+            from .lpa_query import ReferenceQueryMask
 
             if isinstance(glm53_reference.sparse_nope_reference, ReferenceQueryMask):
                 raise ValueError("Reference attention already has an experiment owner")
@@ -251,18 +253,22 @@ class AttentionInputExperiment:
         artifact = self.torch.load(
             predictor_path, map_location="cpu", weights_only=True
         )
-        version = artifact.get("format_version", 1)
-        if version not in (1, 2):
+        if artifact.get("format_version") != 2:
             raise ValueError("Unsupported projector artifact version")
+        if (
+            artifact.get("teacher_revision") != REVISION
+            or artifact.get("teacher_precision") != TEACHER_PRECISION
+        ):
+            raise ValueError(
+                "Projector teacher does not match the pinned model/precision"
+            )
         if artifact["cut"] != cut or artifact["layers"] != len(self.layers):
             raise ValueError("Predictor does not match the layer boundary")
         if set(artifact["weights"]) != set(range(cut + 1, len(self.layers))):
             raise ValueError("Projector layers are incomplete or unexpected")
         width = self.layers[cut].hidden_size
         for weights in artifact["weights"].values():
-            expected_keys = {"mean", "down", "up", "bias"} | (
-                {"scale"} if version == 2 else set()
-            )
+            expected_keys = {"mean", "down", "up", "bias", "scale"}
             if set(weights) != expected_keys:
                 raise ValueError("Unexpected projector tensors")
             shapes = {"mean": (width,), "bias": (width,), "scale": (width,)}
@@ -363,7 +369,7 @@ class AttentionInputExperiment:
                 source = self.source[:count].float()
                 # Fitted low-rank residual map, evaluated in FP32 before BF16 cast.
                 replacement = (
-                    source * w.get("scale", 1.0)
+                    source * w["scale"]
                     + ((source - w["mean"]) @ w["down"]) @ w["up"]
                     + w["bias"]
                 )
@@ -429,13 +435,13 @@ class AttentionInputExperiment:
         }
 
 
-class LLKVWorkerExtension:
+class LPAWorkerExtension:
     """Explicit RPC entry points; no arbitrary source/eval is accepted."""
 
-    def llkv_configure(self, allow_mtp=False, **kwargs):
+    def lpa_configure(self, allow_mtp=False, **kwargs):
         config = self.vllm_config
         if config.scheduler_config.max_num_seqs != 1:
-            raise ValueError("LLKV experiments require max_num_seqs=1")
+            raise ValueError("LPA experiments require max_num_seqs=1")
         if type(allow_mtp) is not bool:
             raise ValueError("allow_mtp must be boolean")
         speculative = config.speculative_config
@@ -448,15 +454,17 @@ class LLKVWorkerExtension:
         if config.cache_config.enable_prefix_caching:
             raise ValueError("Prefix caching must be disabled")
         if not config.model_config.enforce_eager:
-            raise ValueError("LLKV experiments require eager execution")
-        if not hasattr(self, "llkv_experiment"):
+            raise ValueError("LPA experiments require eager execution")
+        if not hasattr(self, "lpa_experiment"):
             # get_model() is the target model, never model_runner.drafter.model.
             # The constructor rejects any MTP layer in this module tree. Draft
             # proposals/cache and acceptance/rollback remain owned by vLLM.
-            self.llkv_experiment = AttentionInputExperiment(self.get_model())
-        return self.llkv_experiment.configure(**kwargs)
+            self.lpa_experiment = AttentionInputExperiment(self.get_model())
+        return self.lpa_experiment.configure(**kwargs)
 
-    def llkv_report(self, output=None):
+    def lpa_report(self, output=None):
+        if not hasattr(self, "lpa_experiment"):
+            raise ValueError("Configure LPA before requesting a report")
         if output:
             output = str(Path(output) / f"rank-{self.rank}")
-        return self.llkv_experiment.report(output)
+        return self.lpa_experiment.report(output)

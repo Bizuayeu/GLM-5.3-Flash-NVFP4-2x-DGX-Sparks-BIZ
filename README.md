@@ -14,7 +14,7 @@ See [commercial use, modification and redistribution](docs/licensing.md) for per
 
 [One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
 
-[LPA (late-prefill approximation)](docs/llkv-approximation.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
+[LPA (late-prefill approximation)](docs/lpa.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
 
 | Scope | Status |
 |---|---|

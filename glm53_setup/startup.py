@@ -13,17 +13,14 @@ from pathlib import Path
 
 from . import service
 from . import startup_config as settings
-from .config import ROOT, load_lock
+from .config import MODEL_LAYERS, ROOT, load_lock
+from .io import write_json
 
 LABEL = "glm53.experiment.startup"
 
 
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def write_json(path, value):
-    Path(path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
 def projector_path(profile, config_path):
@@ -83,7 +80,10 @@ def command(profile, config_path, rank, name, cache=None):
         f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
     ]
     if profile["lpa"]["enabled"]:
-        args += ["-v", f"{projector_path(profile, config_path)}:/llkv/projector.pt:ro"]
+        target = "/lpa/projector.pt"
+        args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
+    if profile["profiling"]["enabled"]:
+        args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():
         args += ["-e", f"{key}={value}"]
     return args + [
@@ -127,7 +127,7 @@ def preflight(profile, config_path, rank):
     checks = service.fabric_checks(settings.site(profile, rank))
     checks["full_model"] = metadata["text_config"][
         "num_hidden_layers"
-    ] == 45 and not metadata.get("_test_fixture_only")
+    ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
     if profile["mtp"]["enabled"]:
         view = metadata.get("_local_mtp_metadata", {})
         checks["mtp_view"] = (
@@ -144,6 +144,8 @@ def preflight(profile, config_path, rank):
         service.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
+    if profile["lpa"]["enabled"]:
+        checks["lpa_worker"] = "GLM53_LPA_API=2" in (image["Config"].get("Env") or [])
     checks["reference_attention"] = (
         "GLM53_REFERENCE_ATTENTION=1" in image["Config"]["Env"]
     )
@@ -235,7 +237,7 @@ def ask(profile, request, sender=post):
     }
     if body.keys() - allowed:
         raise ValueError(
-            "Unsupported LLKV request fields; tokenization must stay identical"
+            "Unsupported LPA request fields; tokenization must stay identical"
         )
     encoded = sender(
         profile,
@@ -252,8 +254,8 @@ def ask(profile, request, sender=post):
     if not length or length + body["max_tokens"] > profile["context"]["max_model_len"]:
         raise ValueError("Prompt plus max_tokens exceeds configured context")
     rpc = {
-        "method": "llkv_configure",
-        "kwargs": settings.llkv_request(profile, length),
+        "method": "lpa_configure",
+        "kwargs": settings.lpa_request(profile, length),
         "timeout": profile["generation"]["timeout_seconds"],
     }
     try:
@@ -371,19 +373,26 @@ def main(argv=None):
     record = ROOT / "records" / (stamp + f"-startup-r{args.rank}")
     record.mkdir(parents=True)
     (ROOT / "state/tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
+    if profile["profiling"]["enabled"]:
+        (ROOT / "records/profiles" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)
     write_json(record / "preflight.json", result)
     write_json(record / "settings.json", profile)
     write_json(record / "command.json", cmd)
     print(service.run(*cmd), flush=True)
-    write_json(
-        state,
-        {
-            "name": name,
-            "fingerprint": settings.fingerprint(profile),
-            "record": str(record),
-        },
-    )
+    try:
+        write_json(
+            state,
+            {
+                "name": name,
+                "fingerprint": settings.fingerprint(profile),
+                "record": str(record),
+            },
+        )
+    except BaseException:
+        inspect_owned(name)
+        service.run("docker", "stop", name)
+        raise
     print(
         "Supervising in foreground; Ctrl+C, low memory or an enabled deadline stops this rank.",
         flush=True,

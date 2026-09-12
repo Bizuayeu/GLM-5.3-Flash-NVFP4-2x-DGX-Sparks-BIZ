@@ -1,10 +1,10 @@
 # LPA：後段Prefill近似 — 実験機能
 
-[English](llkv-approximation.md) · [基準ベンチ](benchmarks.ja.md)
+[English](lpa.md) · [基準ベンチ](benchmarks.ja.md)
 
 前段の表現から後段各層の正規化済みAttention入力を予測し、GLM本来のAttention処理でキャッシュと再帰状態を作る。過去tokenのMLP計算を省略し、生成時は全層を実行する。本体のcheckpointは変更せず、小さな補助器だけを学習する。
 
-機能名は **LPA（Late-prefill approximation）**。起動設定は `[lpa]`、CLIは `lpa-fixture`・`lpa-corpus`・`lpa-train` と表記する。既存の `llkv-*` コマンド・RPC名・文書URLも互換性を保つ。旧イメージでは再ビルドまで従来のCLI名を使う。
+機能名は **LPA（Late-prefill approximation）**。起動設定は `[lpa]`、CLIは `lpa-fixture`・`lpa-corpus`・`lpa-train` と表記する。[現行イメージの契約](startup-configuration.ja.md#現行イメージの契約)に合わせて再ビルドし、旧インターフェースは残さない。
 
 着想は[きしだ氏のQwen3実験](https://nowokay.hatenablog.com/entry/2026/09/11/120001)から。GLMへの適用には、独立した状態・品質の検査を設けている。
 
@@ -37,11 +37,11 @@ python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector 
 
 ## 教師採取と実験の制御
 
-reference imageのサーバーに`--worker-extension-cls glm53_setup.runtime.llkv.LLKVWorkerExtension`と`VLLM_SERVER_DEV_MODE=1`を指定する。私用の`/collective_rpc`から`llkv_configure`と`llkv_report`を呼ぶ。設定と対象要求の間に別の要求を入れず、サーバーと同じtokenizer・template設定で実際の入力長を求める。
+reference imageのサーバーに`--worker-extension-cls glm53_setup.runtime.lpa.LPAWorkerExtension`と`VLLM_SERVER_DEV_MODE=1`を指定する。私用の`/collective_rpc`から`lpa_configure`と`lpa_report`を呼ぶ。設定と対象要求の間に別の要求を入れず、サーバーと同じtokenizer・template設定で実際の入力長を求める。
 
-`llkv_configure`の引数は`mode`・`cut`・`prompt_length`・`tail`、予測時は`predictor_path`。modeは`off`・`capture`・`oracle`・`identity`・`predict`で、返り値には要求modeと実効modeを分けて載せる。`capture`は教師入力を採取し、`oracle`は同じ入力の採取値で状態注入を検査する。`identity`は診断用であり、学習済み近似器ではない。
+`lpa_configure`の引数は`mode`・`cut`・`prompt_length`・`tail`、予測時は`predictor_path`。modeは`off`・`capture`・`oracle`・`identity`・`predict`で、返り値には要求modeと実効modeを分けて載せる。`capture`は教師入力を採取し、`oracle`は同じ入力の採取値で状態注入を検査する。`identity`は診断用であり、学習済み近似器ではない。
 
-`llkv_report(output=...)`は新しい出力先へ`rank-N/layer-L.pt`を保存する。学習側は、`cut`と`cases`を持つ採取完了の`result.json`を読む。各caseに`id`・`split`・`prompt_tokens`、tensorは`<id>/rank-0/layer-L.pt`として置く。コードの途中を切り出しても文書単位のsplitを維持する。広く採った後段の教師データは、後ろ寄りのcutにも再利用できる。trainで学習し、validationで候補を選び、testは最終評価まで使わない。
+`lpa_report(output=...)`は新しい出力先へ`rank-N/layer-L.pt`を保存する。学習側は、`cut`と`cases`を持つ採取完了の`result.json`を読む。各caseに`id`・`split`・`prompt_tokens`、tensorは`<id>/rank-0/layer-L.pt`として置く。コードの途中を切り出しても文書単位のsplitを維持する。広く採った後段の教師データは、後ろ寄りのcutにも再利用できる。trainで学習し、validationで候補を選び、testは最終評価まで使わない。
 
 `profile=true`で層全体とAttention/MLPのCUDA event区間を計測する。Prefillを分離する場合は出力1tokenにし、最終の実時間比較では計測hookを無効にする。モジュール内の通信時間は各区間に含まれ、独立した通信計測ではない。
 

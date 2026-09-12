@@ -9,6 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "state"
 RECORDS = ROOT / "records"
 LOCK_PATH = ROOT / "config/runtime.lock.json"
+MODEL_LAYERS = 45
+HIDDEN_SIZE = 4096
+FIXTURE_LAYERS = 4
+TEACHER_PRECISION = "NVFP4-Marlin-W4A16"
 
 
 def load_lock():

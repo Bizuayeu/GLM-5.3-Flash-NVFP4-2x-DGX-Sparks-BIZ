@@ -20,12 +20,9 @@ COMMANDS = {
     "probe-attention": "validation.probe_attention",
     "test-reference": "validation.reference_check",
     "patch-reference": "runtime.patch_nope_reference",
-    "lpa-fixture": "validation.run_llkv",
-    "lpa-corpus": "validation.llkv_corpus",
-    "lpa-train": "validation.train_llkv",
-    "llkv-fixture": "validation.run_llkv",
-    "llkv-corpus": "validation.llkv_corpus",
-    "llkv-train": "validation.train_llkv",
+    "lpa-fixture": "validation.run_lpa",
+    "lpa-corpus": "validation.lpa_corpus",
+    "lpa-train": "validation.train_lpa",
 }
 
 
@@ -41,7 +38,8 @@ def main(argv=None):
         return
     if argv[0] not in COMMANDS:
         parser.error("unknown command: " + argv[0])
-    module = importlib.import_module("glm53_setup." + COMMANDS[argv[0]])
+    target = COMMANDS[argv[0]]
+    module = importlib.import_module("glm53_setup." + target)
     module.main(argv[1:])
 
 

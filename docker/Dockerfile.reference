@@ -9,4 +9,5 @@ COPY LICENSES /opt/glm53/LICENSES
 ENV PYTHONPATH=/opt/glm53
 RUN python3 -m glm53_setup patch-reference
 ENV GLM53_REFERENCE_ATTENTION=1
+ENV GLM53_LPA_API=2
 LABEL glm53.setup.model="glm53-nvidia" glm53.setup.attention="full-candidate-reference"

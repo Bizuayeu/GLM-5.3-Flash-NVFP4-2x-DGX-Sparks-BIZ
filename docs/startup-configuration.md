@@ -59,7 +59,9 @@ run_seconds = 0
 
 This enables a run without a scheduled stop, not a 24/7 availability guarantee. Automatic host-startup integration, coordinated two-rank recovery and redundant failover remain unimplemented. The foreground supervisor must remain alive; production/harness qualification is still pending.
 
-Legacy `[allkv]` / `[llkv]` sections and their image keys load as `[lpa]` / `runtime.lpa_image`. Mixed spellings are rejected. Renaming alone preserves the running profile fingerprint; actual setting changes require a restart.
+## Current image contract
+
+Use a freshly built image with `GLM53_LPA_API=2`, `glm53_setup.runtime.lpa.LPAWorkerExtension`, `lpa_configure` / `lpa_report`, and `/lpa/projector.pt`. Preflight rejects images without that marker. There is no old-command or old-image fallback. Rebuild from current source, verify the image ID on both hosts and update the configured image before starting.
 
 ## Feature combinations and limits
 
@@ -67,4 +69,4 @@ Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared
 
 LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.
 
-Scope: TP=2, text/tools, one active sequence, Marlin W4A16, FP8 KV. LPA requires eager execution and no prefix caching. MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](llkv-approximation.md) and [MTP](speculative-decoding.md) for evidence.
+Scope: TP=2, text/tools, one active sequence, Marlin W4A16, FP8 KV. LPA requires eager execution and no prefix caching. MTP depths are limited to 1 and 3. Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](lpa.md) and [MTP](speculative-decoding.md) for evidence.

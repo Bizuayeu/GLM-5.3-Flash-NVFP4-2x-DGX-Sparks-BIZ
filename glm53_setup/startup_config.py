@@ -9,23 +9,12 @@ import tomllib
 from pathlib import Path, PurePosixPath
 
 from . import service
-from .config import ROOT, load_lock
+from .config import MODEL_LAYERS, ROOT, load_lock
 
 
 def load(path):
     with Path(path).open("rb") as stream:
         profile = tomllib.load(stream)
-    # Accept the initial spelling while operators migrate the same live profile.
-    for table, old, new in [
-        (profile, "llkv", "lpa"),
-        (profile, "allkv", "lpa"),
-        (profile.get("runtime", {}), "llkv_image", "lpa_image"),
-        (profile.get("runtime", {}), "allkv_image", "lpa_image"),
-    ]:
-        if old in table:
-            if new in table:
-                raise ValueError(f"Use only {new}, not both {old} and {new}")
-            table[new] = table.pop(old)
     validate(profile)
     return profile
 
@@ -74,8 +63,10 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
-    if profile["context"]["max_num_seqs"] != 1:
-        raise ValueError("This experimental launcher supports max_num_seqs=1")
+    if profile["lpa"]["enabled"] and profile["context"]["max_num_seqs"] != 1:
+        raise ValueError(
+            "LPA requires max_num_seqs=1; use a separate no-LPA throughput profile"
+        )
     if not 0 < profile["cache"]["gpu_memory_utilization"] <= 1:
         raise ValueError("gpu_memory_utilization must be in (0, 1]")
     if profile["generation"]["temperature"] < 0:
@@ -91,18 +82,18 @@ def validate(profile):
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")
-    llkv = profile["lpa"]
+    lpa = profile["lpa"]
     if (
-        not 0 <= llkv["cut"] < 45
-        or not 1 <= llkv["tail"] <= profile["context"]["max_model_len"]
+        not 0 <= lpa["cut"] < MODEL_LAYERS
+        or not 1 <= lpa["tail"] <= profile["context"]["max_model_len"]
     ):
-        raise ValueError("Invalid LLKV cut or tail")
-    if not re.fullmatch(r"[0-9a-f]{64}", llkv["projector_sha256"]):
+        raise ValueError("Invalid LPA cut or tail")
+    if not re.fullmatch(r"[0-9a-f]{64}", lpa["projector_sha256"]):
         raise ValueError("Invalid projector_sha256")
-    if llkv["enabled"] and (
+    if lpa["enabled"] and (
         profile["cache"]["prefix_caching"] or not profile["runtime"]["enforce_eager"]
     ):
-        raise ValueError("LLKV requires eager execution and prefix caching disabled")
+        raise ValueError("LPA requires eager execution and prefix caching disabled")
     for rank in (0, 1):
         service.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
@@ -123,11 +114,7 @@ def site(profile, rank):
 
 
 def fingerprint(profile):
-    # Keep schema-v1 fingerprints stable across the user-facing LPA rename.
-    canonical = copy.deepcopy(profile)
-    canonical["llkv"] = canonical.pop("lpa")
-    canonical["runtime"]["llkv_image"] = canonical["runtime"].pop("lpa_image")
-    value = {"settings": canonical, "lock": load_lock()}
+    value = {"settings": profile, "lock": load_lock()}
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
@@ -152,7 +139,7 @@ def environment(profile, rank):
 
 
 def serve_args(profile, rank, model_path):
-    validate(profile)
+    """Assemble a profile already validated by load() or startup.command()."""
     args = service.serve_args(site(profile, rank), model_path)
     values = {
         "--served-model-name": profile["api"]["served_model_name"],
@@ -208,7 +195,21 @@ def serve_args(profile, rank, model_path):
     if profile["lpa"]["enabled"]:
         args += [
             "--worker-extension-cls",
-            "glm53_setup.runtime.llkv.LLKVWorkerExtension",
+            "glm53_setup.runtime.lpa.LPAWorkerExtension",
+        ]
+    if profile["profiling"]["enabled"]:
+        args += [
+            "--profiler-config",
+            json.dumps(
+                {
+                    "profiler": "torch",
+                    "torch_profiler_dir": "/profiles",
+                    "torch_profiler_with_stack": False,
+                    "torch_profiler_record_shapes": False,
+                    "torch_profiler_with_memory": False,
+                    "torch_profiler_use_gzip": True,
+                }
+            ),
         ]
     return args
 
@@ -232,14 +233,14 @@ def request_body(profile, request):
     return body
 
 
-def llkv_request(profile, length):
-    llkv = profile["lpa"]
+def lpa_request(profile, length):
+    lpa = profile["lpa"]
     return {
-        "mode": "predict" if llkv["enabled"] and length > llkv["tail"] else "off",
-        "cut": llkv["cut"],
+        "mode": "predict" if lpa["enabled"] and length > lpa["tail"] else "off",
+        "cut": lpa["cut"],
         "prompt_length": length,
-        "tail": min(llkv["tail"], length),
-        "predictor_path": "/llkv/projector.pt",
-        "skip_mla_queries": llkv["skip_mla_queries"],
+        "tail": min(lpa["tail"], length),
+        "predictor_path": "/lpa/projector.pt",
+        "skip_mla_queries": lpa["skip_mla_queries"],
         "allow_mtp": profile["mtp"]["enabled"],
     }

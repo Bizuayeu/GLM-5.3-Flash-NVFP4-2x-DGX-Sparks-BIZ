@@ -5,7 +5,7 @@ This is a beta engineering project. Keep claims limited to the exact hardware, i
 Use Python 3.11 or newer and run from a checkout:
 
 ```sh
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ruff check glm53_setup tests tools
 ruff format --check glm53_setup tests tools
 python tools/check_publication.py

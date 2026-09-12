@@ -53,7 +53,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements/huggingface.lock.txt
 python -m glm53_setup --version
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 python tools/check_publication.py
 ```
 

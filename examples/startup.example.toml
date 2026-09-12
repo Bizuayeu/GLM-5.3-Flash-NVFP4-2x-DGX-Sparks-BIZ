@@ -20,6 +20,10 @@ max_num_seqs = 1
 max_num_batched_tokens = 512
 chunked_prefill = true
 
+[profiling]
+enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
+# カーネル計測用。通常の速度比較はfalseで実行する。
+
 [cache]
 kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される

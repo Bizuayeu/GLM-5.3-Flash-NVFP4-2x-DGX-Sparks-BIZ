@@ -9,7 +9,7 @@ class ReferenceQueryMask:
 
     def __init__(self, original):
         self.original = original
-        self.scope = ContextVar("glm53_llkv_query_scope", default=None)
+        self.scope = ContextVar("glm53_lpa_query_scope", default=None)
         self.counts = {}
 
     @contextmanager
