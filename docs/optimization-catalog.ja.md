@@ -24,9 +24,9 @@
 
 **P06の追加観測（2026-09-12、上記基準点以後）：** 単体Graphの起動設定と候補イメージを実装。融合・LPA・MTPなしの小層fixtureでcapture/replayを確認しましたが、2K入力の生成tokenがeagerと分岐したため、数値受入と全モデルへの進行を保留しました。既定はeagerのままです。[観測・固定資産・再開条件](component-validation.md#independent-decode-graph-fixture)。下表の基準点の結果とは区別します。
 
-**P13の追加観測：** 1→2→1系列の独立比較で、測定した短文／2K入力・64出力tokenの同時2要求についてthroughput改善と限定タスクの一致を確認しました。受入はこの負荷の範囲です。**設定上限のcontext長×同時数のKV確保・容量検収を意味しません。** [実測と容量条件](benchmarks.ja.md#標準batchingの独立評価)を併記します。
+**P13の追加観測：** 1→2→1系列の独立比較で、短文／2K入力・64出力tokenの同時2要求についてthroughput改善と限定タスクの一致を確認しました。別の容量試験では16,320入力＋64出力を2要求同時に完了しました。**性能・品質・容量の検収範囲は分け、設定上限を変えてもKVが自動増額されるとは扱いません。** [実測と容量条件](benchmarks.ja.md#標準batchingの独立評価)を併記します。
 
-**P05の追加観測：** ゼロ埋めによるnative attentionの直接適用は、候補幅2176のdecode非対応と数値検査未達により不採用です。候補を削って合わせる変更は行っていません。[部品検査](component-validation.md#direct-padded-native-attention-probe)。
+**P05の追加観測：** ゼロ埋めによるnative attentionの直接適用は、候補幅2176のdecode非対応と数値検査未達により不採用です。prefill限定試験も最初の形状で拒否され、未検収です。候補を削って合わせる変更は行っていません。[部品検査](component-validation.md#direct-padded-native-attention-probe)。
 
 ## 性能施策一覧
 

@@ -24,9 +24,9 @@ The observed division of benefit is primarily decode for MTP, long-input prefill
 
 **P06 update after the baseline (2026-09-12):** Independent Graph startup settings and a candidate image are implemented. A truncated fixture without fusion/LPA/MTP demonstrated capture/replay but diverged from eager output tokens at 2K input. Numerical acceptance and full-model progression are paused; eager remains the default. See [observations, pinned assets and resumption criteria](component-validation.md#independent-decode-graph-fixture). This update is separate from the dated baseline rows below.
 
-**P13 update:** Independent 1→2→1-sequence comparisons established throughput improvement and limited task agreement for the measured short/2K-input, 64-output-token workload with two concurrent requests. Acceptance is limited to that workload; **it does not reserve or qualify KV capacity for configured maximum context × concurrency**. See [measurements and capacity conditions](benchmarks.md#independent-active-batching).
+**P13 update:** Independent 1→2→1-sequence comparisons established throughput improvement and limited task agreement for the short/2K-input, 64-output-token workload with two concurrent requests. A separate capacity check completed two concurrent 16,320-input/64-output requests. **Keep performance, quality and capacity scopes distinct; changing configured limits does not automatically enlarge KV reservation.** See [measurements and capacity conditions](benchmarks.md#independent-active-batching).
 
-**P05 update:** Direct zero-padded native attention is not adopted: the decode path rejected candidate width 2176 and the numerical checks did not pass. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
+**P05 update:** Direct zero-padded native attention is not adopted: the decode path rejected candidate width 2176 and the numerical checks did not pass. A prefill-only probe also rejected its first shape and remains unqualified. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
 
 ## Performance initiatives
 

@@ -14,6 +14,7 @@ from glm53_setup.io import write_json
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--prefill-only", action="store_true")
     args = parser.parse_args(argv)
     args.output.mkdir(parents=True, exist_ok=False)
     os.environ.update(GLM53_FUSED_UNPACK="0", GLM53_ASYNC_INDEX_CHECKS="0")
@@ -36,6 +37,8 @@ def main(argv=None):
         "status": "running",
         "scope": "padded native attention component; no full model or Graphs",
         "device": torch.cuda.get_device_name(),
+        "prefill_only": args.prefill_only,
+        "zero_initialized_output": args.prefill_only,
         "cases": [],
         "timings": [],
     }
@@ -77,6 +80,11 @@ def main(argv=None):
                 sparse_mla_top_k=width,
                 kv_scale_format="arbitrary_fp32",
                 backend="sparse",
+                out=torch.zeros(
+                    tokens, 1, heads, 512, dtype=torch.bfloat16, device="cuda"
+                )
+                if args.prefill_only
+                else None,
             ).squeeze(1)
 
         return call
@@ -84,15 +92,21 @@ def main(argv=None):
     save()
     try:
         pack()
+        check_tokens = 65 if args.prefill_only else 3
         for heads in (32, 64):
             for width in (63, 64, 65, 2048, 2051, 2176):
-                query = torch.randn(3, heads, 512, dtype=torch.bfloat16, device="cuda")
-                indices = torch.full((3, width), -1, dtype=torch.int32, device="cuda")
+                query = torch.randn(
+                    check_tokens, heads, 512, dtype=torch.bfloat16, device="cuda"
+                )
+                indices = torch.full(
+                    (check_tokens, width), -1, dtype=torch.int32, device="cuda"
+                )
                 count = min(width, n)
                 indices[0, :count] = torch.arange(
                     count, dtype=torch.int32, device="cuda"
                 )
-                indices[1, :17] = torch.arange(17, dtype=torch.int32, device="cuda")
+                partial = slice(-17, None) if args.prefill_only else slice(0, 17)
+                indices[1, partial] = torch.arange(17, dtype=torch.int32, device="cuda")
                 expected = sparse_nope_reference(query, packed, indices, scale).float()
                 actual = native_call(query, indices)().float()
                 torch.cuda.synchronize()
@@ -104,11 +118,13 @@ def main(argv=None):
                 error = (actual - expected).abs().max().item()
                 case = {
                     "heads": heads,
+                    "queries": check_tokens,
+                    "partial_candidates": "suffix" if args.prefill_only else "prefix",
                     "width": width,
                     "max_abs_error": error,
                     "tolerance": tolerance,
                     "finite": bool(torch.isfinite(actual).all()),
-                    "empty_row_zero": bool((actual[2] == 0).all()),
+                    "empty_row_zero": bool((actual[2:] == 0).all()),
                 }
                 case["passed"] = (
                     case["finite"] and error <= tolerance and case["empty_row_zero"]
@@ -119,9 +135,12 @@ def main(argv=None):
         latent.zero_()
         latent[2050, 0] = 16
         pack()
-        query = torch.zeros(1, 32, 512, dtype=torch.bfloat16, device="cuda")
+        tail_tokens = 65 if args.prefill_only else 1
+        query = torch.zeros(tail_tokens, 32, 512, dtype=torch.bfloat16, device="cuda")
         query[..., 0] = 16
-        indices = torch.arange(2051, dtype=torch.int32, device="cuda").unsqueeze(0)
+        indices = torch.arange(2051, dtype=torch.int32, device="cuda").repeat(
+            tail_tokens, 1
+        )
         expected = sparse_nope_reference(query, packed, indices, scale).float()
         actual = native_call(query, indices)().float()
         dropped = sparse_nope_reference(query, packed, indices[:, :2048], scale).float()
@@ -143,7 +162,7 @@ def main(argv=None):
             )
         latent.normal_()
         pack()
-        for tokens in (1, 8, 65):
+        for tokens in (65, 512) if args.prefill_only else (1, 8, 65):
             query = torch.randn(tokens, 32, 512, dtype=torch.bfloat16, device="cuda")
             indices = torch.arange(2176, dtype=torch.int32, device="cuda").repeat(
                 tokens, 1
