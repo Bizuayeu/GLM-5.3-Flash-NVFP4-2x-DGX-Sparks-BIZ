@@ -230,7 +230,7 @@ After warmup, each one-output condition used five measurements and each 128-outp
 | 8,192 | 1 | 24.6281 | 24.5649 | 24.6000 |
 | 8,192 | 128 | 33.7452 | 33.3316 | 33.5738 |
 
-Every arm passed eight task answers, two tool round trips and SSE disconnect/follow-up checks. **Accept as an opt-in within this independent eager scope.** The 128-output improvement over both controls was approximately 2.2–2.5% for short inputs, 1.8–1.9% at 2K and 0.7–1.2% at 8K. Prefill-only differences were small. Keep `index_checks="auto"` as the default (synchronous in eager); MTP/LPA/fusion combinations require separate acceptance.
+Every arm passed eight task answers, two tool round trips and SSE disconnect/follow-up checks. **Accept as an opt-in within this independent eager scope.** The 128-output improvement over both controls was approximately 2.2–2.5% for short inputs, 1.8–1.9% at 2K and 0.7–1.2% at 8K. Prefill-only differences were small. Keep `index_checks="auto"` as the default (synchronous in eager); The serial MTP/LPA/fusion combination is evaluated separately under P18 below.
 
 After timing/quality, a fresh server process used one profiler start/stop. Six off/async/restored 1/33-output requests were separated by one-second idle gaps. Both ranks yielded six distinct GPU windows; off/restored kernel, launch and NCCL counts matched before computing deltas.
 
@@ -243,3 +243,24 @@ After timing/quality, a fresh server process used one profiler start/stop. Six o
 | CPU synchronization APIs, rank 1 | 22 | 0 | About 22 |
 
 Kernel launches increased: this small gain is associated with reduced synchronization/copying, distinct from kernel fusion. Edge-window synchronization counts can include profiler control; the restored fraction of about 0.03 events/token is not interpreted as changed model work. Invalid-index device assertions can invalidate the CUDA context. This limited test does not certify general recovery or enterprise quality.
+
+## Serial integration of MTP, LPA, fused unpack and async checks (P18)
+
+On 2026-09-13 (Asia/Tokyo), `full-integration-v36` compared LPA off/on/restored while holding MTP k=3, fused unpack and checked asynchronous indices fixed. Both ranks used image `sha256:2e5d0c49bc8f536364931f4599f169ea21108efcb33be65316912d88f240be9f`, source `5f0856d`, TP2, eager, one sequence, context16,384, chunk512 and FP8 KV1 GiB per rank. LPA used cut32/tail512 with the fixed affine projector; Graphs, EP, PP and APC were off. Profile fingerprint: `3c61cd10dd7dcff44f730d78eb78aa0d09e07d159f58b3f090fd2ea6b6ed3422`.
+
+Median request time in seconds, with profiling disabled and a warmup excluded from each condition. One-output cases have five measured repetitions; 128-output cases have three.
+
+| Input tokens | Output tokens | LPA off | Combined | Restored off |
+|---:|---:|---:|---:|---:|
+| 2,048 | 1 | 5.3306 | 4.5186 | 5.3291 |
+| 2,048 | 128 | 10.6827 | 9.7582 | 10.7567 |
+| 8,192 | 1 | 21.6461 | 17.5501 | 21.6590 |
+| 8,192 | 128 | 25.6871 | 22.5424 | 26.2020 |
+
+LPA added approximately 15.2%/18.9–19.0% improvement to the 2K/8K one-output controls, and 8.7–9.3%/12.2–14.0% to the corresponding 128-output requests. The latter include prefill; they are not decode-only speedups. These are measured combinations, not products of independent gains. MTP was active: the three combined 128-output samples at 2K/8K recorded 146/136 drafts, 438/408 proposed tokens and 236/245 accepted tokens.
+
+The capture/off/oracle-full-MLP/oracle/off ladder produced identical 16-token texts. The 24 fixed tasks scored 22/23/24 under the strict formatting criteria, with no case where both native controls passed and the combined arm failed. The failures contained the correct numerical answer with unwanted explanation/formatting; they remain failures. All three long-context tool round trips passed, and worker reports confirmed the expected historical-query skips at layers35/39/43 only with LPA enabled. This is limited task evidence, not unrestricted equivalence or general quality qualification.
+
+`integration-ops-v38` separately completed 16,320 input plus 64 output tokens in all three arms, with no preemption, empty scheduler/KV afterward and a successful following request. Peak KV usage was approximately 0.630. Every arm also passed a 2K-input SSE disconnect after three nonempty chunks, early generation stop at 9 tokens and a following request. LPA-on worker reports confirmed active approximation during both capacity and cancellation tests. The [FreedomBench recheck and six-question long-prefix pilot](freedombench.md#integration-recheck-and-long-prefix-pilot) are reported separately.
+
+The whole run, including load, used a 112 GiB container cap and a 4 GiB host reserve. Minimum available RAM was 8.278/9.330 GiB on rank0/1. Both containers stopped without OOM; head exited0 and peer137 after explicit stop. **Accept this serial combination for the measured experimental scope.** Default settings and the normal 8 GiB reserve remain unchanged. This does not qualify Graphs, APC, batching/MTP combinations, larger contexts, sustained load, harness integration or production recovery; no routine-deployment receipt is issued.

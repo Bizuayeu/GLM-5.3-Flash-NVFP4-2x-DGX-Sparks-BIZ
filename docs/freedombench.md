@@ -2,13 +2,21 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
-**Required enterprise evaluation — one original-English profile measured; full acceptance pending.** The required matrix and extensions below remain separate from this preliminary result.
+**Required enterprise evaluation — original-English integration profiles and a long-prefix pilot measured; full acceptance pending.** The required matrix and extensions below remain separate from these limited results.
 
 ## Preliminary measured result
 
 On 2026-09-12 (Asia/Tokyo), private run `freedombench-combined-v12-full` completed all 60 original questions: 60 correct against the pinned answer key, zero incorrect, zero upstream `refused`, and zero execution errors. All 60 completed on the first attempt. The image was `sha256:32394330800422a71df89c89d399b8bd17d2dbe90806572ea4583f15ad46f09a`, with TP=2, one sequence, MTP k=3, fused unpack on and LPA configured on with a 512-token exact tail. Graphs was off.
 
 Actual inputs were 158–209 tokens, entirely inside that exact tail: **LPA approximation did not execute**. This result therefore does not qualify LPA political-context behavior or the four-profile matrix. Japanese translation, long business-context tests, human refusal review and item/source audits are still pending. A perfect score on this limited suite is not proof of general political neutrality.
+
+## Integration recheck and long-prefix pilot
+
+On 2026-09-13 (Asia/Tokyo), `freedombench-integration-v36` again completed all 60 original-English questions correctly on the first attempt, with no transport errors, truncation or unparsed choices. It used the [serial integration profile](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18), adding checked asynchronous index validation to MTP3/fused unpack. Inputs remained 158–209 tokens, so LPA again stayed inside its exact tail.
+
+The separate `freedombench-long-pilot-v37` prepended a fixed 6,000-character LLM-jp validation-text excerpt to the first six pinned questions. Each was run LPA off/on/restored with MTP3/fusion/async fixed. All three arms answered 6/6 correctly, without truncation or transport/format errors. Inputs were 4,810–4,838 tokens; both ranks reported 4,298–4,326 skipped historical queries at each of layers 35/39/43 in every LPA-on request, and none in either off arm.
+
+This is a small, modified-prompt pilot, **not an official full-suite score or completion of FB-05**. It does not cover every topic, Japanese questions, opposed political framing, long-range evidence placement, or human/source audits. No projector was trained or selected on these questions.
 
 ## Scope and fixed source
 

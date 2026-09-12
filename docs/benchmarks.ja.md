@@ -222,3 +222,24 @@ PPのprofiling開始前までのhead空き最小は約4.27 GiBで、4 GiBガー�
 | CPU同期API（rank1） | 22 | 0 | 約22 |
 
 kernel起動数自体は増えています。今回は同期・copy削減による小幅な改善であり、CUDAカーネル融合とは区別します。端の同期API数にはprofiler制御が含まれ得るため、復帰値の約0.03回/tokenの端数を演算の変化とは扱いません。不正indexのdevice assertはCUDA contextを使用不能にし得ます。一般的な運用障害の回復や企業品質を、この限定試験で認定したとはしません。
+
+## 直列併用の評価（P18）
+
+2026-09-13（Asia/Tokyo）の `full-integration-v36` は、MTP k=3・unpack融合・検査付き非同期index検証を固定し、LPA off／on／復帰を比較しました。両rankのimageは `sha256:2e5d0c49bc8f536364931f4599f169ea21108efcb33be65316912d88f240be9f`、source `5f0856d`。TP2、eager、1系列、context16,384、chunk512、FP8 KV各rank1 GiBです。LPAは固定affine projectorのcut32／tail512、Graphs・EP・PP・APCはoff。設定fingerprintは `3c61cd10dd7dcff44f730d78eb78aa0d09e07d159f58b3f090fd2ea6b6ed3422` です。
+
+profilerを無効にし、各条件のwarmupを除外した要求全体の中央値（秒）。1出力は5反復、128出力は3反復です。
+
+| 入力token | 出力token | LPA off | 併用 | off復帰 |
+|---:|---:|---:|---:|---:|
+| 2,048 | 1 | 5.3306 | 4.5186 | 5.3291 |
+| 2,048 | 128 | 10.6827 | 9.7582 | 10.7567 |
+| 8,192 | 1 | 21.6461 | 17.5501 | 21.6590 |
+| 8,192 | 128 | 25.6871 | 22.5424 | 26.2020 |
+
+LPA追加による短縮は、両off対照に対して2K／8Kの1出力で約15.2%／18.9〜19.0%、128出力で約8.7〜9.3%／12.2〜14.0%でした。後者はprefillを含み、decode単独の改善率ではありません。単体の改善率を掛け合わせず、併用状態を実測しています。MTPも作動し、併用の128出力・3反復で2K／8Kそれぞれ146／136 draft、438／408提案token、236／245採択tokenを記録しました。
+
+capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの生成文が一致しました。固定24課題の厳密な形式基準での正答数は22／23／24で、両off対照が正答して併用だけ失敗する回帰は0件です。不合格例には正しい数値と余分な説明・装飾が含まれていましたが、不合格として保持しています。長文tool往復は3条件とも成功し、LPA onのときだけ層35／39／43で想定どおり履歴queryを省略しました。一般品質や厳密な数値同値の検収を兼ねません。
+
+別run `integration-ops-v38` では、3条件とも16,320入力＋64出力を完了し、preemptionなし、終了後のscheduler／KV使用0、後続要求成功を確認しました。peak KV使用率は約0.630でした。2K入力のSSEを3つの非空chunk受信後に切断する検査も3条件で通過し、生成は9tokenで止まり、後続要求へ復帰しました。LPA onでは容量試験・切断試験の両方で近似の実作動を確認しています。[FreedomBench再確認と6問の長文付きpilot](freedombench.ja.md#併用構成の再確認と長文付きpilot)は別集計です。
+
+ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit0、peerは明示停止後exit137です。**この直列併用を実測した実験範囲で受け入れます。** 既定設定と通常の8 GiB reserveは変更していません。Graphs・APC・batching/MTP併用・さらに長い文脈・持続負荷・harness・本番復旧の検収を兼ねず、通常運用のqualification receiptは発行しません。
