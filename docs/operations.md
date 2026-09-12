@@ -2,6 +2,32 @@
 
 **Routine TP=2 deployment is not qualified yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md); the guarded routine launcher remains a candidate implementation.
 
+## Artifact storage and paths
+
+This section owns deployment storage paths. The model ID, revision and base-image digest are fixed by [runtime.lock.json](../config/runtime.lock.json); the repository does not distribute weights. Keep operator-specific hostnames, absolute home paths and credentials outside the public source.
+
+| Artifact | Default location on each Linux host | Role |
+|---|---|---|
+| Base checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | Fixed model/config/tokenizer view. Weight files link into the sibling `blobs/` directory, which holds their data |
+| MTP metadata view, optional | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | Links existing tensor data and adjusts quantization metadata for the checkpoint's BF16 MTP; [create the view](speculative-decoding.md#prepare-a-view-on-each-linux-host) without editing the original snapshot |
+| LPA projector, optional | A private file selected by `[lpa].projector` in the [startup TOML](startup-configuration.md), relative to that TOML or absolute | Separate trained auxiliary weights, not part of the NVIDIA snapshot or source archive. Obtain or train the matching projector using the [LPA procedure](lpa.md); verify its hash on both hosts. Plain inference and batching do not require it |
+| Docker base/reference images | Docker-managed storage | Pull the fixed base and build the reference image from this source. Source checkout, image and checkpoint are separate artifacts |
+| Local configuration and acquisition state | `<checkout>/state/` | Site startup settings and `download-status.json`; the latter records the actual acquired `snapshot` path |
+| Runtime/JIT cache and evidence | `<checkout>/state/tp2-runtime-cache/`, `<checkout>/records/` | Regenerable runtime data and private execution records; not model weights or distribution inputs |
+
+The experimental startup launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
+
+The downloader follows Hugging Face cache environment settings, but the current launcher assumes the default cache root. For this beta, leave `HF_HOME`/`HF_HUB_CACHE` unset when acquiring these assets and use the documented default. A successful custom-cache download does not establish that the launcher can find or mount it.
+
+Inspect the expected and recorded locations without starting a download, from the checkout on each Linux host:
+
+```sh
+python -c 'from pathlib import Path; from glm53_setup.config import MODEL, REVISION; print(Path.home() / ".cache/huggingface/hub" / ("models--" + MODEL.replace("/", "--")) / "snapshots" / REVISION)'
+python -c 'import json; from glm53_setup.config import STATE; s = json.loads((STATE / "download-status.json").read_text()); print(s.get("status"), s.get("snapshot", "not recorded"))'
+```
+
+The second command requires prior acquisition registration in this checkout. Neither printed path nor `status=complete` substitutes for checksum verification. Startup settings must reference the image actually built and inspected on both machines.
+
 ## Acquire and verify once
 
 Use the pinned revision from `config/runtime.lock.json`. `download` reuses Hugging Face cache files and prevents overlapping downloads in the same checkout. `verify-download` runs the official checksum verifier, which may contact Hugging Face for metadata. Offline inference is distinct from offline checksum verification.

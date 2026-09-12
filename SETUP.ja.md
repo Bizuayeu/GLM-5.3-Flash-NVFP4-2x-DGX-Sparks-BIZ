@@ -63,6 +63,8 @@ python tools/check_publication.py
 
 ## 3. 重みを一度取得し、それぞれのコピーを検証する
 
+取得前に[重み・MTP用view・LPA補助器の配置](docs/operations.md#artifact-storage-and-paths)を確認してください。各Linux機の既定HF cacheを使用し、本体checkpointと別の補助器を区別します。取得先と起動時の参照先が一致することを、同節の読み取りコマンドで確認できます。
+
 取得元は[NVIDIAのGLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)です。ダウンローダーはロックの固定revisionを読みます。`main`、別の量子化、似たモデル名へ置き換えません。固定スナップショットのライセンスと[第三者通知](THIRD_PARTY_NOTICES.md)を確認します。本プロジェクトのライセンスは重み・依存物の条件を置き換えません。
 
 取得担当ノードで[READMEの資材準備](README.md#prepare-assets)を実施し、manifest、snapshot、取得状態、チェックサム合格結果を保存します。ダウンロード状態の`complete`は存在・サイズ確認であり、チェックサム検証は別途必須です。

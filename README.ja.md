@@ -6,7 +6,24 @@
 
 [起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
 
-NVIDIAのGLM-5.3-Flash NVFP4を、DGX Spark相当のGB10システム2台で動かすためのセットアップ・検証ツールです。商用利用できるライセンスを軸に、資産の固定、検査結果の記録、戻せる運用を重視します。
+NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換機2台**で動かすためのコミュニティ製セットアップ・検証ツールです。実測には**MSI EdgeXpert（MS-C931）2台**を使用しています。商用利用できるライセンスを軸に、資産の固定、検査結果の記録、戻せる運用を重視します。
+
+## 導入するものと対応機体
+
+構成は **Z.aiの原モデル → NVIDIA配布のNVFP4量子化重み → 本リポジトリのGB10向け実行・検証環境**です。
+
+| 項目 | 導入時に確認する内容 |
+|---|---|
+| 原モデル | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
+| 使用する重み・取得元 | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)。固定revisionは [runtime.lock.json](config/runtime.lock.json) が正典 |
+| この配布物の役割 | 重みの取得・検証、GB10向けruntime適合、起動と性能・品質検証。本体checkpointはNVIDIA配布物を保持し、独自の再量子化・追加学習は行わない |
+| 機体 | 1台あたりGB10・128 GB級統合メモリ、Linux ARM64、NVIDIA GPU対応Dockerを備える2台。TP=2でモデルを分割し、QSFP/RoCEで接続する |
+| 検証範囲 | MSI EdgeXpertでの結果を掲載。他のDGX Spark互換機も機種名だけで対応済みとはせず、ドライバー・GPU・メモリ・通信を[導入手順](SETUP.ja.md#1-必要情報を集め2台とも現状確認する)で検収する。Windowsは管理・CPU検査用で、推論はLinux実機上で行う |
+| 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。TP=2でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.md#artifact-storage-and-paths) |
+
+配布するのはソース・固定参照・ビルド手順です。重みと完成Dockerイメージは同梱せず、利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAは本体と別の学習済み補助器を使います。[資材の区別と配置](docs/operations.md#artifact-storage-and-paths)を確認してください。
+
+NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin **W4A16**で実行しており、NVIDIAのW4A4 recipeとは演算精度が異なります。[精度と検証範囲](docs/validation.md)を参照してください。
 
 独自コードは **Apache-2.0**。取り込んだMIT・Apacheの通知を保持します。重みとコンテナ内依存にはそれぞれの条件が適用されます。[第三者通知](THIRD_PARTY_NOTICES.md)を参照してください。EXL3/TR3重み、DFlash2重み、Mia現行AGPL版を導入する構成ではありません。
 

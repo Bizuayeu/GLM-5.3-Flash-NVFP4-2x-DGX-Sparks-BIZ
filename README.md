@@ -4,7 +4,24 @@
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md)
 
-A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on two DGX Spark-class GB10 systems. The focus is commercially usable licensing, pinned artifacts, observable checks, and reversible operations.
+A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **two DGX Spark or compatible GB10 systems**. Measurements use **two MSI EdgeXpert (MS-C931) systems**. The focus is commercially usable licensing, pinned artifacts, observable checks, and reversible operations.
+
+## What you deploy and supported hardware
+
+The stack is **Z.ai's original model → NVIDIA's distributed NVFP4 checkpoint → this repository's GB10 runtime adaptation and validation tools**.
+
+| Item | Deployment information |
+|---|---|
+| Original model | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
+| Checkpoint and download source | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4); [runtime.lock.json](config/runtime.lock.json) owns the fixed revision |
+| This distribution's role | Acquire and verify weights, adapt the runtime for GB10, launch and evaluate performance/quality. Preserve NVIDIA's base checkpoint without project-specific requantization or fine-tuning |
+| Hardware | Two Linux ARM64 systems, each with GB10, 128 GB-class unified memory and NVIDIA GPU-enabled Docker. TP=2 partitions the model over a QSFP/RoCE connection |
+| Tested scope | Published measurements are from MSI EdgeXpert. Other DGX Spark-compatible systems require driver/GPU/memory/fabric checks in the [setup runbook](SETUP.md#1-collect-inputs-and-inspect-both-hosts); a product name alone does not qualify them. Windows supports management/CPU checks; inference runs on the Linux hosts |
+| Storage | Weights live in each Linux host's Hugging Face cache. Reserve approximately 205 GB of disk per host plus images and working space. Each host stores the complete checkpoint even with TP=2; partitioning happens at load time. [Paths and verification](docs/operations.md#artifact-storage-and-paths) |
+
+The distribution contains source, pinned references and build instructions. Weights and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; LPA uses a separately trained auxiliary projector. See [artifact roles and storage](docs/operations.md#artifact-storage-and-paths).
+
+NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe. See [precision and validation scope](docs/validation.md).
 
 Original project code is **Apache-2.0**. Adapted MIT and Apache notices are retained. Model weights and container dependencies keep their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
 
