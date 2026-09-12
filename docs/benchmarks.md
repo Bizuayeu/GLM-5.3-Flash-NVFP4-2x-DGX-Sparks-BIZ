@@ -193,3 +193,24 @@ Actual objects in all 42 MoE layers on both ranks verified 288 tensor-sharded ex
 SSE checks disconnected after three nonempty chunks and verified early generation stop before the 256-token limit, zero running/waiting requests and KV usage, no normal/error completion increment, and a successful follow-up in every arm. **The pinned vLLM internal-abort path removes request state before normal completion statistics, so its abort counter need not increase.** The initial baseline evaluator incorrectly required that increment and failed. That record was retained; after source inspection and evaluator checks, only cancellation was rerun on the same live configuration (`full-v28-ep-off-recheck-v29`). Completed timing/quality results were reused, and EP on/restored used the same corrected cancellation criterion.
 
 Resource limits were 112 GiB per container and a 4 GiB host reserve. Minimum available RAM was about 11.47/12.77 GiB in the baseline and 11.61/12.57 GiB with EP on. No OOM occurred and subsequent restarts completed, but peer shutdown still required forced termination with exit137. Production recovery and long-running operation remain unqualified.
+
+## Independent TP2 versus PP2 evaluation (P17)
+
+Matched timing completed for TP2→TP1/PP2→restored TP2 using the same v28 image/checkpoint. Every arm used one active sequence, context16,384, chunk512, FP8 KV at 1 GiB per rank, Marlin W4A16 and eager execution; MTP/LPA/fusion/EP/APC were off. PP split layers 24/21, placing 21 MoE layers on each stage. Profiler support was configured but inactive during timing/quality tests. Workload and repetitions match P21. Private runs: `parallel-v30-tp-control`, `parallel-v30-pp2`, `parallel-v30-tp-restored`.
+
+| Input tokens | Concurrent clients | TP2 output tokens/s | PP2 | Restored TP2 |
+|---:|---:|---:|---:|---:|
+| 32 | 1 | 13.626 | 8.680 | 13.783 |
+| 32 | 2 | 13.460 | 8.687 | 13.767 |
+| 2,048 | 1 | 6.052 | 5.465 | 6.091 |
+| 2,048 | 2 | 6.047 | 5.467 | 6.058 |
+
+All arms passed 30 measured requests with 64 outputs each, eight calculation/extraction answers, two tool round trips, and SSE disconnect/follow-up checks. Two clients queue because the server permits one active sequence.
+
+Median 2K single-client TTFT was 6.071→4.709→6.099 seconds, a 22–23% PP improvement. However, TPOT increased from about 70–72 to 111 ms. **Do not adopt PP2 for performance on this 32/2K-input, 64-output generation workload.** Retain the initial-response gain as an observation; longer inputs/short outputs and MTP/LPA combinations require separate evaluation.
+
+After PP timing/quality completed, the second profiler start segfaulted during PyTorch/Kineto result cleanup. The head subsequently crossed the 4 GiB reserve and was stopped; OOMKilled was false. The peer was also stopped. Completed measurements remain valid records, but the overall PP run status is failed. **PP's single 16K capacity check and 33-output trace were not completed.** Both TP controls passed separate single 16K capacity checks.
+
+The saved 64-input/one-output trace observed 92 NCCL events per rank with TP2 and 6 with PP2 (four send/receive, two broadcast). This includes prefill and is not PP decode events per token. TP's paired 1/33-output difference observed 1,743 kernels/token, 92 NCCL events/token and approximately 46–47 ms/token of summed GEMV GPU intervals. Durations can overlap and must not be added to wall latency. Reduced communication did not establish faster generation.
+
+Before profiling, minimum head available memory under PP was about 4.27 GiB, including load/warmup, close to the 4 GiB experiment guard. It fell further after the failure. Keep normal TP2 and the standard 8 GiB reserve unchanged; the PP option remains experimental, with full-model capacity and recovery unqualified.

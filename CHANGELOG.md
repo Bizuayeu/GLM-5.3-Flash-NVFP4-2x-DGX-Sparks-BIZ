@@ -4,6 +4,8 @@
 
 ### Added
 
+- Full-model TP/PP timing and restoration results, preserving faster PP prefill, slower generation, limited memory headroom and an incomplete profiler/capacity result after a profiler restart failure.
+
 - Full-model EP off/on/off results: verified placement and scoped quality/cancellation/capacity, with a decision against EP for the measured throughput workload. Internal-abort telemetry is distinguished from normal completion counters.
 
 - Explicit experimental TP2/PP2 selection and a configurable stage boundary, with hybrid-layout and combination guards.
