@@ -71,6 +71,8 @@ Use a freshly built image with `GLM53_LPA_API=2`, `glm53_setup.runtime.lpa.LPAWo
 
 `cache.fused_unpack=false` keeps the Torch reference conversion. Opting in selects a single Triton kernel for the 656-byte MLA cache record's FP8 latent conversion and FP32 scale multiplication. It requires an image with `GLM53_FUSED_UNPACK_SUPPORTED=1`; preflight rejects other images. This candidate is experimental: component equivalence, attention/state checks and unprofiled full-model A/B measurements are required before adoption. It does not change selected candidates or share KV between layers.
 
+Measured CUDA A/B and indexer observations, including their validation limits, are recorded in [component validation](component-validation.md).
+
 Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting. LPA selects `runtime.lpa_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware LPA worker; old LPA images reject it.
 
 LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.

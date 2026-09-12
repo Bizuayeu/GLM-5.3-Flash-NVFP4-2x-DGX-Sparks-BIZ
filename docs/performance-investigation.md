@@ -2,6 +2,8 @@
 
 These are measurement hypotheses, not diagnosed bottlenecks or promised speedups. Keep prefill latency, per-request decode latency and aggregate throughput separate. Nominal LPDDR bandwidth alone does not establish the cost of quantized MoE routing, sparse attention, scheduling or communication.
 
+Measured component/full-target results and their limits are recorded in [component validation](component-validation.md).
+
 ## Lessons adopted from the A100 case study
 
 [shi3z's case study](https://note.com/shi3zblog/n/nd5fc5341b342) motivates measuring launch overhead, conversion traffic, speculative execution and workload grouping. It concerns DeepSeek on A100; its throughput numbers are not GLM/GB10 targets. The decisions below are our application to this repository, not reproductions of that experiment.
