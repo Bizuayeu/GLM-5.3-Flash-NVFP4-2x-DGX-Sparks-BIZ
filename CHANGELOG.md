@@ -4,6 +4,8 @@
 
 ### Added
 
+- Required, not-yet-run FreedomBench enterprise evaluation plan, separating original scoring, political refusals, execution/format errors, Japanese use and long-context source fidelity across LPA/MTP profiles.
+
 - Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware LPA opt-in.
 
 - Opt-in late-prefill attention-input approximation, teacher replay checks, bounded LLM-jp corpus sampling and diagonal/low-rank projector fitting, with bilingual experimental-scope guidance.

@@ -63,6 +63,8 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
+[FreedomBench and political-context evaluation](freedombench.md) is a required enterprise evaluation item, currently **NOT RUN**. It includes original-suite scoring, Japanese and long-context extensions, and separate refusal/truncation/error audits across baseline, MTP, LPA and combined profiles.
+
 Official ZCode and Claude Code CLI are separate, required targets in the [harness acceptance matrix](harnesses.md). Their end-to-end cases are NOT RUN; the basic API smoke below does not close the complete matrix or client integration cases.
 
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
