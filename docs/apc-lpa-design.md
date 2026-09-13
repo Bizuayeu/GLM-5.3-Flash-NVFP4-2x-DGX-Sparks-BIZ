@@ -1,6 +1,6 @@
 # APC優先・未処理部分へのLPA：実装・検証計画
 
-**状態：単独評価の結果を固定し、実装・CPU契約検査へ進行中。実機・損益分岐・最終併用は未検収。** 対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。本書は2026-09-13の依頼による実装契約であり、既存の検収結果ではない。[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。
+**状態：CPU契約と4層GPUの共有状態隔離試験を通過。全モデル・損益分岐・最終併用は未検収。** 対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。
 
 ## 目的と初版の方針
 
@@ -41,6 +41,16 @@ APCで復元できるprefixを先に再利用し、未処理部分が長いと�
 最初の接続検証は、テキスト・eager・TP2・1系列・ローカルcacheで行う。Graph、PP、外部KV connector、細粒度Mamba prefix cache、複数系列を同時に追加しない。MTP／unpack融合／非同期検査の併用は、基本契約の通過後に個別の組合せとして検証する。
 
 ## 実装と検収の順番
+
+4層GPU試験ではN=18,432、復元H=8,704で、近似suffixを通過した後も共有prefixの全検査対象hashが一致した。後続通常要求のHは8,704のままで、通常計算後に初めて17,408まで共有範囲が伸びた。対照・近似の後の通常要求・復帰対照の16出力tokenは一致し、合成近似の分布差は別に検出できた。これはTP1・eager・MTPなしの状態隔離の結果であり、全モデルや併用の受入ではない。
+
+共有キャッシュ隔離の部品試験は、対応image内で次のコマンドから実行する。`--fixture` は全tensorのバイト照合を終えた4層fixture、`--output` は新規の保存先を指定する。GPUを1台使い、32K context・1 GiB KV・1系列で実行するため、別途コンテナ上限とホスト余裕を監視する。
+
+```sh
+python -m glm53_setup apc-lpa-fixture --fixture /fixture --output /out/validation
+```
+
+この試験は通常状態との違いが出る合成projectorをfixture専用に作る。実cache lookupの復元境界、共有prefixのGPUバイトhash、実際のquery省略数、後続通常要求の出力を検査する。全モデルの品質や損益分岐の評価には使わない。startup warmupは固定ソース内の明示的な範囲に限定して除外し、実要求にはscheduler由来のpolicyを必須とする。workerのキャッシュ形式は、モデル読込時に正規化された`fp8_ds_mla`を検査する。
 
 | 段階 | 実施内容・完了条件 |
 |---|---|

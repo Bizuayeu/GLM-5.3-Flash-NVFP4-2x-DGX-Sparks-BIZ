@@ -21,6 +21,8 @@ COMMANDS = {
     "test-reference": "validation.reference_check",
     "patch-reference": "runtime.patch_nope_reference",
     "lpa-fixture": "validation.run_lpa",
+    "apc-lpa-fixture": "validation.run_apc_lpa_fixture",
+    "apc-lpa-benchmark": "validation.benchmark_apc_lpa",
     "lpa-corpus": "validation.lpa_corpus",
     "lpa-train": "validation.train_lpa",
     "freedombench": "validation.freedombench",

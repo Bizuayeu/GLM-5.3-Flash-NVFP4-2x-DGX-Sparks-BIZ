@@ -1,10 +1,28 @@
 """Consume scheduler-authored APC/LPA policy before the target forward pass."""
 
 import hashlib
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from .apc_policy import PrefillPolicy
 from .apc_runtime import POLICY_KEY, RequestState, audit, settings
+
+_WARMUP_OWNER = ContextVar("glm53_apc_lpa_warmup", default=None)
+
+
+@contextmanager
+def warmup_scope(worker):
+    if settings() is None:
+        yield
+        return
+    if hasattr(worker, "lpa_experiment") or getattr(worker, "_glm53_apc_requests", {}):
+        raise ValueError("APC/LPA warmup must precede real request admission")
+    token = _WARMUP_OWNER.set(worker)
+    try:
+        yield
+    finally:
+        _WARMUP_OWNER.reset(token)
 
 
 def validate_worker(config):
@@ -18,7 +36,8 @@ def validate_worker(config):
         or parallel.data_parallel_size != 1
         or parallel.enable_expert_parallel
         or not cache.enable_prefix_caching
-        or cache.cache_dtype != "fp8"
+        # DeepseekV4Attention resolves the public fp8 option during model loading.
+        or cache.cache_dtype != "fp8_ds_mla"
         or cache.mamba_cache_mode != "align"
         or cache.enable_mamba_fine_grained_prefix_cache
         or cache.prefix_match_unit is not None
@@ -26,7 +45,24 @@ def validate_worker(config):
         or config.ec_transfer_config is not None
     ):
         raise ValueError(
-            "APC/LPA requires eager serial local aligned cache with TP1/TP2"
+            "APC/LPA requires eager serial local aligned cache with TP1/TP2: "
+            + str(
+                {
+                    "eager": config.model_config.enforce_eager,
+                    "sequences": config.scheduler_config.max_num_seqs,
+                    "tp": parallel.tensor_parallel_size,
+                    "pp": parallel.pipeline_parallel_size,
+                    "dp": parallel.data_parallel_size,
+                    "ep": parallel.enable_expert_parallel,
+                    "prefix": cache.enable_prefix_caching,
+                    "dtype": cache.cache_dtype,
+                    "mamba": cache.mamba_cache_mode,
+                    "fine_grained": cache.enable_mamba_fine_grained_prefix_cache,
+                    "match_unit": cache.prefix_match_unit,
+                    "external_kv": config.kv_transfer_config is not None,
+                    "external_encoder": config.ec_transfer_config is not None,
+                }
+            )
         )
     speculative = config.speculative_config
     if speculative is not None and (
@@ -79,7 +115,7 @@ def _verify_projector(worker, config):
 
 def before_forward(worker, scheduler_output):
     config = settings()
-    if config is None:
+    if config is None or _WARMUP_OWNER.get() is worker:
         return
     if not hasattr(worker, "_glm53_apc_requests"):
         validate_worker(worker.vllm_config)

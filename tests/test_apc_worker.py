@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
 from glm53_setup.runtime.apc_runtime import POLICY_KEY, allocation_guard
-from glm53_setup.runtime.apc_worker import before_forward, report
+from glm53_setup.runtime.apc_worker import before_forward, report, warmup_scope
 from glm53_setup.runtime.lpa import LPAWorkerExtension
 
 CONFIG = json.dumps(
@@ -58,6 +58,20 @@ def step(new=(), active=None, cached=(), finished=()):
 
 
 class APCWorkerTests(unittest.TestCase):
+    def test_trusted_startup_warmup_does_not_weaken_real_request_checks(self):
+        with self.assertRaises(RuntimeError):
+            with warmup_scope(self.worker):
+                before_forward(self.worker, object())
+                raise RuntimeError("warmup failure")
+        with self.assertRaises(ValueError):
+            before_forward(
+                self.worker, step(active={"unmanaged": 1}, cached=[("unmanaged", 0)])
+            )
+        before_forward(self.worker, step([data("a", 63)], {"a": 1}))
+        with self.assertRaises(ValueError):
+            with warmup_scope(self.worker):
+                pass
+
     def setUp(self):
         environment = patch.dict(os.environ, {"GLM53_APC_LPA_CONFIG": CONFIG})
         environment.start()
@@ -76,7 +90,7 @@ class APCWorkerTests(unittest.TestCase):
             ),
             cache_config=NS(
                 enable_prefix_caching=True,
-                cache_dtype="fp8",
+                cache_dtype="fp8_ds_mla",
                 mamba_cache_mode="align",
                 enable_mamba_fine_grained_prefix_cache=False,
                 prefix_match_unit=None,
@@ -92,6 +106,13 @@ class APCWorkerTests(unittest.TestCase):
         verify.assert_not_called()
         self.worker.get_model.assert_not_called()
         self.assertIsNone(report(self.worker)["lpa"])
+
+    def test_unresolved_or_unsupported_cache_format_is_rejected(self):
+        for dtype in ("fp8", "auto", "bfloat16"):
+            with self.subTest(dtype=dtype):
+                self.worker.vllm_config.cache_config.cache_dtype = dtype
+                with self.assertRaises(ValueError):
+                    before_forward(self.worker, step([data("a", 63)], {"a": 1}))
 
     def test_policy_is_applied_once_and_cleared_for_the_next_exact_request(self):
         experiment = Mock()

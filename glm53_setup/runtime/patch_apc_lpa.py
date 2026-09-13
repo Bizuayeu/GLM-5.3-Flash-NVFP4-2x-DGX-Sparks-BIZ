@@ -57,7 +57,13 @@ def rewrite(name, text):
         text = replace_once(
             text,
             "class Worker(WorkerBase):",
-            "from glm53_setup.runtime.apc_worker import before_forward\n\n\nclass Worker(WorkerBase):",
+            "from glm53_setup.runtime.apc_worker import before_forward, warmup_scope\n\n\nclass Worker(WorkerBase):",
+        )
+        text = replace_once(
+            text,
+            "            warmup_kernels(self.model_runner, self.execute_model, self.sample_tokens)\n",
+            "            with warmup_scope(self):\n"
+            "                warmup_kernels(self.model_runner, self.execute_model, self.sample_tokens)\n",
         )
         text = replace_once(
             text,

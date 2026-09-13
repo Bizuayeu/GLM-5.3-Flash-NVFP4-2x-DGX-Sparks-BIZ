@@ -36,6 +36,8 @@ class PublicCliTests(unittest.TestCase):
             ("test-reference", "--output"),
             ("patch-reference", "--check"),
             ("lpa-fixture", "--fixture"),
+            ("apc-lpa-fixture", "--fixture"),
+            ("apc-lpa-benchmark", "--cached-prefix-tokens"),
             ("lpa-corpus", "--source-byte-limit"),
             ("lpa-train", "--captures"),
             ("freedombench", "--benchmark-dir"),
