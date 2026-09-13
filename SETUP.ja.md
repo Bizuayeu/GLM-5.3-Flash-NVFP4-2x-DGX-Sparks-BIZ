@@ -79,6 +79,8 @@ python tools/check_publication.py
 
 [ホスト準備](docs/operations.md#prepare-each-host)に従い、固定ARM64ベースを検査し、参照イメージを一度ビルドして必要に応じて他方へ移送します。両機の実イメージIDを記録・比較します。変更可能なタグの一致だけでは足りません。ベースdigestとソースハッシュ検査は、別のvLLM版に誤ってパッチを当てることを防ぎます。
 
+**本リポジトリのvLLM／GLM runtimeパッチを導入するには、参照imageのビルドが必要です。** [sparse候補の順序正規化](docs/candidate-order.ja.md)も、確認したcheckoutで `python -m glm53_setup build-reference` を実行すると自動適用します。vLLM sourceの手編集は不要です。公式base imageだけには、この変更は入っていません。source更新後は再ビルドし、新しいimage IDを確認してからcontainerを切り替えます。既存imageや稼働containerは自動更新されません。sourceハッシュ不一致は回避せず、ビルドを停止してください。
+
 最初のホストで[単体GPU fixture手順](docs/validation.md#reproduce-the-single-gpu-fixture)を実施します。資源上限、精度、出力、判定を一緒に保存してください。fixture合格は一部カーネルと状態挙動の確認であり、フルモデル品質・TP=2合格ではありません。他方の準備後にも適切な部品検査を行います。
 
 **通過条件:** ベース検査、参照イメージID、fixture判定、残る数値上の制約を記録済み。

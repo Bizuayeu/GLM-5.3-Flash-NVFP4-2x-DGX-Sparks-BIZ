@@ -22,6 +22,26 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
+def add_candidate_order(backend):
+    backend = replace_once(
+        backend,
+        "        self.supports_quant_query_input = False\n",
+        "        from glm53_setup.runtime.candidate_order import candidate_order_enabled\n"
+        "        self._glm53_canonical_candidates = (\n"
+        "            model_type == 'glm5_next_text' and candidate_order_enabled()\n"
+        "        )\n"
+        "        self.supports_quant_query_input = False\n",
+    )
+    return replace_once(
+        backend,
+        "        topk_indices = self.topk_indices_buffer[:num_actual_toks]\n",
+        "        topk_indices = self.topk_indices_buffer[:num_actual_toks]\n"
+        "        if self._glm53_canonical_candidates:\n"
+        "            from glm53_setup.runtime.candidate_order import canonical_logical_candidates\n"
+        "            topk_indices = canonical_logical_candidates(topk_indices)\n",
+    )
+
+
 def prepare(package):
     originals = {name: (package / name).read_bytes() for name in HASHES}
     for name, data in originals.items():
@@ -78,9 +98,10 @@ def prepare(package):
         "            ), None\n"
         "        output = q.new_empty(\n",
     )
+    backend = add_candidate_order(backend)
     changed = (
         "# Modified by GLM-5.3-Flash on 2x DGX Spark Enterprise Setup contributors.\n"
-        "# Changes: GLM NoPE zero-padding and candidate-preserving reference attention.\n"
+        "# Changes: GLM NoPE zero-padding, canonical logical candidates and reference attention.\n"
         "# Original vLLM notices below remain applicable; see distribution NOTICE.\n"
     )
     result = dict(

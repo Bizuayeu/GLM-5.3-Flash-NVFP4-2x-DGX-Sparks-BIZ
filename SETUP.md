@@ -79,6 +79,8 @@ If a download is intentionally paused, preserve partial files and leave it pause
 
 Follow [host preparation](docs/operations.md#prepare-each-host): inspect the pinned ARM64 base, build the reference image once, and transfer that built image to the peer when practical. Record actual image IDs on both nodes and compare them; matching mutable tags are insufficient. The base digest and source-hash checks protect against accidentally patching a different vLLM release.
 
+**Building the reference image is required to install this repository's vLLM/GLM runtime patches**, including [canonical sparse candidate ordering](docs/candidate-order.md). Run `python -m glm53_setup build-reference` from the reviewed checkout; no manual vLLM source editing is required. The official base image alone does not contain these changes. After a source update, rebuild and verify the new image ID before replacing containers: an existing image or running container is not updated automatically. A source-hash mismatch must stop the build, not be bypassed.
+
 Run the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture) on the first host. Keep its resource limits, selected precision, output and assessment together. A fixture pass checks selected kernels/state behavior; it cannot establish full-model quality or TP=2 correctness. Repeat appropriate component checks on the peer once available.
 
 **Checkpoint:** pinned base inspected; reference image identified; fixture assessment and remaining numerical limitations recorded.
