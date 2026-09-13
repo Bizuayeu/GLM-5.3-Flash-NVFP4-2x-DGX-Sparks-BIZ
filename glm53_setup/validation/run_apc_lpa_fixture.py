@@ -19,6 +19,11 @@ def main(argv=None):
     parser.add_argument("--async-index-checks", action="store_true")
     parser.add_argument("--async-scheduling", action="store_true")
     parser.add_argument(
+        "--retention-interval",
+        type=int,
+        help="Explicit native checkpoint-retention candidate",
+    )
+    parser.add_argument(
         "--history",
         action="store_true",
         help="Additional edit/branch and shared-state checks",
@@ -130,6 +135,11 @@ def main(argv=None):
                 "enable_cutedsl_warmup": False,
                 "enable_jit_warmup": False,
             },
+            **(
+                {"prefix_cache_retention_interval": args.retention_interval}
+                if args.retention_interval is not None
+                else {}
+            ),
         )
         client = llm.llm_engine.engine_core
         if type(client).__name__ != "InprocClient":

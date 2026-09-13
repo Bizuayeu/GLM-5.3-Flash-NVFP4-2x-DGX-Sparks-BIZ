@@ -39,6 +39,7 @@ class PublicCliTests(unittest.TestCase):
             ("lpa-fixture", "--fixture"),
             ("apc-lpa-fixture", "--fixture"),
             ("apc-lpa-benchmark", "--cached-prefix-tokens"),
+            ("apc-history", "--block-tokens"),
             ("lpa-corpus", "--source-byte-limit"),
             ("lpa-train", "--captures"),
             ("freedombench", "--benchmark-dir"),

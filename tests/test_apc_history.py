@@ -1,5 +1,8 @@
+import contextlib
+import io
 import unittest
 
+from glm53_setup.validation import apc_history
 from glm53_setup.validation.apc_history import (
     answer_matches,
     common_prefix,
@@ -8,6 +11,32 @@ from glm53_setup.validation.apc_history import (
 
 
 class HistoryCaseTests(unittest.TestCase):
+    def test_partial_or_under_repeated_timings_cannot_pose_as_full_functional_validation(
+        self,
+    ):
+        base = [
+            "--config",
+            "unused",
+            "--corpus",
+            "unused",
+            "--corpus-sha256",
+            "0" * 64,
+            "--output",
+            "unused",
+            "--block-tokens",
+            "4352",
+        ]
+        for options in (
+            ["--case-ids", "edit-50"],
+            ["--timing-only", "--case-ids", "edit-50", "--repeats", "1"],
+        ):
+            with (
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                apc_history.main(base + options)
+            self.assertEqual(caught.exception.code, 2)
+
     def test_edits_change_the_answer_before_the_common_question(self):
         cases, *_ = history_cases(["early", "middle", "late", "end"])
         self.assertEqual(len(cases), 7)

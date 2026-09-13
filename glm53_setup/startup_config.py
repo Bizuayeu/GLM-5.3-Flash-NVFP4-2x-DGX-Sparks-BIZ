@@ -28,13 +28,12 @@ def validate(profile):
 
     def check(value, expected, path):
         if isinstance(expected, dict):
-            optional = (
-                {"cuda_allocator_conf"}
-                if path == "startup.runtime"
-                else (
-                    {"additional_rails"} if path.startswith("startup.nodes[") else set()
-                )
-            )
+            optional = {
+                "startup.runtime": {"cuda_allocator_conf"},
+                "startup.cache": {"prefix_cache_retention_interval"},
+            }.get(path, set())
+            if path.startswith("startup.nodes["):
+                optional = {"additional_rails"}
             if (
                 not isinstance(value, dict)
                 or value.keys() - optional != expected.keys()
@@ -54,6 +53,12 @@ def validate(profile):
             raise ValueError(f"Invalid type in {path}")
 
     check(profile, schema, "startup")
+    if "prefix_cache_retention_interval" in profile["cache"]:
+        interval = profile["cache"]["prefix_cache_retention_interval"]
+        if type(interval) is not int or interval < 0:
+            raise ValueError(
+                "cache.prefix_cache_retention_interval must be a nonnegative integer; runtime validates scheduler-block alignment"
+            )
     if "cuda_allocator_conf" in profile["runtime"]:
         allocator = profile["runtime"]["cuda_allocator_conf"]
         if not isinstance(allocator, str) or any(c in allocator for c in "\x00\r\n"):
@@ -297,6 +302,11 @@ def serve_args(profile, rank, model_path):
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
     for key in ("kv_cache_memory_bytes", "block_size"):
         args += ["--" + key.replace("_", "-"), str(profile["cache"][key])]
+    if "prefix_cache_retention_interval" in profile["cache"]:
+        args += [
+            "--prefix-cache-retention-interval",
+            str(profile["cache"]["prefix_cache_retention_interval"]),
+        ]
     args += [
         "--seed",
         str(profile["runtime"]["seed"]),

@@ -176,7 +176,21 @@ def main(argv=None):
         help="Functional cycles; no speed adoption from a single cycle",
     )
     parser.add_argument("--pressure-histories", type=int, default=12)
+    parser.add_argument(
+        "--timing-only",
+        action="store_true",
+        help="Selected exact-only one-output prefill comparisons; not the functional matrix",
+    )
+    parser.add_argument(
+        "--case-ids", nargs="+", help="Explicit subset for --timing-only"
+    )
     args = parser.parse_args(argv)
+    if args.timing_only and (not args.case_ids or args.repeats < 5):
+        parser.error(
+            "Timing-only requires explicit --case-ids and at least five measured repeats"
+        )
+    if args.case_ids and not args.timing_only:
+        parser.error("The functional matrix cannot silently omit cases")
     profile = startup_config.load(args.config)
     if (
         not startup_config.apc_lpa_enabled(profile)
@@ -206,7 +220,12 @@ def main(argv=None):
         "repeats": args.repeats,
         "corpus_sha256": args.corpus_sha256,
         "scheduler_block_tokens": args.block_tokens,
-        "retention_candidate": "none; unchanged pinned baseline",
+        "retention_interval_configured": profile["cache"].get(
+            "prefix_cache_retention_interval"
+        ),
+        "scope": "selected one-token timing"
+        if args.timing_only
+        else "full history functional matrix",
         "performance_adoption": False,
     }
 
@@ -313,6 +332,23 @@ def main(argv=None):
                 cache_layout=rpc("apc_cache_layout"),
                 status="running",
             )
+            expected_retention = profile["cache"].get(
+                "prefix_cache_retention_interval", 0
+            )
+            if any(
+                row["retention_interval"] != expected_retention
+                for row in report["cache_layout"]
+            ):
+                raise ValueError(
+                    "Actual cache retention differs from the selected pinned baseline/candidate"
+                )
+            if {
+                math.lcm(*(group["block_size"] for group in row["groups"]))
+                for row in report["cache_layout"]
+            } != {args.block_tokens}:
+                raise ValueError(
+                    "Supplied scheduler block does not match the pinned worker group's joint alignment"
+                )
             ids = post(
                 "/tokenize",
                 {
@@ -332,6 +368,92 @@ def main(argv=None):
                 for a, b in zip(cuts, cuts[1:])
             ]
             cases, archive_a, answer_a, archive_b, answer_b = history_cases(chunks)
+            if args.timing_only:
+                by_id = {case["id"]: case for case in cases}
+                if len(set(args.case_ids)) != len(args.case_ids) or any(
+                    key not in by_id for key in args.case_ids
+                ):
+                    raise ValueError("Unknown or duplicate timing case IDs")
+                report["timing_cases"] = []
+
+                def prefill(body):
+                    encoded = encode(startup_config.request_body(profile, body))
+                    before = metrics()
+                    began = time.perf_counter()
+                    response = post(
+                        "/v1/completions",
+                        {
+                            "model": profile["api"]["served_model_name"],
+                            "prompt": encoded,
+                            "temperature": 0,
+                            "seed": profile["runtime"]["seed"],
+                            "max_tokens": 1,
+                            "ignore_eos": True,
+                            "return_token_ids": True,
+                            "logprobs": 1,
+                            "vllm_xargs": {"glm53_lpa_mode": "off"},
+                        },
+                    )
+                    elapsed = time.perf_counter() - began
+                    hit, workers = check_policy(len(encoded), "off")
+                    if (
+                        response["usage"]["completion_tokens"] != 1
+                        or response["usage"]["prompt_tokens"] != len(encoded)
+                        or len(response["choices"][0]["token_ids"]) != 1
+                        or not all(
+                            math.isfinite(value)
+                            for value in response["choices"][0]["logprobs"][
+                                "token_logprobs"
+                            ]
+                        )
+                    ):
+                        raise ValueError("Incomplete one-output prefill sample")
+                    return {
+                        "seconds": elapsed,
+                        "prompt_token_ids": encoded,
+                        "cached_tokens": hit,
+                        "workers": workers,
+                        "response": response,
+                        "metrics_before": before,
+                        "metrics_after": metrics(),
+                    }
+
+                for key in args.case_ids:
+                    case = by_id[key]
+                    result = {"id": key, "samples": []}
+                    report["timing_cases"].append(result)
+                    for repeat in range(args.repeats + 1):
+                        reset()
+                        prime = prefill(case["prime"])
+                        row = prefill(case["request"])
+                        shared = common_prefix(
+                            prime["prompt_token_ids"], row["prompt_token_ids"]
+                        )
+                        if row["cached_tokens"] > shared:
+                            raise ValueError(
+                                "Timing sample reused beyond its changed token"
+                            )
+                        result["samples"].append(
+                            {
+                                "warmup": repeat == 0,
+                                "prime": prime,
+                                "result": row,
+                                "common_prefix_tokens": shared,
+                            }
+                        )
+                        save()
+                        print(
+                            "timing",
+                            key,
+                            repeat,
+                            row["seconds"],
+                            "H",
+                            row["cached_tokens"],
+                            flush=True,
+                        )
+                report["status"] = "complete"
+                save()
+                return
             for case in cases:
                 output = {"id": case["id"], "arms": []}
                 report["cases"].append(output)
