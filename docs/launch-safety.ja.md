@@ -44,6 +44,8 @@ python -m glm53_setup cluster switch --config state/startup.toml \
 
 旧profileの復旧中も同様に扱い、`recovery-readiness-unconfirmed` では復旧中の両rankを保持して `cluster resume` で再確認します。復旧確認が成功しても新候補の失敗は残し、`recovered=true` を別に記録します。復旧・cleanupの失敗にも構造化した理由を残します。
 
+所有する2台での実機検査では、projector hashを故意に不一致にしても稼働中の両rankが維持されました（`pre-stop-failure-v69`）。続いて新profileの起動前空き条件を999 GiBにした試験では、静的検査の後に旧rankを停止し、新しい起動はメモリ条件で失敗、その後に旧profileの両rankがAPI準備完了まで復帰しました（`rollback-fault-v72`、`recovered=true`）。先行する`v70`の復旧確認失敗も残し、復旧側の通信確認を修正する根拠にしています。制御した起動・復旧試験であり、長時間の可用性保証ではありません。単一レールの実検査とallocatorの3状態伝達も両hostで通過しました。複数レール実通信と外部KV connectorは未検収です。
+
 ## APCの履歴検証
 
 実測するまでは固定runtimeの実際の保持既定を維持します。このrevisionは **0** が既定で、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を独立候補として指定できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す候補です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。既定採用は履歴・保持圧力・A/B/Aの結果から別に判断します。

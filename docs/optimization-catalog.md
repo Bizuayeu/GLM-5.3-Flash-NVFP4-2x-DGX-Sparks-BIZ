@@ -4,6 +4,8 @@
 
 This catalog records what to investigate, what has been measured, and why a candidate was retained or deferred, so the next GLM version can be evaluated against an explicit baseline. It owns initiative IDs and reevaluation criteria; linked documents own measurements, detailed test contracts and runtime settings. Listing a candidate does not mean it is implemented or available as a startup option.
 
+The Mia-informed client authentication, allocator, all-HCA checks, two-rank switch and APC history retention extend P10/P19/P22/E03. They are not counted as another independent acceleration. See the [launch contracts](launch-safety.md) and [history-retention measurements](benchmarks.md#apc-history-retention-baseline), keeping functional acceptance, performance adoption, defaults and unqualified scope separate.
+
 ## Baseline and source ownership
 
 **Initial baseline: 2026-09-12 (Asia/Tokyo), documents at commit `9997ccc`. Status rows include subsequent validation through 2026-09-13.** Ongoing integration runs and uncommitted prototypes are not passing results. Follow later results through the linked sources and Git history; retain the document commit and run ID when comparing versions.

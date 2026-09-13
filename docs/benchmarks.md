@@ -360,3 +360,13 @@ The combined profile was 20.6%/28.4% slower in these exact-primed, 128-output ca
 All 21 variants and 21 primes returned the requested code, as did five alternating-conversation requests and twelve pressure histories plus the before/after revisit. Actual eviction was observed, and all nine pool/scheduler-boundary cases completed. Independent complete-identifier checking confirmed all 61 scored answers. No stale or mixed code was observed within this matrix. These functional results do not establish bitwise repeatability, concurrency or a long-duration SLA.
 
 Both 50% edits and branches had H=0. The 90% edits/branches and appends restored H=13,056. `retention-a-v69` then measured a first 50% edit with N=16,100 and an 8,061-token common prefix: exact-only, one output token, reset and exact priming before every sample. One warmup was excluded; all five measured samples had H=0 and ranged 48.320–48.557 s, median **48.437 s**. Priming was outside the clock. This is the baseline for the opt-in [checkpoint-preservation experiment](launch-safety.md#apc-history-qualification); candidate and restored-control results are required before performance adoption.
+
+The completed comparison used the native checkpoint interval 4,352 (`retention-b-v69`) and then restored interval 0 (`retention-restored-v72`). Inputs, fixed model image and KV budget matched; each arm excluded one warmup and retained five measured requests. The HCA selector became explicit about port 1; both selected HCAs have only that port, so the physical path did not change.
+
+| Retention | Actual H in all five samples | Median | Measured range |
+|---|---:|---:|---:|
+| Native 0 | 0 | 48.437 s | 48.320–48.557 s |
+| Every 4,352-token checkpoint | 4,352 | 35.080 s | 35.060–35.112 s |
+| Restored 0 | 0 | 48.462 s | 48.417–48.775 s |
+
+The candidate improved this first-midpoint-edit workload by **27.6%** against both controls; its entire measured range was below both control ranges. Its full history matrix also passed complete-identifier scoring, alternating conversations, observed eviction and all nine boundary conditions. Midpoint edits/branches gained H=4,352 while 90% edits/branches and appends kept H=13,056. **Adopt checkpoint preservation for this measured serial, exact-primed reuse workload.** This does not promise faster cold processing, all MTP workloads or longer cache residence under arbitrary pressure. The block-independent `dense` setting uses the same native KDA mask in this aligned layout; its final combined integration remains separately qualified.
