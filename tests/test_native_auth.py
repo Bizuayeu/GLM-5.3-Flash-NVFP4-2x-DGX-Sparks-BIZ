@@ -16,7 +16,14 @@ class NativeAuthTests(unittest.TestCase):
         async def app(scope, receive, send):
             await JSONResponse({"ok": True})(scope, receive, send)
 
-        client = TestClient(AuthenticationMiddleware(app, ["test-model-key"]))
+        middleware = AuthenticationMiddleware(app, ["test-model-key"])
+
+        async def authenticated(scope, receive, send):
+            # The native middleware returns an awaitable from a synchronous
+            # __call__. Expose the ASGI3 signature explicitly to TestClient.
+            await middleware(scope, receive, send)
+
+        client = TestClient(authenticated)
         for path in ("/v1/chat/completions", "/v1/completions", "/v1/models"):
             self.assertEqual(client.post(path).status_code, 401)
             self.assertEqual(

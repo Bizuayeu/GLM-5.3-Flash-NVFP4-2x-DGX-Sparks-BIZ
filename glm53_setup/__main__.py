@@ -24,6 +24,7 @@ COMMANDS = {
     "lpa-fixture": "validation.run_lpa",
     "apc-lpa-fixture": "validation.run_apc_lpa_fixture",
     "apc-lpa-benchmark": "validation.benchmark_apc_lpa",
+    "apc-history": "validation.apc_history",
     "lpa-corpus": "validation.lpa_corpus",
     "lpa-train": "validation.train_lpa",
     "freedombench": "validation.freedombench",
