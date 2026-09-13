@@ -33,7 +33,7 @@ docker image inspect "$IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}
 
 実装は `glm53_setup.runtime.candidate_order` です。固定sourceへの参照パッチが、`FLASHINFER_MLA_SPARSE_SM120` のGLM経路へ組み込みます。vLLMの全top-k演算や全モデルbackendを一律に変更するものではありません。このruntimeコードにEuryaleパッケージの依存はありません。
 
-CPU契約では全順列・重複ID・padding・空行・非連続tensor・整数の上限・入力非変更・論理順序を物理変換より前に揃えることを検証します。GPU部品検査、fixture実測、全モデル／TP=2の検収は区別します。他の層を含む完全な数値再現性や、採択境界でscoreが同点になった場合の候補集合の決定性まで保証する変更ではありません。現在の検収上限は[検証文書](validation.md)を参照してください。
+CPU契約では全順列・重複ID・padding・空行・非連続tensor・整数の上限・入力非変更・論理順序を物理変換より前に揃えることを検証します。GPU部品検査、fixture実測、全モデル／TP=2の検収は区別します。他の層を含む完全な数値再現性や、採択境界でscoreが同点になった場合の候補集合の決定性まで保証する変更ではありません。現在の検収上限は[検証文書](validation.ja.md)を参照してください。
 
 ### GB10での回帰検証と費用
 

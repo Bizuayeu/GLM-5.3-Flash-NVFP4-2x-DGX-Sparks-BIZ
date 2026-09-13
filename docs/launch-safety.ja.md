@@ -54,7 +54,7 @@ python -m glm53_setup cluster switch --config state/startup.toml \
 
 追加試験は追記、10／50／90%位置の編集・分岐、別会話への交互再訪、eviction圧力、実block／pool／MTP境界、LPA後の通常要求による再訪です。実token共通prefix・共同復元H・再計算・時間・メモリ・MTP／LPA作動を保存し、通常APCからP22併用の順に確認します。保持変更は独立したA/B/Aで判断します。CPU状態契約と従来のP22結果だけで、この追加試験を検収済みとはしません。
 
-`apc-history` は排他的な直列APC／LPAサーバーで、通常primingとexact／auto／restored要求を使って全モデルの機能試験を行います。既定の1巡は機能検査であり、性能採用には使いません。稼働中サーバーの実block幅を `--block-tokens` に指定し、固定コーパスhashと新しい出力先を渡します。読むのはvalidation分割のみです。SSEの最初の出力とchunk間隔を分け、MTP時のchunk間隔を個別tokenのITLとしません。全モデルの前段では `apc-lpa-fixture --history` でGPU共有状態を確認します。[小層の結果](component-validation.md#additional-history-fixtures)を参照してください。
+`apc-history` は排他的な直列APC／LPAサーバーで、通常primingとexact／auto／restored要求を使って全モデルの機能試験を行います。既定の1巡は機能検査であり、性能採用には使いません。稼働中サーバーの実block幅を `--block-tokens` に指定し、固定コーパスhashと新しい出力先を渡します。読むのはvalidation分割のみです。SSEの最初の出力とchunk間隔を分け、MTP時のchunk間隔を個別tokenのITLとしません。全モデルの前段では `apc-lpa-fixture --history` でGPU共有状態を確認します。[小層の結果](component-validation.ja.md#履歴fixtureの追加)を参照してください。
 
 保持A/B/Aには `apc-history --timing-only --case-ids edit-50 --repeats 5` を使えます。通常計算・1出力tokenで、warmup1回を除き5回測り、毎回cache resetと通常primingを揃えます。これは時間比較の部分集合であり、機能試験全体の完了とはしません。3条件で入力token列・固定モデルruntime・KV予算を揃え、保持値と共同block整列をworkerの実値と照合します。小層の候補は `apc-lpa-fixture --retention-interval N --history` で先に検査します。
 

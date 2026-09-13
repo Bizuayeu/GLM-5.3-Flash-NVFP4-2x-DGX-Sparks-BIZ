@@ -1,5 +1,7 @@
 # Architecture
 
+[日本語](architecture.ja.md)
+
 The project is a checkout-local operator toolkit. It does not contain model weights or a remotely managed service.
 
 | Location | Responsibility |

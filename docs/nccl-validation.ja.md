@@ -1,6 +1,6 @@
 # 2台でのNCCL通信検証
 
-[English／実行コマンド](nccl-validation.md) · [QSFP準備](qsfp-network.ja.md) · [検証範囲](validation.md)
+[English／実行コマンド](nccl-validation.md) · [QSFP準備](qsfp-network.ja.md) · [検証範囲](validation.ja.md)
 
 [同梱の診断ツール](../tools/nccl_probe.py)は、2 rankで異なる値を持つテンソルを通信し、FP32・BF16のAllReduceを1 KiB／1 MiB／16 MiB／256 MiBで検査します。加えてFP32のAllGather・ReduceScatter・Broadcastも確認します。モデル重みはロードせず、フルモデルの合格証跡は生成しません。
 
@@ -24,6 +24,6 @@ Docker引数の`NCCL_IB_HCA==...`と`NCCL_SOCKET_IFNAME==...`は誤記ではあ�
 
 NVIDIAの[Spark移植ガイド](https://docs.nvidia.com/dgx/dgx-spark-porting-guide/porting/cuda.html)では、統合メモリの制約から従来のGPUDirect RDMAとnvidia-peermem／DMA-BUF／GDRCopyは非対応とされています。`NET/IB`と`GDR 0`が併記されても、それだけでRoCE失敗とは判断しません。表示を変えるためだけにkernel moduleをロードしたり、GDRを強制したりしません。
 
-初回のGB10 2台・MTU 1500では、NCCL実ランタイム2.30.7で全項目が合格しました。大きなAllReduceは約1.2 GB/sでしたが、別の転送が資源を共有していた可能性があります。`NCCL_NET_GDR_LEVEL=SYS`だけを追加した比較も合格したもののGDR有効化・帯域改善はなく、標準の実行例には採用していません。現在の適用範囲は[検証文書](validation.md)を参照してください。
+初回のGB10 2台・MTU 1500では、NCCL実ランタイム2.30.7で全項目が合格しました。大きなAllReduceは約1.2 GB/sでしたが、別の転送が資源を共有していた可能性があります。`NCCL_NET_GDR_LEVEL=SYS`だけを追加した比較も合格したもののGDR有効化・帯域改善はなく、標準の実行例には採用していません。現在の適用範囲は[検証文書](validation.ja.md)を参照してください。
 
 最終試験はQSFP転送の終了後に同梱probeで再実施し、両rankとも11項目合格、256 MiB AllReduceは1.18〜1.21 GB/sでした。別モデルのディスクchecksumは稼働中だったため、ホスト全体が完全無負荷の測定とは呼びません。全試験コンテナは終了コード0・OOMなし。フルモデルTP=2は引き続き未検証です。

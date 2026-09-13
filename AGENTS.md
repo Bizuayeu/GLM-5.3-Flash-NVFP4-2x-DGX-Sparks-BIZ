@@ -1,6 +1,6 @@
 # Repository instructions
 
-Read README.md before changing this model deployment. Keep pinned model revisions and runtime settings explicit. Put CPU contract tests in tests/ and reproducible validation summaries in docs/.
+Read README.md before changing this model deployment; docs/README.md lists every document's role and which file owns each fact. Keep pinned model revisions and runtime settings explicit. Put CPU contract tests in tests/ and reproducible validation summaries in docs/.
 
 For deployment, read SETUP.md and its linked operations/validation documents first. This is a beta: full-model TP=2 is unqualified, and no qualification-receipt producer exists yet. Do not fabricate a receipt or bypass the gate. Respect explicitly paused downloads and preserve other workloads. Record each action and its evidence privately under records/.
 

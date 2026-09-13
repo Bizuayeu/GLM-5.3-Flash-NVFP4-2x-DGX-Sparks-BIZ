@@ -2,7 +2,7 @@
 
 **BETA — a limited full-model TP=2 reference profile has been tested. Production and harness qualification are not complete.**
 
-[日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md)
+[日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
 A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **two DGX Spark or compatible GB10 systems**. Measurements use **two MSI EdgeXpert (MS-C931) systems**. The focus is commercially usable licensing, pinned artifacts, observable checks, and reversible operations.
 
@@ -33,7 +33,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 
 - **License and provenance selection:** prefer commercially usable MIT/Apache components, pin their origin and preserve notices. The [licensing guide](docs/licensing.md) distinguishes the terms for code, weights, containers and harnesses.
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
-- **Measured performance tuning:** investigate MTP, LPA, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
+- **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
 
 For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). Enabling MTP itself remains opt-in.
 
@@ -57,11 +57,17 @@ Enterprise readiness is an acceptance outcome, not implied by this project's nam
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
 | ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
 | MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
+| Prefix caching (APC), APC-first LPA and checkpoint retention, one active sequence | APC accepted for the measured serial long-prefix reuse workload (experimental), default off; APC-first LPA calibrated, combined with MTP/fusion/async checks and checked on held-out documents; checkpoint retention adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352, with the block-independent `dense` setting equivalent in the measured layout and its final combined integration qualified separately; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) and [contracts](docs/launch-safety.md) |
+| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack default off; [overview](docs/optimization-overview.md) |
 | Other MTP depths, vision, full application quality, production reliability and maximum performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
 
-[Canonical sparse candidate ordering](docs/candidate-order.md) is a shared GLM runtime change, enabled by default in newly built reference images. Updating source requires a rebuild; existing images and containers do not acquire the patch automatically. The [setup runbook](SETUP.md#4-prepare-images-and-test-the-reference-implementation) makes this an explicit installation step.
+[Canonical sparse candidate ordering](docs/candidate-order.md) is a shared GLM runtime change, enabled by default in newly built reference images. Updating source requires a rebuild; existing images and containers do not acquire the patch automatically. The [setup runbook](SETUP.md#4-prepare-images-and-test-the-reference-implementation) makes this an explicit installation step. The full-model measurements published so far were taken on images built before this change; only a four-layer GB10 fixture regression exists for the patched image, and a rebuilt runtime needs its own full-model regression.
+
+## Related research outside this repository
+
+**Euryale** is a separate, unpublished research project that proposes several draft tokens from a frozen model's intermediate representations with a light auxiliary proposer, taking GLM-5.3-Flash on two GB10 hosts as its first target. It is not part of this distribution and, beyond the canonical candidate ordering described above, changes nothing in this repository's checkpoint, runtime or defaults. Its speed, quality and memory advantage over the checkpoint's standard MTP is unproven: a four-layer fixture has been checked at effective draft widths 5–12, while full-model teacher capture, proposer training and same-condition comparison have not started. The canonical candidate ordering above is a shared runtime change that came out of that work. Euryale would replace MTP k=3 as the default speculation path only after a same-condition comparison passes its quality, performance, memory and recovery gates, judged with the [catalog's separation](docs/optimization-catalog.md#functional-acceptance-and-defaults) of functional acceptance, performance adoption, defaults and combined-mode acceptance; until then MTP k=3 remains the measured candidate.
 
 ## Prerequisites
 

@@ -1,5 +1,7 @@
 # Operations — beta
 
+[日本語](operations.ja.md)
+
 **Routine TP=2 deployment is not qualified yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md); the guarded routine launcher remains a candidate implementation.
 
 ## Artifact storage and paths

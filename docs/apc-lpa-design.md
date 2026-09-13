@@ -1,61 +1,63 @@
-# APC優先・未処理部分へのLPA：実装・検証計画
+# APC-first LPA on the uncached suffix: implementation and validation plan
 
-**状態：CPU契約、4層GPUの共有状態隔離、全モデルの校正・限定品質・運用検査、非同期MTPを含む併用と最終held-out参照評価を完了。** 用途によりMTPなしのprefix再利用構成を選ぶ。対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。[校正・併用結果](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)／[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。履歴編集・分岐・保持圧力の追加評価は、この検収と分けて実施する。
+[日本語](apc-lpa-design.ja.md) · [Catalog](optimization-catalog.md)
 
-## 目的と初版の方針
+**Status: CPU contracts, four-layer GPU shared-state isolation, full-model calibration, scoped quality and operational checks, combinations including asynchronous MTP, and the final held-out retrieval evaluation are complete.** Depending on the workload, select the no-MTP prefix-reuse profile. It requires the matching image marker and still rejects APC coexistence through manual RPCs. See the [calibration and combination results](benchmarks.md#apc-first-lpa-crossover-measurement-p22), the [current LPA operating scope](lpa.md#operating-scope) and the [initiative catalog](optimization-catalog.md). Additional evaluation of history edits, branches and retention pressure is carried out separately from this acceptance.
 
-APCで復元できるprefixを先に再利用し、未処理部分が長いときだけLPAを使う。[vLLMのAPC説明](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/)も、共通prefixのprefill省略を対象としている。初版の共有キャッシュには通常計算由来の状態だけを登録し、近似状態は当該要求の中だけで使う。近似状態の共有・専用namespaceによる再利用は今回の範囲外とする。
+## Goal and first-version policy
 
-| 値 | 定義 |
+Reuse the prefix APC can restore first, and use LPA only when the uncached portion is long. [vLLM's APC description](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching/) also targets skipping prefill for a common prefix. The first version publishes only ordinarily computed states to the shared cache; approximate states are used only inside their own request. Sharing approximate states, or reusing them through a dedicated namespace, is outside this scope.
+
+| Value | Definition |
 |---|---|
-| N | runtimeが確定した入力token数 |
-| H | 必要なMLA・indexer/pool/tail・KDA状態を揃えて復元できるprefix長。文字列の共通長や、単一cache groupの最大hit長ではない |
-| T | 通常計算する末尾長。入力が短いときはN以下に制限する |
-| R | LPAを適用可能な未処理長 `max(0, N - T - H)` |
-| B | 実測で決める損益分岐の判定値。普遍的な定数とは扱わない |
+| N | The input token count resolved by the runtime |
+| H | The prefix length restorable with the required MLA, indexer/pool/tail and KDA states all present. Not the common string length, nor the longest hit of a single cache group |
+| T | The tail length computed ordinarily. It is capped at N or below for short inputs |
+| R | The uncached length eligible for LPA, `max(0, N - T - H)` |
+| B | The crossover decision value determined by measurement. Not treated as a universal constant |
 
-`R > B` のときだけ `[H, N-T)` を近似する。`[0,H)` は再計算せず、末尾 `[max(H,N-T),N)` とdecodeは通常計算する。Rが小さい場合は、APC＋残りの通常計算となる。H=0も同じ規則で扱い、総コンテキスト長による別の振り分けは作らない。
+Approximate `[H, N-T)` only when `R > B`. `[0,H)` is not recomputed; the tail `[max(H,N-T),N)` and decode are computed ordinarily. A small R yields APC plus ordinary computation of the remainder. H=0 follows the same rule; no separate routing by total context length is added.
 
-MTPでは、先読みを再計算するため、固定vLLMの[cache coordinator](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/v1/core/kv_cache_coordinator.py)が一致した末尾blockをhitから除外する。KDA checkpointもこの復帰境界に合わせる。したがって「1blockを通常計算したら1blockを復元できる」とは限らず、fixtureのprimingには追加の通常blockを含める。Hにはこの調整後に実際に返された値を使う。起動時に整列されるblock幅も、MTPなしの数値を流用しない。
+Under MTP the pinned vLLM [cache coordinator](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/v1/core/kv_cache_coordinator.py) excludes the matching final block from the hit, because the speculation is recomputed. KDA checkpoints also follow that resumption boundary. "One ordinarily computed block" therefore does not guarantee "one restorable block", and fixture priming includes an additional ordinary block. Use the value actually returned after this adjustment as H. The block width aligned at startup likewise does not reuse the no-MTP number.
 
-## 共有キャッシュの契約
+## Shared-cache contract
 
-1. 最初に近似する位置Sを、GPU計算と共有登録の前に決める。初回の通常経路ではLPA採用時のS=H、近似しない要求には上限を設けない。
-2. 共有できるのは、全状態が通常計算由来で、末尾がSを越えない完全なblockだけとする。各cache groupの圧縮比・block境界を維持し、上へ丸めない。
-3. S以降のKV・KDA状態を要求の実行に使うことと、共有hash表へ登録することを分ける。要求内の割当・cache更新・decodeは維持する。
-4. 通常計算する末尾も、それ以前の近似に依存するため共有しない。decodeで作った状態も同様とする。
-5. chunk継続、preemption／再計算、cancel、終了処理で制限を失わない。一度近似の影響を受けた要求の上限を、黙って後方へ緩めない。
-   初回に選んだ近似区間は通常のchunk進行で変えない。preemptionで元の共有prefixを失った場合は、その位置を通常計算で再構成し、元の近似開始位置を維持する。元が通常計算の要求は通常計算を維持する。
-6. LPA要求が共有prefixの既存KV・KDA checkpointを破壊しないことを確認する。copy-on-writeや解放・再割当の既存契約を維持する。
+1. Determine the first approximated position S before GPU computation and shared publication. On the initial ordinary path, S=H when LPA is selected; requests without approximation have no cap.
+2. Only complete blocks whose states are entirely ordinarily computed and whose end does not exceed S may be shared. Keep each cache group's compression ratio and block boundaries, and do not round up.
+3. Separate using KV/KDA states beyond S to execute the request from publishing them to the shared hash table. In-request allocation, cache updates and decode are retained.
+4. The ordinarily computed tail is not shared either, because it depends on the earlier approximation. The same applies to states produced during decode.
+5. Chunked continuation, preemption/recomputation, cancellation and teardown must not lose the restriction. Do not silently relax the cap of a request once affected by approximation to a later position.
+   The approximation interval selected at the start does not change with ordinary chunk progress. If preemption loses the original shared prefix, reconstruct that region by ordinary computation and keep the original approximation start position. A request that was ordinary stays ordinary.
+6. Verify that an LPA request does not destroy the existing KV/KDA checkpoints of the shared prefix. Keep the existing copy-on-write, free and reallocation contracts.
 
-初見の長文をLPAで処理しても、近似した全文は次回用の共有APCには育たない。共通system prompt・tool定義・資料を通常計算で温めるため、要求単位の明示的なLPA offを用意する。off要求は、実際に全て通常計算された状態だけを共有へ登録する。
+Processing a first-seen long document with LPA does not grow the approximated text into shared APC for the next request. An explicit per-request LPA off exists so that a common system prompt, tool definitions and documents can be primed by ordinary computation. An off request publishes only states that were in fact computed entirely ordinarily.
 
-## 固定runtimeへの接続点
+## Attachment points in the pinned runtime
 
-対象vLLMは既存lockの `385dce36bcee42309924a5ece951a96db3dce7f2`。上流更新や別バージョンへのfallbackは行わず、patch対象のsource hashを照合する。
+The target vLLM is the existing lock's `385dce36bcee42309924a5ece951a96db3dce7f2`. No upstream update or fallback to another version is performed; the patched source hashes are verified.
 
-- schedulerのcache照合結果からHを得る。`shared_prefix_boundary`は、遅れているcache groupがまだ復元できない境界を含み得るため、Hの代用にしない。
-- `KVCacheManager.allocate_slots()` は計算前に `coordinator.cache_blocks()` を呼ぶ。事後の応答処理だけでは抑止できない。この経路と明示的な `cache_blocks()` の両方で共有上限を適用する。
-- 要求IDとN/H/T/R・採否・共有上限をschedulerからworkerへ渡す。workerの全体設定だけを外部RPCで切り替える方式に依存せず、要求の取り違えを検出する。
-- 非同期MTPではCPU側の進行位置は楽観値で、GPUが却下した投機token分を補正する。生成済みtokenがあり、両位置がprompt終了以降にあるdecodeでは、GPUの補正位置を使う。prefillの位置一致、promptへの巻き戻り禁止、位置列の連続性、共有登録上限は維持する。診断の`speculative_position_corrections`に補正を観測したstep数を残す。
-- LPA hookは絶対位置を使い、実際に計算する未処理位置だけを近似・計数する。capture／oracleはcache hitで欠けたprefixを「採取済み」と見なさない。
-- APC優先モード中の手動RPCが、schedulerに伝わらない近似を有効化できないようにする。通常APCの対照が近似状態を保存する経路を残さない。
+- Take H from the scheduler's cache lookup result. `shared_prefix_boundary` may include a boundary that a lagging cache group cannot restore yet, so it is not a substitute for H.
+- `KVCacheManager.allocate_slots()` calls `coordinator.cache_blocks()` before computation. Post-hoc response handling alone cannot suppress it. Apply the shared cap on both that path and explicit `cache_blocks()` calls.
+- Pass the request ID, N/H/T/R, the LPA decision and the shared cap from the scheduler to the worker. Do not depend on switching only the worker's global configuration through an external RPC, and detect mismatched requests.
+- With asynchronous MTP the CPU-side cursor is optimistic and corrects for the speculative tokens the GPU rejected. Use the GPU's corrected position in decode steps that have generated tokens and where both positions are at or after the end of the prompt. Prefill position agreement, the prohibition on rewinding into the prompt, position-sequence continuity and the shared publication cap are retained. The `speculative_position_corrections` diagnostic retains the number of steps where a correction was observed.
+- The LPA hook uses absolute positions and approximates and counts only the uncached positions actually computed. Capture/oracle must not treat a prefix missing because of a cache hit as "collected".
+- Prevent a manual RPC during APC-first mode from enabling an approximation the scheduler is not told about. Leave no path by which an ordinary APC control stores approximate state.
 
-最初の接続検証は、テキスト・eager・TP2・1系列・ローカルcacheで行う。Graph、PP、外部KV connector、細粒度Mamba prefix cache、複数系列を同時に追加しない。MTP／unpack融合／非同期検査の併用は、基本契約の通過後に個別の組合せとして検証する。
+The first integration check uses text, eager, TP2, one sequence and local cache. Graphs, PP, an external KV connector, fine-grained Mamba prefix caching and multiple sequences are not added at the same time. Combinations with MTP, fused unpack and asynchronous checks are validated as individual combinations after the base contract passes.
 
-## 実装と検収の順番
+## Implementation and acceptance order
 
-4層GPU試験ではN=18,432、復元H=8,704で、近似suffixを通過した後も共有prefixの全検査対象hashが一致した。後続通常要求のHは8,704のままで、通常計算後に初めて17,408まで共有範囲が伸びた。対照・近似の後の通常要求・復帰対照の16出力tokenは一致し、合成近似の分布差は別に検出できた。これはTP1・eager・MTPなしの状態隔離の結果であり、全モデルや併用の受入ではない。
+In the four-layer GPU test, with N=18,432 and restored H=8,704, every inspected shared-prefix hash still matched after passing through the approximated suffix. The following ordinary request still had H=8,704, and only after ordinary computation did the shared range grow to 17,408. The 16 output tokens of the control, of the ordinary request following approximation and of the restored control matched, and the synthetic approximation's distribution difference was detected separately. This is a TP1/eager/no-MTP state-isolation result, not acceptance of the full model or of combinations.
 
-共有キャッシュ隔離の部品試験は、対応image内で次のコマンドから実行する。`--fixture` は全tensorのバイト照合を終えた4層fixture、`--output` は新規の保存先を指定する。GPUを1台使い、32K context・1 GiB KV・1系列で実行するため、別途コンテナ上限とホスト余裕を監視する。
+Run the shared-cache isolation component test from the following command inside the matching image. `--fixture` takes the four-layer fixture whose tensors have all passed byte verification; `--output` takes a fresh destination. It uses one GPU with 32K context, 1 GiB KV and one sequence, so monitor the container cap and host availability separately.
 
 ```sh
 python -m glm53_setup apc-lpa-fixture --fixture /fixture --output /out/validation
 ```
 
-この試験は通常状態との違いが出る合成projectorをfixture専用に作る。実cache lookupの復元境界、共有prefixのGPUバイトhash、実際のquery省略数、後続通常要求の出力を検査する。全モデルの品質や損益分岐の評価には使わない。startup warmupは固定ソース内の明示的な範囲に限定して除外し、実要求にはscheduler由来のpolicyを必須とする。workerのキャッシュ形式は、モデル読込時に正規化された`fp8_ds_mla`を検査する。
+This test builds a fixture-only synthetic projector that differs from ordinary state. It checks the restoration boundary of a real cache lookup, the GPU byte hashes of the shared prefix, the actual number of omitted queries and the output of a following ordinary request. It is not used to evaluate full-model quality or the crossover. Startup warmup is excluded within an explicit range of the pinned source, and real requests require the scheduler-supplied policy. The worker's cache format check uses the `fp8_ds_mla` value normalized at model load.
 
-損益分岐は、LPA/APCを有効にして`lpa.break_even_tokens=0`とした専用TP2サーバーで、Linuxホストから計測する。通常運用のTOMLを直接変更せず、計測用TOMLを両rankに揃える。次は、実際のjoint復元単位が4,352 tokenの条件に対応する例である。MTPの先読み再計算などで境界が変わる構成には、そのまま流用しない。
+Measure the crossover from a Linux host on a dedicated TP2 server with LPA/APC enabled and `lpa.break_even_tokens=0`. Do not edit the routine-operation TOML directly; align a measurement TOML across both ranks. The following example corresponds to an actual joint restoration unit of 4,352 tokens. Do not reuse it as is for configurations whose boundary changes, for instance through MTP's speculation recomputation.
 
 ```sh
 python -m glm53_setup apc-lpa-benchmark \
@@ -65,18 +67,18 @@ python -m glm53_setup apc-lpa-benchmark \
   --eligible-tokens 128 512 1024 2048 4096 8192 --repeats 5
 ```
 
-各測定前に共有cacheをリセットし、H>0では通常計算でprefixを作り直す。実際のN/H/Rとquery省略数を両rankで検査し、時間の測定区間にreset・priming・診断RPCを含めない。通常／LPA／復帰対照を繰り返し、最初の一巡をwarmupとして除外する。入力には指定コーパスのvalidation分割だけを使う。小さい残余長の追加計測には`--cold-only --eligible-tokens 0 1 4 16 32 64`を指定できる。校正用のB=0をそのまま運用推奨値とはしない。
+Reset the shared cache before each measurement, and rebuild the prefix by ordinary computation when H>0. Check the actual N/H/R and the omitted-query count on both ranks, and keep reset, priming and diagnostic RPCs outside the timing window. Repeat ordinary/LPA/restored controls and exclude the first cycle as warmup. Use only the validation split of the specified corpus as input. Additional measurements at small remainders can specify `--cold-only --eligible-tokens 0 1 4 16 32 64`. The calibration value B=0 is not an operational recommendation.
 
-| 段階 | 実施内容・完了条件 |
+| Stage | Work and completion criteria |
 |---|---|
-| 現在の単独評価 | 32K容量・時間とAPC off/on/offの速度、実hit、長文抽出・再参照・tool・cancelを確定。生結果を保持する |
-| CPUの契約 | N/H/T/Bの境界、H=0、ほぼ全hit、複数cache groupの整合、全登録経路の上限、要求ID切替、cancel／preemption後の上限維持を検査する |
-| 部品と小層fixture | 通常計算でprefixを作成→Hを復元→suffixにLPA→通常要求で再参照。近似以降が共有表に無いこと、元のprefix状態が不変であること、実際の省略数を確認する |
-| 汚染を検出する試験 | 近似状態を意図的に通常状態から区別できるfixtureを使い、後続LPA off要求に流入しないことを検査する。oracleの値がたまたま同じであることだけで合格にしない |
-| 損益分岐の計測 | H=0／H>0それぞれでRを段階的に変え、補助器warmupを除外したAPC＋通常／APC＋LPA／復帰を比較。Bを選び、条件・ばらつき・未測定範囲を記録する |
-| 全モデル | hitなし／部分hit／ほぼ全hit、pool・block・T・B境界、長文の証拠位置、別文書・projector設定・LPA offへの分離、tool、SSE、cancel、容量、両rank停止復旧を確認する |
-| 最終併用 | 既に採用したMTP3・unpack融合・非同期検査との組合せを同じ固定資産で検証し、機能受入・性能採用・既定設定を分けて記録する |
+| Current standalone evaluation | Establish 32K capacity and timing, APC off/on/off speed, actual hits, long-document extraction, revisits, tools and cancellation. Retain the raw results |
+| CPU contracts | Check the N/H/T/B boundaries, H=0, near-complete hits, consistency across multiple cache groups, the cap on every publication path, request-ID switching, and cap retention after cancellation/preemption |
+| Components and the small-layer fixture | Build a prefix by ordinary computation, restore H, apply LPA to the suffix, then revisit with an ordinary request. Confirm that nothing beyond the approximation is in the shared table, that the original prefix state is unchanged, and the actual omission count |
+| Contamination detection test | Use a fixture whose approximate state is deliberately distinguishable from ordinary state, and check that it does not flow into a following LPA-off request. Do not treat oracle values that merely happen to match as a pass |
+| Crossover measurement | Vary R stepwise for H=0 and for H>0, and compare APC plus ordinary, APC plus LPA and restored with the auxiliary projector warmup excluded. Select B and record the conditions, the variance and the unmeasured ranges |
+| Full model | Check no hit, partial hit and near-complete hit, the pool/block/T/B boundaries, evidence positions in long documents, isolation from other documents, projector settings and LPA off, tools, SSE, cancellation, capacity, and stop/recovery of both ranks |
+| Final combination | Validate the combination with the already adopted MTP3, fused unpack and asynchronous checks on the same pinned assets, and record functional acceptance, performance adoption and default settings separately |
 
-各要求には、N、実復元H、R、LPA採否、最初の近似位置、共有上限、実際のquery省略数・cache登録範囲を残す。速度測定で重いtensor hashやprofilerを有効にしない。品質は逐語一致・タスク正答・状態診断・復帰対照を分け、未完了を合格へ繰り上げない。検証用4 GiB reserveと通常8 GiB reserveを区別する。
+Retain, for each request, N, the actual restored H, R, the LPA decision, the first approximated position, the shared cap, the actual omitted-query count and the cache publication range. Do not enable heavy tensor hashing or the profiler during speed measurement. Keep verbatim agreement, task correctness, state diagnostics and the restored control separate for quality, and do not promote an incomplete result to a pass. Distinguish the 4 GiB validation reserve from the ordinary 8 GiB reserve.
 
-起動オプションは既存のカテゴリ別TOMLへまとめ、APC優先モードとB、共通資料を通常計算する要求指定を文書化する。対応imageのmarkerを必須とし、schedulerの登録上限を確定できない手動RPCとの併用は拒否する。無効な要求オプションと内部policyの持込みはinput processorでも検査し、schedulerへ投入する前に入力エラーにする。
+Collect the startup options into the existing category TOML files, and document APC-first mode, B and the request option that computes common documents ordinarily. Require the matching image marker, and reject combination with manual RPCs, whose publication cap the scheduler cannot establish. Check invalid request options and injected internal policies in the input processor as well, and turn them into input errors before they enter the scheduler.

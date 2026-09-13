@@ -1,6 +1,6 @@
 # TP=2ベンチマークの方法
 
-[English／実行例](benchmarks.md) · [検証範囲](validation.md)
+[English／実行例](benchmarks.md) · [検証範囲](validation.ja.md)
 
 本書はMTPなしの基準値です。任意の投機profileは[MTP k=1の比較結果](speculative-decoding.ja.md#k1の実測結果)を参照してください。
 
@@ -278,7 +278,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 長文の抽出・再参照6要求、長文tool往復、12K入力のSSE切断と後続要求は、3条件とも通過しました。12,763-tokenの資料要求では異なる資料を挟み、APC onの3回の再参照全てで8,704 tokenが命中して正答しました。tool結果を渡した続きでも8,704 tokenを再利用し、期待する値を返しました。新規prefixの要求は全てhit0です。これらを一般的な言語品質の認定とはしません。
 
-コンテナ112 GiB上限、host reserve4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead11.445／11.489／11.495 GiB、peer12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit0、全peerがexit137で停止し、OOMはありません。**今回の長いprefixを繰り返す直列実験用途ではAPCを採用し、既定offを維持します。** 設定上のcontext上限を、APCの32K実要求容量・MTP／fusion／Graphs併用・企業検収へ読み替えません。LPA併用は、[P22の通常状態だけを共有する契約](apc-lpa-design.md)で別に評価します。
+コンテナ112 GiB上限、host reserve4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead11.445／11.489／11.495 GiB、peer12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit0、全peerがexit137で停止し、OOMはありません。**今回の長いprefixを繰り返す直列実験用途ではAPCを採用し、既定offを維持します。** 設定上のcontext上限を、APCの32K実要求容量・MTP／fusion／Graphs併用・企業検収へ読み替えません。LPA併用は、[P22の通常状態だけを共有する契約](apc-lpa-design.ja.md)で別に評価します。
 
 ## APC優先LPAの損益分岐計測（P22）
 

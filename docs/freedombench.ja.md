@@ -1,6 +1,6 @@
 # FreedomBench・政治的文脈の評価
 
-[English](freedombench.md) · [検証一覧](validation.md)
+[English](freedombench.md) · [検証一覧](validation.ja.md)
 
 **エンタープライズ向けの必須評価。英語原版の併用構成と長文付きpilotは実測済み、全体検収は未了。** 以下の必須構成・独自拡張と、これらの限定結果を区別する。
 

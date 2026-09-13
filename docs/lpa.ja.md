@@ -25,7 +25,7 @@ MTP併用は明示的に有効化する。修正済みの四層MTP3／unpack融�
 
 LPAはKVとKDA状態を近似する。近似で作ったキャッシュをLPA off要求や別のprojector設定へ混ぜることはできない。手動の `lpa_configure` RPCではschedulerの共有登録境界を確定できないため、prefix cachingとの併用を拒否する。
 
-P22は[APC優先・未処理部分へのLPA方式](apc-lpa-design.md)を実装する。schedulerが全状態を揃えた通常計算由来のprefix Hを復元し、N/H/Tと損益分岐の閾値から残余の近似区間を決める。最初の近似以降は、通常計算する末尾・decodeまで共有登録を抑止する。共通資料を通常計算してcacheを作る要求指定を設け、近似状態は要求内だけで使う。
+P22は[APC優先・未処理部分へのLPA方式](apc-lpa-design.ja.md)を実装する。schedulerが全状態を揃えた通常計算由来のprefix Hを復元し、N/H/Tと損益分岐の閾値から残余の近似区間を決める。最初の近似以降は、通常計算する末尾・decodeまで共有登録を抑止する。共通資料を通常計算してcacheを作る要求指定を設け、近似状態は要求内だけで使う。
 
 対応imageのmarkerと起動設定が必要になる。CPU契約と4層GPUの共有状態隔離試験は通過し、全モデル性能・損益分岐・MTP併用を検証中。APCとのcapture／oracle RPC併用は有効にしていない。改善率は単体結果から足し合わせず、実際の組合せで測る。
 

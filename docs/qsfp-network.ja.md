@@ -127,7 +127,7 @@ MTUが異なる場合は値を流用しません。9000へ上げるのは、両�
 
 `ibdev2netdev`で対象interfaceに対応するHCAを特定します。そのHCAの`/sys/class/infiniband/<HCA>/ports/1/`にある`gids/`、`gid_attrs/types/`、`gid_attrs/ndevs/`を同じindexで照合します。
 
-選ぶのは、typeがRoCE v2、ndevが対象interface、GIDのIPv4-mapped部分が自機の固定IPv4であるindexです。番号はホストごとに実測し、よくある`3`を決め打ちしません。これを[サイト設定](operations.md#network-and-site-configuration)へ引き継ぎます。RDMA linkのACTIVEやGIDの存在だけでは、NCCLがその経路で通信した証明にはなりません。
+選ぶのは、typeがRoCE v2、ndevが対象interface、GIDのIPv4-mapped部分が自機の固定IPv4であるindexです。番号はホストごとに実測し、よくある`3`を決め打ちしません。これを[サイト設定](operations.ja.md#ネットワークとサイト設定)へ引き継ぎます。RDMA linkのACTIVEやGIDの存在だけでは、NCCLがその経路で通信した証明にはなりません。
 
 ## 7. 再接続・復旧・完了判定
 

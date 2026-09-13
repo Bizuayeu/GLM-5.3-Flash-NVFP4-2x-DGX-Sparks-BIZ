@@ -1,5 +1,7 @@
 # Validation
 
+[日本語](validation.ja.md)
+
 ## Evidence, not production qualification
 
 These observations used a GB10 GPU, vLLM source commit `385dce36bcee42309924a5ece951a96db3dce7f2`, and NVIDIA model revision `423acf37583782c51c142d145aef733d72943d93`. Private raw runs are not distributed; this is their reviewed summary.

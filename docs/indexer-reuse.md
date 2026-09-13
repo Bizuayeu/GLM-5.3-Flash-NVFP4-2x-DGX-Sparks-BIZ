@@ -1,5 +1,7 @@
 # Indexer reuse and candidate-restricted rescoring
 
+[日本語](indexer-reuse.ja.md)
+
 **Experimental components; not integrated into model serving.** It complements the [launch/throughput investigation](performance-investigation.md), but savings and quality effects are not assumed additive with LPA.
 
 ## Contracts verified in the pinned GLM

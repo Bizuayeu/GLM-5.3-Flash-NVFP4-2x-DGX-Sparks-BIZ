@@ -63,13 +63,13 @@ python tools/check_publication.py
 
 ## 3. 重みを一度取得し、それぞれのコピーを検証する
 
-取得前に[重み・MTP用view・LPA補助器の配置](docs/operations.md#artifact-storage-and-paths)を確認してください。各Linux機の既定HF cacheを使用し、本体checkpointと別の補助器を区別します。取得先と起動時の参照先が一致することを、同節の読み取りコマンドで確認できます。
+取得前に[重み・MTP用view・LPA補助器の配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。各Linux機の既定HF cacheを使用し、本体checkpointと別の補助器を区別します。取得先と起動時の参照先が一致することを、同節の読み取りコマンドで確認できます。
 
 取得元は[NVIDIAのGLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)です。ダウンローダーはロックの固定revisionを読みます。`main`、別の量子化、似たモデル名へ置き換えません。固定スナップショットのライセンスと[第三者通知](THIRD_PARTY_NOTICES.md)を確認します。本プロジェクトのライセンスは重み・依存物の条件を置き換えません。
 
 取得担当ノードで[READMEの資材準備](README.md#prepare-assets)を実施し、manifest、snapshot、取得状態、チェックサム合格結果を保存します。ダウンロード状態の`complete`は存在・サイズ確認であり、チェックサム検証は別途必須です。
 
-高速リンクが使えるようになったら、モデルキャッシュの`blobs`と`snapshots`をリンク関係ごと他方へ移送します。[移送・検証の運用手順](docs/operations.md#acquire-and-verify-once)に従い、送受信パスと結果を記録してください。削除同期や他モデルのキャッシュ上書きは禁止です。両方で同じrevisionのチェックサムを確認します。推論がオフラインでも、検証はオンラインのメタデータを必要とする場合があります。
+高速リンクが使えるようになったら、モデルキャッシュの`blobs`と`snapshots`をリンク関係ごと他方へ移送します。[移送・検証の運用手順](docs/operations.ja.md#一度取得して検証する)に従い、送受信パスと結果を記録してください。削除同期や他モデルのキャッシュ上書きは禁止です。両方で同じrevisionのチェックサムを確認します。推論がオフラインでも、検証はオンラインのメタデータを必要とする場合があります。
 
 意図的に休止した取得は部分ファイルを残し、再開が認められるまで休止を維持します。同じ移送先に対しダウンロードとキャッシュ移送を同時実行しません。ケーブル待ちを理由に巨大なインターネット取得を重複させません。
 
@@ -77,11 +77,11 @@ python tools/check_publication.py
 
 ## 4. イメージ準備と参照実装の単体検証
 
-[ホスト準備](docs/operations.md#prepare-each-host)に従い、固定ARM64ベースを検査し、参照イメージを一度ビルドして必要に応じて他方へ移送します。両機の実イメージIDを記録・比較します。変更可能なタグの一致だけでは足りません。ベースdigestとソースハッシュ検査は、別のvLLM版に誤ってパッチを当てることを防ぎます。
+[ホスト準備](docs/operations.ja.md#各ホストの準備)に従い、固定ARM64ベースを検査し、参照イメージを一度ビルドして必要に応じて他方へ移送します。両機の実イメージIDを記録・比較します。変更可能なタグの一致だけでは足りません。ベースdigestとソースハッシュ検査は、別のvLLM版に誤ってパッチを当てることを防ぎます。
 
 **本リポジトリのvLLM／GLM runtimeパッチを導入するには、参照imageのビルドが必要です。** [sparse候補の順序正規化](docs/candidate-order.ja.md)も、確認したcheckoutで `python -m glm53_setup build-reference` を実行すると自動適用します。vLLM sourceの手編集は不要です。公式base imageだけには、この変更は入っていません。source更新後は再ビルドし、新しいimage IDを確認してからcontainerを切り替えます。既存imageや稼働containerは自動更新されません。sourceハッシュ不一致は回避せず、ビルドを停止してください。
 
-最初のホストで[単体GPU fixture手順](docs/validation.md#reproduce-the-single-gpu-fixture)を実施します。資源上限、精度、出力、判定を一緒に保存してください。fixture合格は一部カーネルと状態挙動の確認であり、フルモデル品質・TP=2合格ではありません。他方の準備後にも適切な部品検査を行います。
+最初のホストで[単体GPU fixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)を実施します。資源上限、精度、出力、判定を一緒に保存してください。fixture合格は一部カーネルと状態挙動の確認であり、フルモデル品質・TP=2合格ではありません。他方の準備後にも適切な部品検査を行います。
 
 **通過条件:** ベース検査、参照イメージID、fixture判定、残る数値上の制約を記録済み。
 
@@ -91,7 +91,7 @@ python tools/check_publication.py
 
 物理接続は人が行います。管理接続を維持しながらメーカー手順に従って設定し、変更前のネットワーク設定と戻し方を保存します。両機の既存経路を確認せずに例示のサブネットを設定しません。
 
-実際にリンクしたEthernet interface、HCA、各IPv4に対応するRoCEv2 GIDを測り、[サイト設定](docs/operations.md#network-and-site-configuration)へ反映します。サンプル値はすべて仮値です。MTU 9000も経路全体で成立する場合に限ります。双方向を確認し、SSH/IP到達性とRDMA転送を区別します。
+実際にリンクしたEthernet interface、HCA、各IPv4に対応するRoCEv2 GIDを測り、[サイト設定](docs/operations.ja.md#ネットワークとサイト設定)へ反映します。サンプル値はすべて仮値です。MTU 9000も経路全体で成立する場合に限ります。双方向を確認し、SSH/IP到達性とRDMA転送を区別します。
 
 重みをフルロードする前に、[2 rankのNCCL診断](docs/nccl-validation.ja.md)を実施します。コマンド、ツール版、rank配置、transportログ、payloadサイズ、データ検査、帯域実測を残し、指定RDMA経路の使用とデータ検査合格を確認してください。**本番向けの帯域合格閾値と、フルモデルの検証手順一式はまだありません。** 性能基準を先に決めて記録し、pingや基準のない帯域数値だけで性能合格にしません。
 
@@ -99,7 +99,7 @@ python tools/check_publication.py
 
 ## 6. フルモデルの検証 — 現ベータ版の停止条件
 
-[実験の適用範囲](docs/validation.md#full-model-tp2-experimental-scope)と[初期ベンチ](docs/benchmarks.ja.md)には、同時実行1での実測結果があります。残る阻害要因は通常デプロイの検収とruntime／証跡の結び付けであり、全モデル実験が一度も成立していない状態ではありません。
+[実験の適用範囲](docs/validation.ja.md#フルモデルtp2の実験範囲)と[初期ベンチ](docs/benchmarks.ja.md)には、同時実行1での実測結果があります。残る阻害要因は通常デプロイの検収とruntime／証跡の結び付けであり、全モデル実験が一度も成立していない状態ではありません。
 
 任意の[MTP k=1・k=3実験](docs/speculative-decoding.ja.md)も基礎API・同条件ベンチを通過し、次の評価にはk=3を優先します。投機フラグだけではBF16 MTPの扱いが不正になるため、両ホストで別メタデータviewを準備します。手順に沿ってメモリと性能を比較し、MTPなしの基準も保持してください。
 
@@ -128,7 +128,7 @@ python -m glm53_setup service preflight --site state/site.json
 
 ## 7. サービス起動と受け入れ — 手順6合格後のみ
 
-検証済みの起動手順を用い、[運用文書](docs/operations.md#full-model-launch-gate)の順にworker、headを起動します。両機のイメージID、ソース・モデルrevision、引数、設定、起動ログを保存します。loopbackまたは検証したSSHトンネルでAPIへ接続し、実際のクライアントからテキスト・無害なツールの受け入れ試験を再実施します。
+検証済みの起動手順を用い、[運用文書](docs/operations.ja.md#フルモデルの起動ゲート)の順にworker、headを起動します。両機のイメージID、ソース・モデルrevision、引数、設定、起動ログを保存します。loopbackまたは検証したSSHトンネルでAPIへ接続し、実際のクライアントからテキスト・無害なツールの受け入れ試験を再実施します。
 
 **公式ZCodeとClaude Code CLIの両方**で[ハーネス受け入れ一覧](docs/harnesses.ja.md)を実施します。基礎APIだけの成功で完了にせず、クライアント版、設定の非秘密部分、各ケースの結果を別々に記録してください。配布する場合は[対象別のライセンス条件](docs/licensing.ja.md)も確認します。
 
