@@ -243,3 +243,21 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 別run `integration-ops-v38` では、3条件とも16,320入力＋64出力を完了し、preemptionなし、終了後のscheduler／KV使用0、後続要求成功を確認しました。peak KV使用率は約0.630でした。2K入力のSSEを3つの非空chunk受信後に切断する検査も3条件で通過し、生成は9tokenで止まり、後続要求へ復帰しました。LPA onでは容量試験・切断試験の両方で近似の実作動を確認しています。[FreedomBench再確認と6問の長文付きpilot](freedombench.ja.md#併用構成の再確認と長文付きpilot)は別集計です。
 
 ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit0、peerは明示停止後exit137です。**この直列併用を実測した実験範囲で受け入れます。** 既定設定と通常の8 GiB reserveは変更していません。Graphs・APC・batching/MTP併用・さらに長い文脈・持続負荷・harness・本番復旧の検収を兼ねず、通常運用のqualification receiptは発行しません。
+
+## 32Kまでの独立コンテキスト評価（P15）
+
+2026-09-13（Asia/Tokyo）の `context-v40-32k` は、同じV36 image、TP2／eager、1系列、chunk512、FP8 KV各rank1 GiBを固定して完了しました。contextは32,768、MTP／LPA／fusion／非同期検査／Graphs／APC／EP／PPはoff。コンテナ112 GiB上限とhost reserve4 GiBは維持しています。設定fingerprintは `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e` です。
+
+各入出力条件でwarmup1回を除外し、profilerなしで3反復しました。固定LLM-jp validation文書列を指定token数で切り出しています。
+
+| 入力token | 1出力の要求時間中央値 | 64出力の要求時間中央値 |
+|---:|---:|---:|
+| 64 | 0.3617秒 | 4.7721秒 |
+| 2,048 | 6.0762秒 | 10.5320秒 |
+| 8,192 | 24.4122秒 | 28.8725秒 |
+| 16,320 | 48.8364秒 | 53.2792秒 |
+| 32,704 | 98.1147秒 | 102.5278秒 |
+
+測定30要求とwarmup10要求が出力予算まで完了し、preemptionは0、各条件の終了後はscheduler／KV使用0、最後の32入力＋1出力の後続要求も成功しました。32,704入力で観測したKV使用率の最大は固定poolの約0.4194です（0.5秒間隔の標本）。TP2の実効block sizeは4,352で、TP1 fixtureの8,704とは異なりました。
+
+**検収範囲は、この1系列の容量と時間です。長文課題の品質や最適化併用の検収を兼ねません。** 1出力はprefillの対照、64出力はprefill込みの時間です。context拡大に伴うKV予算の自動増額はしていません。runtimeが表示する収容数の見積りを、別の同時数の検収とは扱いません。128K以上は未試験です。このsweepの後、同じサーバーを別のAPC off比較へ継続利用しています。

@@ -264,3 +264,21 @@ The capture/off/oracle-full-MLP/oracle/off ladder produced identical 16-token te
 `integration-ops-v38` separately completed 16,320 input plus 64 output tokens in all three arms, with no preemption, empty scheduler/KV afterward and a successful following request. Peak KV usage was approximately 0.630. Every arm also passed a 2K-input SSE disconnect after three nonempty chunks, early generation stop at 9 tokens and a following request. LPA-on worker reports confirmed active approximation during both capacity and cancellation tests. The [FreedomBench recheck and six-question long-prefix pilot](freedombench.md#integration-recheck-and-long-prefix-pilot) are reported separately.
 
 The whole run, including load, used a 112 GiB container cap and a 4 GiB host reserve. Minimum available RAM was 8.278/9.330 GiB on rank0/1. Both containers stopped without OOM; head exited0 and peer137 after explicit stop. **Accept this serial combination for the measured experimental scope.** Default settings and the normal 8 GiB reserve remain unchanged. This does not qualify Graphs, APC, batching/MTP combinations, larger contexts, sustained load, harness integration or production recovery; no routine-deployment receipt is issued.
+
+## Independent context sweep through 32K (P15)
+
+`context-v40-32k` completed on 2026-09-13 (Asia/Tokyo) using the same V36 image, TP2/eager, one sequence, chunk512 and fixed FP8 KV1 GiB per rank. Context was 32,768; MTP/LPA/fusion/async checks/Graphs/APC/EP/PP were off. The 112 GiB container cap and 4 GiB host reserve remained active. Profile fingerprint: `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e`.
+
+Each input/output condition used one excluded warmup and three measured requests, with profiling disabled. The fixed LLM-jp validation stream was truncated to the stated token lengths.
+
+| Input tokens | One-output request median | 64-output request median |
+|---:|---:|---:|
+| 64 | 0.3617 s | 4.7721 s |
+| 2,048 | 6.0762 s | 10.5320 s |
+| 8,192 | 24.4122 s | 28.8725 s |
+| 16,320 | 48.8364 s | 53.2792 s |
+| 32,704 | 98.1147 s | 102.5278 s |
+
+All 30 measured requests and 10 warmups completed their full output budgets, with zero preemption, empty scheduler/KV after each condition, and a successful final 32-input/1-output follow-up. At 32,704 inputs, the observed peak KV usage was 0.4194 of the fixed pool (sampled every 0.5 s). The effective TP2 block size was 4,352, distinct from the 8,704-token TP1 fixture block.
+
+**This establishes the stated serial capacity and latency through 32K, not long-context task quality or optimization combinations.** The one-output cases approximate prefill cost; 64-output times include prefill. KV was not automatically increased when context was enlarged. The runtime's capacity estimate is not acceptance of another active-sequence count, and 128K or larger contexts remain untested. The same server continued into a separate APC-off comparison after this sweep.
