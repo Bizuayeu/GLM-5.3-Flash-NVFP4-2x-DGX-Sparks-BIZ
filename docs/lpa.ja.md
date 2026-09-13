@@ -16,18 +16,18 @@
 
 MTP併用は明示的に有効化する。修正済みの四層MTP3／unpack融合／async fixtureは、`integration-fixture-v36` で3〜8,192 tokenの8条件と使用中のKDA状態比較を通過した。その後の[直列フルモデル比較](benchmarks.ja.md#直列併用の評価p18)に、限定した課題・速度・容量・切断復帰の受入結果を記録している。部品のtoken一致を一般的なフルモデル品質保証とはしない。
 
-- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。APC・sequence-parallel MoE・複数の制御クライアントは未対応。MTP k=1/k=3との併用は `allow_mtp=true` を明示する。[起動設定TOML](startup-configuration.ja.md)では両機能の有効化から自動設定する。
+- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1/k=3併用は `allow_mtp=true` を明示し、[起動設定TOML](startup-configuration.ja.md)では自動設定する。APCは以下のscheduler統合済みP22経路を使う。
 - 入力末尾の指定範囲は通常計算する。全入力が保護範囲に収まる場合は、補助器の読込・実行をせず通常経路へ戻す。
 - 過去の状態は近似になる。Decodeを全層で行っても、元モデルの確率分布が厳密に復元されるわけではない。
 - 実験用worker extensionであり、通常ランチャーや各コーディングハーネスの常用検収とは別。開発用RPCはloopbackに限定する。
 
-### APCを現在無効にしている理由
+### APCと共有状態の由来
 
-原理的な非両立ではなく、実装・検証上の制約である。LPAはKVとKDA状態を近似するが、現行adapterには、mode・cut・projectorの識別情報・近似境界を区別してprefix cacheを再利用する仕組みがない。近似で作ったキャッシュをLPA offの対照や別のprojector設定へ混ぜることはできない。
+LPAはKVとKDA状態を近似する。近似で作ったキャッシュをLPA off要求や別のprojector設定へ混ぜることはできない。手動の `lpa_configure` RPCではschedulerの共有登録境界を確定できないため、prefix cachingとの併用を拒否する。
 
-近似境界は `prompt_length - tail` で決まる。会話を追記すると、前回は通常計算だった位置が、今回の近似範囲に入る場合がある。その古い状態を再利用すると、今回のLPA設定で再計算した状態とは異なり得る。古い状態を残す方式も設計候補にはなるが、別の近似方針として評価が必要であり、現時点では未対応である。
+P22は[APC優先・未処理部分へのLPA方式](apc-lpa-design.md)を実装する。schedulerが全状態を揃えた通常計算由来のprefix Hを復元し、N/H/Tと損益分岐の閾値から残余の近似区間を決める。最初の近似以降は、通常計算する末尾・decodeまで共有登録を抑止する。共通資料を通常計算してcacheを作る要求指定を設け、近似状態は要求内だけで使う。
 
-次の実装は、共有APCには通常計算由来の状態だけを残す[APC優先・未処理部分へのLPA方式](apc-lpa-design.md)を採る。復元できたprefix長からLPAの適用範囲を決め、最初に近似した位置以降は共有登録しない。さらに実際のcache hitでKDA checkpoint、残り入力の位置、query省略数、capture／oracleの診断を検証する。hookは既に絶対token位置を使うが、それだけではAPC対応の証明にならない。この契約を実装するまで、起動設定とworkerの両方で併用を拒否する。単体の改善率を単純加算しない。
+対応imageのmarkerと起動設定が必要になる。CPU契約と4層GPUの共有状態隔離試験は通過し、全モデル性能・損益分岐・MTP併用を検証中。APCとのcapture／oracle RPC併用は有効にしていない。改善率は単体結果から足し合わせず、実際の組合せで測る。
 
 ## 部品の再現
 

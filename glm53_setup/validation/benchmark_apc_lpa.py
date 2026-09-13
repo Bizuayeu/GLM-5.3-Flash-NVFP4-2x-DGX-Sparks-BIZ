@@ -20,6 +20,11 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cached-prefix-tokens", type=int, required=True)
     parser.add_argument(
+        "--cold-only",
+        action="store_true",
+        help="Measure H=0 only, for an additional short-suffix sweep",
+    )
+    parser.add_argument(
         "--eligible-tokens", type=int, nargs="+", default=[128, 512, 1024, 2048, 4096]
     )
     parser.add_argument("--repeats", type=int, default=5)
@@ -144,7 +149,7 @@ def main(argv=None):
                 },
             )["tokens"]
             tail = profile["lpa"]["tail"]
-            for hit in (0, args.cached_prefix_tokens):
+            for hit in (0,) if args.cold_only else (0, args.cached_prefix_tokens):
                 for eligible in args.eligible_tokens:
                     length = hit + tail + eligible
                     if length + 1 > profile["context"]["max_model_len"] or length > len(

@@ -16,18 +16,18 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 MTP coexistence is opt-in. The corrected four-layer MTP3/fused-unpack/async fixture passed eight lengths from 3 to 8,192 tokens, including active KDA state comparisons, in `integration-fixture-v36`. The subsequent [serial full-model comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) records its limited task, timing, capacity and cancellation acceptance. Component token agreement is not a general full-model quality claim.
 
-- Eager, text-only, TP=2, one active sequence and one controlling client. Prefix caching, sequence-parallel MoE and concurrent controllers are unsupported. MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically when both features are enabled.
+- Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
 - This is an experimental worker extension, not qualification of the routine deployment launcher or either coding harness. Keep its development RPC on loopback.
 
-### Why APC is currently disabled
+### APC and shared-state provenance
 
-This is an implementation and validation restriction, not a fundamental incompatibility. LPA changes cached KV and KDA state, while the current adapter does not distinguish its mode, cut, projector identity or approximation boundary in prefix-cache reuse. A cache produced with approximation must not silently enter an LPA-off control or a different projector configuration.
+LPA changes cached KV and KDA state. A cache produced with approximation must not enter an LPA-off request or a different projector configuration. The manual `lpa_configure` RPC therefore rejects prefix caching: it cannot establish the scheduler's cache-publication boundary.
 
-The approximation boundary is `prompt_length - tail`. Extending a conversation can move positions that were previously computed normally into the new approximation region. Reusing their old states can therefore differ from recomputing the new request with its declared LPA settings. Keeping such states could be a separate approximation policy, but it has not been designed or qualified here.
+P22 implements [APC-first, uncached-suffix LPA (Japanese)](apc-lpa-design.md). The scheduler first restores a jointly usable exact prefix H, then selects the remaining approximation interval from N/H/T and a crossover threshold. Shared publication stops at the first approximation and remains stopped through the exact tail and decode. Requests can explicitly select normal computation to prime common documents. Approximate states remain request-local.
 
-The selected next implementation is the [APC-first, uncached-suffix LPA design (Japanese)](apc-lpa-design.md): share only ordinarily computed states, decide LPA after restoring the usable prefix, and suppress shared registration from the first approximated position onward. It must also validate KDA checkpoints, resumed suffix positions, skipped-query accounting and the capture/oracle diagnostics on real cache hits. The hook already uses absolute token positions; that alone does not establish APC compatibility. Both startup validation and the worker reject the combination until those contracts are implemented. Measure combined benefits rather than adding them algebraically.
+This path requires the matching image marker and startup settings. CPU contracts and four-layer GPU cache-isolation checks have passed; full-model performance, threshold calibration and MTP combinations remain under evaluation. Capture/oracle RPCs are not enabled with APC. Measure combined benefits rather than adding independent gains.
 
 ## Reproduce the components
 

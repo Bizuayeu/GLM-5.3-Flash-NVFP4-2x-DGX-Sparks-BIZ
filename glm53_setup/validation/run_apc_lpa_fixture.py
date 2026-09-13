@@ -14,6 +14,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--mtp", type=int, choices=(1, 3))
+    parser.add_argument("--fused-unpack", action="store_true")
+    parser.add_argument("--async-index-checks", action="store_true")
     args = parser.parse_args(argv)
     configuration = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
@@ -29,6 +32,9 @@ def main(argv=None):
     report = {
         "status": "loading",
         "scope": "cache provenance fixture, not model quality",
+        "mtp": args.mtp,
+        "fused_unpack": args.fused_unpack,
+        "async_index_checks": args.async_index_checks,
         "requests": [],
     }
 
@@ -67,8 +73,8 @@ def main(argv=None):
         os.environ.update(
             VLLM_ENABLE_V1_MULTIPROCESSING="0",
             NVIDIA_TF32_OVERRIDE="0",
-            GLM53_FUSED_UNPACK="0",
-            GLM53_ASYNC_INDEX_CHECKS="0",
+            GLM53_FUSED_UNPACK=str(int(args.fused_unpack)),
+            GLM53_ASYNC_INDEX_CHECKS=str(int(args.async_index_checks)),
             GLM53_APC_LPA_CONFIG=json.dumps(
                 {
                     "cut": 0,
@@ -103,6 +109,13 @@ def main(argv=None):
             gpu_memory_utilization=0.20,
             seed=42,
             worker_extension_cls="glm53_setup.validation.apc_fixture_worker.APCFixtureWorker",
+            speculative_config={
+                "method": "mtp",
+                "num_speculative_tokens": args.mtp,
+                "moe_backend": "triton",
+            }
+            if args.mtp
+            else None,
             kernel_config={
                 "moe_backend": "marlin",
                 "linear_backend": "marlin",
@@ -117,7 +130,11 @@ def main(argv=None):
         core = client.engine_core
         manager = core.scheduler.kv_cache_manager
         block = manager.coordinator.scheduler_block_size
-        length = 2 * block + 1024
+        # The pinned MTP/EAGLE lookup drops a trailing block to replay draft
+        # lookahead. Prime that extra exact block; H remains the returned hit.
+        replay_margin = block if manager.coordinator.eagle_group_ids else 0
+        prime_length = block + replay_margin + 1
+        length = 2 * block + replay_margin + 1024
         if block < 1 or length + 16 > 32768:
             raise ValueError("Fixture must cross two actual shared-cache blocks")
         base = llm.get_tokenizer().encode(
@@ -125,7 +142,13 @@ def main(argv=None):
             add_special_tokens=False,
         )
         ids = (base * (length // len(base) + 1))[:length]
-        report.update(status="running", block_size=block, prompt_tokens=length)
+        report.update(
+            status="running",
+            block_size=block,
+            prompt_tokens=length,
+            prime_tokens=prime_length,
+            replay_margin=replay_margin,
+        )
 
         def generate(label, prompt, mode):
             params = SamplingParams(
@@ -198,11 +221,15 @@ def main(argv=None):
         controls = []
         for label in ("control", "trial", "restored"):
             assert llm.reset_prefix_cache()
-            generate(label + "-exact-prime", ids[: block + 1], "off")
+            generate(label + "-exact-prime", ids[:prime_length], "off")
             hit, physical = lookup()
             if hit != block:
                 raise ValueError(
-                    "Exact priming did not restore the full joint boundary"
+                    (
+                        "Exact priming did not restore the full joint boundary",
+                        hit,
+                        block,
+                    )
                 )
             before = llm.collective_rpc(
                 "apc_fixture_cache_hashes", kwargs={"block_ids": physical}

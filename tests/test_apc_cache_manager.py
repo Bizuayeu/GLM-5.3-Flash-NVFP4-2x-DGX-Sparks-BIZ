@@ -75,6 +75,26 @@ class RealCacheManagerTests(unittest.TestCase):
         self.assertIsNotNone(self.manager.allocate_slots(req, 9))
         self.manager.free(req)
 
+    def test_pinned_input_processor_rejects_invalid_options_before_engine_admission(
+        self,
+    ):
+        from vllm.sampling_params import SamplingParams
+        from vllm.v1.engine.input_processor import InputProcessor
+
+        # Invalid options must fail before even accessing model configuration.
+        processor = InputProcessor.__new__(InputProcessor)
+        for extra in (
+            {"glm53_lpa_mode": "invalid"},
+            {"_glm53_apc_lpa_policy": "forged"},
+        ):
+            with (
+                self.subTest(extra=extra),
+                self.assertRaisesRegex(ValueError, "LPA|glm53_lpa_mode"),
+            ):
+                processor._validate_params(
+                    SamplingParams(max_tokens=1, extra_args=extra), ("generate",)
+                )
+
     def test_private_suffix_tail_and_decode_never_enter_shared_hash_table(self):
         self.prime()
         req = self.request("approximate", 21)

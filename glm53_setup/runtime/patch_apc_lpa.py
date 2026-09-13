@@ -13,6 +13,7 @@ SOURCES = {
     "v1/core/kv_cache_manager.py": "ef312a280a1746ca4adc8516d87a05b3c8b331a18015e20758513a33efc7421f",
     "v1/core/block_pool.py": "709b67ebcd2ee393654c3a875f8ecb360b22bcd10f43503be078e692dd38fc20",
     "v1/worker/gpu_worker.py": "8d81dfb9e058f2bf86cca646209df0afe592e0e7a47add9fc6b73cdccfd1d79c",
+    "v1/engine/input_processor.py": "91dde56a548c09613ee9aaef8c43631481d12dc1bd439fddc12c6569f5e2e799",
 }
 
 
@@ -70,6 +71,17 @@ def rewrite(name, text):
             "        intermediate_tensors = None\n        forward_pass = scheduler_output.total_num_scheduled_tokens > 0\n",
             "        before_forward(self, scheduler_output)\n"
             "        intermediate_tensors = None\n        forward_pass = scheduler_output.total_num_scheduled_tokens > 0\n",
+        )
+    elif name == "v1/engine/input_processor.py":
+        text = replace_once(
+            text,
+            "class InputProcessor:",
+            "from glm53_setup.runtime.apc_runtime import validate_client_options\n\n\nclass InputProcessor:",
+        )
+        text = replace_once(
+            text,
+            "        if isinstance(params, SamplingParams):\n            supported_generation_tasks = [\n",
+            "        if isinstance(params, SamplingParams):\n            validate_client_options(params.extra_args)\n            supported_generation_tasks = [\n",
         )
     else:
         raise ValueError("Unknown APC/LPA patch target")

@@ -10,6 +10,7 @@ from glm53_setup.runtime.apc_runtime import (
     POLICY_KEY,
     allocation_guard,
     publication_end,
+    validate_client_options,
     validate_publication,
 )
 
@@ -38,6 +39,17 @@ def request(name="a", **extra):
 
 
 class APCRuntimeTests(unittest.TestCase):
+    def test_client_options_reject_bad_modes_and_reserved_policy_before_admission(self):
+        for extra in (None, {}, {"glm53_lpa_mode": "auto"}, {"glm53_lpa_mode": "off"}):
+            validate_client_options(extra)
+        for extra in (
+            {POLICY_KEY: "forged"},
+            {"glm53_lpa_mode": "predict"},
+            {"glm53_lpa_mode": 1},
+        ):
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                validate_client_options(extra)
+
     def setUp(self):
         self.environment = patch.dict(os.environ, {"GLM53_APC_LPA_CONFIG": CONFIG})
         self.environment.start()

@@ -73,6 +73,17 @@ def settings():
     return _parse_settings(os.environ.get("GLM53_APC_LPA_CONFIG", ""))
 
 
+def validate_client_options(extra):
+    """Reject invalid user options before they enter the engine scheduler."""
+    if settings() is None:
+        return
+    extra = extra or {}
+    if POLICY_KEY in extra:
+        raise ValueError("Internal LPA policy cannot be supplied by the client")
+    if extra.get(MODE_KEY, "auto") not in ("auto", "off"):
+        raise ValueError("glm53_lpa_mode must be auto or off")
+
+
 @dataclass(frozen=True)
 class RequestState:
     request_id: str
