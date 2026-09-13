@@ -19,6 +19,10 @@ def inspect(profile, config_path, rank):
     if not checks["passed"]:
         raise ValueError("Static launch checks failed: " + json.dumps(checks["checks"]))
     model = startup.model_path(profile, Path.home() / ".cache/huggingface")
+    if not all(
+        (model / name).is_file() for name in ("tokenizer.json", "tokenizer_config.json")
+    ):
+        raise ValueError("Tokenizer assets required by the pinned model are missing")
     index_path = model / "model.safetensors.index.json"
     index = startup.read_json(index_path)
     names = sorted(set(index["weight_map"].values()))
