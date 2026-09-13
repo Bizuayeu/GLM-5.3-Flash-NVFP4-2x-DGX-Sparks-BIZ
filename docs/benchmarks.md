@@ -370,3 +370,19 @@ The completed comparison used the native checkpoint interval 4,352 (`retention-b
 | Restored 0 | 0 | 48.462 s | 48.417–48.775 s |
 
 The candidate improved this first-midpoint-edit workload by **27.6%** against both controls; its entire measured range was below both control ranges. Its full history matrix also passed complete-identifier scoring, alternating conversations, observed eviction and all nine boundary conditions. Midpoint edits/branches gained H=4,352 while 90% edits/branches and appends kept H=13,056. **Adopt checkpoint preservation for this measured serial, exact-primed reuse workload.** This does not promise faster cold processing, all MTP workloads or longer cache residence under arbitrary pressure. The block-independent `dense` setting uses the same native KDA mask in this aligned layout; its final combined integration remains separately qualified.
+
+### Final combined retention regression
+
+`p22-final-regression-v73` and `history-final-combined-v73` used source `f3167d4`, image `sha256:e12070943ced2ef145a565416a1b50bcfefa7d258593810c89a97650de10b7f6`: TP2/eager/one sequence, 32K/chunk512, KV2 GiB/rank, MTP3, fused unpack, asynchronous index checks, APC, LPA cut32/tail512/B128 and native `dense` checkpoint retention. This image does **not** include the subsequently added [canonical candidate ordering](candidate-order.md).
+
+Strict content-and-format scores were ordinary20/LPA24/restored23 out of24, with no LPA-only regression. Failed ordinary/restored answers contained the correct number with extra explanation; their strict failures remain recorded. All three tool round trips, SSE cancellation followed by another request, and 32,704-input/64-output capacity requests passed. Capacity request times were ordinary79.281/LPA63.719/restored78.779 seconds, with zero preemption increase in each arm.
+
+The 128-output regression below excludes one warmup and uses three measured requests per arm. These are whole-request medians. Its repetitions and comparison differ from the preceding isolated retention A/B/A; it is not additional evidence for isolated retention adoption.
+
+| Input tokens / restored H | Ordinary | LPA | Restored |
+|---|---:|---:|---:|
+| 2,048 / 0 | 11.914 s | 10.096 s | 10.918 s |
+| 8,192 / 0 | 27.799 s | 22.534 s | 26.813 s |
+| 16,320 / 4,608 | 37.377 s | 32.083 s | 37.066 s |
+
+Independent rescoring confirmed all61 history answers; actual eviction and all nine boundary conditions passed. At approximately16K, midpoint edits/branches retained H=0, while 90% edits/branches and appends restored H=9,216. The separate `long-edit-final-v73` probe used N=30,100 and a15,061-token common prefix: all three midpoint-edit arms restored H=9,216 and answered correctly. This single probe is not a full30K history matrix. Minimum host availability was8.522/10.381 GiB; both supervisors stopped at their configured four-hour deadline, without OOM.
