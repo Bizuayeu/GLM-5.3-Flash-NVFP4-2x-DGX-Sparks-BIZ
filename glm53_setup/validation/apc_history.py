@@ -107,7 +107,7 @@ def history_cases(chunks):
 def answer_matches(text, expected):
     # Formatting is not cache provenance. Reject a stale or mixed code even when
     # the right code also appears in the same final answer.
-    codes = re.findall(r"MIA\d{6}", text or "")
+    codes = re.findall(r"(?<![A-Za-z0-9_])MIA[A-Za-z0-9_-]+", text or "")
     return bool(codes) and set(codes) == {expected}
 
 

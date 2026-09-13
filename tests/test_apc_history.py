@@ -56,3 +56,10 @@ class HistoryCaseTests(unittest.TestCase):
         self.assertTrue(answer_matches("**MIA110001**", "MIA110001"))
         self.assertFalse(answer_matches("MIA550005", "MIA110001"))
         self.assertFalse(answer_matches("MIA110001 or MIA550005", "MIA110001"))
+        for malformed in (
+            "MIA1100019",
+            "XMIA110001",
+            "MIA110001_suffix",
+            "MIA110001-9",
+        ):
+            self.assertFalse(answer_matches(malformed, "MIA110001"))
