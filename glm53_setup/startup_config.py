@@ -55,9 +55,9 @@ def validate(profile):
     check(profile, schema, "startup")
     if "prefix_cache_retention_interval" in profile["cache"]:
         interval = profile["cache"]["prefix_cache_retention_interval"]
-        if type(interval) is not int or interval < 0:
+        if interval != "dense" and (type(interval) is not int or interval < 0):
             raise ValueError(
-                "cache.prefix_cache_retention_interval must be a nonnegative integer; runtime validates scheduler-block alignment"
+                "cache.prefix_cache_retention_interval must be dense or a nonnegative integer; runtime validates numeric scheduler-block alignment"
             )
     if "cuda_allocator_conf" in profile["runtime"]:
         allocator = profile["runtime"]["cuda_allocator_conf"]
@@ -305,7 +305,7 @@ def serve_args(profile, rank, model_path):
     if "prefix_cache_retention_interval" in profile["cache"]:
         args += [
             "--prefix-cache-retention-interval",
-            str(profile["cache"]["prefix_cache_retention_interval"]),
+            str(retention_interval(profile)),
         ]
     args += [
         "--seed",
@@ -380,6 +380,11 @@ def serve_args(profile, rank, model_path):
         args[args.index("--tensor-parallel-size") + 1] = "1"
         args += ["--pipeline-parallel-size", "2"]
     return args
+
+
+def retention_interval(profile):
+    value = profile["cache"].get("prefix_cache_retention_interval", 0)
+    return None if value == "dense" else value
 
 
 def request_body(profile, request):

@@ -332,9 +332,7 @@ def main(argv=None):
                 cache_layout=rpc("apc_cache_layout"),
                 status="running",
             )
-            expected_retention = profile["cache"].get(
-                "prefix_cache_retention_interval", 0
-            )
+            expected_retention = startup_config.retention_interval(profile)
             if any(
                 row["retention_interval"] != expected_retention
                 for row in report["cache_layout"]

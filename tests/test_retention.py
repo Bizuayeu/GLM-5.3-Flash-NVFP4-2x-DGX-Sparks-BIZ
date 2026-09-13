@@ -14,16 +14,16 @@ class RetentionConfigTests(unittest.TestCase):
             "--prefix-cache-retention-interval",
             startup_config.serve_args(profile, 0, "/hf/model"),
         )
-        for interval in (0, 4352, 4608):
+        for interval in (0, 4352, 4608, "dense"):
             profile["cache"]["prefix_cache_retention_interval"] = interval
             startup_config.validate(profile)
             for rank in (0, 1):
                 args = startup_config.serve_args(profile, rank, "/hf/model")
                 self.assertEqual(
                     args[args.index("--prefix-cache-retention-interval") + 1],
-                    str(interval),
+                    "None" if interval == "dense" else str(interval),
                 )
-        for invalid in (-1, True, None, "dense"):
+        for invalid in (-1, True, None, "none"):
             profile["cache"]["prefix_cache_retention_interval"] = invalid
             with self.assertRaises(ValueError):
                 startup_config.validate(profile)
@@ -58,6 +58,15 @@ class NativeRetentionTests(unittest.TestCase):
         )
         self.assertIsNone(
             MambaManager.reachable_block_mask(**values, retention_interval=4)
+        )
+        self.assertIsNone(
+            MambaManager.reachable_block_mask(**values, retention_interval=None)
+        )
+        from vllm.config import CacheConfig
+        from vllm.engine.arg_utils import get_kwargs
+
+        self.assertIsNone(
+            get_kwargs(CacheConfig)["prefix_cache_retention_interval"]["type"]("None")
         )
         self.assertIsNone(
             FullAttentionManager.reachable_block_mask(**values, retention_interval=0)

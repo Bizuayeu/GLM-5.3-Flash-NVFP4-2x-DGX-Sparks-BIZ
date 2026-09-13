@@ -352,3 +352,11 @@ After selecting the profile and threshold, `p22-heldout-v63` used eight previous
 | 16,320 | 17.361 s; H=13,056 | 22.294 s; H=9,216 |
 
 The combined profile was 20.6%/28.4% slower in these exact-primed, 128-output cases. Its MTP replay boundary reused less input. This compares whole profiles, including different cache budgets and exact-kernel settings; it is not an isolated causal estimate of MTP cost. **Keep the serial decode-oriented MTP option and the prefix-reuse-oriented no-MTP P22 option separate.** Do not advertise all enabled flags as universally fastest, or infer the same crossover for much longer generated answers.
+
+## APC history retention baseline
+
+`history-single-v68` extended P19/P22 with first edits and branches at 10/50/90%, appends, alternating conversations, eviction pressure and actual pool/block boundaries. It used fixed image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33`, TP2/eager/one sequence, context32K/chunk512, FP8 KV1 GiB per rank, no MTP/fusion/async checks, and LPA cut32/tail512/B128. The pinned native retention interval was 0. Exact priming preceded each exact/LPA/restored variant; only validation-split corpus data was used.
+
+All 21 variants and 21 primes returned the requested code, as did five alternating-conversation requests and twelve pressure histories plus the before/after revisit. Actual eviction was observed, and all nine pool/scheduler-boundary cases completed. Independent complete-identifier checking confirmed all 61 scored answers. No stale or mixed code was observed within this matrix. These functional results do not establish bitwise repeatability, concurrency or a long-duration SLA.
+
+Both 50% edits and branches had H=0. The 90% edits/branches and appends restored H=13,056. `retention-a-v69` then measured a first 50% edit with N=16,100 and an 8,061-token common prefix: exact-only, one output token, reset and exact priming before every sample. One warmup was excluded; all five measured samples had H=0 and ranged 48.320–48.557 s, median **48.437 s**. Priming was outside the clock. This is the baseline for the opt-in [checkpoint-preservation experiment](launch-safety.md#apc-history-qualification); candidate and restored-control results are required before performance adoption.

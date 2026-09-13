@@ -44,9 +44,10 @@ expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
 
 [cache]
 # Optional native checkpoint retention experiment. Omission preserves pinned default.
-# Positive values must align to this server's actual scheduler block; no auto guessing.
-# prefix_cache_retention_interval = 4352
-# KDA checkpoint保持の独立候補。実block整列・容量・履歴再利用の検収後に指定。
+# "dense" keeps every checkpoint and adapts when MTP changes the block width.
+# Numeric intervals must align to the actual scheduler block; no auto guessing.
+# prefix_cache_retention_interval = "dense"
+# KDA checkpoint保持の独立候補。denseならMTP切替時のblock値再指定は不要。
 fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
