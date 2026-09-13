@@ -81,7 +81,12 @@ def rewrite(name, text):
         text = replace_once(
             text,
             "        if isinstance(params, SamplingParams):\n            supported_generation_tasks = [\n",
-            "        if isinstance(params, SamplingParams):\n            validate_client_options(params.extra_args)\n            supported_generation_tasks = [\n",
+            "        if isinstance(params, SamplingParams):\n"
+            "            try:\n"
+            "                validate_client_options(params.extra_args)\n"
+            "            except ValueError as error:\n"
+            "                raise VLLMValidationError(str(error)) from error\n"
+            "            supported_generation_tasks = [\n",
         )
     else:
         raise ValueError("Unknown APC/LPA patch target")

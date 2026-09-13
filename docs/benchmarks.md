@@ -299,4 +299,27 @@ The near-complete 8,705-token hit leaves only one input token to process; its ap
 
 All three arms passed six long extraction/revisit requests, a long tool round trip and 12K-input SSE disconnect/follow-up. The 12,763-token document requests deliberately interleaved distinct documents; all three APC-on revisits had 8,704 cached tokens and correct answers. The tool-result continuation also reused 8,704 tokens and returned the expected value. All cold-prefix requests had zero hits. These are limited task checks, not general language-quality certification.
 
-Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad enterprise qualification are not established by the configured context limit. LPA coexistence remains blocked until the [P22 exact-cache design](apc-lpa-design.md) is implemented and validated.
+Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad enterprise qualification are not established by the configured context limit. LPA coexistence is evaluated separately under the [P22 exact-cache contract](apc-lpa-design.md).
+
+## APC-first LPA crossover measurement (P22)
+
+On 2026-09-13 (Asia/Tokyo), `p22-calibration-v51` and `p22-short-calibration-v54` used the same server image `sha256:8cb2babff5524c808d112c3340e7d6f6cbbc84e6f5840a9cad66b1c2bc7dfd26` (source `4b83f11`), profile fingerprint `7e62b6e4de703532c04af9218d3ced7b512db0bd66994f5a4aea717bfd95fd18`. TP2/eager, one sequence, context32,768, chunk512, FP8 KV1 GiB/rank and APC were fixed. LPA used cut32/tail512 and the existing affine projector; MTP, fusion, async checks, Graphs and tracing were off. The calibration threshold was deliberately zero.
+
+Every timed request followed a cache reset; H>0 cases first primed the exact prefix outside timing. The scheduler's actual N/H/R and omitted queries were checked on both ranks. Each row below contains five one-output measurements per arm after one excluded warmup per arm, in repeated ordinary/LPA/restored order. Inputs used the retained LLM-jp validation split. R is `max(0,N-512-H)`; times include the complete one-output API request, not just a GPU event interval.
+
+| H | R | N | Ordinary | LPA | Restored |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 128 | 640 | 2.125 s | 2.051 s | 2.131 s |
+| 0 | 512 | 1,024 | 3.053 s | 2.704 s | 3.050 s |
+| 0 | 1,024 | 1,536 | 4.582 s | 3.890 s | 4.586 s |
+| 0 | 2,048 | 2,560 | 7.659 s | 6.262 s | 7.656 s |
+| 0 | 4,096 | 4,608 | 14.082 s | 11.293 s | 14.089 s |
+| 0 | 8,192 | 8,704 | 26.431 s | 20.808 s | 26.427 s |
+| 4,352 | 128 | 4,992 | 2.167 s | 2.091 s | 2.166 s |
+| 4,352 | 512 | 5,376 | 3.106 s | 2.742 s | 3.102 s |
+| 4,352 | 1,024 | 5,888 | 4.643 s | 3.940 s | 4.647 s |
+| 4,352 | 2,048 | 6,912 | 7.743 s | 6.329 s | 7.743 s |
+| 4,352 | 4,096 | 8,960 | 14.220 s | 11.389 s | 14.222 s |
+| 4,352 | 8,192 | 13,056 | 26.618 s | 20.922 s | 26.620 s |
+
+All LPA samples in these twelve conditions were faster than every corresponding ordinary/restored sample. The additional H=0 sweep tested R=0/1/4/16/32/64. R=0 correctly used ordinary computation; R=1/4/16 had overlapping timing ranges. R=32/64 separated from both controls, with small gains. H>0 below R=128 was not measured. **A conservative activation candidate is B=128, enabling only R>128; it is not an exact or universal crossover constant.** Quality, final combinations and repeated-input profile selection remain separate checks. Independent assessment verified all 324 timed/warmup rows, policy boundaries, output counts and recomputed ranges; 108 additional exact-prime requests were outside timing. These results alone do not accept general language quality or the final combined profile.

@@ -16,6 +16,8 @@ APCで復元できるprefixを先に再利用し、未処理部分が長いと�
 
 `R > B` のときだけ `[H, N-T)` を近似する。`[0,H)` は再計算せず、末尾 `[max(H,N-T),N)` とdecodeは通常計算する。Rが小さい場合は、APC＋残りの通常計算となる。H=0も同じ規則で扱い、総コンテキスト長による別の振り分けは作らない。
 
+MTPでは、先読みを再計算するため、固定vLLMの[cache coordinator](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/v1/core/kv_cache_coordinator.py)が一致した末尾blockをhitから除外する。KDA checkpointもこの復帰境界に合わせる。したがって「1blockを通常計算したら1blockを復元できる」とは限らず、fixtureのprimingには追加の通常blockを含める。Hにはこの調整後に実際に返された値を使う。起動時に整列されるblock幅も、MTPなしの数値を流用しない。
+
 ## 共有キャッシュの契約
 
 1. 最初に近似する位置Sを、GPU計算と共有登録の前に決める。初回の通常経路ではLPA採用時のS=H、近似しない要求には上限を設けない。
@@ -35,6 +37,7 @@ APCで復元できるprefixを先に再利用し、未処理部分が長いと�
 - schedulerのcache照合結果からHを得る。`shared_prefix_boundary`は、遅れているcache groupがまだ復元できない境界を含み得るため、Hの代用にしない。
 - `KVCacheManager.allocate_slots()` は計算前に `coordinator.cache_blocks()` を呼ぶ。事後の応答処理だけでは抑止できない。この経路と明示的な `cache_blocks()` の両方で共有上限を適用する。
 - 要求IDとN/H/T/R・採否・共有上限をschedulerからworkerへ渡す。workerの全体設定だけを外部RPCで切り替える方式に依存せず、要求の取り違えを検出する。
+- 非同期MTPではCPU側の進行位置は楽観値で、GPUが却下した投機token分を補正する。生成済みtokenがあり、両位置がprompt終了以降にあるdecodeでは、GPUの補正位置を使う。prefillの位置一致、promptへの巻き戻り禁止、位置列の連続性、共有登録上限は維持する。診断の`speculative_position_corrections`に補正を観測したstep数を残す。
 - LPA hookは絶対位置を使い、実際に計算する未処理位置だけを近似・計数する。capture／oracleはcache hitで欠けたprefixを「採取済み」と見なさない。
 - APC優先モード中の手動RPCが、schedulerに伝わらない近似を有効化できないようにする。通常APCの対照が近似状態を保存する経路を残さない。
 
@@ -51,6 +54,18 @@ python -m glm53_setup apc-lpa-fixture --fixture /fixture --output /out/validatio
 ```
 
 この試験は通常状態との違いが出る合成projectorをfixture専用に作る。実cache lookupの復元境界、共有prefixのGPUバイトhash、実際のquery省略数、後続通常要求の出力を検査する。全モデルの品質や損益分岐の評価には使わない。startup warmupは固定ソース内の明示的な範囲に限定して除外し、実要求にはscheduler由来のpolicyを必須とする。workerのキャッシュ形式は、モデル読込時に正規化された`fp8_ds_mla`を検査する。
+
+損益分岐は、LPA/APCを有効にして`lpa.break_even_tokens=0`とした専用TP2サーバーで、Linuxホストから計測する。通常運用のTOMLを直接変更せず、計測用TOMLを両rankに揃える。次は、実際のjoint復元単位が4,352 tokenの条件に対応する例である。MTPの先読み再計算などで境界が変わる構成には、そのまま流用しない。
+
+```sh
+python -m glm53_setup apc-lpa-benchmark \
+  --config state/apc-calibration.toml \
+  --corpus records/corpus/documents.jsonl --corpus-sha256 '<verified-sha256>' \
+  --output records/apc-calibration --cached-prefix-tokens 4352 \
+  --eligible-tokens 128 512 1024 2048 4096 8192 --repeats 5
+```
+
+各測定前に共有cacheをリセットし、H>0では通常計算でprefixを作り直す。実際のN/H/Rとquery省略数を両rankで検査し、時間の測定区間にreset・priming・診断RPCを含めない。通常／LPA／復帰対照を繰り返し、最初の一巡をwarmupとして除外する。入力には指定コーパスのvalidation分割だけを使う。小さい残余長の追加計測には`--cold-only --eligible-tokens 0 1 4 16 32 64`を指定できる。校正用のB=0をそのまま運用推奨値とはしない。
 
 | 段階 | 実施内容・完了条件 |
 |---|---|

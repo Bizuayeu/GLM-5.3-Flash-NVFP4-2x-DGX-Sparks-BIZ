@@ -13,6 +13,24 @@ from glm53_setup.runtime.lpa import (
 
 
 class ExperimentSpecTests(unittest.TestCase):
+    def test_speculative_cursor_correction_cannot_cross_into_the_prompt(self):
+        spec = ExperimentSpec("predict", 32, 4012, tail=512)
+        positions = [4013, 4014, 4015, 4016]
+        self.assertTrue(spec.validate_scheduled_start(positions, 4016, True))
+        self.assertEqual(spec.approximate_count(positions), 0)
+        self.assertFalse(spec.validate_scheduled_start([0, 1], 0, False))
+        for actual, expected, speculative in (
+            (4011, 4016, True),
+            (4017, 4016, True),
+            (4013, 4016, False),
+            (16, 20, True),
+        ):
+            with (
+                self.subTest(actual=actual, expected=expected),
+                self.assertRaises(ValueError),
+            ):
+                spec.validate_scheduled_start([actual], expected, speculative)
+
     def test_resumed_exact_prefix_and_tail_surround_the_approximate_span(self):
         spec = ExperimentSpec("predict", 0, 12, tail=2, approximate_start=4)
         self.assertEqual(spec.approximate_span([0, 1, 2, 3]), (0, 0))

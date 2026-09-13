@@ -22,7 +22,7 @@
 
 ## コマンド
 
-**P22の実装候補であり、実機と損益分岐の検証は未了です。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートの1024は暫定値で、実測した推奨値ではありません。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `startup ask` は判断をサーバーへ任せます。要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。APCなしの通常の `startup ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
+**P22単体のGPU状態隔離と校正は確認済みで、最終併用は検証中です。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `startup ask` は判断をサーバーへ任せます。要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。APCなしの通常の `startup ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.md#expert-parallel-p21)を参照してください。
 

@@ -51,7 +51,9 @@ def step(new=(), active=None, cached=(), finished=()):
         scheduled_new_reqs=list(new),
         num_scheduled_tokens=active or {},
         scheduled_cached_reqs=NS(
-            req_ids=[x[0] for x in cached], num_computed_tokens=[x[1] for x in cached]
+            req_ids=[x[0] for x in cached],
+            num_computed_tokens=[x[1] for x in cached],
+            num_output_tokens=[max(0, x[1] - 64 + 1) for x in cached],
         ),
         finished_req_ids=set(finished),
     )
@@ -155,6 +157,26 @@ class APCWorkerTests(unittest.TestCase):
                 self.worker, step([data("a", 16), data("b", 16)], {"a": 8, "b": 8})
             )
         self.worker.get_model.assert_not_called()
+
+    def test_only_mtp_decode_uses_the_optimistic_cursor_contract(self):
+        self.worker.vllm_config.speculative_config = NS(
+            method="mtp", num_speculative_tokens=3
+        )
+        experiment = Mock()
+        with (
+            patch("glm53_setup.runtime.apc_worker._verify_projector"),
+            patch(
+                "glm53_setup.runtime.lpa.AttentionInputExperiment",
+                return_value=experiment,
+            ),
+        ):
+            before_forward(self.worker, step([data("a", 16)], {"a": 8}))
+            self.assertFalse(experiment.speculative_decode)
+            before_forward(self.worker, step(active={"a": 4}, cached=[("a", 68)]))
+            self.assertTrue(experiment.speculative_decode)
+            self.assertEqual(experiment.expected_position, 68)
+            before_forward(self.worker, step(active={"a": 4}, cached=[("a", 60)]))
+            self.assertFalse(experiment.speculative_decode)
 
 
 if __name__ == "__main__":

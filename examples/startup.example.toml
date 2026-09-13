@@ -58,7 +58,7 @@ num_speculative_tokens = 3 # Measured: 1, 3; other depths rejected
 view = "local-views/glm53-mtp-compatible"
 
 [lpa]
-break_even_tokens = 1024 # Provisional APC/LPA experiment threshold; calibrate before adoption
+break_even_tokens = 128 # Conservative measured cutoff; recheck after changing the workload
 # APC復元後の適用可能長がこの値を超える場合だけLPA。現在は校正前の候補値。
 enabled = false
 cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり

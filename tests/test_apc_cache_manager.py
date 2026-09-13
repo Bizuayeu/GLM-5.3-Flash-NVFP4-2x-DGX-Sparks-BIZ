@@ -78,6 +78,7 @@ class RealCacheManagerTests(unittest.TestCase):
     def test_pinned_input_processor_rejects_invalid_options_before_engine_admission(
         self,
     ):
+        from vllm.exceptions import VLLMValidationError
         from vllm.sampling_params import SamplingParams
         from vllm.v1.engine.input_processor import InputProcessor
 
@@ -89,7 +90,7 @@ class RealCacheManagerTests(unittest.TestCase):
         ):
             with (
                 self.subTest(extra=extra),
-                self.assertRaisesRegex(ValueError, "LPA|glm53_lpa_mode"),
+                self.assertRaisesRegex(VLLMValidationError, "LPA|glm53_lpa_mode"),
             ):
                 processor._validate_params(
                     SamplingParams(max_tokens=1, extra_args=extra), ("generate",)

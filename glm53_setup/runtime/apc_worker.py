@@ -169,6 +169,14 @@ def before_forward(worker, scheduler_output):
         audit("worker_policy", rank=worker.rank, **state.wire())
     if hasattr(worker, "lpa_experiment"):
         worker.lpa_experiment.expected_position = positions[request_id]
+        generated = dict(zip(cached.req_ids, cached.num_output_tokens)).get(
+            request_id, 0
+        )
+        worker.lpa_experiment.speculative_decode = (
+            worker.vllm_config.speculative_config is not None
+            and generated > 0
+            and positions[request_id] >= state.policy.prompt_tokens
+        )
 
 
 def report(worker):

@@ -17,6 +17,7 @@ def main(argv=None):
     parser.add_argument("--mtp", type=int, choices=(1, 3))
     parser.add_argument("--fused-unpack", action="store_true")
     parser.add_argument("--async-index-checks", action="store_true")
+    parser.add_argument("--async-scheduling", action="store_true")
     args = parser.parse_args(argv)
     configuration = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
@@ -35,6 +36,7 @@ def main(argv=None):
         "mtp": args.mtp,
         "fused_unpack": args.fused_unpack,
         "async_index_checks": args.async_index_checks,
+        "async_scheduling": args.async_scheduling,
         "requests": [],
     }
 
@@ -99,7 +101,7 @@ def main(argv=None):
             enforce_eager=True,
             enable_prefix_caching=True,
             enable_chunked_prefill=True,
-            async_scheduling=False,
+            async_scheduling=args.async_scheduling,
             max_model_len=32768,
             max_num_seqs=1,
             max_num_batched_tokens=512,

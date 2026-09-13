@@ -49,6 +49,25 @@ class ExperimentSpec:
         start, stop = self.approximate_span(positions)
         return stop - start
 
+    def validate_scheduled_start(self, positions, expected, speculative_decode=False):
+        if expected is None:
+            return False
+        actual = positions[0] if positions else None
+        if actual == expected:
+            return False
+        # V2 keeps an optimistic CPU cursor during asynchronous MTP decode;
+        # the GPU subtracts rejected draft tokens. Never relax a prompt boundary.
+        if (
+            speculative_decode
+            and actual is not None
+            and self.prompt_length <= actual < expected
+        ):
+            return True
+        raise ValueError(
+            "Model positions differ from the scheduled APC/LPA boundary: "
+            f"expected={expected}, actual={actual}, prompt={self.prompt_length}"
+        )
+
     def approximate_span(self, positions):
         if any(type(p) is not int or p < 0 for p in positions) or any(
             b != a + 1 for a, b in zip(positions, positions[1:])
@@ -87,6 +106,8 @@ class AttentionInputExperiment:
         self.skip_mla_queries = False
         self.current_positions = []
         self.expected_position = None
+        self.speculative_decode = False
+        self.speculative_position_corrections = 0
         self.source = None
         self.counts = {}
         self.events = []
@@ -258,6 +279,8 @@ class AttentionInputExperiment:
         self.source = None
         self.current_positions = []
         self.expected_position = None
+        self.speculative_decode = False
+        self.speculative_position_corrections = 0
         self.counts = {"attention_tokens": {}, "mlp_skipped_tokens": {}}
         self.events = []
         self.operation_events = []
@@ -367,13 +390,12 @@ class AttentionInputExperiment:
             x = kwargs["hidden_states"]
             if index == spec.cut:
                 self.current_positions = kwargs["positions"].detach().cpu().tolist()
-                if self.expected_position is not None and (
-                    not self.current_positions
-                    or self.current_positions[0] != self.expected_position
-                ):
-                    raise ValueError(
-                        "Model positions differ from the scheduled APC/LPA boundary"
-                    )
+                corrected = spec.validate_scheduled_start(
+                    self.current_positions,
+                    self.expected_position,
+                    self.speculative_decode,
+                )
+                self.speculative_position_corrections += int(corrected)
                 approximate = spec.approximate_count(self.current_positions)
                 if len(self.current_positions) != x.shape[0]:
                     raise ValueError("Padded or packed attention input is unsupported")
@@ -465,6 +487,7 @@ class AttentionInputExperiment:
             if self.reference_mask is not None
             else {},
             "state_errors": self.state_errors,
+            "speculative_position_corrections": self.speculative_position_corrections,
             "captured_tokens": {
                 i: sum(t.shape[0] for t in ts) for i, ts in self.capture.items()
             },

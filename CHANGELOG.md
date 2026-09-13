@@ -4,6 +4,8 @@
 
 ### Added
 
+- APC-first, uncached-suffix LPA with scheduler-owned boundaries, exact-only shared cache, explicit exact priming, source-pinned client validation, GPU cache-isolation fixtures and crossover measurement tools.
+
 - Deployment entry points distinguishing the NVIDIA checkpoint, GB10-compatible hardware and MSI EdgeXpert measurements, with canonical cache, MTP-view and LPA-projector storage guidance.
 
 - Independent checked-asynchronous-index results and an explicit auto/sync/async startup selection; checks remain mandatory and combined-mode acceptance stays separate.
@@ -33,7 +35,7 @@
 - Independently tested CUDA unpack fusion and CSA2 research components: bounded indexer capture, request-local candidate reuse, candidate selection/tail expansion, and native-backed shared-pool scoring. Component benchmarks distinguish numerical correctness from actual speed gains.
 - An explicit component-validation startup profile and full-target CUDA A/B/A/indexer-overlap driver, separate from LPA/MTP integration.
 
-- Required, not-yet-run FreedomBench enterprise evaluation plan, separating original scoring, political refusals, execution/format errors, Japanese use and long-context source fidelity across LPA/MTP profiles.
+- FreedomBench collection and preliminary original-English/long-context observations, separating political refusals, execution/format errors and source fidelity from the still-unqualified full matrix and human review.
 
 - Categorized TOML configuration shared by an explicit experimental TP=2 launcher and serial chat client, with immutable artifact checks, bounded supervision and MTP-aware LPA opt-in.
 
@@ -61,7 +63,6 @@
 - Make LPA canonical across modules, worker class, RPCs, mount path, tests and documentation; require the current image contract without legacy interfaces.
 - Validate startup profiles at load/command boundaries, removing repeated full-schema validation during serve-argument assembly.
 
-- Name the feature LPA (Late-prefill approximation), with `[lpa]` settings and `lpa-*` CLI aliases while preserving earlier settings and RPC compatibility.
 - Allow `resources.run_seconds = 0` to disable the run deadline while retaining low-memory protection; this does not add automatic restart or production availability qualification.
 
 - Add prominent modification notices to generated vLLM patch outputs without changing their executable syntax tree.
