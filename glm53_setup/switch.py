@@ -17,6 +17,21 @@ class OperationFailure(RuntimeError):
         )
 
 
+def observation_lost(error):
+    return (
+        isinstance(error, OperationFailure)
+        and error.evidence["action"] == "poll"
+        and error.evidence["reason"] in ("transport-timeout", "ssh-unavailable")
+    )
+
+
+def failure_details(error):
+    return {
+        "error": type(error).__name__,
+        **({"failure": error.evidence} if isinstance(error, OperationFailure) else {}),
+    }
+
+
 def switch(backend, launch, *, save):
     """backend operations must address explicit owned launch identities.
 
@@ -56,6 +71,7 @@ def switch(backend, launch, *, save):
     ):
         raise ValueError("Launch assets or running identities changed before stop")
     report["assets"] = first
+    report["recovery_assets"] = old_assets
     report["status"] = "starting"
     save(report)
     try:
@@ -83,10 +99,7 @@ def switch(backend, launch, *, save):
         report["error"] = type(error).__name__
         if isinstance(error, OperationFailure):
             report["failure"] = error.evidence
-            if error.evidence["action"] == "poll" and error.evidence["reason"] in (
-                "transport-timeout",
-                "ssh-unavailable",
-            ):
+            if observation_lost(error):
                 # A lost observation is not a failed model. Keep the already
                 # owned, supervised attempts under their memory/deadline guards
                 # and require identity-checked readiness resumption.
@@ -102,7 +115,7 @@ def switch(backend, launch, *, save):
             except Exception as stop_error:  # noqa: BLE001 - retain each cleanup failure
                 cleanup_failed = True
                 report.setdefault("cleanup_errors", []).append(
-                    {"rank": row["rank"], "error": type(stop_error).__name__}
+                    {"rank": row["rank"], **failure_details(stop_error)}
                 )
         # Never compete with an unconfirmed new process for the same GPU/RAM.
         if not cleanup_failed:
@@ -116,23 +129,28 @@ def switch(backend, launch, *, save):
                         backend.start(rank, identity)
                     except Exception as recovery_error:  # noqa: BLE001 - retain recovery outcome
                         report.setdefault("recovery_errors", []).append(
-                            {"rank": rank, "error": type(recovery_error).__name__}
+                            {"rank": rank, **failure_details(recovery_error)}
                         )
             if report["recovery"] and not report.get("recovery_errors"):
                 try:
                     backend.ready(report["recovery"])
                     report["recovered"] = True
                 except Exception as recovery_error:  # noqa: BLE001 - preserve failed recovery
-                    report["recovery_errors"] = [
-                        {"error": type(recovery_error).__name__}
-                    ]
+                    if observation_lost(recovery_error):
+                        report["status"] = "recovery-readiness-unconfirmed"
+                        report["recovery_observation_failure"] = recovery_error.evidence
+                        save(report)
+                        raise RuntimeError(
+                            "Recovery readiness observation lost; resume the recorded recovering pair"
+                        ) from None
+                    report["recovery_errors"] = [failure_details(recovery_error)]
             if report.get("recovery_errors"):
                 for row in report["recovery"]:
                     try:
                         backend.stop(row["rank"], row["identity"])
                     except Exception as stop_error:  # noqa: BLE001 - retain remaining owned cleanup failures
                         report.setdefault("cleanup_errors", []).append(
-                            {"rank": row["rank"], "error": type(stop_error).__name__}
+                            {"rank": row["rank"], **failure_details(stop_error)}
                         )
         save(report)
         raise RuntimeError(

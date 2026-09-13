@@ -138,3 +138,38 @@ class ClusterOwnershipTests(unittest.TestCase):
         ):
             backend.call("poll", 0, {})
         self.assertNotIn("secret-command", str(caught.exception))
+
+    def test_resuming_recovery_keeps_candidate_failure_and_marks_old_profile_recovered(
+        self,
+    ):
+        rows = [
+            {
+                "rank": i,
+                "identity": {
+                    "name": f"old-{i}",
+                    "fingerprint": "old",
+                    "launch": "old-profile",
+                },
+            }
+            for i in (0, 1)
+        ]
+        report = {
+            "status": "recovery-readiness-unconfirmed",
+            "error": "OperationFailure",
+            "failure": {"reason": "candidate-failed"},
+            "new": [],
+            "recovery": rows,
+            "recovery_assets": [{"rank": 0}, {"rank": 1}],
+            "recovery_observation_failure": {"reason": "ssh-unavailable"},
+        }
+        backend = MagicMock()
+        backend.current.side_effect = [
+            {"name": f"old-{i}", "fingerprint": "old"} for i in (0, 1)
+        ]
+        backend.prepare.side_effect = report["recovery_assets"]
+        result = cluster.resume(backend, report)
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["failure"]["reason"], "candidate-failed")
+        backend.start.assert_not_called()
+        backend.stop.assert_not_called()

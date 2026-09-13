@@ -40,6 +40,24 @@ class Backend:
 
 
 class SwitchTests(unittest.TestCase):
+    def test_lost_recovery_observation_does_not_destroy_the_recovering_pair(self):
+        backend = Backend()
+
+        def unavailable(rows):
+            raise OperationFailure("poll", 1, "ssh-unavailable", 255)
+
+        backend.ready = unavailable
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        self.assertEqual(reports[-1]["status"], "recovery-readiness-unconfirmed")
+        self.assertEqual(
+            reports[-1]["recovery_observation_failure"]["reason"], "ssh-unavailable"
+        )
+        self.assertEqual(
+            backend.calls[-2:], [("start", 1, "old-1"), ("start", 0, "old-0")]
+        )
+
     def test_lost_readiness_observation_preserves_supervised_new_attempts(self):
         backend = Backend()
         backend.start = lambda rank, identity: backend.calls.append(

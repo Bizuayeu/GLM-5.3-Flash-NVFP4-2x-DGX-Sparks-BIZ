@@ -42,6 +42,8 @@ python -m glm53_setup cluster switch --config state/startup.toml \
 
 読み取り専用のSSH確認は通信失敗時に最大3回まで再試行します。起動・停止・起動枠予約は自動再送しません。準備確認の通信が戻らない場合は `readiness-unconfirmed` と記録し、今回の監視プロセスによるメモリ・期限ガードを維持します。同じ `--output`・`--hosts`・`--checkout`・必要なら `--ssh-config` で `cluster resume` を実行すると、再起動せず所有識別・資材・準備状態を照合します。rankの終了や準備期限の超過を確認した場合はcleanup／復旧へ進みます。失敗理由はコマンド本文や秘密値を含まない構造化した情報として残します。
 
+旧profileの復旧中も同様に扱い、`recovery-readiness-unconfirmed` では復旧中の両rankを保持して `cluster resume` で再確認します。復旧確認が成功しても新候補の失敗は残し、`recovered=true` を別に記録します。復旧・cleanupの失敗にも構造化した理由を残します。
+
 ## APCの履歴検証
 
 実測するまでは固定runtimeの実際の保持既定を維持します。このrevisionは **0** が既定で、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を独立候補として指定できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す候補です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。既定採用は履歴・保持圧力・A/B/Aの結果から別に判断します。
