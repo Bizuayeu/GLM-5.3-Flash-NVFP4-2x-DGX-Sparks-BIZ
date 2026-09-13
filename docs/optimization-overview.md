@@ -22,8 +22,6 @@ flowchart LR
     B -.- D
 ```
 
-The current reading: MTP acts mainly on decode, LPA on long prefill, fused unpack mainly on prefill, and APC with retention on prefix restoration for repeated conversations.
-
 ## Measures and current position
 
 "Decision" is the catalog judgment (adopted / accepted / held / rejected); "Default" is the value in the [startup TOML](startup-configuration.md). Functional acceptance, performance adoption, defaults and combined-mode acceptance are judged separately, so "adopted" does not mean enabled by default. See [profiles by workload](#profiles-by-workload) for what to enable per use.

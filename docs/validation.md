@@ -30,7 +30,7 @@ Use a Linux GB10 host and a verified checkpoint. Run from the checkout root. The
 ~~~sh
 python -m glm53_setup build-reference
 mkdir -p state records/fixture-check state/fixture-cache
-IMAGE=glm53-enterprise:reference
+IMAGE=$(python -c 'import json; print(json.load(open("config/runtime.lock.json"))["reference_candidate"]["tag"])')
 HF_CACHE=$HOME/.cache/huggingface
 REVISION=$(python -c 'from glm53_setup.config import REVISION; print(REVISION)')
 ~~~

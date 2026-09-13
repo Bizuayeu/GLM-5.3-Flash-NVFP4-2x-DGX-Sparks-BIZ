@@ -1,4 +1,4 @@
-# APC-first LPA on the uncached suffix: implementation and validation plan
+# APC-first LPA on the uncached suffix: implementation and validation contract
 
 [日本語](apc-lpa-design.ja.md) · [Catalog](optimization-catalog.md)
 

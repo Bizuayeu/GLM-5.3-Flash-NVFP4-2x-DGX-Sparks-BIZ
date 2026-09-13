@@ -1,4 +1,4 @@
-# APC優先・未処理部分へのLPA：実装・検証計画
+# APC優先・未処理部分へのLPA：実装・検証の契約
 
 [English](apc-lpa-design.md) · [施策台帳](optimization-catalog.ja.md)
 
