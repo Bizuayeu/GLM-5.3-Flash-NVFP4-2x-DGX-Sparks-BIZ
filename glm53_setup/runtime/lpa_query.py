@@ -13,10 +13,10 @@ class ReferenceQueryMask:
         self.counts = {}
 
     @contextmanager
-    def activate(self, count, total, layer):
-        if not 0 <= count <= total:
+    def activate(self, count, total, layer, start=0):
+        if not 0 <= start <= start + count <= total:
             raise ValueError("Invalid query window")
-        token = self.scope.set((count, total, layer))
+        token = self.scope.set((count, total, layer, start))
         try:
             yield
         finally:
@@ -28,7 +28,7 @@ class ReferenceQueryMask:
             return self.original(query, cache, indices, scale)
         import torch
 
-        count, total, layer = scope
+        count, total, layer, start = scope
         if (
             query.ndim != 3
             or query.shape[0] != total
@@ -40,7 +40,10 @@ class ReferenceQueryMask:
         ):
             raise ValueError("Reference MLA query layout changed; refusing masking")
         output = torch.zeros_like(query)
-        if count < total:
-            output[count:] = self.original(query[count:], cache, indices[count:], scale)
+        stop = start + count
+        if start:
+            output[:start] = self.original(query[:start], cache, indices[:start], scale)
+        if stop < total:
+            output[stop:] = self.original(query[stop:], cache, indices[stop:], scale)
         self.counts[layer] = self.counts.get(layer, 0) + count
         return output

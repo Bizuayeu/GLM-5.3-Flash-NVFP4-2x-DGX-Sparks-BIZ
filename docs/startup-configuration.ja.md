@@ -12,7 +12,7 @@
 | `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率、実験用unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
-| `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、クエリ省略、projectorとハッシュ |
+| `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、損益分岐の閾値、クエリ省略、projectorとハッシュ |
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限 |
@@ -21,6 +21,8 @@
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 
 ## コマンド
+
+**P22の実装候補であり、実機と損益分岐の検証は未了です。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートの1024は暫定値で、実測した推奨値ではありません。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `startup ask` は判断をサーバーへ任せます。要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。APCなしの通常の `startup ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.md#expert-parallel-p21)を参照してください。
 

@@ -170,6 +170,10 @@ def preflight(profile, config_path, rank):
         )
     if profile["lpa"]["enabled"]:
         checks["lpa_worker"] = "GLM53_LPA_API=2" in (image["Config"].get("Env") or [])
+    if settings.apc_lpa_enabled(profile):
+        checks["apc_lpa_support"] = "GLM53_APC_LPA_API=1" in (
+            image["Config"].get("Env") or []
+        )
     checks["reference_attention"] = (
         "GLM53_REFERENCE_ATTENTION=1" in image["Config"]["Env"]
     )
@@ -240,7 +244,7 @@ def post(profile, path, body):
 
 def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
-    if not profile["lpa"]["enabled"]:
+    if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
     allowed = {

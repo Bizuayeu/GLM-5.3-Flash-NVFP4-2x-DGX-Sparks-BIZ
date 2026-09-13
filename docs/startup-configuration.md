@@ -12,7 +12,7 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 | `validation` | Separate CUDA/indexer or expert-placement observer workers |
 | `cache` | KV bytes per rank, requested block size, prefix cache, memory utilization, experimental fused unpack |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
-| `lpa` | Enable approximation, first layer, exact tail, query omission, projector and checksum |
+| `lpa` | Enable approximation, first layer, exact tail, break-even threshold, query omission, projector and checksum |
 | `api` | Loopback/rendezvous ports, served name and parsers |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline |
@@ -21,6 +21,8 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
 ## Commands
+
+**P22 implementation candidate; GPU and crossover validation pending.** When LPA and prefix caching are both enabled, an image with `GLM53_APC_LPA_API=1` is required. The scheduler chooses from the jointly restored prefix and `lpa.break_even_tokens`; its provisional template value is1024, not a measured recommendation. Shared publication stops at the first approximation and remains stopped through the exact tail/decode. `startup ask` leaves the decision to the server in this mode. Use `"vllm_xargs": {"glm53_lpa_mode": "off"}` in a request to compute normally and grow exact shared cache. Ordinary no-APC `startup ask` uses the same threshold with H=0. See the [implementation contract (Japanese)](apc-lpa-design.md). The new threshold key must be explicit in every updated TOML.
 
 `runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget. It requires an image with `GLM53_EXPERT_PARALLEL_API=1`; this marker identifies configuration support, not successful EP qualification. Initial scope is eager, one/two sequences and no MTP/LPA/fusion/APC. Existing TOMLs must explicitly include the new key; no silent missing-key fallback is provided. See the [independent EP plan](performance-investigation.md#expert-parallel-p21) before use.
 

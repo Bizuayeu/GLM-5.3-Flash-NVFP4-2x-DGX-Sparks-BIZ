@@ -17,6 +17,7 @@ class ExperimentSpec:
     cut: int
     prompt_length: int
     tail: int = 1
+    approximate_start: int = 0
 
     def __post_init__(self):
         if not isinstance(self.mode, str) or self.mode not in {
@@ -29,20 +30,37 @@ class ExperimentSpec:
             raise ValueError("Unsupported experiment mode")
         if any(
             type(value) is not int
-            for value in (self.cut, self.prompt_length, self.tail)
+            for value in (
+                self.cut,
+                self.prompt_length,
+                self.tail,
+                self.approximate_start,
+            )
         ):
             raise ValueError("Cut, prompt length and tail must be integers")
         if self.cut < 0 or self.prompt_length < 1:
             raise ValueError("Invalid cut or prompt length")
         if not 1 <= self.tail <= self.prompt_length:
             raise ValueError("The exact tail must include the final prompt token")
+        if not 0 <= self.approximate_start <= self.prompt_length:
+            raise ValueError("Invalid first approximation position")
 
     def approximate_count(self, positions):
+        start, stop = self.approximate_span(positions)
+        return stop - start
+
+    def approximate_span(self, positions):
         if any(type(p) is not int or p < 0 for p in positions) or any(
             b != a + 1 for a, b in zip(positions, positions[1:])
         ):
             raise ValueError("Only one contiguous, unpadded sequence is supported")
-        return sum(p < self.prompt_length - self.tail for p in positions)
+        if not positions:
+            return 0, 0
+        start = min(len(positions), max(0, self.approximate_start - positions[0]))
+        stop = min(
+            len(positions), max(0, self.prompt_length - self.tail - positions[0])
+        )
+        return (start, stop) if stop > start else (0, 0)
 
 
 class AttentionInputExperiment:
@@ -68,6 +86,7 @@ class AttentionInputExperiment:
         self.reference_mask = None
         self.skip_mla_queries = False
         self.current_positions = []
+        self.expected_position = None
         self.source = None
         self.counts = {}
         self.events = []
@@ -127,12 +146,13 @@ class AttentionInputExperiment:
                 or spec.mode not in {"oracle", "identity", "predict"}
             ):
                 return original(*args, **kwargs)
-            count = spec.approximate_count(self.current_positions)
+            start, stop = spec.approximate_span(self.current_positions)
+            count = stop - start
             if not count:
                 return original(*args, **kwargs)
             before = self.reference_mask.counts.get(index, 0)
             with self.reference_mask.activate(
-                count, len(self.current_positions), index
+                count, len(self.current_positions), index, start=start
             ):
                 result = original(*args, **kwargs)
             if self.reference_mask.counts.get(index, 0) - before != count:
@@ -178,8 +198,9 @@ class AttentionInputExperiment:
         verify_state=False,
         skip_mlp=True,
         skip_mla_queries=False,
+        approximate_start=0,
     ):
-        spec = ExperimentSpec(mode, cut, prompt_length, tail)
+        spec = ExperimentSpec(mode, cut, prompt_length, tail, approximate_start)
         if cut >= len(self.layers):
             raise ValueError("Cut must precede the final layer")
         if type(skip_mla_queries) is not bool:
@@ -201,7 +222,7 @@ class AttentionInputExperiment:
         requested_mode = mode
         if mode in {"predict", "identity"} and tail == prompt_length:
             mode = "off"
-            spec = ExperimentSpec(mode, cut, prompt_length, tail)
+            spec = ExperimentSpec(mode, cut, prompt_length, tail, approximate_start)
         if mode == "oracle":
             self.oracle = {
                 i: self.torch.cat(chunks, dim=0) for i, chunks in self.capture.items()
@@ -236,6 +257,7 @@ class AttentionInputExperiment:
         self.state_errors = []
         self.source = None
         self.current_positions = []
+        self.expected_position = None
         self.counts = {"attention_tokens": {}, "mlp_skipped_tokens": {}}
         self.events = []
         self.operation_events = []
@@ -246,6 +268,7 @@ class AttentionInputExperiment:
             "cut": cut,
             "prompt_length": prompt_length,
             "tail": tail,
+            "approximate_start": approximate_start,
             "skip_mla_queries": skip_mla_queries,
         }
 
@@ -339,9 +362,18 @@ class AttentionInputExperiment:
             spec = self.spec
             if spec is None or index < spec.cut:
                 return
+            if spec.mode == "off" and not self.verify_state:
+                return
             x = kwargs["hidden_states"]
             if index == spec.cut:
                 self.current_positions = kwargs["positions"].detach().cpu().tolist()
+                if self.expected_position is not None and (
+                    not self.current_positions
+                    or self.current_positions[0] != self.expected_position
+                ):
+                    raise ValueError(
+                        "Model positions differ from the scheduled APC/LPA boundary"
+                    )
                 approximate = spec.approximate_count(self.current_positions)
                 if len(self.current_positions) != x.shape[0]:
                     raise ValueError("Padded or packed attention input is unsupported")
@@ -351,7 +383,8 @@ class AttentionInputExperiment:
                     else None
                 )
             positions = self.current_positions
-            count = spec.approximate_count(positions)
+            span_start, span_stop = spec.approximate_span(positions)
+            count = span_stop - span_start
             prompt_count = sum(p < spec.prompt_length for p in positions)
             if spec.mode == "capture" and prompt_count:
                 self.capture.setdefault(index, []).append(
@@ -360,13 +393,13 @@ class AttentionInputExperiment:
             if spec.mode not in {"oracle", "identity", "predict"} or not count:
                 return
             if spec.mode == "oracle":
-                start = positions[0]
+                start = positions[span_start]
                 replacement = self.oracle[index][start : start + count].to(x.device)
             elif spec.mode == "identity" or index == spec.cut:
-                replacement = self.source[:count]
+                replacement = self.source[span_start:span_stop]
             else:
                 w = self.predictor[index]
-                source = self.source[:count].float()
+                source = self.source[span_start:span_stop].float()
                 # Fitted low-rank residual map, evaluated in FP32 before BF16 cast.
                 replacement = (
                     source * w["scale"]
@@ -374,7 +407,7 @@ class AttentionInputExperiment:
                     + w["bias"]
                 )
             updated = x.clone()
-            updated[:count] = replacement.to(dtype=x.dtype)
+            updated[span_start:span_stop] = replacement.to(dtype=x.dtype)
             kwargs = dict(kwargs, hidden_states=updated)
             counters = self.counts["attention_tokens"]
             counters[index] = counters.get(index, 0) + count
@@ -392,14 +425,17 @@ class AttentionInputExperiment:
                 or index < spec.cut
             ):
                 return original(x, *args, **kwargs)
-            count = spec.approximate_count(self.current_positions)
+            start, stop = spec.approximate_span(self.current_positions)
+            count = stop - start
             if not count:
                 return original(x, *args, **kwargs)
             if x.shape[0] != len(self.current_positions):
                 raise ValueError("MLP sharding/padding changed the token layout")
             output = self.torch.zeros_like(x)
-            if count < x.shape[0]:
-                output[count:] = original(x[count:].contiguous(), *args, **kwargs)
+            if start:
+                output[:start] = original(x[:start].contiguous(), *args, **kwargs)
+            if stop < x.shape[0]:
+                output[stop:] = original(x[stop:].contiguous(), *args, **kwargs)
             counters = self.counts["mlp_skipped_tokens"]
             counters[index] = counters.get(index, 0) + count
             return output
@@ -437,6 +473,11 @@ class AttentionInputExperiment:
 
 class LPAWorkerExtension:
     """Explicit RPC entry points; no arbitrary source/eval is accepted."""
+
+    def apc_lpa_report(self):
+        from .apc_worker import report
+
+        return report(self)
 
     def lpa_configure(self, allow_mtp=False, **kwargs):
         config = self.vllm_config

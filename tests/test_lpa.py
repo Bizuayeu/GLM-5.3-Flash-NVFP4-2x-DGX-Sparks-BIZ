@@ -13,6 +13,45 @@ from glm53_setup.runtime.lpa import (
 
 
 class ExperimentSpecTests(unittest.TestCase):
+    def test_resumed_exact_prefix_and_tail_surround_the_approximate_span(self):
+        spec = ExperimentSpec("predict", 0, 12, tail=2, approximate_start=4)
+        self.assertEqual(spec.approximate_span([0, 1, 2, 3]), (0, 0))
+        self.assertEqual(spec.approximate_span([2, 3, 4, 5]), (2, 4))
+        self.assertEqual(spec.approximate_span([8, 9, 10, 11]), (0, 2))
+        self.assertEqual(spec.approximate_count([12, 13]), 0)
+
+    def test_ordinary_path_does_not_copy_gpu_positions_without_diagnostics(self):
+        experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
+        experiment.spec = ExperimentSpec("off", 0, 12)
+        experiment.verify_state = False
+        self.assertIsNone(
+            experiment._attention_hook(0)(
+                None,
+                (),
+                {
+                    "hidden_states": object(),
+                    "positions": object(),
+                },
+            )
+        )
+
+    def test_mlp_preserves_both_exact_sides_after_prefix_eviction(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("Torch environment required")
+        experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
+        experiment.torch = torch
+        experiment.spec = ExperimentSpec("predict", 0, 12, tail=2, approximate_start=4)
+        experiment.skip_mlp = True
+        experiment.counts = {"mlp_skipped_tokens": {}}
+        experiment.current_positions = list(range(2, 12))
+        x = torch.arange(10).float().reshape(10, 1)
+        result = experiment._mlp_forward(0, lambda v: v * 2)(x)
+        expected = x * 2
+        expected[2:8] = 0
+        self.assertTrue(torch.equal(result, expected))
+
     def test_prefill_state_diagnostic_ignores_unused_mtp_conv_slots(self):
         try:
             import torch

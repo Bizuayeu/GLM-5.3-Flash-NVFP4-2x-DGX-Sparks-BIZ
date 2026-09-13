@@ -9,6 +9,8 @@ COPY LICENSES /opt/glm53/LICENSES
 ENV PYTHONPATH=/opt/glm53
 RUN python3 -m glm53_setup patch-reference
 RUN python3 -m glm53_setup.runtime.patch_pipeline
+RUN python3 -m glm53_setup.runtime.patch_apc_lpa
+ENV GLM53_APC_LPA_API=1
 ENV GLM53_PIPELINE_API=1
 ENV GLM53_REFERENCE_ATTENTION=1
 ENV GLM53_LPA_API=2

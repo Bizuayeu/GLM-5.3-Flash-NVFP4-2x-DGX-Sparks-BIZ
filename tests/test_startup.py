@@ -218,7 +218,7 @@ class StartupConfigTests(unittest.TestCase):
         def sender(profile, path, body):
             calls.append((path, copy.deepcopy(body)))
             if path == "/tokenize":
-                return {"tokens": list(range(1024))}
+                return {"tokens": list(range(2048))}
             if path == "/v1/chat/completions":
                 raise RuntimeError("generation failed")
             return {"results": []}
@@ -273,7 +273,7 @@ class StartupConfigTests(unittest.TestCase):
             ("mtp", "num_speculative_tokens", 2),
             ("lpa", "cut", 45),
             ("lpa", "tail", 0),
-            ("cache", "prefix_caching", True),
+            ("lpa", "break_even_tokens", -1),
             ("runtime", "enforce_eager", False),
         ]:
             with self.subTest(section=section, key=key):

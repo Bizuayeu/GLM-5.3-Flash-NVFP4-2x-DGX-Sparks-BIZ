@@ -145,14 +145,13 @@ def validate(profile):
     if (
         not 0 <= lpa["cut"] < MODEL_LAYERS
         or not 1 <= lpa["tail"] <= profile["context"]["max_model_len"]
+        or lpa["break_even_tokens"] < 0
     ):
         raise ValueError("Invalid LPA cut or tail")
     if not re.fullmatch(r"[0-9a-f]{64}", lpa["projector_sha256"]):
         raise ValueError("Invalid projector_sha256")
-    if lpa["enabled"] and (
-        profile["cache"]["prefix_caching"] or not profile["runtime"]["enforce_eager"]
-    ):
-        raise ValueError("LPA requires eager execution and prefix caching disabled")
+    if lpa["enabled"] and not profile["runtime"]["enforce_eager"]:
+        raise ValueError("LPA requires eager execution")
     if not profile["runtime"]["enforce_eager"] and (
         profile["mtp"]["enabled"]
         or profile["cache"]["prefix_caching"]
@@ -210,10 +209,27 @@ def environment(profile, rank):
         result["GLM53_FUSED_UNPACK"] = "1"
     if asynchronous_index_checks(profile):
         result["GLM53_ASYNC_INDEX_CHECKS"] = "1"
+    if apc_lpa_enabled(profile):
+        lpa = profile["lpa"]
+        result["GLM53_APC_LPA_CONFIG"] = json.dumps(
+            {
+                "cut": lpa["cut"],
+                "tail": lpa["tail"],
+                "break_even": lpa["break_even_tokens"],
+                "projector_path": "/lpa/projector.pt",
+                "projector_sha256": lpa["projector_sha256"],
+                "skip_mla_queries": lpa["skip_mla_queries"],
+            },
+            sort_keys=True,
+        )
     if profile["runtime"]["pipeline_parallel_size"] == 2:
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
     return result
+
+
+def apc_lpa_enabled(profile):
+    return profile["lpa"]["enabled"] and profile["cache"]["prefix_caching"]
 
 
 def asynchronous_index_checks(profile):
@@ -349,7 +365,9 @@ def request_body(profile, request):
 def lpa_request(profile, length):
     lpa = profile["lpa"]
     return {
-        "mode": "predict" if lpa["enabled"] and length > lpa["tail"] else "off",
+        "mode": "predict"
+        if lpa["enabled"] and length - lpa["tail"] > lpa["break_even_tokens"]
+        else "off",
         "cut": lpa["cut"],
         "prompt_length": length,
         "tail": min(lpa["tail"], length),

@@ -22,6 +22,24 @@ class QueryScopeTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "Torch environment required")
 class QuerySelectionTests(unittest.TestCase):
+    def test_recomputed_exact_prefix_and_exact_tail_keep_all_candidates(self):
+        import torch
+
+        q = torch.ones(5, 1, 512)
+        cache = torch.zeros(8, 656, dtype=torch.uint8)
+        indices = torch.arange(15).reshape(5, 3)
+        original = Mock(side_effect=lambda x, c, i, s: x * s)
+        mask = ReferenceQueryMask(original)
+        with mask.activate(2, 5, 7, start=2):
+            output = mask(q, cache, indices, 0.5)
+        expected = q * 0.5
+        expected[2:4] = 0
+        self.assertTrue(torch.equal(output, expected))
+        self.assertEqual(original.call_count, 2)
+        self.assertTrue(torch.equal(original.call_args_list[0].args[2], indices[:2]))
+        self.assertTrue(torch.equal(original.call_args_list[1].args[2], indices[4:]))
+        self.assertEqual(mask.counts, {7: 2})
+
     def test_only_unused_queries_are_skipped_and_all_candidates_are_retained(self):
         import torch
 

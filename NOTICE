@@ -5,6 +5,8 @@ Original setup and validation code is licensed under Apache License 2.0.
 
 This project adapts vLLM code and interfaces, Copyright contributors to the
 vLLM project, licensed under Apache License 2.0.
+Local source-pinned changes include deferred pipeline-state transport and
+APC/LPA admission, shared-cache publication guards, and worker policy dispatch.
 
 The NoPE zero-padding adaptation follows the kingjones30 (Jones Lab) recipe,
 Copyright (c) 2026 kingjones30 (Jones Lab), licensed under the MIT License.
