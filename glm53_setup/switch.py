@@ -1,6 +1,22 @@
 """Two-rank stop/start transaction, independent of its process transport."""
 
 
+class OperationFailure(RuntimeError):
+    """Structured operational evidence without commands, credentials or payloads."""
+
+    def __init__(self, action, rank, reason, exit_code=None):
+        self.evidence = {
+            "action": action,
+            "rank": rank,
+            "reason": reason,
+            "exit_code": exit_code,
+        }
+        super().__init__(
+            f"Rank {rank} {action}: {reason}"
+            + (f" (exit {exit_code})" if exit_code is not None else "")
+        )
+
+
 def switch(backend, launch, *, save):
     """backend operations must address explicit owned launch identities.
 
@@ -40,6 +56,7 @@ def switch(backend, launch, *, save):
     ):
         raise ValueError("Launch assets or running identities changed before stop")
     report["assets"] = first
+    report["status"] = "starting"
     save(report)
     try:
         for rank, previous in enumerate(old):
@@ -64,6 +81,20 @@ def switch(backend, launch, *, save):
     except Exception as error:  # noqa: BLE001 - every transport failure requires owned cleanup
         report["status"] = "failed"
         report["error"] = type(error).__name__
+        if isinstance(error, OperationFailure):
+            report["failure"] = error.evidence
+            if error.evidence["action"] == "poll" and error.evidence["reason"] in (
+                "transport-timeout",
+                "ssh-unavailable",
+            ):
+                # A lost observation is not a failed model. Keep the already
+                # owned, supervised attempts under their memory/deadline guards
+                # and require identity-checked readiness resumption.
+                report["status"] = "readiness-unconfirmed"
+                save(report)
+                raise RuntimeError(
+                    "Readiness observation lost; resume this recorded attempt without replaying start"
+                ) from None
         cleanup_failed = "stop_pending" in report
         for row in reversed(report["new"]):
             try:

@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from glm53_setup.switch import switch
+from glm53_setup.switch import OperationFailure, switch
 
 
 class Backend:
@@ -40,6 +40,30 @@ class Backend:
 
 
 class SwitchTests(unittest.TestCase):
+    def test_lost_readiness_observation_preserves_supervised_new_attempts(self):
+        backend = Backend()
+        backend.start = lambda rank, identity: backend.calls.append(
+            ("start", rank, identity["name"])
+        )
+
+        def unavailable(rows):
+            raise OperationFailure("poll", 1, "ssh-unavailable", 255)
+
+        backend.ready = unavailable
+        reports = []
+        with self.assertRaisesRegex(RuntimeError, "Readiness observation lost"):
+            switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        self.assertEqual(reports[-1]["status"], "readiness-unconfirmed")
+        self.assertEqual(
+            backend.calls,
+            [
+                ("stop", 0, "old-0"),
+                ("stop", 1, "old-1"),
+                ("start", 1, "new-1"),
+                ("start", 0, "new-0"),
+            ],
+        )
+
     def test_pre_stop_failure_never_stops_anything(self):
         for attribute, value in [
             ("fail_rank", 1),

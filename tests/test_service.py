@@ -46,7 +46,7 @@ class ServiceContractTests(unittest.TestCase):
         self.assertIn("--headless", args)
         self.assertEqual(service.fabric_env(self.site)["VLLM_HOST_IP"], "10.53.0.2")
         self.assertEqual(service.fabric_env(self.site)["NCCL_NET"], "IB")
-        self.assertEqual(service.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0")
+        self.assertEqual(service.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0:1")
 
     def test_bad_rank_interface_or_address_refused(self):
         for values in [

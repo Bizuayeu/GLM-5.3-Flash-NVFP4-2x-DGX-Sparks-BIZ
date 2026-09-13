@@ -15,7 +15,7 @@ from pathlib import Path
 from . import launch_assets, model_http, service, startup, startup_config
 from .config import ROOT
 from .io import write_json
-from .switch import switch
+from .switch import OperationFailure, switch
 
 
 def current(rank):
@@ -197,19 +197,33 @@ class SSHBackend:
             self.hosts[rank],
             command,
         ]
-        response = subprocess.run(
-            args,
-            check=False,
-            input=json.dumps({"action": action, "rank": rank, "value": value}),
-            text=True,
-            capture_output=True,
-            timeout=120,
-        )
-        if response.returncode:
-            raise RuntimeError(
-                f"Rank {rank} {action} failed (SSH/process exit {response.returncode})"
-            )
-        return json.loads(response.stdout)
+        attempts = 3 if action in ("current", "prepare", "poll") else 1
+        for attempt in range(attempts):
+            try:
+                response = subprocess.run(
+                    args,
+                    check=False,
+                    input=json.dumps({"action": action, "rank": rank, "value": value}),
+                    text=True,
+                    capture_output=True,
+                    timeout=120,
+                )
+            except subprocess.TimeoutExpired:
+                if attempt + 1 == attempts:
+                    raise OperationFailure(action, rank, "transport-timeout") from None
+            else:
+                if response.returncode == 0:
+                    return json.loads(response.stdout)
+                if response.returncode != 255 or attempt + 1 == attempts:
+                    raise OperationFailure(
+                        action,
+                        rank,
+                        "ssh-unavailable"
+                        if response.returncode == 255
+                        else "remote-operation-failed",
+                        response.returncode,
+                    )
+            time.sleep(1)
 
     def current(self, rank):
         return self.call("current", rank)
@@ -233,16 +247,45 @@ class SSHBackend:
         while time.monotonic() < deadline:
             statuses = [self.call("poll", r["rank"], r["identity"]) for r in rows]
             if any(s.get("failed") for s in statuses):
-                raise RuntimeError("New rank terminated before readiness")
+                index = next(
+                    i for i, status in enumerate(statuses) if status.get("failed")
+                )
+                raise OperationFailure("ready", rows[index]["rank"], "rank-terminated")
             if all(s.get("ready") for s in statuses):
                 return
             time.sleep(5)
-        raise TimeoutError("New model readiness deadline exceeded")
+        raise OperationFailure("ready", None, "readiness-deadline")
+
+
+def resume(backend, report):
+    if report["status"] != "readiness-unconfirmed" or {
+        r["rank"] for r in report["new"]
+    } != {0, 1}:
+        raise ValueError(
+            "Only a recorded, unconfirmed two-rank readiness observation can resume"
+        )
+    for row in report["new"]:
+        current_rank = backend.current(row["rank"])
+        identity = row["identity"]
+        if current_rank is None or any(
+            current_rank[key] != identity[key] for key in ("name", "fingerprint")
+        ):
+            raise ValueError("Running identity changed; readiness cannot resume")
+        if (
+            backend.prepare(row["rank"], identity["launch"])
+            != report["assets"][row["rank"]]
+        ):
+            raise ValueError("Assets changed since the recorded launch")
+    backend.ready(report["new"])
+    report["prior_observation_failure"] = report.pop("failure")
+    report.pop("error")
+    report["status"] = "complete"
+    return report
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["switch", "rpc", "job"])
+    parser.add_argument("action", choices=["switch", "resume", "rpc", "job"])
     parser.add_argument("--config", type=Path)
     parser.add_argument(
         "--remote-config", help="Same absolute configuration path on both Linux ranks"
@@ -257,6 +300,18 @@ def main(argv=None):
     parser.add_argument("--ready-timeout", type=int, default=1800)
     parser.add_argument("--experimental", action="store_true")
     args = parser.parse_args(argv)
+    if args.action == "resume":
+        if not all((args.output, args.hosts, args.checkout)) or args.ready_timeout < 1:
+            parser.error(
+                "resume requires --output, --hosts, --checkout and a positive timeout"
+            )
+        backend = SSHBackend(
+            args.hosts, args.checkout, args.ssh_config, args.ready_timeout
+        )
+        result = resume(backend, startup.read_json(args.output / "result.json"))
+        write_json(args.output / "result.json", result)
+        print(json.dumps({"status": result["status"], "output": str(args.output)}))
+        return
     if args.action == "rpc":
         payload = json.load(sys.stdin)
         print(json.dumps(rpc(payload["action"], payload["rank"], payload["value"])))

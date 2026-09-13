@@ -87,11 +87,7 @@ def serve_args(site, model_path):
 def fabric_env(site):
     validate_site(site)
     rails = fabric.rails(site)
-    hcas = (
-        site["hca"]
-        if len(rails) == 1
-        else ",".join(f"{r['hca']}:{r['port']}" for r in rails)
-    )
+    hcas = ",".join(f"{r['hca']}:{r['port']}" for r in rails)
     return {
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",

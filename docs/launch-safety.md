@@ -27,6 +27,8 @@ The environment's **presence**, including an empty value, overrides TOML. Copy t
 
 Each node retains its primary `hca`, `interface`, `local_ip` and `gid_index` (port 1). Optional `additional_rails` lists records with those fields plus `port`. All rails require the same GID index, unique port/NIC/IP associations, an active Ethernet port/link, matching IPv4-mapped RoCE v2 GID, and an IP assigned to that NIC. Comma-separated device strings are rejected in favor of structured records. NCCL receives the complete exact HCA/port list; socket bootstrap stays on the primary interface. These are configuration checks, not multi-rail traffic qualification.
 
+The primary single-rail case also selects port 1 explicitly (`=hca:1`). Omitting a port permits all ports on that HCA, which would exceed the checked scope. See [NVIDIA's NCCL HCA selection contract](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-ib-hca).
+
 ```sh
 python -m glm53_setup cluster switch --config state/startup.toml \
   --hosts spark-head spark-peer --checkout /srv/glm53/source \
@@ -38,10 +40,14 @@ Both hosts need the same audited checkout, images and assets. `--remote-config` 
 
 Pre-stop failures preserve running containers. Post-stop failures clean up only newly reserved owned attempts, then attempt the recorded old profile. Cleanup uncertainty prevents a competing recovery launch. Results distinguish failure, cleanup and recovery; this is a stop/start procedure with downtime, not an atomic switch. A live rank without a recorded configuration path is rejected before stop because its recovery is not established. Other containers are not stopped.
 
+Read-only SSH observations retry transport failures at most three times. Start/stop/reserve operations are never automatically replayed. If readiness observation remains unavailable, the journal says `readiness-unconfirmed`; the newly owned supervisors retain their memory/deadline guards. Use `cluster resume` with the same `--output`, `--hosts`, `--checkout` and optional `--ssh-config` to recheck identities/assets and readiness without starting again. A known rank failure or readiness deadline still follows cleanup/recovery. The journal records structured failure reasons without command payloads or credentials.
+
 ## APC history qualification
 
 Keep the pinned runtime's actual retention baseline until measured otherwise. In this revision `prefix_cache_retention_interval` defaults to **0**: semantic checkpoints/replay boundaries and shared-prefix junctions; it does not mean dense retention. No new retention override or SWA-only rule is introduced for GLM's KDA/MLA/indexer/MTP groups. A reduction that applies to every group is not assumed safe.
 
 The additional matrix covers append, edits/branches at 10/50/90%, alternating conversations, eviction pressure, actual block/pool/MTP boundaries and exact revisits after LPA. Record actual token prefixes and joint H, recomputation, timing, memory and MTP/LPA activity. Native exact controls precede P22 combinations. Retention changes require a separate A/B/A decision; CPU state checks and earlier P22 tests alone do not qualify this extended matrix.
+
+`apc-history` runs the full-model functional matrix on an exclusive serial APC/LPA server, with exact priming and exact/auto/restored requests. Its default one cycle is a functional check, not performance adoption. Supply the actual `--block-tokens` from the running server, the pinned corpus hash, and a fresh output directory; it reads only the corpus validation split. SSE measurements distinguish first output from inter-chunk gaps, which are not individual-token ITL under MTP. The `apc-lpa-fixture --history` option checks shared GPU bytes before full-model use. See [fixture evidence](component-validation.md#additional-history-fixtures).
 
 The requirements were informed by Mia PRs #130/#136/#172/#175; no Mia implementation was copied or mechanically rewritten, and no new AGPL dependency was added. Implementation uses this repository and its pinned Apache-2.0 vLLM. EXL3/DFlash, adaptive-k, four-node serving, cable/IP changes and connector implementation are outside this scope.
