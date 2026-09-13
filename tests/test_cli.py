@@ -28,6 +28,7 @@ class PublicCliTests(unittest.TestCase):
             ("build-reference", "--plan"),
             ("service", "--site"),
             ("startup", "--config"),
+            ("cluster", "--remote-config"),
             ("fixture-build", "--source"),
             ("fixture-run", "--fixture"),
             ("fixture-assess", "directory"),

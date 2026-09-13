@@ -58,13 +58,13 @@ class RealCacheManagerTests(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def request(self, name, length, mode="auto"):
+    def request(self, name, length, mode="auto", tokens=None):
         from vllm.sampling_params import SamplingParams
         from vllm.v1.request import Request
 
         return Request(
             name,
-            list(range(length)),
+            list(range(length)) if tokens is None else tokens,
             SamplingParams(max_tokens=3, extra_args={"glm53_lpa_mode": mode}),
             None,
             block_hasher=self.hasher,
@@ -141,6 +141,36 @@ class RealCacheManagerTests(unittest.TestCase):
             self.assertEqual(
                 self.manager.get_computed_blocks(self.request("later", 21))[1], 20
             )
+
+    def test_edited_and_branched_prefixes_never_reuse_beyond_first_changed_token(self):
+        original = self.request("original", 25, "off")
+        self.manager.allocate_slots(original, 25)
+        self.manager.free(original)
+        for position in (2, 3, 4, 5, 12, 22):
+            for branch in (False, True):
+                ids = list(range(25))
+                ids[position] = 1000
+                if branch:
+                    ids = ids[: position + 1] + [1001, 1002]
+                request = self.request(
+                    f"edit-{position}-{branch}", len(ids), "off", tokens=ids
+                )
+                _, hit, _ = self.manager.get_computed_blocks(request)
+                self.assertEqual(hit, position // 4 * 4)
+
+    def test_evicted_prefix_recomputes_instead_of_using_another_conversation(self):
+        original = self.request("original", 25, "off")
+        self.manager.allocate_slots(original, 25)
+        self.manager.free(original)
+        for i in range(16):
+            request = self.request(
+                f"other-{i}", 25, "off", tokens=[1000 + i * 100 + j for j in range(25)]
+            )
+            self.assertEqual(self.manager.get_computed_blocks(request)[1], 0)
+            self.assertIsNotNone(self.manager.allocate_slots(request, 25))
+            self.manager.free(request)
+        revisit = self.request("revisit", 25, "off")
+        self.assertEqual(self.manager.get_computed_blocks(revisit)[1], 0)
 
 
 if __name__ == "__main__":

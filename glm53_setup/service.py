@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import fabric
 from .config import ROOT, load_lock
 
 
@@ -32,6 +33,7 @@ def validate_site(site):
             raise ValueError(f"Invalid {key}")
     if site["api_port"] == site["master_port"]:
         raise ValueError("API and rendezvous ports must differ")
+    fabric.rails(site)
 
 
 def serve_args(site, model_path):
@@ -84,6 +86,12 @@ def serve_args(site, model_path):
 
 def fabric_env(site):
     validate_site(site)
+    rails = fabric.rails(site)
+    hcas = (
+        site["hca"]
+        if len(rails) == 1
+        else ",".join(f"{r['hca']}:{r['port']}" for r in rails)
+    )
     return {
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
@@ -92,7 +100,7 @@ def fabric_env(site):
         "NCCL_IB_DISABLE": "0",
         "NCCL_SOCKET_IFNAME": "=" + site["interface"],
         "GLOO_SOCKET_IFNAME": site["interface"],
-        "NCCL_IB_HCA": "=" + site["hca"],
+        "NCCL_IB_HCA": "=" + hcas,
         "NCCL_IB_GID_INDEX": str(site["gid_index"]),
         "NCCL_IB_ROCE_VERSION_NUM": "2",
         "NCCL_IB_ADDR_FAMILY": "AF_INET",
@@ -166,35 +174,7 @@ def run(*args):
 
 def fabric_checks(site):
     validate_site(site)
-    checks = {}
-    net = Path("/sys/class/net") / site["interface"]
-    hca = Path("/sys/class/infiniband") / site["hca"]
-    checks["fabric_link_up"] = (
-        net.exists() and (net / "operstate").read_text().strip() == "up"
-    )
-    port = hca / "ports/1"
-    gid = port / "gids" / str(site["gid_index"])
-    gid_type = port / "gid_attrs/types" / str(site["gid_index"])
-    ndev = port / "gid_attrs/ndevs" / str(site["gid_index"])
-    checks["roce_v2_gid"] = (
-        gid.exists()
-        and ipaddress.IPv6Address(gid.read_text().strip()).ipv4_mapped
-        == ipaddress.IPv4Address(site["local_ip"])
-        and gid_type.exists()
-        and "v2" in gid_type.read_text()
-        and ndev.exists()
-        and ndev.read_text().strip() == site["interface"]
-    )
-    info = (
-        json.loads(run("ip", "-j", "addr", "show", "dev", site["interface"]))
-        if net.exists()
-        else []
-    )
-    checks["local_address_assigned"] = any(
-        a.get("local") == site["local_ip"] for n in info for a in n.get("addr_info", [])
-    )
-    checks["rdma_devices"] = Path("/dev/infiniband").is_dir()
-    return checks
+    return fabric.checks(site, run)
 
 
 def preflight(site, lock, snapshot):

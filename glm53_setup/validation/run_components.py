@@ -6,10 +6,9 @@ import json
 import statistics
 import time
 import urllib.error
-import urllib.request
 from pathlib import Path
 
-from glm53_setup import startup, startup_config
+from glm53_setup import model_http, startup, startup_config
 from glm53_setup.config import ROOT
 from glm53_setup.io import write_json
 from glm53_setup.validation.indexer_overlap import compare_candidates
@@ -67,12 +66,11 @@ def main(argv=None):
         return {"seconds": elapsed, "response": response}
 
     def profile_toggle(endpoint):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{profile['api']['port']}/" + endpoint,
-            data=b"{}",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(request, timeout=600) as response:
+        with model_http.open_response(
+            f"http://127.0.0.1:{profile['api']['port']}",
+            "/" + endpoint,
+            body={},
+        ) as response:
             response.read()
 
     save()
@@ -80,11 +78,15 @@ def main(argv=None):
         deadline = time.monotonic() + 1800
         while time.monotonic() < deadline:
             try:
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{profile['api']['port']}/health", timeout=5
+                with model_http.open_response(
+                    f"http://127.0.0.1:{profile['api']['port']}", "/health", timeout=5
                 ) as response:
                     if response.status == 200:
                         break
+            except model_http.ModelHTTPError as error:
+                if error.code in (401, 403):
+                    raise
+                time.sleep(5)
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(5)
         else:

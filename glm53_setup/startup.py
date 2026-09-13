@@ -7,11 +7,10 @@ import os
 import signal
 import subprocess
 import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import service
+from . import model_http, service
 from . import startup_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .io import write_json
@@ -111,7 +110,7 @@ def inspect_owned(name, fingerprint=None):
     return info
 
 
-def preflight(profile, config_path, rank):
+def preflight(profile, config_path, rank, *, check_memory=True):
     cache = Path.home() / ".cache/huggingface"
     lock = load_lock()
     source = service.snapshot_from_state(
@@ -177,15 +176,30 @@ def preflight(profile, config_path, rank):
     checks["reference_attention"] = (
         "GLM53_REFERENCE_ATTENTION=1" in image["Config"]["Env"]
     )
-    checks["startup_memory"] = (
-        available_gib() >= profile["resources"]["minimum_available_gib"]
-    )
+    if check_memory:
+        checks["startup_memory"] = (
+            available_gib() >= profile["resources"]["minimum_available_gib"]
+        )
     # This is an explicit experiment, not the routine service qualification path.
     return {
         "scope": "experimental-reference",
         "checks": checks,
         "passed": all(checks.values()),
     }
+
+
+def freeze(profile, environ=None):
+    resolved = settings.resolve_launch(profile, environ)
+    return {"profile": resolved, "fingerprint": settings.fingerprint(resolved)}
+
+
+def thaw(manifest):
+    if not isinstance(manifest, dict) or manifest.keys() != {"profile", "fingerprint"}:
+        raise ValueError("Invalid frozen launch manifest")
+    settings.validate(manifest["profile"])
+    if manifest["fingerprint"] != settings.fingerprint(manifest["profile"]):
+        raise ValueError("Frozen launch manifest no longer matches this checkout/lock")
+    return manifest["profile"]
 
 
 def supervise(profile, name, record):
@@ -231,15 +245,12 @@ def supervise(profile, name, record):
 
 
 def post(profile, path, body):
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{profile['api']['port']}{path}",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+    return model_http.post_json(
+        f"http://127.0.0.1:{profile['api']['port']}",
+        path,
+        body,
+        timeout=profile["generation"]["timeout_seconds"],
     )
-    with urllib.request.urlopen(
-        request, timeout=profile["generation"]["timeout_seconds"]
-    ) as response:
-        return json.load(response)
 
 
 def ask(profile, request, sender=post):
@@ -302,7 +313,17 @@ def ask(profile, request, sender=post):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=["plan", "preflight", "start", "stop", "status", "ask"]
+        "action",
+        choices=[
+            "plan",
+            "freeze",
+            "assets",
+            "preflight",
+            "start",
+            "stop",
+            "status",
+            "ask",
+        ],
     )
     parser.add_argument("--config", type=Path, default=ROOT / "state/startup.toml")
     parser.add_argument("--rank", type=int, choices=[0, 1], default=0)
@@ -312,7 +333,16 @@ def main(argv=None):
         help="Required for start; does not qualify routine service",
     )
     parser.add_argument("--prompt")
+    parser.add_argument("--run-id", help="Unique coordinator-owned launch ID")
     parser.add_argument("--request", type=Path)
+    parser.add_argument(
+        "--launch",
+        type=Path,
+        help="Shared frozen JSON from startup freeze; host allocator environment is ignored",
+    )
+    parser.add_argument(
+        "--output", type=Path, help="New output file for startup freeze"
+    )
     args = parser.parse_args(argv)
     args.config = args.config.resolve()
     state = ROOT / f"state/startup-rank{args.rank}.json"
@@ -324,7 +354,31 @@ def main(argv=None):
         inspect_owned(current["name"])
         print(service.run("docker", "stop", current["name"]))
         return
-    profile = settings.load(args.config)
+    profile = (
+        thaw(read_json(args.launch)) if args.launch else settings.load(args.config)
+    )
+    if args.action == "freeze":
+        if not args.output or args.launch:
+            parser.error("freeze requires --output and a TOML --config")
+        manifest = freeze(profile)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open("x", encoding="utf-8") as stream:
+            json.dump(manifest, stream, indent=2)
+            stream.write("\n")
+        print(
+            json.dumps(
+                {"fingerprint": manifest["fingerprint"], "output": str(args.output)}
+            )
+        )
+        return
+    if (
+        args.action in ("start", "preflight", "assets")
+        and not args.launch
+        and "PYTORCH_CUDA_ALLOC_CONF" in os.environ
+    ):
+        parser.error(
+            "Freeze the launch-origin allocator once with startup freeze and pass the same --launch JSON to both ranks"
+        )
     if args.action == "plan":
         print(
             json.dumps(
@@ -388,16 +442,23 @@ def main(argv=None):
 
         for signum in (signal.SIGTERM, signal.SIGHUP):
             signal.signal(signum, interrupted)
-    result = preflight(profile, args.config, args.rank)
+    result = preflight(
+        profile, args.config, args.rank, check_memory=args.action != "assets"
+    )
     print(json.dumps(result, indent=2), flush=True)
     if not result["passed"]:
         raise SystemExit(2)
-    if args.action == "preflight":
+    if args.action in ("preflight", "assets"):
         return
     if state.exists() and inspect_owned(read_json(state)["name"])["State"]["Running"]:
         raise ValueError("The previous rank is still running; stop it first")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    name = f"glm53-startup-r{args.rank}-{stamp.lower()}"
+    if args.run_id:
+        import re
+
+        if not re.fullmatch(r"[0-9a-f]{32}", args.run_id):
+            parser.error("run-id must be a 32-character hexadecimal launch ID")
+    name = f"glm53-startup-r{args.rank}-{args.run_id or stamp.lower()}"
     record = ROOT / "records" / (stamp + f"-startup-r{args.rank}")
     record.mkdir(parents=True)
     (ROOT / "state/tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
@@ -415,6 +476,7 @@ def main(argv=None):
                 "name": name,
                 "fingerprint": settings.fingerprint(profile),
                 "record": str(record),
+                "config_path": str(args.config),
             },
         )
     except BaseException:

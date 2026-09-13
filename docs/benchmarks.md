@@ -323,3 +323,32 @@ Every timed request followed a cache reset; H>0 cases first primed the exact pre
 | 4,352 | 8,192 | 13,056 | 26.618 s | 20.922 s | 26.620 s |
 
 All LPA samples in these twelve conditions were faster than every corresponding ordinary/restored sample. The additional H=0 sweep tested R=0/1/4/16/32/64. R=0 correctly used ordinary computation; R=1/4/16 had overlapping timing ranges. R=32/64 separated from both controls, with small gains. H>0 below R=128 was not measured. **A conservative activation candidate is B=128, enabling only R>128; it is not an exact or universal crossover constant.** Quality, final combinations and repeated-input profile selection remain separate checks. Independent assessment verified all 324 timed/warmup rows, policy boundaries, output counts and recomputed ranges; 108 additional exact-prime requests were outside timing. These results alone do not accept general language quality or the final combined profile.
+
+## APC/LPA with MTP, fusion and asynchronous checks (P22)
+
+`p22-combined-v62` completed on source `3df93c9`, image `sha256:0de1ef13b7bfebb088ac7d9399e2d45decf058f16819d72f5a8e89c1bc993b81`, profile fingerprint `570b94a54b9e06d6710e1c7500d023cdeebb02a9b94ad990bd6475d870d4c35f`. TP2/eager, one sequence, context 32,768 and chunk 512 were fixed. APC, MTP k=3, fused unpack and async index checks were enabled; LPA cut32/tail512/B128 switched ordinary/auto/restored per request. **KV was 2 GiB per rank**, a different budget from the single-P22 comparison. The actual shared block was 4,608 tokens; exact priming through 9,217 restored H=4,608 under MTP's replay rule.
+
+Each speed arm has three measured 128-output requests after an excluded warmup. Cache reset and exact priming were outside timing. Input arrays came from the same retained validation corpus; the partial-hit case had the same actual H in every arm.
+
+| Input N | H | Ordinary | LPA | Restored |
+|---:|---:|---:|---:|---:|
+| 2,048 | 0 | 10.596 s | 10.280 s | 10.914 s |
+| 8,192 | 0 | 26.352 s | 22.609 s | 26.892 s |
+| 16,320 | 4,608 | 38.202 s | 32.043 s | 37.802 s |
+
+All scheduled speed requests completed. Draft/accepted-token counters increased during the measurement windows, confirming active MTP; those windows include warmup/priming and are not per-arm acceptance estimates. Strict task scores were 21/24, 24/24 and 23/24. The failures contained correct numerical answers with unwanted explanation or decoration. No task passed both ordinary controls and failed only LPA. All three long tool round trips passed.
+
+The combined run also completed 32,704 input + 64 output tokens in all three arms without preemption (80.596/64.689/80.593 s). A cold approximate request left H=0 for the following ordinary request; only ordinary recomputation made H=9,216 reusable. Disconnecting after three nonempty SSE chunks stopped at 9 generated tokens and a follow-up request completed. Native HTTP400 handling for invalid LPA options and reserved-policy injection passed, as did R=127/128/129 boundary checks. Actual speculative cursor corrections were observed in full-model generation. These are scoped functional/operational results; final held-out retrieval and production qualification are separate.
+
+### Repeated-input tradeoff
+
+After selecting the profile and threshold, `p22-heldout-v63` used eight previously unused test-split documents (four marker positions × two text lengths): ordinary 7/8, LPA 8/8, restored 8/8, with no LPA-only regression. These documents were not used for training or threshold selection. Across the combined and held-out run, minimum host availability was 8.987/10.239 GiB on rank 0/1. Both ranks were stopped after completion, without OOM. This eight-task result is a scoped retrieval check, not a general quality guarantee.
+
+`p22-reuse-single-v56` and `p22-reuse-combined-v62` first computed the full prompt normally, then generated 128 tokens from the identical prompt six times, excluding the first repeat from timing. No approximation-derived cache was shared. All five measured repeats retained the H shown below.
+
+| Input | P22 without MTP/fusion/async, KV 1 GiB | Full combined profile, KV 2 GiB |
+|---:|---:|---:|
+| 8,192 | 18.532 s; H=4,352 | 22.356 s; H=0 |
+| 16,320 | 17.361 s; H=13,056 | 22.294 s; H=9,216 |
+
+The combined profile was 20.6%/28.4% slower in these exact-primed, 128-output cases. Its MTP replay boundary reused less input. This compares whole profiles, including different cache budgets and exact-kernel settings; it is not an isolated causal estimate of MTP cost. **Keep the serial decode-oriented MTP option and the prefix-reuse-oriented no-MTP P22 option separate.** Do not advertise all enabled flags as universally fastest, or infer the same crossover for much longer generated answers.

@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
 import tomllib
 from pathlib import Path, PurePosixPath
@@ -27,7 +28,17 @@ def validate(profile):
 
     def check(value, expected, path):
         if isinstance(expected, dict):
-            if not isinstance(value, dict) or value.keys() != expected.keys():
+            optional = (
+                {"cuda_allocator_conf"}
+                if path == "startup.runtime"
+                else (
+                    {"additional_rails"} if path.startswith("startup.nodes[") else set()
+                )
+            )
+            if (
+                not isinstance(value, dict)
+                or value.keys() - optional != expected.keys()
+            ):
                 raise ValueError(f"Unknown/missing settings in {path}")
             for key, item in expected.items():
                 check(value[key], item, f"{path}.{key}")
@@ -43,6 +54,12 @@ def validate(profile):
             raise ValueError(f"Invalid type in {path}")
 
     check(profile, schema, "startup")
+    if "cuda_allocator_conf" in profile["runtime"]:
+        allocator = profile["runtime"]["cuda_allocator_conf"]
+        if not isinstance(allocator, str) or any(c in allocator for c in "\x00\r\n"):
+            raise ValueError(
+                "runtime.cuda_allocator_conf must be a single-line string, including empty"
+            )
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported startup schema_version")
     for key in ("reference_image", "lpa_image"):
@@ -199,6 +216,8 @@ def environment(profile, rank):
         VLLM_NO_USAGE_STATS="1",
         DO_NOT_TRACK="1",
     )
+    if "cuda_allocator_conf" in profile["runtime"]:
+        result["PYTORCH_CUDA_ALLOC_CONF"] = profile["runtime"]["cuda_allocator_conf"]
     if (
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]
@@ -226,6 +245,16 @@ def environment(profile, rank):
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
     return result
+
+
+def resolve_launch(profile, environ=None):
+    """Freeze the launch-origin allocator override into the shared profile once."""
+    env = os.environ if environ is None else environ
+    resolved = copy.deepcopy(profile)
+    if "PYTORCH_CUDA_ALLOC_CONF" in env:
+        resolved["runtime"]["cuda_allocator_conf"] = env["PYTORCH_CUDA_ALLOC_CONF"]
+    validate(resolved)
+    return resolved
 
 
 def apc_lpa_enabled(profile):

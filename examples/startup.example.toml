@@ -5,6 +5,9 @@
 schema_version = 1
 
 [runtime]
+# Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
+# cuda_allocator_conf = "expandable_segments:True"
+# 起動元の環境変数を使う場合は startup freeze で一度解決し、同じ --launch を両rankへ。
 # Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
 # 両ノードで確認したイメージID。LPA有効時のみ lpa_image を選択。
 reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
@@ -96,6 +99,8 @@ run_seconds = 1800 # Seconds INCLUDING load; 0 disables the time limit
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 
 [[nodes]]
+# Optional extra RoCE rails. All must use the primary rail's GID index.
+# additional_rails = [{ hca = "roce1", port = 1, interface = "fabric1", local_ip = "10.54.0.1", gid_index = 3 }]
 local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)
 interface = "fabric0"
 hca = "roce0"

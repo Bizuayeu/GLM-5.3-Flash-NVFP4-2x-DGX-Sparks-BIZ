@@ -502,6 +502,23 @@ class LPAWorkerExtension:
 
         return report(self)
 
+    def apc_cache_layout(self):
+        """Read-only worker layout evidence; no cache tensors or keys are exported."""
+        cache = self.model_runner.kv_cache_config
+        return {
+            "rank": self.rank,
+            "num_blocks": cache.num_blocks,
+            "retention_interval": cache.prefix_cache_retention_interval,
+            "groups": [
+                {
+                    "kind": type(group.kv_cache_spec).__name__,
+                    "block_size": group.kv_cache_spec.block_size,
+                    "layers": list(group.layer_names),
+                }
+                for group in cache.kv_cache_groups
+            ],
+        }
+
     def lpa_configure(self, allow_mtp=False, **kwargs):
         config = self.vllm_config
         if config.scheduler_config.max_num_seqs != 1:

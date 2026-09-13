@@ -1,6 +1,6 @@
 # APC優先・未処理部分へのLPA：実装・検証計画
 
-**状態：CPU契約と4層GPUの共有状態隔離試験を通過。全モデル・損益分岐・最終併用は未検収。** 対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。
+**状態：CPU契約、4層GPUの共有状態隔離、全モデルの校正・限定品質・運用検査、非同期MTPを含む併用と最終held-out参照評価を完了。** 用途によりMTPなしのprefix再利用構成を選ぶ。対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。[校正・併用結果](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)／[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。履歴編集・分岐・保持圧力の追加評価は、この検収と分けて実施する。
 
 ## 目的と初版の方針
 

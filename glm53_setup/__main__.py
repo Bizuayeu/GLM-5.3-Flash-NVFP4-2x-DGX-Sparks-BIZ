@@ -13,6 +13,7 @@ COMMANDS = {
     "build-reference": "build_reference",
     "service": "service",
     "startup": "startup",
+    "cluster": "cluster",
     "fixture-build": "validation.make_fixture",
     "fixture-run": "validation.run_fixture",
     "fixture-assess": "validation.summarize_fixture",

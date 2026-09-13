@@ -158,6 +158,10 @@ def main(argv=None):
                     )
                 except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
                     response = {"error": type(error).__name__}
+                    if getattr(error, "code", None) in (401, 403):
+                        response.update(
+                            error="authentication failed", http_status=error.code
+                        )
                 response["elapsed_seconds"] = time.monotonic() - began
                 row["attempts"].append(response)
                 save()

@@ -18,6 +18,11 @@ def main(argv=None):
     parser.add_argument("--fused-unpack", action="store_true")
     parser.add_argument("--async-index-checks", action="store_true")
     parser.add_argument("--async-scheduling", action="store_true")
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="Additional edit/branch and shared-state checks",
+    )
     args = parser.parse_args(argv)
     configuration = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
@@ -186,10 +191,10 @@ def main(argv=None):
             print(label, "cached", row["cached_tokens"], flush=True)
             return row
 
-        def lookup():
+        def lookup(prompt=None):
             request = Request(
                 "fixture-probe",
-                ids,
+                ids if prompt is None else prompt,
                 SamplingParams(max_tokens=1),
                 None,
                 block_hasher=core.request_block_hasher,
@@ -272,6 +277,68 @@ def main(argv=None):
             teacher["token_ids"] != altered["token_ids"] or delta > 1e-4
         )
         report["first_distribution_delta"] = delta
+        if args.history:
+            report["cache_layout"] = llm.collective_rpc("apc_cache_layout")
+            report["history"] = []
+            for position in sorted(
+                {
+                    3,
+                    4,
+                    5,
+                    block - 1,
+                    block,
+                    block + 1,
+                    length // 10,
+                    length // 2,
+                    length * 9 // 10,
+                }
+            ):
+                for branch in (False, True):
+                    assert llm.reset_prefix_cache()
+                    generate(f"history-prime-{position}-{branch}", ids, "off")
+                    original_hit, original_blocks = lookup()
+                    original_hashes = llm.collective_rpc(
+                        "apc_fixture_cache_hashes",
+                        kwargs={"block_ids": original_blocks},
+                    )
+                    edited = list(ids)
+                    edited[position] = next(
+                        token for token in base if token != ids[position]
+                    )
+                    if branch:
+                        edited = edited[: position + 1] + base[:16]
+                    hit, _ = lookup(edited)
+                    if hit > position:
+                        raise ValueError(
+                            "Edited prefix reused state after the changed token"
+                        )
+                    row = generate(
+                        f"history-approximate-{position}-{branch}", edited, "auto"
+                    )
+                    eligible = max(0, len(edited) - min(512, len(edited)) - hit)
+                    assert_policy(row, hit, eligible if eligible > 1024 else 0)
+                    after_hit, after_blocks = lookup()
+                    after_hashes = llm.collective_rpc(
+                        "apc_fixture_cache_hashes", kwargs={"block_ids": after_blocks}
+                    )
+                    if after_hit != original_hit or original_hashes != after_hashes:
+                        raise ValueError(
+                            "Edited/branched request changed the original shared prefix"
+                        )
+                    exact = generate(
+                        f"history-exact-revisit-{position}-{branch}", ids, "off"
+                    )
+                    assert_policy(exact, original_hit, 0)
+                    report["history"].append(
+                        {
+                            "edit_token": position,
+                            "branch": branch,
+                            "original_hit": original_hit,
+                            "edited_hit": hit,
+                            "shared_bytes_equal": True,
+                        }
+                    )
+                    save()
         if not report["synthetic_state_distinguished"]:
             raise ValueError("Synthetic projector failed to distinguish approximation")
         if not report["exact_control_tokens_equal"]:
