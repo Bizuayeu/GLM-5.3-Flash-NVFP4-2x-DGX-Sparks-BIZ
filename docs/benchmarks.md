@@ -282,3 +282,21 @@ Each input/output condition used one excluded warmup and three measured requests
 All 30 measured requests and 10 warmups completed their full output budgets, with zero preemption, empty scheduler/KV after each condition, and a successful final 32-input/1-output follow-up. At 32,704 inputs, the observed peak KV usage was 0.4194 of the fixed pool (sampled every 0.5 s). The effective TP2 block size was 4,352, distinct from the 8,704-token TP1 fixture block.
 
 **This establishes the stated serial capacity and latency through 32K, not long-context task quality or optimization combinations.** The one-output cases approximate prefill cost; 64-output times include prefill. KV was not automatically increased when context was enlarged. The runtime's capacity estimate is not acceptance of another active-sequence count, and 128K or larger contexts remain untested. The same server continued into a separate APC-off comparison after this sweep.
+
+## Independent full-model prefix caching (P19)
+
+`apc-full-v43-off/on/restored` completed with the V36 image, TP2/eager, one sequence, context 32,768, chunk512 and fixed FP8 KV1 GiB per rank. MTP/LPA/fusion/async checks/Graphs/EP/PP were off; only APC changed. The three profiles and all compared token arrays were checked for equality after normalizing that one flag. APC-on fingerprint: `f8e3c6ea72dfc1c61afdb2fcd67b1432e2fbcf021dd0613bda0dfb90ab223823`.
+
+Here, cold means a new prefix with model weights already loaded. Fixed unique leading identifiers produced cache misses; an immediate identical request tested reuse. Each length had one excluded warmup pair and three measured cold/repeat pairs: 18 measured requests per arm, all with one output token. Periodic cache/generation metrics were allowed to settle outside the latency interval.
+
+| Input tokens | Repeated request, APC off | APC on | Restored off | Cached tokens with APC on |
+|---:|---:|---:|---:|---:|
+| 2,048 | 6.0698 s | 6.0768 s | 6.0445 s | 0 |
+| 8,705 | 26.0405 s | 0.0937 s | 25.9420 s | 8,704 |
+| 16,320 | 48.8203 s | 10.0633 s | 48.6927 s | 13,056 |
+
+The near-complete 8,705-token hit leaves only one input token to process; its approximately 99.64% reduction is that specific boundary case. At 16,320, reuse reduced request time by approximately 79.3–79.4% against both controls. Every measured cached long request was faster than every corresponding off-control sample. There was no benefit at 2K. APC cold medians were 6.0762/26.3284/49.5088 s; the two long cold cases were approximately 1.1–1.7% slower than their controls. This is a cache-hit optimization, not faster uncached processing or decode.
+
+All three arms passed six long extraction/revisit requests, a long tool round trip and 12K-input SSE disconnect/follow-up. The 12,763-token document requests deliberately interleaved distinct documents; all three APC-on revisits had 8,704 cached tokens and correct answers. The tool-result continuation also reused 8,704 tokens and returned the expected value. All cold-prefix requests had zero hits. These are limited task checks, not general language-quality certification.
+
+Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad enterprise qualification are not established by the configured context limit. LPA coexistence remains blocked until the [P22 exact-cache design](apc-lpa-design.md) is implemented and validated.

@@ -52,7 +52,7 @@
 | P16 CSA2：候補Reuse／Reindex | 層間候補の再利用・限定再採点・shared poolを比較。各層のKVと必須cache更新は保持 | indexerの削減可能な計算を減らす仮説。候補coverageと全体時間で判断 | **部品検証・観測済み、serving適用は保留。** 今回はop時間割合が小さく、8K相当のshared-pool部品も遅い。大きい文脈で全コスト・coverage・品質が成立した場合のみ再評価。[CSA2詳細](indexer-reuse.md)／[実測](component-validation.md#indexer-observation) |
 | P17 TP=2／PP=2 | PPの中間tensor・mHC post/comb転送を実装・fixture検証後、同じ精度と負荷で比較 | 通信待ち削減の可能性と、stageの直列化・不均衡による損失を測る | **今回の生成負荷では不採用・既定TP2。** Prefillは改善、decodeは低下。速度A/B/A・限定品質・切断は完了。PPのprofiler再開始で障害が出たため、PP容量・decode traceは未完了。[実測](benchmarks.ja.md#tp2pp2の独立評価p17) |
 | P18 MTP＋LPA＋fusion、必要ならGraphs | 単独と組合せを同じ資産・課題で比較。復帰対照を含め、実際のLPA作動・投機採択・captureを記録 | 改善の相互作用を測り、品質・メモリ・復旧の回帰を検出 | **直列MTP3／LPA／fusion／async併用を実測範囲で受入。** 2K／8K速度対比較、24課題・tool、16K容量・近似作動中の切断復帰を完了。Graphs・batching併用・企業検収は別。[併用実測](benchmarks.ja.md#直列併用の評価p18) |
-| P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **部品でcache命中と短縮を確認、全モデル採用は未検収。** 数値の揺れを保持し、実際に命中する要求間の分離を追加確認。現LPAとは非対応。[部品実測](component-validation.md#independent-prefix-cache-fixture-p19) |
+| P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **実測した直列・長文prefix再利用用途で採用、既定off。** 全モデルA/B/A、実hit、長文の分離・tool・切断を通過。cold処理は小幅悪化。LPA併用はP22で対応。[全モデル実測](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | P20 Indexer workspace適正化 | 実shape・chunk・MTP深さ別の最大必要量を測り、過剰予約がある場合に限定して縮小 | host/KVの余裕を増やし、不要な割当を抑える | **条件付き候補、独立した効果の検収なし。** P16の候補削減とは別施策。上流で解消済みなら追加patch不要。[性能調査](performance-investigation.md) |
 
 **追加施策（2026-09-13）：**
