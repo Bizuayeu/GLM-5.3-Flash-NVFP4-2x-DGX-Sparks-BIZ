@@ -11,8 +11,8 @@
 | 資材 | 各Linuxホストでの既定の場所 | 役割 |
 |---|---|---|
 | 本体checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | 固定したモデル・config・tokenizerのview。重みファイルは同階層の `blobs/` ディレクトリへリンクし、データ本体はそちらが持つ |
-| MTPメタデータview（任意） | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | 既存のtensorデータをリンクし、checkpoint同梱のBF16 MTPに合わせて量子化メタデータを調整する。元のsnapshotを編集せずに[viewを作成](speculative-decoding.ja.md#各linuxホストでの準備)する |
-| LPA projector（任意） | [起動設定TOML](startup-configuration.ja.md)の `[lpa].projector` で選ぶ非公開ファイル。そのTOMLからの相対パスまたは絶対パス | 別途学習した補助重みで、NVIDIAのsnapshotにもソース配布物にも含まれない。[LPAの手順](lpa.ja.md)で対応するprojectorを入手または学習し、両ホストでhashを確認する。通常の推論とbatchingには不要 |
+| MTPメタデータview（配布既定で必要） | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | 既存のtensorデータをリンクし、checkpoint同梱のBF16 MTPに合わせて量子化メタデータを調整する。元のsnapshotを編集せずに[viewを作成](speculative-decoding.ja.md#各linuxホストでの準備)する |
+| LPA projector（配布既定で必要） | [起動設定TOML](startup-configuration.ja.md)の `[lpa].projector` で選ぶ非公開ファイル。そのTOMLからの相対パスまたは絶対パス | 別途学習した補助重みで、NVIDIAのsnapshotにもソース配布物にも含まれない。[LPAの手順](lpa.ja.md)で対応するprojectorを入手または学習し、両ホストでhashを確認する。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
 | runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない |

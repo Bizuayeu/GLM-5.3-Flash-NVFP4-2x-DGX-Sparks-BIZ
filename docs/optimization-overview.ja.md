@@ -30,24 +30,24 @@ flowchart LR
 
 | 施策 | 仕組み | 採否 | 既定 | 代表値と条件 | 正典 |
 |---|---|---|---|---|---|
-| P19 APC | 通常計算由来の状態だけを共有cacheに登録し、同一prefixのprefillを省略する | 受入（実測した直列・長文prefix再利用の実験用途） | off（`cache.prefix_caching=false`） | 16,320入力の再要求で約79%短縮。2Kは改善なし、長文2件のcoldは1.1〜1.7%悪化 | [P19](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
-| checkpoint保持（`cache.prefix_cache_retention_interval`） | KDA checkpointをscheduler blockごとに保持し、途中編集・分岐後に復元できるHを伸ばす | 採用（通常priming済み・直列の途中編集用途）。実測したarmは標準の間隔4,352。`dense`は実測した整列配置で同じ標準KDA maskになるが、最終併用の検収は別 | off（キー未指定＝固定runtimeの0。候補値は`dense`） | 約16K入力の50%位置編集・1出力で約27.6%短縮（A/B/A各5回）。編集・分岐・追記・別会話再訪・evictionの履歴試験を通過 | [保持A/B/A](benchmarks.ja.md#apcの履歴保持の基準検査)／[契約](launch-safety.ja.md#apcの履歴検証) |
-| P22 APC優先LPA | 復元したHの先を、残余R＝N−T−Hが閾値Bを超えるときだけ近似する。近似状態は要求内に閉じる | 完了（校正・限定品質・最終併用・held-out）。B=128は保守的な候補閾値で、普遍的な損益分岐定数ではない | off（APCとLPAの両方を有効にしたとき動作。`lpa.break_even_tokens=128`） | H=0／4,352の12条件すべてでLPAが両対照より速い | [設計](apc-lpa-design.ja.md)／[校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22) |
+| P19 APC | 通常計算由来の状態だけを共有cacheに登録し、同一prefixのprefillを省略する | 受入（実測した直列・長文prefix再利用の実験用途） | on（`cache.prefix_caching=true`） | 16,320入力の再要求で約79%短縮。2Kは改善なし、長文2件のcoldは1.1〜1.7%悪化 | [P19](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
+| checkpoint保持（`cache.prefix_cache_retention_interval`） | KDA checkpointをscheduler blockごとに保持し、途中編集・分岐後に復元できるHを伸ばす | 採用（通常priming済み・直列の途中編集用途）。実測したarmは標準の間隔4,352。`dense`は実測した整列配置で同じ標準KDA maskになるが、最終併用の検収は別 | `dense`（キー省略時のruntime既定は0） | 約16K入力の50%位置編集・1出力で約27.6%短縮（A/B/A各5回）。編集・分岐・追記・別会話再訪・evictionの履歴試験を通過 | [保持A/B/A](benchmarks.ja.md#apcの履歴保持の基準検査)／[契約](launch-safety.ja.md#apcの履歴検証) |
+| P22 APC優先LPA | 復元したHの先を、残余R＝N−T−Hが閾値Bを超えるときだけ近似する。近似状態は要求内に閉じる | 完了（校正・限定品質・最終併用・held-out）。B=128は保守的な候補閾値で、普遍的な損益分岐定数ではない | on（APC＋LPA、`lpa.break_even_tokens=128`） | H=0／4,352の12条件すべてでLPAが両対照より速い | [設計](apc-lpa-design.ja.md)／[校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22) |
 
 ### prefill
 
 | 施策 | 仕組み | 採否 | 既定 | 代表値と条件 | 正典 |
 |---|---|---|---|---|---|
-| P02 LPA | cut=32（0始まり）以降の層で過去tokenのMLPを省き、末尾512 tokenは通常計算。生成時は全層 | 実測あり（実験用。一般品質は別ゲート） | off（`lpa.enabled=false`） | 8,192入力・1出力で約21.6%短縮（単独）。長文照合6件・tool往復は合格 | [LPA](lpa.ja.md) |
-| P03 unpack融合 | FP8 MLA cacheの復元（コピー・FP32変換・scale乗算）をTriton 1 kernelに | 実測あり（部品一致・全モデルA/B/A。受入済みのP18併用の範囲で使用） | off（`cache.fused_unpack=false`） | 8Kの1出力対照で約17%短縮。短文decodeはほぼ不変 | [部品実測](component-validation.ja.md) |
+| P02 LPA | cut=32（0始まり）以降の層で過去tokenのMLPを省き、末尾512 tokenは通常計算。生成時は全層 | 実測あり（実験用。一般品質は別ゲート） | on（`lpa.enabled=true`） | 8,192入力・1出力で約21.6%短縮（単独）。長文照合6件・tool往復は合格 | [LPA](lpa.ja.md) |
+| P03 unpack融合 | FP8 MLA cacheの復元（コピー・FP32変換・scale乗算）をTriton 1 kernelに | 実測あり（部品一致・全モデルA/B/A。受入済みのP18併用の範囲で使用） | on（`cache.fused_unpack=true`） | 8Kの1出力対照で約17%短縮。短文decodeはほぼ不変 | [部品実測](component-validation.ja.md) |
 | P11 prefill chunk | schedulerのtoken予算を128／512／1024で比較 | 既定512を維持。1024はthroughput候補、128は不採用 | 512（`context.max_num_batched_tokens`） | 1024は2Kの全体出力を約4.6%（1クライアント）／5.7%（2クライアント）改善するが最長停止が延びる | [P11](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
 
 ### decode
 
 | 施策 | 仕組み | 採否 | 既定 | 代表値と条件 | 正典 |
 |---|---|---|---|---|---|
-| P01 MTP k=3 | checkpoint同梱のBF16 draftを別メタデータviewで読み、3 token先読み。外部draftモデルなし | 選定（次の実験ではk=3を優先。k=2／k≥4は未試験） | off（`mtp.enabled=false`、有効時は`num_speculative_tokens=3`） | 短文decodeはk=1→k=3で24.1 → 30.3 token/s、その前のoff→k=1で14.3 → 24.1（1系列、別実行の比較）。長文の全体throughputはほぼ不変、TTFTは微増、約7 GiB/rank追加 | [k=3](speculative-decoding.ja.md#k3の比較結果)／[k=1](speculative-decoding.ja.md#k1の実測結果) |
-| P08 非同期index検査 | 範囲検査を省かずGPU assertへ移す。tokenあたりCPU同期は各rankで約22回、copyは両rank合計で約22回減り、GPU kernelは11回増える | 受入（独立opt-in） | auto（`runtime.index_checks`。eagerでは同期＝実質off） | 128出力で約0.7〜2.5%の小幅改善、短文ほど大きい | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
+| P01 MTP k=3 | checkpoint同梱のBF16 draftを別メタデータviewで読み、3 token先読み。外部draftモデルなし | 選定（次の実験ではk=3を優先。k=2／k≥4は未試験） | on（`mtp.enabled=true`、`num_speculative_tokens=3`） | 短文decodeはk=1→k=3で24.1 → 30.3 token/s、その前のoff→k=1で14.3 → 24.1（1系列、別実行の比較）。長文の全体throughputはほぼ不変、TTFTは微増、約7 GiB/rank追加 | [k=3](speculative-decoding.ja.md#k3の比較結果)／[k=1](speculative-decoding.ja.md#k1の実測結果) |
+| P08 非同期index検査 | 範囲検査を省かずGPU assertへ移す。tokenあたりCPU同期は各rankで約22回、copyは両rank合計で約22回減り、GPU kernelは11回増える | 受入（独立opt-in） | async（`runtime.index_checks`） | 128出力で約0.7〜2.5%の小幅改善、短文ほど大きい | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
 | P06 CUDA Graphs | decodeのみcapture／replay | 保留（全モデル未検収。小層fixtureで2K入力の生成が分岐） | off（`runtime.enforce_eager=true`） | — | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価) |
 
 ### 並列・throughput

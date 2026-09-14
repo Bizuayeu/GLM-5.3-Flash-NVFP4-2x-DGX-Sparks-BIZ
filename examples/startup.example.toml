@@ -2,6 +2,8 @@
 # Copy to state/startup.toml. Paths are relative to THIS FILE, or absolute.
 # state/startup.toml にコピー。相対パスはこのファイルの位置が基準。
 # Model/revision stay pinned by config/runtime.lock.json.
+# Serial optimized defaults. Supply image IDs, MTP view, LPA projector/hash and nodes.
+# 直列最適化を既定化。image ID・MTP view・LPA補助器/hash・機体情報を準備する。
 schema_version = 1
 
 [runtime]
@@ -15,8 +17,8 @@ lpa_image = "sha256:000000000000000000000000000000000000000000000000000000000000
 enforce_eager = true
 # false: opt-in uncompiled prefill + full decode Graphs (one seq, no LPA/MTP/APC).
 # falseはdecodeのみGraph化。対応イメージが必要。併用構成は別検収。
-index_checks = "auto" # auto: sync in eager, async in Graphs; explicit sync/async also allowed
-# 範囲検査は常に実施。asyncはdevice assertで失敗し得る。併用検収前は既定auto。
+index_checks = "async" # auto: sync in eager, async in Graphs; sync also allowed
+# 範囲検査は常に実施。asyncはdevice assertで失敗し得る。
 expert_parallel = false # Independent TP2/DP1 EP experiment; needs matching image
 # EP単体比較用。MTP/LPA/fusion/Graphs/APCとの併用は別検収。
 pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
@@ -27,7 +29,7 @@ seed = 42
 # テキスト・ツール専用。Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 
 [context]
-max_model_len = 16384 # Input + generated tokens / 入出力合計の上限
+max_model_len = 32768 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
@@ -43,23 +45,23 @@ component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP in
 expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
 
 [cache]
-# Optional native checkpoint retention experiment. Omission preserves pinned default.
+# Native checkpoint retention. Omission preserves the runtime default (0).
 # "dense" keeps every checkpoint and adapts when MTP changes the block width.
 # Numeric intervals must align to the actual scheduler block; no auto guessing.
-# prefix_cache_retention_interval = "dense"
-# KDA checkpoint保持の独立候補。denseならMTP切替時のblock値再指定は不要。
-fused_unpack = false # Experimental exact FP8->FP32 unpack fusion; needs matching image
-kv_cache_memory_bytes = 1073741824 # 1 GiB per rank / 各ランク
+prefix_cache_retention_interval = "dense"
+# KDA checkpointを保持。denseならMTP切替時のblock値再指定は不要。
+fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
+kv_cache_memory_bytes = 2147483648 # 2 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
 # 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
-prefix_caching = false
+prefix_caching = true
 gpu_memory_utilization = 0.80
 # Explicit kv_cache_memory_bytes overrides utilization-based KV sizing.
 # 上のKVバイト数指定が優先される。この比率をRAM全体の保護上限とは扱わない。
 
 [mtp]
-enabled = false # LPA併用には対応イメージが必要 / Combined use needs a compatible image
+enabled = true # LPA併用には対応イメージが必要 / Combined use needs a compatible image
 num_speculative_tokens = 3 # Measured: 1, 3; other depths rejected
 # Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
 # HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
@@ -68,7 +70,7 @@ view = "local-views/glm53-mtp-compatible"
 [lpa]
 break_even_tokens = 128 # Conservative measured cutoff; recheck after changing the workload
 # APC復元後の適用可能長がこの値を超える場合だけLPA。校正済みの保守的な候補値。負荷を変えたら再確認。
-enabled = false
+enabled = true
 cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり
 tail = 512 # Last prompt tokens stay exact / 末尾の通常計算を残すトークン数
 skip_mla_queries = true
@@ -99,8 +101,8 @@ timeout_seconds = 600 # Same timeout as the measured experiment client
 # 実験時の予算を継承。規模を増やす場合は再計測。
 container_memory_gib = 112
 minimum_available_gib = 108
-reserve_gib = 8
-run_seconds = 1800 # Seconds INCLUDING load; 0 disables the time limit
+reserve_gib = 5
+run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 
 [[nodes]]

@@ -20,6 +20,24 @@ Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.to
 
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
+## Distributed defaults
+
+The distributed TOML selects the serial optimized profile. This is a configuration choice, not production or harness qualification. Existing `state/startup.toml` files are not updated automatically.
+
+| Item | Default |
+|---|---|
+| Execution | TP=2, eager, one sequence, 32,768 tokens, chunk512 |
+| Cache | FP8, 2 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on |
+| Speculation/approximation | MTP k=3, LPA cut32/tail512/B128, unused MLA queries skipped |
+| Checks/parallelism | Async index checks, EP off, no PP split |
+| Generation | temperature=0, max_tokens=512, reasoning_effort=low, clear_thinking=true |
+| Resources | Container112 GiB, startup free108 GiB, runtime reserve5 GiB |
+| Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
+
+**Supply image IDs, both nodes' connection details, the MTP view, and the LPA projector/hash before launch.** Zero image/projector hashes are placeholders to replace; missing assets never silently disable features. [Operations](operations.md#artifact-storage-and-paths) owns their placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.
+
+The lifetime is fixed at launch. Apply a changed `run_seconds` to running supervisors by restarting through the [two-rank switch procedure](launch-safety.md#all-rail-checks-and-two-rank-switch). Editing the TOML alone does not cancel the existing deadline. Larger contexts require separate capacity checks and real-request validation below.
+
 ## Commands
 
 See [launch contracts and operational validation](launch-safety.md) for authenticated clients, allocator unset/empty handling, all-HCA checks and the two-rank pre-stop/switch procedure. These extend P10/P19/P22/E03; implementation does not establish multi-rail traffic or full operational qualification.
@@ -32,7 +50,7 @@ See [launch contracts and operational validation](launch-safety.md) for authenti
 
 `validation.expert_worker=true` exposes the typed `expert_info` diagnostic for actual placement, kernel and parameter metadata. It supports the independent eager TP2 baseline and EP arms with up to two sequences; other validation workers, MTP/LPA/APC and PP are excluded. Layer hashing begins only after an explicit `pipeline_observe` RPC. Do not install those hooks during performance measurement. This is an experimental local control endpoint, not an enterprise qualification receipt.
 
-`runtime.index_checks` accepts `auto` (the default), `sync` or `async`. Auto preserves synchronous checks in eager execution and selects asynchronous checks for Graphs. Explicit async enables the independently measured eager path; it requires `GLM53_ASYNC_INDEX_CHECK_API=1`. Checks are always performed. Invalid indices in async mode can invalidate the CUDA context, requiring both ranks to restart. Graphs reject explicit sync. MTP/LPA/fusion combinations still need their own acceptance results; the default remains auto.
+`runtime.index_checks` accepts `auto`, `sync` or `async` (the distribution default). Auto preserves synchronous checks in eager execution and selects asynchronous checks for Graphs. Explicit async enables the independently measured eager path; it requires `GLM53_ASYNC_INDEX_CHECK_API=1`. Checks are always performed. Invalid indices in async mode can invalidate the CUDA context, requiring both ranks to restart. Graphs reject explicit sync. The serial MTP/LPA/fusion combination has scoped P18/P22 evidence.
 
 Before changing context or concurrency, review [KV capacity and RAM requirements](#kv-capacity-and-ram-requirements).
 
@@ -97,11 +115,11 @@ Use a freshly built image with `GLM53_LPA_API=2`, `glm53_setup.runtime.lpa.LPAWo
 
 `runtime.enforce_eager=true` remains the default. Setting it to `false` explicitly selects experimental decode Graphs with `CompilationMode.NONE`, `FULL_DECODE_ONLY` and capture size `[1]`. Prefill is uncompiled; the image must carry `GLM53_DECODE_GRAPH_API=1`. Independent evaluation currently requires one sequence and no LPA/MTP/APC; fusion remains a separate setting. This is not full-model acceptance. Startup rejects combined and multi-sequence Graph configurations until their later qualification.
 
-The Graph path checks internal candidate-index bounds asynchronously on the GPU. Invalid indices cause a device assertion rather than being ignored; unlike a regular Python exception, this can render the CUDA context unusable. Stop and reinitialize both ranks after such a failure. Include retained Graph memory and startup capture time in comparisons. Default eager execution retains synchronous checks.
+The Graph path checks internal candidate-index bounds asynchronously on the GPU. Invalid indices cause a device assertion rather than being ignored; unlike a regular Python exception, this can render the CUDA context unusable. Stop and reinitialize both ranks after such a failure. Include retained Graph memory and startup capture time in comparisons. Eager checks also follow `runtime.index_checks`; the distribution default is async.
 
 `validation.component_worker=true` selects an explicitly separate observer/validation worker, requiring an image with `GLM53_COMPONENT_API=1`. It requires eager execution, one sequence, no LPA/MTP and no prefix caching. Its typed RPCs collect bounded indexer observations and toggle exact unpack fusion between exclusive requests for A/B/A tests. This is a diagnostic profile, not an enabled Reuse/Reindex serving mode; use one controlling client.
 
-`cache.fused_unpack=false` keeps the Torch reference conversion. Opting in selects a single Triton kernel for the 656-byte MLA cache record's FP8 latent conversion and FP32 scale multiplication. It requires an image with `GLM53_FUSED_UNPACK_SUPPORTED=1`; preflight rejects other images. This candidate is experimental: component equivalence, attention/state checks and unprofiled full-model A/B measurements are required before adoption. It does not change selected candidates or share KV between layers.
+`cache.fused_unpack=true` is the distribution default; false keeps the Torch reference conversion. True selects a single Triton kernel for the 656-byte MLA cache record's FP8 latent conversion and FP32 scale multiplication. It requires an image with `GLM53_FUSED_UNPACK_SUPPORTED=1`; preflight rejects other images. Use is scoped to the component, full-model A/B and serial integration evidence; broad quality and production acceptance remain separate. It does not change selected candidates or share KV between layers.
 
 Measured CUDA A/B and indexer observations, including their validation limits, are recorded in [component validation](component-validation.md).
 

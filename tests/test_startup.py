@@ -13,6 +13,30 @@ ROOT = Path(__file__).resolve().parents[1]
 class StartupConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/startup.example.toml")
+        # Independent feature tests start from an explicit all-off baseline.
+        self.profile["runtime"]["index_checks"] = "auto"
+        self.profile["mtp"]["enabled"] = False
+        self.profile["lpa"]["enabled"] = False
+        self.profile["cache"]["prefix_caching"] = False
+        self.profile["cache"]["fused_unpack"] = False
+        self.profile["cache"].pop("prefix_cache_retention_interval", None)
+
+    def test_distributed_profile_wires_combined_paths_on_both_ranks(self):
+        profile = config.load(ROOT / "examples/startup.example.toml")
+        for rank in (0, 1):
+            args = config.serve_args(profile, rank, "/hf/mtp-view")
+            env = config.environment(profile, rank)
+            spec = json.loads(args[args.index("--speculative-config") + 1])
+            self.assertEqual(spec["num_speculative_tokens"], 3)
+            self.assertIn("--enable-prefix-caching", args)
+            self.assertEqual(
+                args[args.index("--prefix-cache-retention-interval") + 1], "None"
+            )
+            self.assertEqual(env["GLM53_ASYNC_INDEX_CHECKS"], "1")
+            self.assertEqual(env["GLM53_FUSED_UNPACK"], "1")
+            self.assertIn("GLM53_APC_LPA_CONFIG", env)
+        self.assertEqual(profile["resources"]["run_seconds"], 0)
+        self.assertEqual(profile["resources"]["reserve_gib"], 5)
 
     def test_index_check_mode_is_explicit_without_disabling_validation(self):
         self.assertNotIn(
@@ -146,7 +170,11 @@ class StartupConfigTests(unittest.TestCase):
                         "inspect_owned",
                         return_value={"State": {"Running": True}},
                     ),
-                    patch.object(startup, "available_gib", side_effect=[100, 7]),
+                    patch.object(
+                        startup,
+                        "available_gib",
+                        side_effect=[100, self.profile["resources"]["reserve_gib"] - 1],
+                    ),
                     patch.object(startup.time, "monotonic", side_effect=[0, 1000000]),
                     patch.object(startup.time, "sleep") as sleep,
                     patch.object(startup, "write_json") as write,

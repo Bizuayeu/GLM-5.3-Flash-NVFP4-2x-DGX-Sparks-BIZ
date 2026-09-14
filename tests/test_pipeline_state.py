@@ -9,8 +9,16 @@ from glm53_setup.runtime.pipeline_state import validate_pipeline
 
 
 class PipelineStartupTests(unittest.TestCase):
-    def test_two_nodes_switch_from_tp_to_pp_with_explicit_stage_partition(self):
+    def profile(self):
         profile = startup_config.load(ROOT / "examples/startup.example.toml")
+        profile["mtp"]["enabled"] = False
+        profile["lpa"]["enabled"] = False
+        profile["cache"]["prefix_caching"] = False
+        profile["cache"]["fused_unpack"] = False
+        return profile
+
+    def test_two_nodes_switch_from_tp_to_pp_with_explicit_stage_partition(self):
+        profile = self.profile()
         before = startup_config.fingerprint(profile)
         profile["runtime"]["pipeline_parallel_size"] = 2
         profile["runtime"]["pipeline_split_layer"] = 24
@@ -28,7 +36,7 @@ class PipelineStartupTests(unittest.TestCase):
             )
 
     def test_pp_rejects_missing_mla_stage_and_untested_combinations(self):
-        profile = startup_config.load(ROOT / "examples/startup.example.toml")
+        profile = self.profile()
         profile["runtime"]["pipeline_parallel_size"] = 2
         for section, key, value in (
             ("runtime", "pipeline_parallel_size", 3),

@@ -28,14 +28,14 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 
 | 施策名 | 内容 | 期待される効果・見る指標 | 今回の到達点／検証先 |
 |---|---|---|---|
-| P01 標準MTP・先読み3token | checkpoint同梱のBF16 draftを使い、外部draftモデルを追加しない。off／k=1／k=3を比較 | 有効tokenあたりのtarget step削減、decode改善。採択長・draft/verify時間・追加メモリも測る | **実測に基づきk=3を選定。** 有効化はopt-in。他の深さ・複数系列は未検収。[MTP](speculative-decoding.ja.md) |
+| P01 標準MTP・先読み3token | checkpoint同梱のBF16 draftを使い、外部draftモデルを追加しない。off／k=1／k=3を比較 | 有効tokenあたりのtarget step削減、decode改善。採択長・draft/verify時間・追加メモリも測る | **実測に基づきk=3を選定。** 起動テンプレートで有効。他の深さ・複数系列は未検収。[MTP](speculative-decoding.ja.md) |
 | P02 LPA | 後段のattention入力を予測し、過去tokenのMLPと不要queryを省略。末尾は通常計算、生成時は全層実行 | 長文prefill・TTFT短縮。decode高速化は狙わず、近似された状態による品質差を測る | **実測あり・実験用。** 長文課題の限定検証。一般品質・結合構成は別ゲート。[LPA](lpa.ja.md) |
-| P03 CUDA fusion：KV復元 | FP8 MLA cacheのコピー・FP32変換・scale乗算をTritonで融合 | KV復元のlaunch・中間tensor削減、主にprefill短縮 | **部品一致・全モデルA/B/A実測あり。** 8Kの約17%短縮は出力1tokenの対照。短文decodeはほぼ不変、既定off。[CUDA実測](component-validation.ja.md) |
+| P03 CUDA fusion：KV復元 | FP8 MLA cacheのコピー・FP32変換・scale乗算をTritonで融合 | KV復元のlaunch・中間tensor削減、主にprefill短縮 | **部品一致・全モデルA/B/A実測あり。** 8Kの約17%短縮は出力1tokenの対照。短文decodeはほぼ不変、起動テンプレートで有効。[CUDA実測](component-validation.ja.md) |
 | P04 NoPE attention本体のカーネル化・融合 | Pythonのqueryループと多段演算を、候補集合・scale・因果maskを保って置換 | prefill／decodeのattention処理時間とlaunch数を削減 | **今回のquery chunk拡大・FP32融合案は不採用。** launchと一時メモリ削減だけでは高速化せず、serving未接続。別戦略の根拠が得られたら再評価。[部品実測](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
 | P05 SM121 attention backend選定 | FlashInfer/TRT系・Triton等の候補について、固定GLMのNoPE／sparse MLA形状・cache契約への対応を先に検査し、同一負荷でA/B | 安定した起動・warmup、対応kernelでの実効性能。意図しないfallbackを検出 | **不採用。** 数値条件未達・必要候補幅の非対応。上流対応変更時に再評価。[部品実測](component-validation.ja.md#padding付きnative-attentionの直接試験) |
 | P06 CUDA Graphs | hostへ戻る判定・動的処理・buffer寿命を整理し、対応shapeでcapture/replay | CPUのstep/launch overhead低減、特に定常decode改善 | **全モデル未検収。** LPAのeager制約を解く検証が必要。単体capture成功とサーバー全体対応は別。[性能調査](performance-investigation.ja.md#kernel-launchと同期) |
 | P07 launch・同期の計測 | 両rankのkernel／CUDA launch API／NCCL／host syncを別集計。prefill対照との差分でtokenあたりの数を推定 | 律速を特定し、削減前後を再現可能にする | **実測済み。** P03でlaunchは減ったがNCCL回数は不変。イベント時間の和を壁時計時間としない。[CUDA実測](component-validation.ja.md) |
-| P08 sync／copy／変換の追加削減 | P07で残る転送・dtype変換・host往復を特定。反復する重み変換を観測した場合だけload時の並べ替えも比較 | 余剰レイテンシ・UMAメモリ交通・一時bufferの削減 | **非同期index検査を独立opt-inとして受入。** 128出力で小幅改善、同期・copy各22回/token削減。GPU kernelは11回増加。既定auto、直列併用はP18で実測。[実測](benchmarks.ja.md#cpu同期削減の独立評価p08) |
+| P08 sync／copy／変換の追加削減 | P07で残る転送・dtype変換・host往復を特定。反復する重み変換を観測した場合だけload時の並べ替えも比較 | 余剰レイテンシ・UMAメモリ交通・一時bufferの削減 | **非同期index検査を独立opt-inとして受入。** 128出力で小幅改善、同期・copy各22回/token削減。GPU kernelは11回増加。配布既定async、直列併用はP18で実測。[実測](benchmarks.ja.md#cpu同期削減の独立評価p08) |
 | P09 FP8 KVの独立評価 | 重み精度を固定し、対応backendのFP8／BF16 KVを比較。量子化scale、pool容量、読み出し精度を検査 | cache容量削減による長文・同時数拡大。速度の方向と品質は実測で決める | **FP8経路は使用済み、dtype間A/Bは未了。** 現行起動系はFP8固定。BF16比較にはcache形式・runtime対応が必要。[起動設定](startup-configuration.ja.md) |
 | P10 UMA・メモリ運用 | KV pin、memory utilization、host空き、コンテナ上限、swap・cache状態を再現条件として固定 | OOM・swap由来の遅延を抑え、測定再現性と収容限界を把握 | **ガード・設定あり、系統的最適化は未了。** `drop_caches`は必要なcold-load比較に限定し、定常推論の高速化手段と混同しない。[起動設定](startup-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md) |
 | P11 Prefill chunk × Kpool／indexer | chunk予算を変え、pool・tail・cache境界とその前後で通常／分割処理を比較 | 長文prefillと混合負荷のITLを改善し、状態・候補の取り扱いを維持 | **128は不採用、1024はthroughput候補。** 2K全体出力改善と最長ITL悪化を併記。既定512、1024の16K×2容量は確認済み。[実測](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
@@ -46,7 +46,7 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 | P16 CSA2：候補Reuse／Reindex | 層間候補の再利用・限定再採点・shared poolを比較。各層のKVと必須cache更新は保持 | indexerの削減可能な計算を減らす仮説。候補coverageと全体時間で判断 | **部品検証・観測済み、serving適用は保留。** 今回はop時間割合が小さく、8K相当のshared-pool部品も遅い。大きい文脈で全コスト・coverage・品質が成立した場合のみ再評価。[CSA2詳細](indexer-reuse.ja.md)／[実測](component-validation.ja.md#indexerの観測) |
 | P17 TP=2／PP=2 | PPの中間tensor・mHC post/comb転送を実装・fixture検証後、同じ精度と負荷で比較 | 通信待ち削減の可能性と、stageの直列化・不均衡による損失を測る | **今回の生成負荷では不採用・既定TP2。** Prefillは改善、decodeは低下。速度A/B/A・限定品質・切断は完了。PPのprofiler再開始で障害が出たため、PP容量・decode traceは未完了。[実測](benchmarks.ja.md#tp2pp2の独立評価p17) |
 | P18 MTP＋LPA＋fusion、必要ならGraphs | 単独と組合せを同じ資産・課題で比較。復帰対照を含め、実際のLPA作動・投機採択・captureを記録 | 改善の相互作用を測り、品質・メモリ・復旧の回帰を検出 | **直列MTP3／LPA／fusion／async併用を実測範囲で受入。** 2K／8K速度対比較、24課題・tool、16K容量・近似作動中の切断復帰を完了。Graphs・batching併用・企業検収は別。[併用実測](benchmarks.ja.md#直列併用の評価p18) |
-| P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **実測した直列・長文prefix再利用用途で採用、既定off。** 全モデルA/B/A、実hit、長文の分離・tool・切断を通過。cold処理は小幅悪化。LPA併用はP22で対応。[全モデル実測](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
+| P19 Prefix caching（APC） | 同じsystem/tools/履歴のcold／warmと異なるprefixを比較。hybrid state・境界・混線を検査 | 繰り返す会話のTTFT・再prefillを削減 | **実測した直列・長文prefix再利用用途で採用、起動テンプレートで有効。** 全モデルA/B/A、実hit、長文の分離・tool・切断を通過。cold処理は小幅悪化。LPA併用はP22で対応。[全モデル実測](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | P20 Indexer workspace適正化 | 実shape・chunk・MTP深さ別の最大必要量を測り、過剰予約がある場合に限定して縮小 | host/KVの余裕を増やし、不要な割当を抑える | **条件付き候補、独立した効果の検収なし。** P16の候補削減とは別施策。上流で解消済みなら追加patch不要。[性能調査](performance-investigation.ja.md) |
 
 **追加施策（2026-09-13）：**

@@ -35,7 +35,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
 - **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
 
-For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). Enabling MTP itself remains opt-in.
+For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). The distributed startup template enables this serial optimized profile; see [startup defaults and required assets](docs/startup-configuration.md#distributed-defaults).
 
 Enterprise readiness is an acceptance outcome, not implied by this project's name. Completed measurements and remaining gates are identified below and in the linked validation documents.
 
@@ -43,7 +43,7 @@ Enterprise readiness is an acceptance outcome, not implied by this project's nam
 
 [One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
 
-[LPA (late-prefill approximation)](docs/lpa.md) is available as an opt-in research path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
+[LPA (late-prefill approximation)](docs/lpa.md) is enabled in the distributed startup template as an experimental path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
 
 | Scope | Status |
 |---|---|
@@ -57,8 +57,8 @@ Enterprise readiness is an acceptance outcome, not implied by this project's nam
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
 | ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
 | MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
-| Prefix caching (APC), APC-first LPA and checkpoint retention, one active sequence | APC accepted for the measured serial long-prefix reuse workload (experimental), default off; APC-first LPA calibrated, combined with MTP/fusion/async checks and checked on held-out documents; checkpoint retention adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352, with the block-independent `dense` setting equivalent in the measured layout and its final combined integration qualified separately; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) and [contracts](docs/launch-safety.md) |
-| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack default off; [overview](docs/optimization-overview.md) |
+| Prefix caching (APC), APC-first LPA and checkpoint retention, one active sequence | APC accepted for the measured serial long-prefix reuse workload (experimental), enabled in the startup template; APC-first LPA calibrated, combined with MTP/fusion/async checks and checked on held-out documents; checkpoint retention adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352, with the block-independent `dense` setting equivalent in the measured layout and its final combined integration qualified separately; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) and [contracts](docs/launch-safety.md) |
+| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the startup template; [overview](docs/optimization-overview.md) |
 | Other MTP depths, vision, full application quality, production reliability and maximum performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).

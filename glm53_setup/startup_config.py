@@ -36,11 +36,12 @@ def validate(profile):
                 optional = {"additional_rails"}
             if (
                 not isinstance(value, dict)
-                or value.keys() - optional != expected.keys()
+                or value.keys() - optional != expected.keys() - optional
             ):
                 raise ValueError(f"Unknown/missing settings in {path}")
             for key, item in expected.items():
-                check(value[key], item, f"{path}.{key}")
+                if key not in optional:
+                    check(value[key], item, f"{path}.{key}")
         elif isinstance(expected, list):
             if not isinstance(value, list) or len(value) != len(expected):
                 raise ValueError(f"Expected exactly two nodes in {path}")

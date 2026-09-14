@@ -10,6 +10,11 @@ class ExpertParallelConfigTests(unittest.TestCase):
         self.profile = config.load(
             Path(__file__).resolve().parents[1] / "examples/startup.example.toml"
         )
+        # EP experiments isolate partitioning from the distributed combination.
+        self.profile["mtp"]["enabled"] = False
+        self.profile["lpa"]["enabled"] = False
+        self.profile["cache"]["prefix_caching"] = False
+        self.profile["cache"]["fused_unpack"] = False
 
     def test_opt_in_changes_only_expert_partitioning_on_both_ranks(self):
         for rank in (0, 1):

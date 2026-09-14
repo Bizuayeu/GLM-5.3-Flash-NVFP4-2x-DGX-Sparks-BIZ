@@ -48,7 +48,7 @@ python -m glm53_setup cluster switch --config state/startup.toml \
 
 ## APCの履歴検証
 
-実測するまでは固定runtimeの実際の保持既定を維持します。このrevisionは **0** が既定で、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を独立候補として指定できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す候補です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。既定採用は履歴・保持圧力・A/B/Aの結果から別に判断します。
+固定runtimeはキー省略時に **0** を使い、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を明示できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す設定です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。配布用TOMLは、履歴・保持圧力・A/B/Aと直列併用の実測を踏まえ `dense` を明示します。[配布既定](startup-configuration.ja.md#配布用の既定設定)とruntimeの省略時挙動を区別してください。
 
 `"dense"` は固定CLIの `None` に対応し、MTP切替でblock幅が変わっても値を書き直さず全checkpointを保持します。数値の間隔は比較実験用に残します。今回の整列されたKDA配置では、denseとKDA block幅と同じ間隔は同じ標準のdense maskになります。最終併用は別途検査します。
 

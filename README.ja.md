@@ -35,7 +35,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 - **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。評価全体の検収は未了です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
-速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。MTP有効時の設定例も3で、[k=1との比較結果](docs/speculative-decoding.ja.md#k3の比較結果)を根拠としています。MTP自体の有効化はopt-inです。
+速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。MTP有効時の設定例も3で、[k=1との比較結果](docs/speculative-decoding.ja.md#k3の比較結果)を根拠としています。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/startup-configuration.ja.md#配布用の既定設定)を確認してください。
 
 企業利用に適するかは検収によって判断します。プロジェクト名を認定済みの意味にはせず、確認済みの範囲と残る条件を以下と各検証文書に示します。
 
@@ -57,8 +57,8 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
 | ZCode／Claude Codeのハーネス連携 | 必須の受け入れ項目を定義。**未実施** |
 | BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
-| Prefix caching（APC）・APC優先LPA・checkpoint保持・同時実行1 | APCは実測した直列の長文prefix再利用の実験用途で受入、既定off。APC優先LPAは校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。checkpoint保持は履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)と[契約](docs/launch-safety.ja.md) |
-| 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は既定off。[全体像](docs/optimization-overview.ja.md) |
+| Prefix caching（APC）・APC優先LPA・checkpoint保持・同時実行1 | APCは実測した直列の長文prefix再利用の実験用途で受入、起動テンプレートで有効。APC優先LPAは校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。checkpoint保持は履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)と[契約](docs/launch-safety.ja.md) |
+| 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
 | 他のMTP先読み数・画像・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。

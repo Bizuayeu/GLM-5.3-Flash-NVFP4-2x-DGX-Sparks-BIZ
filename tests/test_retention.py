@@ -10,6 +10,10 @@ class RetentionConfigTests(unittest.TestCase):
         profile = startup_config.load(
             Path(__file__).resolve().parents[1] / "examples/startup.example.toml"
         )
+        self.assertEqual(
+            profile["cache"].pop("prefix_cache_retention_interval"), "dense"
+        )
+        startup_config.validate(profile)
         self.assertNotIn(
             "--prefix-cache-retention-interval",
             startup_config.serve_args(profile, 0, "/hf/model"),
@@ -27,6 +31,10 @@ class RetentionConfigTests(unittest.TestCase):
             profile["cache"]["prefix_cache_retention_interval"] = invalid
             with self.assertRaises(ValueError):
                 startup_config.validate(profile)
+        profile["cache"].pop("prefix_cache_retention_interval")
+        profile["cache"].pop("prefix_caching")
+        with self.assertRaisesRegex(ValueError, "Unknown/missing settings"):
+            startup_config.validate(profile)
 
 
 @unittest.skipUnless(importlib.util.find_spec("vllm"), "Pinned vLLM image required")

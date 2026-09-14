@@ -20,6 +20,24 @@
 
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 
+## 配布用の既定設定
+
+配布用TOMLは直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/startup.toml` は自動更新されません。
+
+| 項目 | 既定値 |
+|---|---|
+| 実行 | TP=2、eager、1系列、32,768 token、chunk512 |
+| キャッシュ | FP8、各rank 2 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効 |
+| 投機・近似 | MTP k=3、LPA cut32／tail512／B128、未使用MLA query省略 |
+| 検査・並列 | 非同期index検査、EP無効、PP分割なし |
+| 生成 | temperature=0、max_tokens=512、reasoning_effort=low、clear_thinking=true |
+| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕5 GiB |
+| 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
+
+**導入時はimage ID、両機の接続情報、MTP view、LPA projectorとhashを準備してください。** imageとprojectorのゼロ値は差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
+
+期限は起動時に固定されます。`run_seconds` の変更を稼働中の監視へ反映するには、[両rankの切替手順](launch-safety.ja.md#全レール検査と両rankの切替)で再起動します。設定ファイルの変更だけでは既存の期限は消えません。コンテキストを拡大するときは、以下の容量条件と実要求を別に検証します。
+
 ## コマンド
 
 認証クライアント、allocatorの未指定／空文字、全HCA検査、両rankの停止前検査と切替は[起動契約と運用検証](launch-safety.ja.md)を参照してください。P10／P19／P22／E03の追加範囲であり、複数レール実通信などの未検収を機能実装と区別します。
@@ -32,7 +50,7 @@
 
 `validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。実験用のローカル制御経路であり、企業利用の認定ではありません。
 
-`runtime.index_checks` は `auto`（既定）／`sync`／`async` を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。MTP/LPA/fusion併用は別検収で、既定はautoを維持します。
+`runtime.index_checks` は `auto`／`sync`／`async`（配布既定） を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。MTP/LPA/fusionの直列併用はP18／P22で範囲を限定して確認済みです。
 
 コンテキスト長や同時数を変更する前に、[KV容量とRAMの条件](#kv容量とramの条件)も確認してください。
 
@@ -99,11 +117,11 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 
 `runtime.enforce_eager=true` が既定です。`false` は実験用のdecode Graph経路を明示的に選び、`CompilationMode.NONE`・`FULL_DECODE_ONLY`・capture size `[1]` を渡します。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。単体検証の範囲は同時1シーケンス・LPA/MTP/APCなしで、融合は独立設定です。これは全モデルの受入完了を意味しません。併用と複数系列は後段の検収まで起動設定で拒否します。
 
-Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。既定のeager経路は従来の同期検査を維持します。
+Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。eagerの検査方式も `runtime.index_checks` に従い、配布既定はasyncです。
 
 `validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。
 
-`cache.fused_unpack=false` が既定で、Torchの参照変換を使います。有効にすると、656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理します。イメージに `GLM53_FUSED_UNPACK_SUPPORTED=1` が必要で、preflightで確認します。まだ実験候補であり、部品の数値一致・attentionと状態の検査・トレースを止めたフルモデルA/Bを経て採否を決めます。候補集合の変更や層間のKV共有は行いません。
+`cache.fused_unpack=true` が配布既定です。falseならTorchの参照変換を使い、trueなら656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理します。イメージに `GLM53_FUSED_UNPACK_SUPPORTED=1` が必要で、preflightで確認します。部品一致と全モデルA/B／直列併用の実測範囲で使用します。広範な品質・本番検収とは区別します。候補集合の変更や層間のKV共有は行いません。
 
 CUDA融合の実モデルA/Bとindexerの採取結果・検証限界は [部品検証記録](component-validation.ja.md) を参照してください。
 
