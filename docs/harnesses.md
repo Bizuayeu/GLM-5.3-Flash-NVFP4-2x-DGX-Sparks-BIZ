@@ -25,7 +25,7 @@ The pinned vLLM [Claude Code guide](https://github.com/vllm-project/vllm/blob/38
 | Distribution | What it is | Role here |
 |---|---|---|
 | Official Desktop GUI | Electron application from the [official installer](https://zcode.z.ai/en/docs/install); providers are added in Model Settings | Required acceptance target |
-| Official Desktop bundled CLI | `resources/glm/zcode.cjs` inside the Desktop install | Not usable interactively in the inspected version (see status) |
+| Official Desktop bundled CLI | `resources/glm/zcode.cjs` inside the Desktop install | Not usable interactively in the inspected version; headless `--prompt` works (see status) |
 | npm `zcode-app-cli` | Unofficial [terminal wrapper](https://github.com/kingsword09/zcode-cli) that vendors the ZCode runtime and adds its own TUI (MIT for its own code; ZCode runtime keeps upstream terms) | Supporting evidence only; never closes an official-target case |
 
 ## Candidate setup
@@ -40,7 +40,7 @@ ssh -N -L 127.0.0.1:8893:127.0.0.1:8893 node-a
 
 Use credentials issued for the local service if authentication is configured. Do not reuse Z.ai or Anthropic cloud credentials for the local experiment.
 
-**Deny the harness write access to its own client configuration directory during acceptance** (for ZCode, the `.zcode` directory under the user profile; for Claude Code, the directory named by `CLAUDE_CONFIG_DIR`). A harness running with build permission can edit its own configuration on request, report success, and then fail to start; a client-side schema rejection surfaces as an unrelated error such as a missing model configuration. Use the client's tool denylist for those paths and keep a copy of the working configuration.
+**Deny the harness write access to its own client configuration directory during acceptance** (for ZCode, the `.zcode` directory under the user profile; for Claude Code, the directory named by `CLAUDE_CONFIG_DIR`). A harness running with build permission can edit its own configuration on request, report success, and then fail to start; a client-side schema rejection surfaces as an unrelated error such as a missing model configuration. Use the client's tool denylist for those paths and keep a copy of the working configuration. Under ZCode `yolo` that denylist is not consulted; the [existing-file guard](#zcode-permission-modes-and-the-existing-file-guard) covers the directory instead.
 
 ### ZCode
 
@@ -66,6 +66,24 @@ claude --model glm-5.3-flash-nvidia
 Use the server root URL here: the CLI appends the Messages path. `local-test` is a non-secret placeholder for an unauthenticated loopback test, not a real credential; authenticated services need their actual dedicated credentials. Map main/tier/helper requests to the local served ID and verify their routing. Follow official authentication requirements without modifying or bypassing checks.
 
 This is a CLI plan. Desktop, web and Remote Control have different configuration/support boundaries; consult [Anthropic's per-surface guide](https://code.claude.com/docs/en/llm-gateway-connect). Closing the client does not stop the model server.
+
+## ZCode permission modes and the existing-file guard
+
+The facts below come from a static read of the Desktop-bundled runtime (`resources/glm/zcode.cjs`, Desktop 3.11.2, runtime 0.16.5, 2026-09-14). They are version-bound; recheck after any client update. They do not close an acceptance case.
+
+**Modes.** The configuration enum is `plan`, `build`, `edit`, `yolo`, `auto`. Two normalizers map Claude Code names onto it: the session normalizer maps `bypassPermissions`/`dontAsk` to `yolo` and `acceptEdits` to `edit`; the automation normalizer maps `acceptEdits`/`autoEdit`/`default`/`auto` to `build`. `auto` is reserved and unimplemented: it denies every tool, so `permission.allowMediumRiskInAuto` has no effect. Headless `--prompt` defaults to `yolo`.
+
+**Tool risk descriptors.** `Read` is low risk with no side effects. `Write` and `Edit` share one permission (`edit`, medium risk, workspace scope). `Bash` is high risk with system scope. There is no delete or rename tool; deletion goes through `Bash`. Nothing in the descriptors distinguishes creating a file from changing one.
+
+**Decision order.** Plan-mode transitions → tools that need user interaction → `yolo` allow → `auto` deny → `disallowedTools` → project `deny` rules → project `ask` rules → plan-mode check → project `allow` rules → `allowedTools` → `edit` mode (allow `Write`/`Edit`) → `build` mode (allow read-only tools; ask for critical risk, for high risk unless `autoApproveHighRisk`, and for any other side effect). Consequences: `build` asks before every write and shell command, `edit` is `build` plus unattended file edits, and `yolo` is evaluated **before** project rules and `disallowedTools`, so path rules cannot narrow it.
+
+**Hook merge.** A `PreToolUse` hook returning `hookSpecificOutput.permissionDecision` is merged with the policy result: `deny` always wins, `ask` turns a policy `allow` (including `mode.yolo`) into a prompt (`hook.PreToolUse.ask`), and `allow` turns a policy `ask` into an allow. The main executor path routes a hook `ask` to the permission broker without the project-rule filter. This is the only place where `yolo` can be narrowed. The hook receives JSON on stdin with `tool_name`, `tool_input` (`file_path` absolute and `content` for `Write`/`Edit`; `command` for `Bash`), `cwd`, `permission_mode` and `session_id`.
+
+**Guard.** [examples/zcode-hooks/exists-guard.cjs](../examples/zcode-hooks/exists-guard.cjs) implements "run in `yolo`, but ask before changing what already exists": `Edit` always asks; `Write` asks when the target exists and allows a new file; any `Write`/`Edit` under the client's own `.zcode` directory asks (the denylist rule above does not apply under `yolo`); `Bash` asks when the command matches a destructive pattern (`rm`, `mv`, `Remove-Item`, `git reset`/`clean`, redirection and similar) and allows otherwise; other tools get no opinion. [examples/zcode-hooks/config.hooks.example.json](../examples/zcode-hooks/config.hooks.example.json) shows the `hooks.events.PreToolUse` entry (`type: "process"`, `command: "node"`), with `hooks.enabled` set to true. Copy the script outside the repository, keep a copy of the working configuration, and expect a schema-rejected entry to invalidate the whole configuration file.
+
+**Verified behavior (`20260914-zcode-exists-guard`, Desktop-bundled CLI in headless `--prompt`, local model).** A `Write` to a new file was allowed and the file was created. A `Write` to an existing file became `ask`; headless mode has no permission client, so the tool call was rejected ("No permission client configured") and the file was unchanged. The `Bash` cases were not run through ZCode: the local API became unreachable (`ECONNRESET` on every retry) before those prompts, so the `Bash` branch is covered only by the script's own stdin self-test (`ls` allowed, `rm`/`Remove-Item` asked). In the TUI or Desktop the same `ask` is a prompt; the Desktop GUI was not run.
+
+**Limits.** The `Bash` gate is a string heuristic with misses; the alternative is to ask for every `Bash` call. The guard sees only the tools it matches (`Write|Edit|Bash`); any other file-writing tool a future version adds passes unless the matcher is extended. `Edit` and `Write` are protected by existence, not by content, so an approved overwrite is still a full overwrite. The findings above are a static read of one bundle and one headless run, not an acceptance result.
 
 ## Outbound traffic of harness clients
 
@@ -117,7 +135,7 @@ Status values: PASS, PARTIAL (some criteria met, listed), BLOCKED (cannot run; e
 | API-02 | Basic API | Chat Completions full response and SSE preserve termination, UTF-8 and reasoning/final-answer boundaries | PASS (same run; chat at `reasoning_effort=low`) |
 | API-03 | Basic API | Harmless tool request → validated JSON arguments → tool result → final answer; IDs survive multiple rounds | PASS (same run) |
 | API-04 | Anthropic-compatible API | Messages full/SSE, tool_use/tool_result and count_tokens have valid structure, termination and usage | PARTIAL: Messages full response and count_tokens pass at model-default effort; Messages SSE, tool_use/tool_result and error cases NOT RUN |
-| ZC-01 | ZCode | Custom model is selectable; observed endpoint and model ID match local configuration | Official Desktop GUI NOT RUN. Desktop bundled CLI BLOCKED: interactive start fails with a missing `@zcode/tui` package ([zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)), no GLM request sent. Supporting evidence from npm `zcode-app-cli` 3.11.2-24: provider at the tunnel endpoint, served ID selected, Japanese round trip and a headless prompt answered by the local model |
+| ZC-01 | ZCode | Custom model is selectable; observed endpoint and model ID match local configuration | Official Desktop GUI NOT RUN. Desktop bundled CLI BLOCKED for interactive use: start fails with a missing `@zcode/tui` package ([zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)); its headless `--prompt` does reach the local served ID (`20260914-zcode-exists-guard`), which is evidence for the runtime, not for the GUI. Supporting evidence from npm `zcode-app-cli` 3.11.2-24: provider at the tunnel endpoint, served ID selected, Japanese round trip and a headless prompt answered by the local model |
 | ZC-02 | ZCode | Initial text-only capability respected; no silent substitution with a default cloud model | Same as ZC-01: official NOT RUN / BLOCKED; npm distribution smoke shows main and lite bound to the local served ID with catalog refresh disabled |
 | CC-01 | Claude Code | Isolated configuration starts; main/helper requests reach the served ID without auth/model-resolution loops | NOT RUN |
 | CC-02 | Claude Code | Anthropic tool IDs, streamed JSON, reasoning and stop_reason allow continuing after tool results | NOT RUN |

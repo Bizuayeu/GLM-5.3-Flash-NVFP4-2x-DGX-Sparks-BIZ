@@ -1,0 +1,24 @@
+{
+  "permission": { "mode": "yolo" },
+  "hooks": {
+    "enabled": true,
+    "timeoutMs": 60000,
+    "maxOutputBytes": 32768,
+    "events": {
+      "PreToolUse": [
+        {
+          "matcher": "Write|Edit|Bash",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": ["C:/Users/<user>/.zcode/hooks/exists-guard.cjs"],
+              "timeoutMs": 5000,
+              "statusMessage": "exists-guard"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

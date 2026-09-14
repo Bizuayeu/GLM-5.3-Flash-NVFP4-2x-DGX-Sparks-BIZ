@@ -25,7 +25,7 @@ ZCodeは[公式サイト](https://zcode.z.ai/en)でGLM向けの公式ハーネ�
 | 配布形態 | 実体 | 本書での役割 |
 |---|---|---|
 | 公式Desktop GUI | [公式インストーラー](https://zcode.z.ai/en/docs/install)のElectronアプリ。providerはModel Settingsで追加する | 必須の受け入れ対象 |
-| 公式Desktop同梱CLI | Desktopインストール内の`resources/glm/zcode.cjs` | 確認した版では対話起動できない（状態欄を参照） |
+| 公式Desktop同梱CLI | Desktopインストール内の`resources/glm/zcode.cjs` | 確認した版では対話起動できない。headlessの`--prompt`は動く（状態欄を参照） |
 | npm `zcode-app-cli` | 非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)。ZCode runtimeを同梱し独自TUIを足す（独自コードはMIT、ZCode本体は上流の条件） | 補助証拠のみ。公式対象のケースを閉じない |
 
 ## 初回接続の候補手順
@@ -40,7 +40,7 @@ ssh -N -L 127.0.0.1:8893:127.0.0.1:8893 node-a
 
 API側の認証を設定している場合は、そのローカルサービス専用の資格情報を使用します。Z.aiやAnthropicのクラウドキーをローカル試験へ流用しません。
 
-**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。
+**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。ZCodeの`yolo`ではその拒否リストは参照されないため、[既存ファイルガード](#zcodeの権限モードと既存ファイルガード)が同ディレクトリを代わりに守ります。
 
 ### ZCode
 
@@ -66,6 +66,24 @@ claude --model glm-5.3-flash-nvidia
 このbase URLには`/v1`を付けず、CLIが`/v1/messages`等を追加します。`local-test`は無認証loopback用の非秘密placeholderです。認証付きAPIでは正しい専用資格情報へ置き換えます。上位・通常・軽量のモデル名を同じserved IDへ向け、補助要求だけクラウドへ出ないことも検査します。ログイン・利用条件の確認が必要なら公式手順に従い、認証チェックを改変して回避しません。
 
 この案はCLI用です。Claude Desktop、Web、Remote Controlの接続方式まで同じと仮定しません。[クライアント別の公式案内](https://code.claude.com/docs/en/llm-gateway-connect)を参照してください。CLIを閉じてもサーバーは停止しません。
+
+## ZCodeの権限モードと既存ファイルガード
+
+以下はDesktop同梱runtime（`resources/glm/zcode.cjs`、Desktop 3.11.2、runtime 0.16.5、2026-09-14）の静的読解に基づきます。版に束縛された事実であり、クライアント更新後は再確認します。受け入れケースを閉じるものではありません。
+
+**モード。** 設定の列挙は`plan`／`build`／`edit`／`yolo`／`auto`です。Claude Code名を写す正規化関数は二つあり、セッション側は`bypassPermissions`／`dontAsk`を`yolo`、`acceptEdits`を`edit`へ、automation側は`acceptEdits`／`autoEdit`／`default`／`auto`を`build`へ写します。`auto`は予約のみで未実装であり、全ツールを拒否します。したがって`permission.allowMediumRiskInAuto`は効きません。headlessの`--prompt`は既定で`yolo`です。
+
+**ツールのリスク記述子。** `Read`はlow・副作用なし。`Write`と`Edit`は一つの権限（`edit`、medium、workspace）を共有します。`Bash`はhigh・system。削除・リネーム専用ツールはなく、削除は`Bash`経由です。記述子のどこにも「新規作成」と「既存変更」の区別はありません。
+
+**判定順。** planモード遷移 → 対話必須ツール → `yolo`は許可 → `auto`は拒否 → `disallowedTools` → プロジェクトの`deny`ルール → 同`ask`ルール → planモード検査 → 同`allow`ルール → `allowedTools` → `edit`モード（`Write`／`Edit`を許可） → `build`モード（読み取り専用は許可。critical、`autoApproveHighRisk`でないhigh、その他の副作用は確認）。帰結として、`build`は全ての書き込みとシェルを確認し、`edit`は`build`にファイル編集の無人化を足したもの、`yolo`はプロジェクトルールと`disallowedTools`より**前**に評価されるため、パスルールでは狭められません。
+
+**hookの合成。** `PreToolUse` hookが返す`hookSpecificOutput.permissionDecision`はpolicyの結果と合成されます。`deny`は常に勝ち、`ask`はpolicyの`allow`（`mode.yolo`を含む）を確認に変え（`hook.PreToolUse.ask`）、`allow`はpolicyの`ask`を許可に変えます。主経路はhookの`ask`をプロジェクトルール限定のフィルタなしで承認brokerへ渡します。`yolo`を狭められる唯一の場所です。hookはstdinのJSONで`tool_name`、`tool_input`（`Write`／`Edit`は絶対パスの`file_path`と`content`、`Bash`は`command`）、`cwd`、`permission_mode`、`session_id`を受け取ります。
+
+**ガード。** [examples/zcode-hooks/exists-guard.cjs](../examples/zcode-hooks/exists-guard.cjs)は「`yolo`で走らせ、既にあるものを変える時だけ確認する」を実装します。`Edit`は常に確認、`Write`は対象が存在すれば確認・新規なら許可、クライアント自身の`.zcode`配下への`Write`／`Edit`は確認（前述の拒否リストは`yolo`下では効かないため）、`Bash`は破壊的パターン（`rm`、`mv`、`Remove-Item`、`git reset`／`clean`、リダイレクト等）に一致すれば確認・それ以外は許可、他のツールには関与しません。[examples/zcode-hooks/config.hooks.example.json](../examples/zcode-hooks/config.hooks.example.json)が`hooks.events.PreToolUse`の登録形（`type: "process"`、`command: "node"`）と`hooks.enabled`の有効化を示します。スクリプトはリポジトリ外に複製し、動作していた設定の複製を残し、スキーマ拒否された項目が設定ファイル全体を無効にすることを前提にします。
+
+**確認した挙動（`20260914-zcode-exists-guard`、Desktop同梱CLIのheadless `--prompt`、ローカルモデル）。** 新規ファイルへの`Write`は許可され、ファイルが作られました。既存ファイルへの`Write`は`ask`に変わり、headlessには承認クライアントが無いためツール呼び出しが拒否され（"No permission client configured"）、ファイルは無変更でした。`Bash`のケースはZCode経由では未実施です。該当プロンプトの前にローカルAPIが応答しなくなり（再試行すべて`ECONNRESET`）、`Bash`分岐はスクリプト単体のstdin自己試験（`ls`は許可、`rm`／`Remove-Item`は確認）でしか確認していません。TUIやDesktopでは同じ`ask`が確認ダイアログになります。Desktop GUIは未実施です。
+
+**限界。** `Bash`の判定は文字列の経験則で漏れがあり、代替は`Bash`を全て確認にすることです。ガードはmatcherに合致するツール（`Write|Edit|Bash`）しか見ないため、将来版が追加する別のファイル書き込みツールはmatcherを広げない限り素通りします。`Edit`／`Write`の保護は存在で決まり内容では決まらないので、承認した上書きは全面上書きのままです。以上は一つのbundleの静的読解と一回のheadless実行であり、受け入れ結果ではありません。
 
 ## ハーネスクライアントの外向き通信
 
@@ -117,7 +135,7 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 | API-02 | 基礎API | Chat Completionsの通常応答とSSE。終端・UTF-8・reasoning／最終回答の区別が壊れない | PASS（同run。chatは`reasoning_effort=low`） |
 | API-03 | 基礎API | 無害なツールの要求→JSON引数検証→結果返送→最終回答。複数往復でID対応を維持する | PASS（同run） |
 | API-04 | Anthropic互換API | Messagesの通常応答・SSE・tool_use/tool_result・count_tokensを検査。応答形式・終端・usageを確認する | PARTIAL：Messagesの通常応答とcount_tokensはモデル既定effortで合格。MessagesのSSE、tool_use/tool_result、異常系はNOT RUN |
-| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する | 公式Desktop GUIはNOT RUN。Desktop同梱CLIはBLOCKED：対話起動が`@zcode/tui`パッケージ不在で失敗（[zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)）、GLMへの要求は未送信。補助証拠としてnpm `zcode-app-cli` 3.11.2-24で、トンネル先のprovider・served IDの選択・日本語の往復・headless promptへのローカルモデル応答を確認 |
+| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する | 公式Desktop GUIはNOT RUN。Desktop同梱CLIは対話起動がBLOCKED：`@zcode/tui`パッケージ不在で失敗（[zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)）。headlessの`--prompt`はローカルserved IDへ届く（`20260914-zcode-exists-guard`）が、これはruntimeの証拠でありGUIの証拠ではない。補助証拠としてnpm `zcode-app-cli` 3.11.2-24で、トンネル先のprovider・served IDの選択・日本語の往復・headless promptへのローカルモデル応答を確認 |
 | ZC-02 | ZCode | 画像非対応の初期プロファイルを尊重。クラウドの既定モデルへ無断で置換されない | ZC-01と同じ：公式はNOT RUN／BLOCKED。npm配布のスモークでは通常・liteの両方がローカルserved IDに固定され、カタログ更新は無効 |
 | CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない | NOT RUN |
 | CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる | NOT RUN |

@@ -65,6 +65,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
 | License permissions and obligations by artifact | [Licensing guide](licensing.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | Harness acceptance cases and their run status | [Harnesses](harnesses.md) |
+| ZCode permission-mode facts and the existing-file guard hook | [Harnesses](harnesses.md#zcode-permission-modes-and-the-existing-file-guard), script in [examples/zcode-hooks/](../examples/zcode-hooks/) |
 | Validation scope and remaining qualification gates | [Validation](validation.md) |
 | Raw responses, traces, all repetitions, failures, host-specific values | Private `records/<run-id>/`, never distributed; public documents carry reviewed summaries |
 | Private implementation plans and their stage status | `docs/*PLAN*.md`, untracked and excluded from publication; `docs/IMPLEMENTATION_PLAN.md` indexes them locally |
