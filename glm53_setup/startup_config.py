@@ -233,6 +233,11 @@ def environment(profile, rank):
         VLLM_BATCH_INVARIANT="0",
         VLLM_NO_USAGE_STATS="1",
         DO_NOT_TRACK="1",
+        # Their defaults sit outside the mounted /root/.cache, so every container
+        # recompiled its kernels while serving and the host RAM spike stopped rank0.
+        TRITON_CACHE_DIR="/root/.cache/triton",
+        TILELANG_CACHE_DIR="/root/.cache/tilelang",
+        TORCHINDUCTOR_CACHE_DIR="/root/.cache/torchinductor",
     )
     if "cuda_allocator_conf" in profile["runtime"]:
         result["PYTORCH_CUDA_ALLOC_CONF"] = profile["runtime"]["cuda_allocator_conf"]

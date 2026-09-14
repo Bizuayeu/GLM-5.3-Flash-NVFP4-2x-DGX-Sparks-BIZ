@@ -46,6 +46,15 @@ class StartupConfigTests(unittest.TestCase):
         self.assertEqual(profile["resources"]["run_seconds"], 0)
         self.assertEqual(profile["resources"]["reserve_gib"], 3)
 
+    def test_jit_caches_live_in_the_mounted_runtime_cache(self):
+        for rank in (0, 1):
+            env = config.environment(self.profile, rank)
+            self.assertEqual(env["TRITON_CACHE_DIR"], "/root/.cache/triton")
+            self.assertEqual(env["TILELANG_CACHE_DIR"], "/root/.cache/tilelang")
+            self.assertEqual(
+                env["TORCHINDUCTOR_CACHE_DIR"], "/root/.cache/torchinductor"
+            )
+
     def test_index_check_mode_is_explicit_without_disabling_validation(self):
         self.assertNotIn(
             "GLM53_ASYNC_INDEX_CHECKS", config.environment(self.profile, 0)

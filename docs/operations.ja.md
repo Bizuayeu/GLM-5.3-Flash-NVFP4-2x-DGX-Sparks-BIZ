@@ -15,7 +15,7 @@
 | LPA projector（配布既定で必要） | [起動設定TOML](startup-configuration.ja.md)の `[lpa].projector` で選ぶ非公開ファイル。そのTOMLからの相対パスまたは絶対パス | 別途学習した補助重みで、NVIDIAのsnapshotにもソース配布物にも含まれない。[LPAの手順](lpa.ja.md)で対応するprojectorを入手または学習し、両ホストでhashを確認する。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
-| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない |
+| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheをruntime cacheへ向け、コンパイル済みkernelを再起動後も残す |
 
 実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。両ホストのディスクに完全なcheckpointが必要です。TP=2が分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
 
