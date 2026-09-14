@@ -99,6 +99,8 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 
 A snapshot misses short-lived connections, UDP and DNS; an empty result is not proof of silence, and an address alone does not identify a domain or payload.
 
+**Recorded sample (2026-09-14, `20260914-zcode-cli-tcp-sample`):** with the npm distribution launched under the switches above (no OTLP endpoint, telemetry flag off, update and catalog refresh disabled, no Z.ai login), one headless prompt was answered by the local model while TCP connections of the client's node processes were sampled every 0.5 s for 20 s. The only remote endpoint observed was the loopback SSH tunnel to the local vLLM API. This is supporting evidence that prompt and file content stay on the local route for that distribution; it is one prompt, TCP only, with `plugins.enabled` still true, and it does not exercise the cloud-fallback part of H-09 or say anything about official Desktop.
+
 ## Reasoning profile for acceptance
 
 For this fixed GLM template, keep thinking active. It always starts an assistant thinking block and does not read an off switch; avoid `thinking=false` / `enable_thinking=false`. The [model card](https://huggingface.co/zai-org/GLM-5.3-Flash) documents `reasoning_effort=low/high/max`, defaulting to max, and recommends `clear_thinking=true` for chat. Low effort is a chat test profile, not a claim to reproduce max-effort leaderboard scores. The matching parser/template leak is tracked in [vLLM #54744](https://github.com/vllm-project/vllm/issues/54744); [PR #54825](https://github.com/vllm-project/vllm/pull/54825) was open and unmerged when reviewed. Do not assume an arbitrary image includes it.
@@ -127,7 +129,7 @@ Status values: PASS, PARTIAL (some criteria met, listed), BLOCKED (cannot run; e
 | H-06 | Both | Cancel generation/tool waiting, then accept a fresh request; no infinite retry, orphan job or dead server | NOT RUN |
 | H-07 | Both | Restart/resume the test conversation with the same local destination and approval settings | NOT RUN |
 | H-08 | Both | Exercise the actual context boundary; explicit compaction/error without silent history loss; do not assume 200k/1M support | NOT RUN |
-| H-09 | Both | Observe inference destinations; an unavailable local endpoint must not cause cloud inference fallback. Record ancillary traffic separately from claims of offline operation | NOT RUN |
+| H-09 | Both | Observe inference destinations; an unavailable local endpoint must not cause cloud inference fallback. Record ancillary traffic separately from claims of offline operation | NOT RUN. Supporting evidence for the npm distribution: the recorded TCP sample above showed only the loopback tunnel during one prompt; outage fallback untested; official Desktop and Claude Code not sampled |
 | H-10 | Both | Complete the same small read/fix/test/report task; retain API traces, artifacts, correctness and latency | NOT RUN |
 | H-11 | Both | Confirm the supported reasoning profile reaches the local service, no unsupported off flag is sent, and reasoning remains separate from final content; record unsupported effort mapping explicitly | NOT RUN (API-02/04 ran at different effort settings; the mapping per client is untested) |
 

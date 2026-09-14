@@ -99,6 +99,8 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 
 一時点の採取は短時間の接続・UDP・DNSを取りこぼします。空の結果は「送信なし」の証明ではなく、アドレスだけではドメインも内容も特定できません。
 
+**記録した採取（2026-09-14、`20260914-zcode-cli-tcp-sample`）:** npm配布を上記の停止手段（OTLP endpointなし、telemetryフラグoff、更新確認・カタログ更新無効、Z.aiログインなし）で起動し、headlessの一問にローカルモデルが回答する間、クライアントのnodeプロセスのTCP接続を0.5秒間隔で20秒間採取した。観測された外部endpointは、ローカルvLLM APIへのloopback SSHトンネルだけだった。この配布形態ではプロンプトとファイル内容がローカル経路に留まることの補助証拠であり、一問・TCPのみ・`plugins.enabled`はtrueのままで、H-09のクラウドfallback部分は試しておらず、公式Desktopについては何も言わない。
+
 ## 受け入れ試験で使うreasoning設定
 
 この固定GLMテンプレートは常にassistantのthinkingブロックを開始し、オフ指定を読みません。`thinking=false`／`enable_thinking=false`を送らず、思考を有効のまま使います。[公式モデルカード](https://huggingface.co/zai-org/GLM-5.3-Flash)は`reasoning_effort=low/high/max`（既定max）を案内し、チャットには`clear_thinking=true`を推奨しています。lowはチャット試験のprofileであり、maxで行う公式品質評価の再現とは区別します。今回と一致するparser/template不整合は[vLLM #54744](https://github.com/vllm-project/vllm/issues/54744)で報告され、[修正PR #54825](https://github.com/vllm-project/vllm/pull/54825)は確認時点で未マージでした。任意のイメージに修正済みとは仮定しません。
@@ -127,7 +129,7 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 | H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない | NOT RUN |
 | H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する | NOT RUN |
 | H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | NOT RUN |
-| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | NOT RUN |
+| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | NOT RUN。npm配布の補助証拠として、上記のTCP採取では一問の間にloopbackトンネル以外の接続先なし。停止時fallbackは未試験、公式DesktopとClaude Codeは未採取 |
 | H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する | NOT RUN |
 | H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する | NOT RUN（API-02／04は異なるeffort設定で実施。クライアントごとの変換は未試験） |
 
