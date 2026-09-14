@@ -26,12 +26,12 @@ The distributed TOML selects the serial optimized profile. This is a configurati
 
 | Item | Default |
 |---|---|
-| Execution | TP=2, eager, one sequence, 32,768 tokens, chunk512 |
-| Cache | FP8, 2 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on |
+| Execution | TP=2, eager, one sequence, 204,800 tokens, chunk512 |
+| Cache | FP8, 2.5 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on |
 | Speculation/approximation | MTP k=3, LPA cut32/tail512/B128, unused MLA queries skipped |
 | Checks/parallelism | Async index checks, EP off, no PP split |
 | Generation | temperature=0, max_tokens=512, reasoning_effort=low, clear_thinking=true |
-| Resources | Container112 GiB, startup free108 GiB, runtime reserve4 GiB |
+| Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 4 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 
 **Supply image IDs, both nodes' connection details, the MTP view, and the LPA projector/hash before launch.** Zero image/projector hashes are placeholders to replace; missing assets never silently disable features. [Operations](operations.md#artifact-storage-and-paths) owns their placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.

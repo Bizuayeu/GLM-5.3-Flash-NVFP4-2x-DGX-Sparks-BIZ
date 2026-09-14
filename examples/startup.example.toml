@@ -29,7 +29,7 @@ seed = 42
 # テキスト・ツール専用。Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 
 [context]
-max_model_len = 32768 # Input + generated tokens / 入出力合計の上限
+max_model_len = 204800 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
@@ -51,7 +51,7 @@ expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
 prefix_cache_retention_interval = "dense"
 # KDA checkpointを保持。denseならMTP切替時のblock値再指定は不要。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
-kv_cache_memory_bytes = 2147483648 # 2 GiB per rank / 各ランク
+kv_cache_memory_bytes = 2684354560 # 2.5 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
 # 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される

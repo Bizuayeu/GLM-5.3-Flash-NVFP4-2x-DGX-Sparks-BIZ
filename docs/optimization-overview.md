@@ -6,7 +6,7 @@ One page showing which measure acts on which inference stage, what was adopted, 
 
 ## Baseline
 
-The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); capacity through 32K was checked separately ([32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15)).
+The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); see the separate [32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15) and [release candidate measurements](benchmarks.md#release-candidate-measurements) for the current combined defaults at 200K with KV 2.5 GiB per rank.
 
 ## Where each measure acts
 
@@ -66,7 +66,7 @@ flowchart LR
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
 | P05 SM121 backend selection | Fit candidate widths to existing kernels | Rejected (width 2176 unsupported, numerical criteria unmet) | — (reference attention retained) | [Probe](component-validation.md#direct-padded-native-attention-probe) |
 | P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Held (components retained, no serving integration) | — (not integrated) | [CSA2](indexer-reuse.md) |
-| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. **The full-model measurements above predate it**; only a four-layer GB10 fixture regression exists for the patched image, and a rebuilt runtime needs its own full-model regression | on (newly built reference images) | [Candidate order](candidate-order.md) |
+| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [current 200K measurements](benchmarks.md#release-candidate-measurements) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
 
 ### Operations (not a performance measure)
 
@@ -98,11 +98,11 @@ All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, 
 - Do not add or multiply gains from different experiments; images, inputs and KV budgets differ between them
 - Do not promote a component or small-fixture pass to the full model
 - Read functional acceptance, performance adoption, default on/off and combined-mode acceptance separately
-- Canonical candidate ordering is absent from the full-model measurement images; only a four-layer fixture regression exists for the patched image, and a rebuilt runtime needs its own full-model regression
+- Distinguish initial pre-canonical-order comparisons from later full-model combined regression and release candidate measurements
 - A perfect FreedomBench score, scoped task answers or fixture parity do not prove general quality or production reliability
 
 ## Next candidates
 
 - P06 Graphs: lift LPA's eager constraint and qualify on the full model
 - Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started
-- P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts of 128K or larger, multiple sequences with LPA
+- P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 200K and broader long-context coverage, multiple sequences with LPA

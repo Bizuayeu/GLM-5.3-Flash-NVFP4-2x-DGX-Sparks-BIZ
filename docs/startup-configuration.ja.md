@@ -26,8 +26,8 @@
 
 | 項目 | 既定値 |
 |---|---|
-| 実行 | TP=2、eager、1系列、32,768 token、chunk512 |
-| キャッシュ | FP8、各rank 2 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効 |
+| 実行 | TP=2、eager、1系列、204,800 token、chunk512 |
+| キャッシュ | FP8、各rank 2.5 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効 |
 | 投機・近似 | MTP k=3、LPA cut32／tail512／B128、未使用MLA query省略 |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | 生成 | temperature=0、max_tokens=512、reasoning_effort=low、clear_thinking=true |

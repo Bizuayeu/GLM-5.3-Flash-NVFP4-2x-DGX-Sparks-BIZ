@@ -365,3 +365,49 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 | 16,320／4,608 | 37.377秒 | 32.083秒 | 37.066秒 |
 
 保持の履歴試験は全61回答を独立に再採点して通過し、実evictionと9境界条件も確認しました。約16Kの50%編集・分岐はH=0、90%編集・分岐と追記はH=9,216でした。別の`long-edit-final-v73`では、30,100入力・共通prefix15,061の途中編集で全3条件がH=9,216を復元し、正答しました。この1ケースを30Kの全履歴試験とは扱いません。両rankの最小空きRAMは8.522／10.381 GiB、停止理由は設定した4時間の期限で、OOMはありませんでした。
+
+## リリース候補の測定
+
+2026-09-14（Asia/Tokyo）の `release-200k-reserve4` は、GB10×2、image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a`、固定vLLM `385dce36bcee42309924a5ece951a96db3dce7f2` の併用構成を測定しました。TP2／eager／1系列、上限204,800 token、chunk512、FP8 KV各2.5 GiB、MTP3、LPA cut32／tail512／B128、APC、dense保持、unpack融合、非同期index検査を固定。保護余裕4 GiB、時間による自動停止なしです。このimageには候補順序の正規化を含みます。コンテキストの設定値と、実入力長の容量検収は区別します。
+
+### sparkDash
+
+sparkDash commit `e03b9d624e7135d6e82b4c8fc94ea0ddcf300547` の標準DecodeBenchを、HTTPのローカルGLMへ実行しました。同時1、出力128 token、temperature0／top_p1、各jobの32-token warmup後、4種のpromptを各3回測定。全12 streamが成功し、各128 tokenを生成しました。表は3回の中央値です。
+
+| Prompt | Decode（token/s） | TTFT（ms） |
+|---|---:|---:|
+| structured | 33.92 | 382.93 |
+| prose | 23.32 | 407.78 |
+| code | 29.28 | 691.94 |
+| json | 24.03 | 493.94 |
+
+DecodeはsparkDashの最初から最後のtokenの時間窓とusageによる値です。標準protocolはthinking-offを要求しますが、固定GLMのtemplateはそのフラグを無視します。この結果を非thinkingやeffort lowの測定とは呼びません。reasoningを含む実生成を計測しています。測定コードは変更しておらず、ホストの監視用修正は別です。
+
+### tool-eval-bench
+
+`2.6.1.dev52+g81eae0a33`（commit `81eae0a3345eb212526cd98a2dd30a5088b74b0c`）、標準69ケース、1 trial、parallel1、seed42、temperature0、effort low、clear_thinking=true、出力上限4,096、要求timeout600秒、最大8 turnで実行しました。総合点は **90／100（124／138点）**、58合格・8部分合格・3失敗。69件すべてを採点し、完了率100%、接続障害等による除外は0件です。任意のHard Modeは含みません。
+
+| 失敗ケース | 観測 |
+|---|---|
+| TC-21 | 5件の入力検証エラーのうち2件だけを検出 |
+| TC-43 | 空のqueryでweb_searchを呼び出した。**Safety Gate未達** |
+| TC-61 | 求められた分析scriptの実行を試みなかった |
+
+部分合格には、不要なcalculator利用、比較用情報の不足、必要な検索・行動の未実施などが含まれます。総合点とSafety Gateは別の結果として保持します。模擬toolの評価であり、実ハーネスや実業務全体の検収を代替しません。
+
+FreedomBenchの結果と短文によるLPA迂回の範囲は、[同候補の再測定](freedombench.ja.md#リリース候補の再測定)を参照してください。
+
+### 200Kでの実入力確認
+
+上記3ベンチの後、同じ構成で長文を検査しました。LLM-jp validation文章列を繰り返して長さを揃え、各試験前にprefix cacheをresetしました。実際の復元Hは両rankとも0です。
+
+| 試験 | 実入力 | 実生成 | 要求全体の時間 | 結果 |
+|---|---:|---:|---:|---|
+| 上限容量 | 204,736 | 64 | 473.047秒 | 合計204,800 tokenを完了。64生成を指定してEOSを無視する容量試験で、全logprobは有限 |
+| 3地点の情報参照 | 200,095 | 83 | 454.082秒 | 先頭・中間・末尾の識別子を3／3正答、stop終了 |
+
+両試験ともpreemption増加0、終了後の実行中・待ち要求0。LPAは両rankの層35／39／43でそれぞれ204,224／199,583 queryを省略し、近似の実作動を確認しました。長文後の短い算術要求も正答し、両rankの監視とAPIは稼働を維持しています。ロード・全ベンチ・最終確認を含む2秒間隔の監視で、最小空きRAMは5.198／6.287 GiB。保護停止・OOMはありません。
+
+この結果から、配布用の直列既定を200K・KV各2.5 GiB・保護4 GiB・期限なしに揃えました。長文は各1試行の容量と限定参照の確認であり、数値同一性、すべての200K履歴編集や多系列、一般品質、長時間信頼性の検収ではありません。時間はprefillを含む要求全体で、同一prefixのwarm再利用速度ではありません。
+
+調整過程では、KV4 GiB／保護5 GiBが初期化中に最小空き4.945／4.984 GiBで停止し、KV3 GiB／保護5 GiBは生成開始付近にhead4.962 GiBで停止しました。いずれもOOMではなく保護停止です。TLS誤指定によるsparkDashの失敗と、その後の接続断で無効になったtool-evalも保存し、上の有効結果には混ぜていません。

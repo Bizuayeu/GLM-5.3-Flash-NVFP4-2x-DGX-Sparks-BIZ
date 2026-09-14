@@ -6,7 +6,7 @@
 
 ## 基準構成
 
-基準は[施策台帳の基準点](optimization-catalog.ja.md#今回の基準点と文書の役割)と同じで、context 16K・KV各rank 1 GiBで測定しています（[初期の測定条件](benchmarks.ja.md#初期の測定条件)）。32Kまでの容量は別に確認しています（[32K sweep](benchmarks.ja.md#32kまでの独立コンテキスト評価p15)）。
+基準は[施策台帳の基準点](optimization-catalog.ja.md#今回の基準点と文書の役割)と同じで、context 16K・KV各rank 1 GiBで測定しています（[初期の測定条件](benchmarks.ja.md#初期の測定条件)）。32Kまでの独立容量評価は[32K sweep](benchmarks.ja.md#32kまでの独立コンテキスト評価p15)、現在の配布既定200K・KV各2.5 GiBの併用結果は[リリース候補の測定](benchmarks.ja.md#リリース候補の測定)を参照してください。
 
 ## 段階別の位置づけ
 
@@ -66,7 +66,7 @@ flowchart LR
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
 | P05 SM121 backend選定 | 既存kernelへの候補幅適合 | 不採用（候補幅2176非対応・数値未達） | —（参照attentionを維持） | [部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験) |
 | P16 CSA2 | 層間の候補再利用・限定再採点 | 保留（部品保持、serving適用なし） | —（未統合） | [CSA2](indexer-reuse.ja.md) |
-| 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。**上記の全モデル実測はこの変更より前**で、patched imageには4層GB10 fixtureの回帰しかなく、再ビルドしたruntimeには全モデルの回帰が別途要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
+| 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。上記の初期比較は変更前。正規化後の全モデル併用回帰と[現行200Kの実測](benchmarks.ja.md#リリース候補の測定)は別に記録。再ビルドしたruntimeにも検収が要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
 
 ### 運用（性能施策ではない）
 
@@ -98,11 +98,11 @@ flowchart LR
 - 別実験の改善率を足さない・掛けない。imageや入力・KV予算は実験ごとに異なる
 - 部品や小層fixtureの合格を全モデルへ繰り上げない
 - 機能受入／性能採用／既定on・off／併用検収を分けて読む
-- 候補順序の正規化は全モデル実測のimageに含まれない。patched imageには4層fixtureの回帰しかなく、再ビルドしたruntimeには全モデルの回帰が要る
+- 初期比較のimageと、候補順序の正規化後の併用回帰・リリース候補測定を区別する
 - FreedomBenchの満点、限定課題の正答、fixtureの一致は、一般品質や本番信頼性の証明ではない
 
 ## 次の候補
 
 - P06 Graphs：LPAのeager制約を解く検証と全モデル受入
 - Euryale：本リポジトリ外の投機draft研究（非公開・独立プロジェクト）。標準MTP k=3との同条件比較で品質・性能・メモリ・復旧のゲートを通した場合に限り、既定の投機経路を置き換える候補。全モデルの教師採取・学習は未着手
-- P09 FP8／BF16 KVのA/B、P20 indexer workspace、128K以上のcontext、複数系列×LPA
+- P09 FP8／BF16 KVのA/B、P20 indexer workspace、200Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA

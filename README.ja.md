@@ -52,6 +52,8 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 ## このベータ版で確認した範囲
 
+**配布既定は200K・KV各2.5 GiB・保護4 GiB・時間制限なしの直列最適化構成です。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に速度・tool-eval・200K実入力の結果をまとめています。tool-evalのSafety Gate未達も同じ記録に保持しています。
+
 [起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
 
 [LPA（後段Prefill近似）](docs/lpa.ja.md)を、教師状態の復元・コーパス採取・補助器学習を含む実験経路として用意しています。品質・速度の検収は、下記の基準構成とは別に扱います。
@@ -74,7 +76,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
 
-[sparse候補の順序正規化](docs/candidate-order.ja.md)はGLM runtime共通の変更で、新しくビルドした参照imageでは既定で有効です。source更新後は再ビルドが必要で、既存imageやcontainerには自動適用されません。[導入手順](SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に必要作業として明記しています。これまでに公開した全モデルの実測は、この変更より前にビルドしたimageで取得したものです。patched imageには4層GB10 fixtureの回帰しかなく、再ビルドしたruntimeには全モデルの回帰確認が必要です。
+[sparse候補の順序正規化](docs/candidate-order.ja.md)はGLM runtime共通の変更で、新しくビルドした参照imageでは既定で有効です。source更新後は再ビルドが必要で、既存imageやcontainerには自動適用されません。[導入手順](SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に必要作業として明記しています。初期の最適化比較は変更前のimageで測定しています。正規化後の全モデル併用回帰は上記の候補順序文書、現在の併用構成と200Kの実測は[ベンチマーク](docs/benchmarks.ja.md#リリース候補の測定)を参照してください。導入先で再ビルドしたruntimeも検収が必要です。
 
 ## 本リポジトリ外の関連研究
 
