@@ -39,3 +39,14 @@ build/
 *.egg-info/
 # Private implementation diary; publish reviewed summaries under docs instead.
 /docs/*PLAN*.md
+# Editor, OS and extra artifact formats
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*.ckpt
+*.npy
+*.npz
+*.parquet
+*.h5
