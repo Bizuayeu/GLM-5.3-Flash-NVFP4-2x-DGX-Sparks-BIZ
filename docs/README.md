@@ -33,6 +33,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Validation | Evidence versus production qualification, single-GPU fixture, remaining gates | [EN](validation.md) | [JA](validation.ja.md) |
 | Component validation | CUDA/indexer components, Graph fixture, PP/EP/APC fixtures, history fixtures | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | Benchmarks | TP=2 benchmark method and the full-model benchmark runs (P08, P11, P13–P15, P17–P19, P21, P22, retention) | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| Image input | Vision at 200K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | Political-context evaluation: required matrix and preliminary results | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | Harnesses | ZCode and Claude Code connection plans and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | Licensing guide | Commercial use, modification and redistribution by artifact | [EN](licensing.md) | [JA](licensing.ja.md) |
@@ -59,7 +60,7 @@ Every document has one role; other documents link to it instead of repeating its
 | MTP speculative configuration examples | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |
-| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md) |
+| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md) |
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |

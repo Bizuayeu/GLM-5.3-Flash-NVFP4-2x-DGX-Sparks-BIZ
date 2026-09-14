@@ -6,7 +6,7 @@
 
 ## 基準構成
 
-基準は[施策台帳の基準点](optimization-catalog.ja.md#今回の基準点と文書の役割)と同じで、context 16K・KV各rank 1 GiBで測定しています（[初期の測定条件](benchmarks.ja.md#初期の測定条件)）。32Kまでの独立容量評価は[32K sweep](benchmarks.ja.md#32kまでの独立コンテキスト評価p15)、従来の200K併用結果は[リリース候補の測定](benchmarks.ja.md#リリース候補の測定)を参照してください。現在の配布既定256K・KV各3 GiBは[256Kの実入力確認](benchmarks.ja.md#256kでの実入力確認)を参照してください。
+基準は[施策台帳の基準点](optimization-catalog.ja.md#今回の基準点と文書の役割)と同じで、context 16K・KV各rank 1 GiBで測定しています（[初期の測定条件](benchmarks.ja.md#初期の測定条件)）。32Kまでの独立容量評価は[32K sweep](benchmarks.ja.md#32kまでの独立コンテキスト評価p15)、従来の200K併用結果は[リリース候補の測定](benchmarks.ja.md#リリース候補の測定)を参照してください。256K・KV各3 GiBのテキスト専用構成は[256Kの実入力確認](benchmarks.ja.md#256kでの実入力確認)、現在の配布既定（200K・画像入力・KV各2.5 GiB）は[200Kでの画像入力](vision.ja.md)を参照してください。
 
 ## 段階別の位置づけ
 
@@ -66,7 +66,7 @@ flowchart LR
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
 | P05 SM121 backend選定 | 既存kernelへの候補幅適合 | 不採用（候補幅2176非対応・数値未達） | —（参照attentionを維持） | [部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験) |
 | P16 CSA2 | 層間の候補再利用・限定再採点 | 保留（部品保持、serving適用なし） | —（未統合） | [CSA2](indexer-reuse.ja.md) |
-| 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。上記の初期比較は変更前。正規化後の全モデル併用回帰と[現行256Kの実測](benchmarks.ja.md#256kでの実入力確認)は別に記録。再ビルドしたruntimeにも検収が要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
+| 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。上記の初期比較は変更前。正規化後の全モデル併用回帰と[256Kの実測](benchmarks.ja.md#256kでの実入力確認)は別に記録。再ビルドしたruntimeにも検収が要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
 
 ### 運用（性能施策ではない）
 
@@ -95,7 +95,7 @@ flowchart LR
 
 ## 性能と容量のQ&A
 
-現在の構成を拡張するときの考え方を整理します。採用した256Kは入出力合計262,144 token、1Mは約100万tokenです。1Mや新しい複数系列構成は未検収です。
+現在の構成を拡張するときの考え方を整理します。256Kのテキスト専用構成は入出力合計262,144 token（配布の画像入力構成は204,800）、1Mは約100万tokenです。1Mや新しい複数系列構成は未検収です。
 
 ### Q. KVキャッシュを各rankに3 GiB確保すれば、256Kコンテキストを継続して利用できますか？
 

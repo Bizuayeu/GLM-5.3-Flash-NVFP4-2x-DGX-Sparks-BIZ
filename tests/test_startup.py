@@ -15,6 +15,7 @@ class StartupConfigTests(unittest.TestCase):
         self.profile = config.load(ROOT / "examples/startup.example.toml")
         # Independent feature tests start from an explicit all-off baseline.
         self.profile["runtime"]["index_checks"] = "auto"
+        self.profile["runtime"]["vision"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -28,12 +29,16 @@ class StartupConfigTests(unittest.TestCase):
             env = config.environment(profile, rank)
             spec = json.loads(args[args.index("--speculative-config") + 1])
             self.assertEqual(spec["num_speculative_tokens"], 3)
-            self.assertEqual(args[args.index("--max-model-len") + 1], "262144")
+            self.assertEqual(args[args.index("--max-model-len") + 1], "204800")
             self.assertEqual(
-                args[args.index("--kv-cache-memory-bytes") + 1], "3221225472"
+                args[args.index("--kv-cache-memory-bytes") + 1], "2684354560"
             )
             self.assertIn("--enable-prefix-caching", args)
-            self.assertIn("--language-model-only", args)
+            # The distributed profile accepts images; video stays rejected.
+            self.assertNotIn("--language-model-only", args)
+            limit = args[args.index("--limit-mm-per-prompt") + 1]
+            self.assertEqual(json.loads(limit), {"video": 0})
+            self.assertEqual(args[args.index("--mm-processor-cache-gb") + 1], "0.1")
             self.assertEqual(
                 args[args.index("--prefix-cache-retention-interval") + 1], "None"
             )
@@ -44,7 +49,7 @@ class StartupConfigTests(unittest.TestCase):
             self.assertNotIn("GLM53_APC_LPA_CONFIG", env)
             self.assertNotIn("--worker-extension-cls", args)
         self.assertEqual(profile["resources"]["run_seconds"], 0)
-        self.assertEqual(profile["resources"]["reserve_gib"], 3)
+        self.assertEqual(profile["resources"]["reserve_gib"], 2.5)
 
     def test_reserve_accepts_fractional_gib(self):
         self.profile["resources"]["reserve_gib"] = 2.5

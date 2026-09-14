@@ -33,6 +33,7 @@
 | 検証範囲 | 証拠と本番認定の区別、GPU 1台のfixture、残る検収ゲート | [EN](validation.md) | [JA](validation.ja.md) |
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | ベンチマーク | TP=2ベンチの方法と全モデルのベンチ実行（P08、P11、P13〜P15、P17〜P19、P21、P22、保持） | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| 画像入力 | 200KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | 政治的文脈の評価：必須試験と予備実測 | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | ハーネス | ZCode／Claude Codeの接続方針と受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |
@@ -59,7 +60,7 @@
 | MTPの投機設定例 | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |
-| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md) |
+| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md) |
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |

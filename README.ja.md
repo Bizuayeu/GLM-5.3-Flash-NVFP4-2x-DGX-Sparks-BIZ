@@ -52,7 +52,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 ## このベータ版で確認した範囲
 
-**配布既定は256K・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)に新しいコンテキスト・KV既定値の検証をまとめています。
+**配布既定は、画像入力を受ける200K（204,800 token）・KV各2.5 GiB・保護2.5 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
 [起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
 
@@ -72,11 +72,12 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
 | Prefix caching（APC）・APC優先LPA・checkpoint保持・同時実行1 | APCは実測した直列の長文prefix再利用の実験用途で受入、起動テンプレートで有効。APC優先LPAは校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。checkpoint保持は履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)と[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
-| 他のMTP先読み数・画像・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
+| 200Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面からの送信は未確認。[実測と限界](docs/vision.ja.md) |
+| 他のMTP先読み数・動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
 
-[sparse候補の順序正規化](docs/candidate-order.ja.md)はGLM runtime共通の変更で、新しくビルドした参照imageでは既定で有効です。source更新後は再ビルドが必要で、既存imageやcontainerには自動適用されません。[導入手順](SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に必要作業として明記しています。初期の最適化比較は変更前のimageで測定しています。正規化後の全モデル併用回帰は上記の候補順序文書、従来の200K併用実測は[ベンチマーク](docs/benchmarks.ja.md#リリース候補の測定)を参照してください。現在のコンテキスト・KV既定値は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)を参照してください。導入先で再ビルドしたruntimeも検収が必要です。
+[sparse候補の順序正規化](docs/candidate-order.ja.md)はGLM runtime共通の変更で、新しくビルドした参照imageでは既定で有効です。source更新後は再ビルドが必要で、既存imageやcontainerには自動適用されません。[導入手順](SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に必要作業として明記しています。初期の最適化比較は変更前のimageで測定しています。正規化後の全モデル併用回帰は上記の候補順序文書、従来の200K併用実測は[ベンチマーク](docs/benchmarks.ja.md#リリース候補の測定)を参照してください。現在のコンテキスト・KV既定値は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)を参照してください。導入先で再ビルドしたruntimeも検収が必要です。
 
 ## 本リポジトリ外の関連研究
 

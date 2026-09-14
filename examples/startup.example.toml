@@ -2,8 +2,9 @@
 # Copy to state/startup.toml. Paths are relative to THIS FILE, or absolute.
 # state/startup.toml にコピー。相対パスはこのファイルの位置が基準。
 # Model/revision stay pinned by config/runtime.lock.json.
-# Serial optimized defaults. Supply image IDs, MTP view, LPA projector/hash and nodes.
-# 直列最適化を既定化。image ID・MTP view・LPA補助器/hash・機体情報を準備する。
+# Serial optimized defaults with image input at 200K (docs/vision.md).
+# Supply image IDs, MTP view, LPA projector/hash and nodes.
+# 直列最適化・200K・画像入力を既定化（docs/vision.ja.md）。image ID・MTP view・LPA補助器/hash・機体情報を準備する。
 schema_version = 1
 
 [runtime]
@@ -25,15 +26,17 @@ pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
 pipeline_split_layer = 24 # PP2 stage0 layers [0,24), stage1 [24,45)
 # PP2は各stageにMLAが必要。24/21層は各21 MoE層を配置する候補で、容量保証ではない。
 seed = 42
-vision = false # Omitted = false. true loads the vision tower for IMAGE input only; unqualified
+vision = true # Loads the vision tower for IMAGE input; omitted = false (text/tools only)
 # true also sets --limit-mm-per-prompt {"video": 0}: video input is rejected.
-# 未指定はfalse。trueで視覚塔を読み込み画像入力を受ける（未検収）。
+# The 256K text-only alternative: false, with max_model_len 262144 and KV 3 GiB.
+# 視覚塔を読み込み画像入力を受ける。未指定はfalse（テキスト・ツール専用）。
 # trueでも動画入力は受けない（--limit-mm-per-prompt {"video": 0} を付ける）。
-# Text/tools only; Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
-# テキスト・ツール専用。Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
+# 256Kテキスト専用の代替：false、max_model_len 262144、KV 3 GiB。
+# Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
+# Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 
 [context]
-max_model_len = 262144 # Input + generated tokens / 入出力合計の上限
+max_model_len = 204800 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
@@ -58,7 +61,7 @@ mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM
 # Head-only image preprocessing cache (API and engine processes each hold one).
 # runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
-kv_cache_memory_bytes = 3221225472 # 3 GiB per rank / 各ランク
+kv_cache_memory_bytes = 2684354560 # 2.5 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
 # 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
@@ -113,7 +116,7 @@ timeout_seconds = 600 # Same timeout as the measured experiment client
 # 実験時の予算を継承。規模を増やす場合は再計測。
 container_memory_gib = 112
 minimum_available_gib = 108
-reserve_gib = 3.0 # GiB of MemAvailable; fractions allowed / 小数可
+reserve_gib = 2.5 # GiB of MemAvailable; fractions allowed / 小数可
 run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 

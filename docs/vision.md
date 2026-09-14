@@ -1,0 +1,74 @@
+# Image input (vision) at 200K
+
+[日本語](vision.ja.md) · [Startup configuration](startup-configuration.md) · [Document map](README.md)
+
+The distributed profile accepts **text, tool calls and images** at 204,800 input-plus-output tokens. **Video input is disabled and rejected.** This page records how that profile was reached, what was measured on the reference hosts (MSI EdgeXpert MS-C931, about 121 GiB usable memory each) on 2026-09-15, and what remains unqualified. It is scoped evidence for one active sequence on TP=2, not production or harness qualification.
+
+## Settings
+
+[Startup configuration](startup-configuration.md#distributed-defaults) owns the keys; this is the image-related subset of the template.
+
+| Key | Value | Effect |
+|---|---|---|
+| `runtime.vision` | `true` | Removes `--language-model-only` on both ranks, so the vision tower loads; adds `--limit-mm-per-prompt '{"video": 0}'` |
+| `context.max_model_len` | 204800 | Down from 262,144 in the text-only profile |
+| `cache.kv_cache_memory_bytes` | 2684354560 (2.5 GiB per rank) | Down from 3 GiB; the runtime reported 235,016 tokens of KV capacity (1.15× the limit) |
+| `cache.mm_processor_cache_gb` | 0.1 | `--mm-processor-cache-gb 0.1` instead of vLLM's 4 GiB |
+| `resources.reserve_gib` | 2.5 | Down from 3; see the guard arithmetic in [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements) |
+
+A client must declare image input and must not declare video. For ZCode, set the model's `limit.context` to 204800 and `modalities.input` to `["text", "image"]` ([ZCode model limits](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard)). The 256K text-only alternative is `runtime.vision = false` with `max_model_len = 262144` and 3 GiB KV per rank; its [256K checks](benchmarks.md#real-input-checks-at-256k) ran with a 4 GiB reserve, and a 2.5 GiB reserve is not validated for it.
+
+## How the settings were chosen
+
+1. **The vision tower loads unquantized.** The checkpoint ships 347 BF16 vision tensors (1.05 GiB). Both quantization exclusion lists name `model.visual*`, and the pinned vLLM builds the tower without a quantization config, so NVFP4 is not misapplied. The MTP metadata view keeps the tower unchanged. The tower is split across the two ranks.
+2. **Video is disabled.** At startup vLLM profiles memory by encoding the largest multimodal item once. This checkpoint's video budget is capped at 30,000 tokens (120,000 patches), against at most 8,000 tokens for one image, so a video would set the startup peak. With the video limit at zero, profiling uses one image and a video request returns HTTP 400. The number of images per prompt keeps the vLLM default, because chat harnesses resend earlier images every turn.
+3. **Context and KV shrink by 0.5 GiB per rank** to make room for the tower and image preprocessing.
+4. **The image preprocessing cache is capped at 0.1 GiB.** vLLM keeps one copy in the API server and one in the engine core. Both run only on rank 0, so the 4 GiB default could take up to 8 GiB of the head's memory. An image larger than the cap is processed uncached, with a warning.
+5. **The head carries more than the peer, and that cannot be rebalanced.** Rank 0 alone runs the API server and the engine core. Measured proportional set size (Pss) at idle was 2,165 MiB for the API server and 999 MiB for the engine core, against 1,056 MiB for rank 1's headless process; nearly all of it is private anonymous memory. Tensor parallelism has no setting that shifts GPU memory between ranks, vLLM aligns every rank's KV blocks to the smallest rank, the API server and engine core cannot share one process under `vllm serve`, and moving the head to the other host only moves the load.
+6. **JIT caches are kept on disk.** Triton, TileLang and TorchInductor wrote their caches inside the container layer, so every start recompiled about 2,000 entries and some compiled while serving. During a regression run right after the 200K check below, the head fell from 4.11 to 2.88 GiB available in about 26 seconds while Triton and TileLang compiled, and the memory supervisor stopped rank 0. The launcher now points `TRITON_CACHE_DIR`, `TILELANG_CACHE_DIR` and `TORCHINDUCTOR_CACHE_DIR` into the mounted runtime cache ([storage paths](operations.md#artifact-storage-and-paths)). The head's lowest available memory during startup rose from 3.34 GiB to 4.18 GiB between the runs before and after the change (one start each).
+7. **The reserve moved from 3 to 2.5 GiB.** No kernel or container OOM kill was recorded on the reference hosts; the risk below the reserve is a GPU allocation failing inside a worker. The supervisor samples every 2 seconds and needs about 9 seconds to stop a container, so the reserve is a margin for one transient, not a floor.
+
+## Measurements
+
+### Function and regression (final profile)
+
+| Check | HTTP | Seconds | Result |
+|---|---|---:|---|
+| Synthetic image (number and background colour) | 200 | 3.74 | Correct; 323 prompt tokens, 288 of them image |
+| Same image again | 200 | 2.28 | Correct |
+| Same question without the image | 200 | 3.43 | Says no image is present; does not guess the number |
+| Text of the same length | 200 | 1.71 | Correct |
+| Short arithmetic | 200 | 2.62 | Correct |
+| Tool call, then tool result | 200 / 200 | 2.07 / 3.21 | Tool call emitted; answer uses the tool result |
+| Video | 400 | 0.58 | `At most 0 video(s) may be provided in one prompt` |
+
+Times are single runs measured from a remote client and include SSH overhead. An earlier start of the same profile with the 4 GiB image cache default also passed the image and tool checks, and the [prefix cache check](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard) restored 13,824 tokens.
+
+### 200K text request
+
+One request built to 199,652 prompt tokens, with a passphrase in the middle, returned the passphrase with `finish_reason: stop` after 506.1 seconds (whole request, including prefill; one run). It ran on the image profile before the reserve and JIT cache changes. The head's lowest available memory during it was 3.31 GiB, and no supervised stop occurred. The ZCode stream idle timeout of 700,000 ms covers this time.
+
+### Memory (final profile)
+
+| | Idle after startup | After one image | During 200K `/tokenize` | After the regression checks |
+|---|---:|---:|---:|---:|
+| Rank 0 API server Pss (MiB) | 2,165 | 2,201 | 2,220 | 2,329 |
+| Rank 0 engine core Pss (MiB) | 999 | 1,005 | 1,005 | 1,007 |
+| Rank 0 worker Pss (MiB) | 6,292 | 6,297 | — | 6,300 |
+| Rank 1 headless process Pss (MiB) | 1,056 | 1,056 | — | 1,056 |
+| Rank 0 available (GiB) | 4.19 | 4.16 | 4.06 | 4.01 |
+| Rank 1 available (GiB) | 5.56 | 5.51 | — | 5.53 |
+
+- Lowest available during startup: 4.18 GiB (rank 0) and 5.36 GiB (rank 1). Over the first half hour of serving, including diagnostic sampling, rank 0's lowest was 3.84 GiB, 1.34 GiB above the reserve.
+- One 200K `/tokenize` call took 0.22–0.31 seconds and caused no visible peak (one sample).
+- The first image request compiled six Triton kernels while serving; the caches kept them. The resulting dip on rank 0 was below 0.1 GiB.
+- The API server's anonymous memory grows with use (+164 MiB over these checks). Of its 2.3 GiB, about 1.26 GiB exceeds rank 1's headless process: the heap (+126 MiB), glibc malloc arenas (+255 MiB), other mappings (+138 MiB) and one anonymous mapping of about 624 MiB whose owner was not identified.
+
+## Limits and open items
+
+- Only one small synthetic image was tested. Images near the 8,000-token limit, many images in one session, and image quality in general are unmeasured.
+- The MTP draft is text-only; its acceptance rate on image requests is unmeasured. LPA with images is not validated (LPA ships disabled).
+- Sending an image from the ZCode or Claude Code user interface has not been checked; the requests above used the API directly.
+- A request shape seen for the first time can still compile kernels while serving. After a restart or profile change, send representative requests (image, long text, tool call) before interactive use so that compilation happens while it is observed. Whether the kernels cached during serving remove those warnings on the next start is not yet confirmed.
+- The API server's unidentified 624 MiB mapping and its slow growth over long sessions are not characterized. `MALLOC_ARENA_MAX` could affect at most the 255 MiB in arenas.
+- One active sequence only; multiple sequences, long-term reliability and harness acceptance remain open.

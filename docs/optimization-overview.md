@@ -6,7 +6,7 @@ One page showing which measure acts on which inference stage, what was adopted, 
 
 ## Baseline
 
-The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); see the separate [32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15) and [release candidate measurements](benchmarks.md#release-candidate-measurements) for the earlier 200K combination; [256K checks](benchmarks.md#real-input-checks-at-256k) cover the current defaults with KV 3 GiB per rank.
+The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); see the separate [32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15) and [release candidate measurements](benchmarks.md#release-candidate-measurements) for the earlier 200K combination; [256K checks](benchmarks.md#real-input-checks-at-256k) cover the text-only alternative with KV 3 GiB per rank, and [image input at 200K](vision.md) the current defaults.
 
 ## Where each measure acts
 
@@ -66,7 +66,7 @@ flowchart LR
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
 | P05 SM121 backend selection | Fit candidate widths to existing kernels | Rejected (width 2176 unsupported, numerical criteria unmet) | — (reference attention retained) | [Probe](component-validation.md#direct-padded-native-attention-probe) |
 | P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Held (components retained, no serving integration) | — (not integrated) | [CSA2](indexer-reuse.md) |
-| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [current 256K checks](benchmarks.md#real-input-checks-at-256k) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
+| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [256K checks](benchmarks.md#real-input-checks-at-256k) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
 
 ### Operations (not a performance measure)
 
@@ -95,7 +95,7 @@ All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, 
 
 ## Performance and capacity Q&A
 
-These answers explain how to assess extensions of the current configuration. The adopted 256K limit is 262,144 input-plus-output tokens; 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
+These answers explain how to assess extensions of the current configuration. The 256K text-only profile's limit is 262,144 input-plus-output tokens (the distributed image profile uses 204,800); 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
 
 ### Q. With 3 GiB of KV cache per rank, can the configuration consistently accommodate a 256K context?
 
