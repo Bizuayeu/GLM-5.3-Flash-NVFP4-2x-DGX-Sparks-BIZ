@@ -125,7 +125,7 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 
 ## 受け入れ試験で使うreasoning設定
 
-この固定GLMテンプレートは常にassistantのthinkingブロックを開始し、オフ指定を読みません。`thinking=false`／`enable_thinking=false`を送らず、思考を有効のまま使います。[公式モデルカード](https://huggingface.co/zai-org/GLM-5.3-Flash)は`reasoning_effort=low/high/max`（既定max）を案内し、チャットには`clear_thinking=true`を推奨しています。lowはチャット試験のprofileであり、maxで行う公式品質評価の再現とは区別します。今回と一致するparser/template不整合は[vLLM #54744](https://github.com/vllm-project/vllm/issues/54744)で報告され、[修正PR #54825](https://github.com/vllm-project/vllm/pull/54825)は確認時点で未マージでした。任意のイメージに修正済みとは仮定しません。
+この固定GLMテンプレートは常にassistantのthinkingブロックを開始し、オフ指定を読みません。`thinking=false`／`enable_thinking=false`を送らず、思考を有効のまま使います。[公式モデルカード](https://huggingface.co/zai-org/GLM-5.3-Flash)は`reasoning_effort=low/high/max`（既定max）を案内し、チャットには`clear_thinking=true`を推奨しています。lowはチャット試験のprofileであり、maxで行う公式品質評価の再現とは区別します。ZCodeではセッションのeffortを`/effort <level>`（別名`/variant`。`/effort list`が現在値と選択肢`low`／`medium`／`high`／`xhigh`／`max`を表示）で切り替え、OpenAI互換providerには`reasoning_effort`として届きます。運用上の注意：`max`ではこのテンプレートは実質際限なく思考を続け、通常のコーディングターンでも`max_tokens`と時間の大半をthinkingブロックに費やします。日常の作業は`high`以下にし、`max`は意図して一問だけ難問を解かせる時に限ります。今回と一致するparser/template不整合は[vLLM #54744](https://github.com/vllm-project/vllm/issues/54744)で報告され、[修正PR #54825](https://github.com/vllm-project/vllm/pull/54825)は確認時点で未マージでした。任意のイメージに修正済みとは仮定しません。
 
 通常の受け入れは最終回答、構造化ツール要求、実行結果、承認境界で判定します。推論文・token列の完全再現やバッチ間ビット一致は別の数値診断へ分け、不一致の記録を残します。不一致をすべてタスク失敗とみなすことも、最終回答が一致しただけでモデル全体の正しさを証明したとみなすこともしません。ゴールデン検証は同時実行1、並列は性能・品質を分けて評価します。
 
