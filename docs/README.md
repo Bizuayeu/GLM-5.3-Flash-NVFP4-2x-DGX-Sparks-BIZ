@@ -8,7 +8,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| README | What is deployed, supported hardware, beta scope, enterprise objectives | [EN](../README.md) | [JA](../README.ja.md) |
+| README | What is deployed, supported hardware, beta scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | — |

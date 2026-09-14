@@ -50,7 +50,7 @@ GPU部品の検査は、全FP8 byteコードと選定したFP32 scale（符号�
 
 [起動設定](startup-configuration.ja.md)で `validation.component_worker=true` を指定し、LPA/MTPをoff、検証済みimageを使います。head側で `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record` を実行します。driverは全応答、実token数、A/B/Aの再現性、時間サンプル、rankごとの重なりを保存します。対応するprofiler traceと資源ログも残してください。
 
-[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い企業課題、FreedomBenchの全体、ハーネス検収は別のゲートです。unpack融合の既定値は、運用者が試験済みprofileを選ぶまでoffのままです。
+[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。unpack融合の既定値は、運用者が試験済みprofileを選ぶまでoffのままです。
 
 ## Decode Graphのfixture独立評価
 

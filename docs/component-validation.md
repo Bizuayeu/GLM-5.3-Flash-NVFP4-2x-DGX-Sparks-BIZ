@@ -50,7 +50,7 @@ The [indexer components](indexer-reuse.md) are retained for further evaluation. 
 
 Use `validation.component_worker=true` with LPA/MTP off and the verified image in the [startup configuration](startup-configuration.md). On the head, run `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record`. The driver stores all responses, actual token counts, A/B/A repeatability, timing samples and per-rank overlap. Retain the corresponding profiler traces and resource logs.
 
-The [serial LPA/MTP/fused-unpack/async comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) now has limited paired task, timing, capacity and cancellation evidence. Broader enterprise tasks, the full FreedomBench matrix and harness qualification remain separate gates. The default fused-unpack setting remains off until the operator selects a tested profile.
+The [serial LPA/MTP/fused-unpack/async comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) now has limited paired task, timing, capacity and cancellation evidence. Broader business tasks, the full FreedomBench matrix and harness qualification remain separate gates. The default fused-unpack setting remains off until the operator selects a tested profile.
 
 ## Independent decode Graph fixture
 

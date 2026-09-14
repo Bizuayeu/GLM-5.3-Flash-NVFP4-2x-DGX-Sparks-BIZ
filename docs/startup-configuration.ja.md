@@ -31,7 +31,7 @@
 | 投機・近似 | MTP k=3、LPA cut32／tail512／B128、未使用MLA query省略 |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | 生成 | temperature=0、max_tokens=512、reasoning_effort=low、clear_thinking=true |
-| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕5 GiB |
+| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕4 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 
 **導入時はimage ID、両機の接続情報、MTP view、LPA projectorとhashを準備してください。** imageとprojectorのゼロ値は差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
@@ -48,7 +48,7 @@
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
 
-`validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。実験用のローカル制御経路であり、企業利用の認定ではありません。
+`validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。実験用のローカル制御経路であり、業務利用の認定ではありません。
 
 `runtime.index_checks` は `auto`／`sync`／`async`（配布既定） を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。MTP/LPA/fusionの直列併用はP18／P22で範囲を限定して確認済みです。
 

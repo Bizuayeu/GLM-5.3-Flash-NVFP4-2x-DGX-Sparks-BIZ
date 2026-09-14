@@ -86,7 +86,7 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 
 | Workload | Profile | Basis | Caveat |
 |---|---|---|---|
-| Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. Enterprise and harness acceptance pending |
+| Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. Business-use and harness acceptance pending |
 | Prefix-reuse-heavy | APC + LPA (P22, B = 128) + `dense` retention, no MTP | Repeated-input and mid-edit A/B/A | Grow the shared cache with exact priming; cold requests slightly slower |
 | Throughput | Two sequences, no LPA, chunk 512 (1024 if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
 | Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Beta without routine qualification |

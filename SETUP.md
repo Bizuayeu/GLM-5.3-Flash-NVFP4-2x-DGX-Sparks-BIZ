@@ -132,7 +132,7 @@ Use the qualified launcher, worker first then head, as described in [operations]
 
 Run the [harness acceptance matrix](docs/harnesses.md) for **both official ZCode and Claude Code CLI**. Basic API success alone does not close either client target. Keep client versions, non-secret settings and separate case results. Review [artifact-specific licensing](docs/licensing.md) before distributing a deployment.
 
-Keep this service on a trusted network. The host-network containers expose distributed control ports to reachable peers; loopback API binding alone does not protect rendezvous. Public exposure, authentication/TLS, firewall policy and business availability requirements need their own deployment design. The word “Enterprise” in the project name is not a production certification.
+Keep this service on a trusted network. The host-network containers expose distributed control ports to reachable peers; loopback API binding alone does not protect rendezvous. Public exposure, authentication/TLS, firewall policy and business availability requirements need their own deployment design. The “BIZ” suffix in the project name states a business-use intent; it is not a production certification or a support commitment.
 
 ## Completion checklist and AI handoff
 

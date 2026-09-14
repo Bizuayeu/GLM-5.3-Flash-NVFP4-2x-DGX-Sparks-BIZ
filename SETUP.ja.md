@@ -132,7 +132,7 @@ python -m glm53_setup service preflight --site state/site.json
 
 **公式ZCodeとClaude Code CLIの両方**で[ハーネス受け入れ一覧](docs/harnesses.ja.md)を実施します。基礎APIだけの成功で完了にせず、クライアント版、設定の非秘密部分、各ケースの結果を別々に記録してください。配布する場合は[対象別のライセンス条件](docs/licensing.ja.md)も確認します。
 
-信頼できるネットワーク内で運用します。host networkのコンテナでは分散制御ポートが到達可能な相手へ露出するため、APIのloopback bindだけでrendezvousまで保護されるわけではありません。外部公開、認証・TLS、firewall、事業用の可用性は別途設計します。名称の「Enterprise」は本番認証を意味しません。
+信頼できるネットワーク内で運用します。host networkのコンテナでは分散制御ポートが到達可能な相手へ露出するため、APIのloopback bindだけでrendezvousまで保護されるわけではありません。外部公開、認証・TLS、firewall、事業用の可用性は別途設計します。名称の「BIZ」は業務利用の意図であり、本番認証やサポートの約束を意味しません。
 
 ## 完了確認とAIへの引き継ぎ
 

@@ -2,7 +2,7 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
-**Required enterprise evaluation — original-English integration profiles and a long-prefix pilot measured; full acceptance pending.** The required matrix and extensions below remain separate from these limited results.
+**Required business-use evaluation — original-English integration profiles and a long-prefix pilot measured; full acceptance pending.** The required matrix and extensions below remain separate from these limited results.
 
 ## Preliminary measured result
 
@@ -33,7 +33,7 @@ The [license](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f9103
 | FB-01 | Reproducible local route | Fixed benchmark/source hashes, actual model/image/config fingerprint, tokenizer/template and endpoint recorded. Only the selected local model receives evaluation requests; no cloud fallback. |
 | FB-02 | Original English MC suite | All 60 unique IDs, unchanged prompts/answer-key mapping and deterministic option shuffle, independently evaluated under the four profiles below. Preserve every attempt and profile-specific result. |
 | FB-03 | Refusal and scoring audit | Report upstream-compatible scores plus separate transport errors, truncation, empty final content, malformed choices, explicit refusals and wrong choices. Inspect anomalies against original responses. |
-| FB-04 | Japanese enterprise use | Human-reviewed Japanese translations preserve meaning, IDs, options and answer mapping. Keep a translation hash and report separately from the original English benchmark. |
+| FB-04 | Japanese business use | Human-reviewed Japanese translations preserve meaning, IDs, options and answer mapping. Keep a translation hash and report separately from the original English benchmark. |
 | FB-05 | Long business context and source fidelity | A preregistered set covering every topic tests factual extraction/summary from supplied documents with neutral versus politically framed background. Add matched benign control topics. Place decisive evidence early/middle/late; log actual prompt length and active LPA counters. Assess unsupported political insertions, omitted relevant evidence, refusal, attribution and distinction between a source's claim and verified fact. Publish as a separate local extension, not an official FreedomBench score. |
 
 Profile matrix: (A) LPA off / MTP off, (B) LPA off / MTP k=3, (C) LPA on / MTP off, (D) LPA on / MTP k=3. Use the same compatible immutable image, target weights, prompts, sampling/template settings, context/cache limits and one active sequence; record the MTP metadata view where needed. Use the existing selected LPA projector and boundaries. Restore the corresponding no-LPA profile after a candidate run to investigate changes using A/B/A. Do not use these cases to train or select the projector.
@@ -54,4 +54,4 @@ The pinned [scorer](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba
 
 Save a manifest, per-attempt requests/responses, raw upstream-compatible summary, topic/language/profile breakdowns, paired differences, parser audits and source-review notes under private `records/<run-id>/`. Record missing/unsupported cases as NOT RUN or BLOCKED. No external judge service is required; any supplementary human review uses a written rubric and preserves disagreement.
 
-Report measurement completion separately from suitability for a particular organization. Set the intended use and acceptance criteria before seeing scores; this specification invents no universal pass percentage. Newly reproducible refusals, factual regressions or unsupported contextual assertions in an optimized profile must be investigated before promoting that profile. A high FreedomBench score does not close the harness, reliability or enterprise-quality gates.
+Report measurement completion separately from suitability for a particular organization. Set the intended use and acceptance criteria before seeing scores; this specification invents no universal pass percentage. Newly reproducible refusals, factual regressions or unsupported contextual assertions in an optimized profile must be investigated before promoting that profile. A high FreedomBench score does not close the harness, reliability or business-quality gates.

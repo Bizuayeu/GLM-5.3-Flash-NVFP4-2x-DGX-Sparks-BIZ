@@ -1,4 +1,6 @@
-# GLM-5.3-Flash on 2× DGX Spark Enterprise Setup
+# GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
+
+**BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
 **BETA — a limited full-model TP=2 reference profile has been tested. Production and harness qualification are not complete.**
 
@@ -27,9 +29,9 @@ Original project code is **Apache-2.0**. Adapted MIT and Apache notices are reta
 
 See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets and remain untested.
 
-## Enterprise-use objectives
+## Business-use objectives (BIZ)
 
-This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems easier to evaluate, adapt and operate for enterprise use**. Its engineering work covers three connected concerns:
+This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems easier to evaluate, adapt and operate for business use**. Its engineering work covers three connected concerns:
 
 - **License and provenance selection:** prefer commercially usable MIT/Apache components, pin their origin and preserve notices. The [licensing guide](docs/licensing.md) distinguishes the terms for code, weights, containers and harnesses.
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
@@ -37,7 +39,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 
 For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). The distributed startup template enables this serial optimized profile; see [startup defaults and required assets](docs/startup-configuration.md#distributed-defaults).
 
-Enterprise readiness is an acceptance outcome, not implied by this project's name. Completed measurements and remaining gates are identified below and in the linked validation documents.
+Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified below and in the linked validation documents.
 
 ## What works in this beta
 

@@ -1,1 +1,1 @@
-"""Checkout-local tools for the GLM-5.3-Flash enterprise setup beta."""
+"""Checkout-local tools for the GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ beta."""

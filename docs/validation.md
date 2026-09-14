@@ -65,7 +65,7 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
-[FreedomBench and political-context evaluation](freedombench.md) is a required enterprise evaluation item. One original-English profile has preliminary measurements; the four-profile matrix, Japanese/long-context extensions and human audits remain unqualified. The linked document owns the result and its LPA-bypass limitation.
+[FreedomBench and political-context evaluation](freedombench.md) is a required business-use evaluation item. One original-English profile has preliminary measurements; the four-profile matrix, Japanese/long-context extensions and human audits remain unqualified. The linked document owns the result and its LPA-bypass limitation.
 
 Official ZCode and Claude Code CLI are separate, required targets in the [harness acceptance matrix](harnesses.md). Their end-to-end cases are NOT RUN; the basic API smoke below does not close the complete matrix or client integration cases.
 

@@ -101,7 +101,7 @@ timeout_seconds = 600 # Same timeout as the measured experiment client
 # 実験時の予算を継承。規模を増やす場合は再計測。
 container_memory_gib = 112
 minimum_available_gib = 108
-reserve_gib = 5
+reserve_gib = 4
 run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 

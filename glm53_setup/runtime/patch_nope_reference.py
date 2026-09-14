@@ -100,7 +100,7 @@ def prepare(package):
     )
     backend = add_candidate_order(backend)
     changed = (
-        "# Modified by GLM-5.3-Flash on 2x DGX Spark Enterprise Setup contributors.\n"
+        "# Modified by GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ contributors.\n"
         "# Changes: GLM NoPE zero-padding, canonical logical candidates and reference attention.\n"
         "# Original vLLM notices below remain applicable; see distribution NOTICE.\n"
     )

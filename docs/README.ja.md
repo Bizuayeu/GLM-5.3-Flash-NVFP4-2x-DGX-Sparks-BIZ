@@ -8,7 +8,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| README | 導入するもの、対応機体、ベータ版の範囲、企業利用の目的 | [EN](../README.md) | [JA](../README.ja.md) |
+| README | 導入するもの、対応機体、ベータ版の範囲、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | — |

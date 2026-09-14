@@ -36,7 +36,7 @@ class StartupConfigTests(unittest.TestCase):
             self.assertEqual(env["GLM53_FUSED_UNPACK"], "1")
             self.assertIn("GLM53_APC_LPA_CONFIG", env)
         self.assertEqual(profile["resources"]["run_seconds"], 0)
-        self.assertEqual(profile["resources"]["reserve_gib"], 5)
+        self.assertEqual(profile["resources"]["reserve_gib"], 4)
 
     def test_index_check_mode_is_explicit_without_disabling_validation(self):
         self.assertNotIn(

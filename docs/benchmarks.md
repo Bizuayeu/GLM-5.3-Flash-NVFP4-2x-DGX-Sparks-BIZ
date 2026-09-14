@@ -107,7 +107,7 @@ The higher 2K TPOT includes pauses while other requests prefill; it does not mea
 
 Each arm also passed four deterministic answer/extraction cases at client concurrency 1 and 2 (eight answers), plus two concurrent tool round trips with distinct order IDs and returned confirmation codes. This is limited task evidence, not general language-quality, cancellation or tenant-isolation qualification. Host available memory stayed above 11.4 GiB on rank 0 and 12.5 GiB on rank 1 across all arms, with a 4 GiB test guard and no OOM. Rank 0 stopped with exit 0; rank 1 still required forced termination (exit 137, not OOM) during the controlled stop.
 
-**Decision:** accept independent seqs=2 within the tested 32/2,048-input, 64-output-token workload at at most two concurrent requests: roughly 76–78% more short-input aggregate output and 26% more at 2K versus the serial controls. Retain seqs=1 as the default and latency control. LPA remains incompatible with this multi-sequence profile. MTP/fusion/Graphs combinations, four sequences, long-context quality/performance, sustained load and recovery require separate gates. This does not grant enterprise or routine-service qualification.
+**Decision:** accept independent seqs=2 within the tested 32/2,048-input, 64-output-token workload at at most two concurrent requests: roughly 76–78% more short-input aggregate output and 26% more at 2K versus the serial controls. Retain seqs=1 as the default and latency control. LPA remains incompatible with this multi-sequence profile. MTP/fusion/Graphs combinations, four sequences, long-context quality/performance, sustained load and recovery require separate gates. This does not grant business-use or routine-service qualification.
 
 ### Maximum-length capacity check
 
@@ -242,7 +242,7 @@ After timing/quality, a fresh server process used one profiler start/stop. Six o
 | CPU synchronization APIs, rank 0 | 23 | 1 | About 23 |
 | CPU synchronization APIs, rank 1 | 22 | 0 | About 22 |
 
-Kernel launches increased: this small gain is associated with reduced synchronization/copying, distinct from kernel fusion. Edge-window synchronization counts can include profiler control; the restored fraction of about 0.03 events/token is not interpreted as changed model work. Invalid-index device assertions can invalidate the CUDA context. This limited test does not certify general recovery or enterprise quality.
+Kernel launches increased: this small gain is associated with reduced synchronization/copying, distinct from kernel fusion. Edge-window synchronization counts can include profiler control; the restored fraction of about 0.03 events/token is not interpreted as changed model work. Invalid-index device assertions can invalidate the CUDA context. This limited test does not certify general recovery or business-use quality.
 
 ## Serial integration of MTP, LPA, fused unpack and async checks (P18)
 
@@ -299,7 +299,7 @@ The near-complete 8,705-token hit leaves only one input token to process; its ap
 
 All three arms passed six long extraction/revisit requests, a long tool round trip and 12K-input SSE disconnect/follow-up. The 12,763-token document requests deliberately interleaved distinct documents; all three APC-on revisits had 8,704 cached tokens and correct answers. The tool-result continuation also reused 8,704 tokens and returned the expected value. All cold-prefix requests had zero hits. These are limited task checks, not general language-quality certification.
 
-Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad enterprise qualification are not established by the configured context limit. LPA coexistence is evaluated separately under the [P22 exact-cache contract](apc-lpa-design.md).
+Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad business-use qualification are not established by the configured context limit. LPA coexistence is evaluated separately under the [P22 exact-cache contract](apc-lpa-design.md).
 
 ## APC-first LPA crossover measurement (P22)
 

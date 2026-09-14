@@ -31,7 +31,7 @@ The distributed TOML selects the serial optimized profile. This is a configurati
 | Speculation/approximation | MTP k=3, LPA cut32/tail512/B128, unused MLA queries skipped |
 | Checks/parallelism | Async index checks, EP off, no PP split |
 | Generation | temperature=0, max_tokens=512, reasoning_effort=low, clear_thinking=true |
-| Resources | Container112 GiB, startup free108 GiB, runtime reserve5 GiB |
+| Resources | Container112 GiB, startup free108 GiB, runtime reserve4 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 
 **Supply image IDs, both nodes' connection details, the MTP view, and the LPA projector/hash before launch.** Zero image/projector hashes are placeholders to replace; missing assets never silently disable features. [Operations](operations.md#artifact-storage-and-paths) owns their placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.
@@ -48,7 +48,7 @@ See [launch contracts and operational validation](launch-safety.md) for authenti
 
 `runtime.pipeline_parallel_size=1` retains TP=2. Setting it to2 selects TP=1/PP=2 on the same two nodes and requires `GLM53_PIPELINE_API=1`. `pipeline_split_layer` sets the first stage's layer count; the default candidate24 produces stages24/21, each with21 MoE layers in this pinned model. It is not a memory-fit guarantee. Both stages must contain MLA, so this checkpoint accepts boundaries4–43. Initial scope is one sequence, eager and no EP/MTP/LPA/fusion/APC. The [small-fixture observations](component-validation.md#eight-layer-pp-observations) do not qualify full-model speed, long-context numerical equivalence or production use. Include both keys explicitly when updating a TOML.
 
-`validation.expert_worker=true` exposes the typed `expert_info` diagnostic for actual placement, kernel and parameter metadata. It supports the independent eager TP2 baseline and EP arms with up to two sequences; other validation workers, MTP/LPA/APC and PP are excluded. Layer hashing begins only after an explicit `pipeline_observe` RPC. Do not install those hooks during performance measurement. This is an experimental local control endpoint, not an enterprise qualification receipt.
+`validation.expert_worker=true` exposes the typed `expert_info` diagnostic for actual placement, kernel and parameter metadata. It supports the independent eager TP2 baseline and EP arms with up to two sequences; other validation workers, MTP/LPA/APC and PP are excluded. Layer hashing begins only after an explicit `pipeline_observe` RPC. Do not install those hooks during performance measurement. This is an experimental local control endpoint, not a business-use qualification receipt.
 
 `runtime.index_checks` accepts `auto`, `sync` or `async` (the distribution default). Auto preserves synchronous checks in eager execution and selects asynchronous checks for Graphs. Explicit async enables the independently measured eager path; it requires `GLM53_ASYNC_INDEX_CHECK_API=1`. Checks are always performed. Invalid indices in async mode can invalidate the CUDA context, requiring both ranks to restart. Graphs reject explicit sync. The serial MTP/LPA/fusion combination has scoped P18/P22 evidence.
 
