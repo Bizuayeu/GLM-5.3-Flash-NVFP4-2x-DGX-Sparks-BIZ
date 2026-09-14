@@ -86,6 +86,7 @@ served_model_name = "glm-5.3-flash-nvidia"
 reasoning_parser = "glm45"
 tool_call_parser = "glm47"
 auto_tool_choice = true
+prompt_tokens_details = true # Report usage.prompt_tokens_details.cached_tokens (harness cache display) / prefix cache hit数をusageで返す
 
 [generation]
 # Defaults used by `startup ask`; these are request options, not vLLM flags.

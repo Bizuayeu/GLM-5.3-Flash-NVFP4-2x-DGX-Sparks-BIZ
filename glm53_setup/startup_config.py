@@ -31,6 +31,7 @@ def validate(profile):
             optional = {
                 "startup.runtime": {"cuda_allocator_conf"},
                 "startup.cache": {"prefix_cache_retention_interval"},
+                "startup.api": {"prompt_tokens_details"},
             }.get(path, set())
             if path.startswith("startup.nodes["):
                 optional = {"additional_rails"}
@@ -301,6 +302,8 @@ def serve_args(profile, rank, model_path):
                 args.append("--no-enable-chunked-prefill")
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
+    if profile["api"].get("prompt_tokens_details"):
+        args.append("--enable-prompt-tokens-details")
     for key in ("kv_cache_memory_bytes", "block_size"):
         args += ["--" + key.replace("_", "-"), str(profile["cache"][key])]
     if "prefix_cache_retention_interval" in profile["cache"]:

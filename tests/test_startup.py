@@ -108,6 +108,25 @@ class StartupConfigTests(unittest.TestCase):
                 "GLM53_FUSED_UNPACK", config.environment(self.profile, rank)
             )
 
+    def test_prompt_tokens_details_flag_is_optional_and_explicit(self):
+        self.profile["api"]["prompt_tokens_details"] = True
+        config.validate(self.profile)
+        self.assertIn(
+            "--enable-prompt-tokens-details",
+            config.serve_args(self.profile, 0, "/hf/model"),
+        )
+        self.profile["api"]["prompt_tokens_details"] = False
+        self.assertNotIn(
+            "--enable-prompt-tokens-details",
+            config.serve_args(self.profile, 0, "/hf/model"),
+        )
+        self.profile["api"].pop("prompt_tokens_details")
+        config.validate(self.profile)
+        self.assertNotIn(
+            "--enable-prompt-tokens-details",
+            config.serve_args(self.profile, 0, "/hf/model"),
+        )
+
     def test_graph_combination_scope_is_explicit_until_integration(self):
         for section, key, value in (
             ("mtp", "enabled", True),
