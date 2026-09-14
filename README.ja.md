@@ -36,7 +36,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 本リポジトリをソース・固定参照・ビルド手順として配る限り、必要なのはApache-2.0の条件だけです。重みや完成イメージを再配布する場合に、それぞれの条件が加わります。取り込んだMIT・Apacheの通知は保持します。EXL3/TR3重み、DFlash2重み、Mia現行AGPL版を導入する構成ではありません。
 
-[商用利用・改造・再配布の整理](docs/licensing.ja.md)に、対象別の許諾範囲と義務をまとめています。[ハーネス連携](docs/harnesses.ja.md)では公式ZCodeと実験的なClaude Code接続を扱い、両方を必須の受け入れ対象にしています。実接続テストは未実施です。
+[商用利用・改造・再配布の整理](docs/licensing.ja.md)に、対象別の許諾範囲と義務をまとめています。[ハーネス連携](docs/harnesses.ja.md)では公式ZCodeと実験的なClaude Code接続を扱い、両方を必須の受け入れ対象にしています。実施状態の正典はその文書です。
 
 ## 業務利用に向けた取り組み（BIZ）
 
@@ -68,7 +68,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
-| ZCode／Claude Codeのハーネス連携 | 必須の受け入れ項目を定義。**未実施** |
+| ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。公式ZCode DesktopとClaude Codeのクライアント試験は**未完了**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
 | Prefix caching（APC）・APC優先LPA・checkpoint保持・同時実行1 | APCは実測した直列の長文prefix再利用の実験用途で受入、起動テンプレートで有効。APC優先LPAは校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。checkpoint保持は履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)と[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |

@@ -36,7 +36,7 @@ Licensing at a glance. Each artifact keeps its own terms; obligations and the ra
 
 Distributing this repository as source, pinned references and build steps requires only Apache-2.0 compliance. Redistributing weights or built images adds those artifacts' conditions. Adapted MIT and Apache notices are retained. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
 
-See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets and remain untested.
+See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets, and that document is the single source for their run status.
 
 ## Business-use objectives (BIZ)
 
@@ -68,7 +68,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
 | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
-| ZCode / Claude Code harness integration | Required acceptance tests defined; **not run** |
+| ZCode / Claude Code harness integration | Basic API group passed; official ZCode Desktop and Claude Code client cases **not closed** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
 | MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
 | Prefix caching (APC), APC-first LPA and checkpoint retention, one active sequence | APC accepted for the measured serial long-prefix reuse workload (experimental), enabled in the startup template; APC-first LPA calibrated, combined with MTP/fusion/async checks and checked on held-out documents; checkpoint retention adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352, with the block-independent `dense` setting equivalent in the measured layout and its final combined integration qualified separately; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) and [contracts](docs/launch-safety.md) |
 | Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the startup template; [overview](docs/optimization-overview.md) |

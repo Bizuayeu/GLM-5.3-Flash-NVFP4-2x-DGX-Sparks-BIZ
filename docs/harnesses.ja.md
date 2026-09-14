@@ -1,8 +1,8 @@
 # ハーネス連携と受け入れ試験
 
-[English](harnesses.md) · [セットアップ](../SETUP.ja.md) · [ライセンス](licensing.ja.md)
+[English](harnesses.md) · [セットアップ](../SETUP.ja.md) · [ライセンス](licensing.ja.md) · [検証範囲](validation.ja.md)
 
-ハーネスは、モデルと会話し、ファイル操作・ツール実行・履歴・承認を管理するクライアントです。GPU上の推論サーバーとは別の部品です。**公式ZCodeとClaude Codeの両経路を必須対象とし、クライアント試験はNOT RUNです。基礎APIには別途スモーク結果がありますが、ハーネス連携確認済みではありません。** フルモデルTP=2の起動・API検収が前提です。
+ハーネスは、モデルと会話し、ファイル操作・ツール実行・履歴・承認を管理するクライアントです。GPU上の推論サーバーとは別の部品です。**本書はハーネスの接続方針、受け入れ試験一覧、その実施状態の唯一の正典です。** 他の文書は状態を書き写さず、本書を参照します。全クライアント試験の前提は、フルモデルTP=2の起動と基礎API群の合格です。
 
 ## 接続方針
 
@@ -18,33 +18,43 @@ ZCodeは[公式サイト](https://zcode.z.ai/en)でGLM向けの公式ハーネ�
 
 [Z.aiのClaude Code案内](https://docs.z.ai/devpack/tool/claude)は主に同社クラウドサービスへの接続です。一方、[Anthropicの現行案内](https://code.claude.com/docs/en/llm-gateway)は非Claudeモデルへのroutingをサポートしないと明記します。前者の案内を後者の公式サポート保証と解釈せず、技術的な動作確認と利用契約を別々に扱います。
 
+## ZCodeの配布形態
+
+「ZCode」は一つの成果物ではありません。受け入れの対象も外向き通信の事実も配布形態で異なるため、本書では分けて呼びます。
+
+| 配布形態 | 実体 | 本書での役割 |
+|---|---|---|
+| 公式Desktop GUI | [公式インストーラー](https://zcode.z.ai/en/docs/install)のElectronアプリ。providerはModel Settingsで追加する | 必須の受け入れ対象 |
+| 公式Desktop同梱CLI | Desktopインストール内の`resources/glm/zcode.cjs` | 確認した版では対話起動できない（状態欄を参照） |
+| npm `zcode-app-cli` | 非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)。ZCode runtimeを同梱し独自TUIを足す（独自コードはMIT、ZCode本体は上流の条件） | 補助証拠のみ。公式対象のケースを閉じない |
+
 ## 初回接続の候補手順
 
-以下は**フルモデル起動後に試す設定案**です。今のベータ版の起動ガードを迂回しません。実行時にはクライアントの版と配布元、サーバーのGitコミット・イメージID・model revision・起動引数を記録します。
+以下は**フルモデル起動後に試す設定案**であり、検収済みの配備手順ではありません。ベータ版の起動ガードを迂回しません。実行時にはクライアントの版と配布物hash、サーバーのソース・イメージ・revision・起動引数を先に記録します。APIポートは起動TOMLの値を使います（例示テンプレートはloopbackの8893）。
 
-管理用SSH設定のホスト名を使い、Windowsの別PowerShellでトンネルを開きます（`node-a`は例示）。
+管理用SSH設定のホスト名を使い、Windowsの別PowerShellでトンネルを開きます（`node-a`は例示。別ファイルが必要なら`-F`を指定）。
 
 ```powershell
-ssh -N -L 127.0.0.1:8891:127.0.0.1:8891 node-a
+ssh -N -L 127.0.0.1:8893:127.0.0.1:8893 node-a
 ```
 
-実際のSSH設定に別ファイルが必要なら`-F`を指定します。API側の認証を設定している場合は、そのローカルサービス専用の資格情報を使用します。Z.aiやAnthropicのクラウドキーをローカル試験へ流用しません。
+API側の認証を設定している場合は、そのローカルサービス専用の資格情報を使用します。Z.aiやAnthropicのクラウドキーをローカル試験へ流用しません。
+
+**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。
 
 ### ZCode
 
-1. 公式配布元の版を記録し、専用の試験workspace・providerを作る。
-2. Model Settings → Add Providerから、OpenAI互換のローカルproviderを追加する。
-3. Base URLをトンネル先の`http://127.0.0.1:8891/v1`、model IDを`glm-5.3-flash-nvidia`として試す。実際の要求パスで`/v1`が二重にならないことを確認する。
-4. ローカルAPIが認証を要求するなら一致する鍵を使う。無認証loopbackへUIが非空キーを要求する場合だけ、秘密でない試験用値を使う。それは認証保護にはならない。
-5. 試験ではテキスト・ツールのみを宣言し、画像、cloud providerへのfallback、外部連携、追加エージェントを既定にしない。選択モデルと実際の接続先を確認する。
+Model Settings → Add Providerから、専用の試験workspace・providerを作ります。OpenAI互換のローカルproviderを選び、Base URLをトンネル先の`http://127.0.0.1:8893/v1`、model IDを`glm-5.3-flash-nvidia`として試します。実際の要求パスで`/v1`が二重にならないことを確認します。ローカルAPIが認証を要求するなら一致する鍵を使い、無認証loopbackへUIが非空キーを要求する場合だけ秘密でない試験用値を使います。それは認証保護にはなりません。
+
+初回はテキスト・ツールのみを宣言し、画像、cloud providerへのfallback、外部連携、追加エージェントを既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
 
 ### Claude Code CLI
 
-固定vLLMの接続例を基にした、**専用PowerShellセッション内だけ**の設定案です。空の試験workspaceで実行し、普段のprofile・資格情報を共有しないでください。`CLAUDE_CONFIG_DIR`等の対応は対象CLI版で確認します。既存のグローバル設定ファイルは編集しません。
+固定vLLMの接続例を基にした、**専用PowerShellセッション内だけ**の設定案です。空の試験workspaceで実行し、普段のprofile・資格情報を共有しません。`CLAUDE_CONFIG_DIR`等の対応は対象CLI版で確認します。既存のグローバル設定ファイルは編集しません。
 
 ```powershell
 $env:CLAUDE_CONFIG_DIR = "$PWD\.claude-local-test"
-$env:ANTHROPIC_BASE_URL = 'http://127.0.0.1:8891'
+$env:ANTHROPIC_BASE_URL = 'http://127.0.0.1:8893'
 $env:ANTHROPIC_API_KEY = 'local-test'
 $env:ANTHROPIC_AUTH_TOKEN = 'local-test'
 $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'glm-5.3-flash-nvidia'
@@ -57,21 +67,18 @@ claude --model glm-5.3-flash-nvidia
 
 この案はCLI用です。Claude Desktop、Web、Remote Controlの接続方式まで同じと仮定しません。[クライアント別の公式案内](https://code.claude.com/docs/en/llm-gateway-connect)を参照してください。CLIを閉じてもサーバーは停止しません。
 
-## ZCodeのテレメトリと外向き通信
+## ハーネスクライアントの外向き通信
 
-**ローカル推論の設定と、テレメトリの停止は別です。** [公式設定ガイド](https://zcode.z.ai/en/docs/configuration)のAPI key／Custom Providerを使い、通常・補助モデルを自前endpointへ向けます。公式アカウントでのログインはこの経路では使いません。これだけで更新確認や診断通信まで止まるとは判断しません。
+ローカル推論の設定と、テレメトリの停止は別です。下表は各配布物のbundleを静的に読んだ結果であり、実通信の採取ではありません。実通信はH-09で確認します。
 
-非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)（確認した配布版: `zcode-app-cli 3.11.2-24`）では、起動元のPowerShellで次を設定します。
+| 配布形態（確認した版） | モデル実行のtrace | その他の外向き通信 | 停止手段 |
+|---|---|---|---|
+| npm `zcode-app-cli`（3.11.2-24、runtime 0.16.5） | 環境変数`OTEL_EXPORTER_OTLP_ENDPOINT`または`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`がある時だけ送信。送信先の直書きなし | 更新確認、hostedモデルカタログ更新、公式plugin marketplaceの取得 | `ZCODE_MODEL_TELEMETRY_ENABLED=0`（`false`／`off`／`disabled`も可）、`ZCODE_DISABLE_UPDATE_CHECK=1`、`ZCODE_DISABLE_MODEL_CATALOG_REFRESH=1`、クライアント設定の`plugins.enabled=false` |
+| 公式Desktop（3.11.2） | `*.cn-beijing.log.aliyuncs.com`配下のOTLP trace収集先と、`zcode.z.ai/api/v1/`配下のイベント報告先が直書き。継承した`OTEL_*`と`ZCODE_MODEL_TELEMETRY_ENABLED`を子プロセスの環境から削除してから直書き値を注入する | `cdn-zcode.z.ai`配下の更新フィード | 設定画面・環境変数のいずれにも見つからない。止めるにはDesktopを使わないか、ネットワーク側で該当ホストを遮断する。後者は本リポジトリの範囲外の運用者判断 |
 
-```powershell
-$env:ZCODE_DISABLE_MODEL_CATALOG_REFRESH = '1'
-$env:ZCODE_DISABLE_UPDATE_CHECK = '1'
-# このPowerShellから、設定済みのZCodeランチャーを起動する
-```
+環境変数はクライアントを起動するプロセスで設定し、既存プロセスは再起動します。ネットワーク側の遮断は本リポジトリでは設定しません。適用する場合はクライアントの実行ファイルに範囲を絞り、runの記録に残します。
 
-これはモデルカタログ更新とラッパーの更新確認を抑える設定で、全テレメトリを停止するスイッチではありません。管理者権限は不要です。常用するならランチャーに設定し、既存プロセスは再起動します。**公式Desktop版で同じ環境変数が有効とは確認できていません。** 調査したDesktop配布物にはAliyun RUMの宛先文字列が含まれますが、静的な文字列の存在だけでは実際の送信を証明できません。
-
-起動後、別のPowerShellでZCodeとその子プロセスのTCP接続を確認できます。
+H-09では、別のPowerShellから起動直後と推論中にクライアントと子プロセスのTCP接続を採取し、配布形態ごとに記録します。
 
 ```powershell
 $zcodeProcesses = @(Get-CimInstance Win32_Process)
@@ -90,44 +97,44 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
     Select-Object OwningProcess, State, RemoteAddress, RemotePort
 ```
 
-起動直後と推論中に繰り返して確認し、CLIとDesktopは別に記録します。この一覧は一時点のTCP接続であり、短時間の通信、UDP、起動前後のDNS通信を網羅しません。空の結果、特にZCodeが終了している場合は「送信なし」の証明になりません。IPだけから送信先ドメインや内容も断定しません。
+一時点の採取は短時間の接続・UDP・DNSを取りこぼします。空の結果は「送信なし」の証明ではなく、アドレスだけではドメインも内容も特定できません。
 
-外向き通信を強制的に制限したい場合だけ、DNSフィルターやFirewallを追加で検討します。対象候補は `zcode.z.ai`、`api.z.ai`、`*.aliyuncs.com`（RUMを含む）です。広い遮断はクラウド機能や他のAliyun利用にも影響します。Windowsの[動的FQDNルール](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/dynamic-keywords)には管理者による設定とDefender／Network Protection等の前提があり、通常のZCode利用に必須ではありません。共有の`node.exe`を対象にすると、同じ実行ファイルを使う他のアプリもその宛先へ接続できなくなる点に注意します。本手順ではFirewallやDefender設定を自動変更しません。
-
-## 受け入れ試験一覧
+## 受け入れ試験で使うreasoning設定
 
 この固定GLMテンプレートは常にassistantのthinkingブロックを開始し、オフ指定を読みません。`thinking=false`／`enable_thinking=false`を送らず、思考を有効のまま使います。[公式モデルカード](https://huggingface.co/zai-org/GLM-5.3-Flash)は`reasoning_effort=low/high/max`（既定max）を案内し、チャットには`clear_thinking=true`を推奨しています。lowはチャット試験のprofileであり、maxで行う公式品質評価の再現とは区別します。今回と一致するparser/template不整合は[vLLM #54744](https://github.com/vllm-project/vllm/issues/54744)で報告され、[修正PR #54825](https://github.com/vllm-project/vllm/pull/54825)は確認時点で未マージでした。任意のイメージに修正済みとは仮定しません。
 
 通常の受け入れは最終回答、構造化ツール要求、実行結果、承認境界で判定します。推論文・token列の完全再現やバッチ間ビット一致は別の数値診断へ分け、不一致の記録を残します。不一致をすべてタスク失敗とみなすことも、最終回答が一致しただけでモデル全体の正しさを証明したとみなすこともしません。ゴールデン検証は同時実行1、並列は性能・品質を分けて評価します。
 
-**ZCode／Claude Codeのクライアント試験はNOT RUNです。ローカルAPIには初期スモークの証跡がありますが、Anthropic streamingや境界・異常系を含むAPI一覧の全検収は未完了です。** API群の後に共通群Hを両ハーネスで別々に実施し、実リクエストと成果物で判定します。文書・ソースの存在や小型fixtureの合格では代用しません。
+## 受け入れ試験一覧と実施状態
 
-| ID | 対象 | 操作と合格条件 |
-|---|---|---|
-| API-01 | 基礎API | `/v1/models`のserved IDと選択先が一致。短い日本語・英語の要求がローカルモデルから正常応答する |
-| API-02 | 基礎API | Chat Completionsの通常応答とSSE。終端・UTF-8・reasoning／最終回答の区別が壊れない |
-| API-03 | 基礎API | 無害なツールの要求→JSON引数検証→結果返送→最終回答。複数往復でID対応を維持する |
-| API-04 | Anthropic互換API | Messagesの通常応答・SSE・tool_use/tool_result・count_tokensを検査。応答形式・終端・usageを確認する |
-| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する |
-| ZC-02 | ZCode | 画像非対応の初期プロファイルを尊重。クラウドの既定モデルへ無断で置換されない |
-| CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない |
-| CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる |
-| H-01 | 両方 | 小さな試験repoの2ファイルを読み、実内容に基づく説明を返す。未読内容を読んだと報告しない |
-| H-02 | 両方 | 小さなバグを1件修正し、許可したファイルだけに意図したdiffが生じる |
-| H-03 | 両方 | 許可したローカルテストを実行し、終了コードと実ログに一致する成否を報告する |
-| H-04 | 両方 | 無害なmarkerファイル作成を一度拒否し、作成されないことを確認。承認を迂回しない |
-| H-05 | 両方 | 読み取り→編集→検査の複数ツール往復で引数・結果・順序を維持する。追加エージェントなしの初期条件で実施 |
-| H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない |
-| H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する |
-| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない |
-| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない |
-| H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する |
-| H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する |
+状態の値はPASS、PARTIAL（一部の条件のみ合格。内訳を記す）、BLOCKED（実行不能。根拠と代替を記録）、NOT RUN。API群を先に行い、共通群Hは両ハーネスで別々に実リクエストと成果物で判定します。文書・ソースの存在や小型fixtureの合格では代用しません。状態は2026-09-14時点で、run IDは非公開`records/`を指します。
 
-H-08の上限は実際のサーバー設定を正典とします。候補ランチャーは32,768ですが、クライアント側のcontext認識との整合は未確認です。並列エージェント・MCP・画像は初回合格後の別試験です。
+| ID | 対象 | 操作と合格条件 | 状態 |
+|---|---|---|---|
+| API-01 | 基礎API | `/v1/models`のserved IDと選択先が一致。短い日本語・英語の要求がローカルモデルから正常応答する | PASS（`api-acceptance-low-local`） |
+| API-02 | 基礎API | Chat Completionsの通常応答とSSE。終端・UTF-8・reasoning／最終回答の区別が壊れない | PASS（同run。chatは`reasoning_effort=low`） |
+| API-03 | 基礎API | 無害なツールの要求→JSON引数検証→結果返送→最終回答。複数往復でID対応を維持する | PASS（同run） |
+| API-04 | Anthropic互換API | Messagesの通常応答・SSE・tool_use/tool_result・count_tokensを検査。応答形式・終端・usageを確認する | PARTIAL：Messagesの通常応答とcount_tokensはモデル既定effortで合格。MessagesのSSE、tool_use/tool_result、異常系はNOT RUN |
+| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する | 公式Desktop GUIはNOT RUN。Desktop同梱CLIはBLOCKED：対話起動が`@zcode/tui`パッケージ不在で失敗（[zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)）、GLMへの要求は未送信。補助証拠としてnpm `zcode-app-cli` 3.11.2-24で、トンネル先のprovider・served IDの選択・日本語の往復・headless promptへのローカルモデル応答を確認 |
+| ZC-02 | ZCode | 画像非対応の初期プロファイルを尊重。クラウドの既定モデルへ無断で置換されない | ZC-01と同じ：公式はNOT RUN／BLOCKED。npm配布のスモークでは通常・liteの両方がローカルserved IDに固定され、カタログ更新は無効 |
+| CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない | NOT RUN |
+| CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる | NOT RUN |
+| H-01 | 両方 | 小さな試験repoの2ファイルを読み、実内容に基づく説明を返す。未読内容を読んだと報告しない | NOT RUN |
+| H-02 | 両方 | 小さなバグを1件修正し、許可したファイルだけに意図したdiffが生じる | NOT RUN |
+| H-03 | 両方 | 許可したローカルテストを実行し、終了コードと実ログに一致する成否を報告する | NOT RUN |
+| H-04 | 両方 | 無害なmarkerファイル作成を一度拒否し、作成されないことを確認。承認を迂回しない | NOT RUN |
+| H-05 | 両方 | 読み取り→編集→検査の複数ツール往復で引数・結果・順序を維持する。追加エージェントなしの初期条件で実施 | NOT RUN |
+| H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない | NOT RUN |
+| H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する | NOT RUN |
+| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | NOT RUN |
+| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | NOT RUN |
+| H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する | NOT RUN |
+| H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する | NOT RUN（API-02／04は異なるeffort設定で実施。クライアントごとの変換は未試験） |
+
+H-08の上限は起動TOMLの実サーバー設定を正典とし、クライアント側のcontext認識との整合は未確認です。並列エージェント・MCP・画像は初回合格後の別試験です。
 
 ## 記録と合否
 
-非公開`records/<run-id>/`に、case ID、harness名・版・配布物hash、設定の非秘密部分、サーバーとモデルの固定値、期待結果、実結果、PASS／FAIL／BLOCKED／NOT RUN、要求ID・ログ・diff・テスト結果の所在を保存します。
+非公開`records/<run-id>/`に、case ID、harness名・配布形態・版・hash、設定の非秘密部分、サーバーとモデルの固定値、期待結果、実結果、PASS／PARTIAL／FAIL／BLOCKED／NOT RUN、要求ID・ログ・diff・テスト結果の所在を保存します。ケースの状態が変わったら、同じ変更で上表を更新します。
 
-ZCodeとClaude Codeの結果は分けて集計します。片方の合格で他方を完了扱いにしません。非対応・未実装・契約上の制約が判明した場合も必須ケースを消さず、BLOCKEDと根拠・代替案を記録します。API互換性の不足が確認できた場合だけ、上流修正または小さな変換アダプターを検討し、そのライセンスと追加テストを明記します。
+ZCodeとClaude Codeの結果は分けて集計し、ZCodeの中でも配布形態ごとに分けます。片方の合格で他方を完了扱いにしません。非対応・未実装・契約上の制約が判明した場合も必須ケースを消さず、BLOCKEDと根拠・代替案を記録します。API互換性の不足が確認できた場合だけ、上流修正または小さな変換アダプターを検討し、そのライセンスと追加テストを明記します。

@@ -67,7 +67,7 @@ CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供しま�
 
 [FreedomBench・政治的文脈の評価](freedombench.ja.md)は、業務利用向けの必須評価項目です。英語原版の1構成には予備実測がありますが、4構成の一覧、日本語・長文への拡張、人手監査は未検収のままです。結果とそのLPA迂回の制約は、リンク先の文書が正典です。
 
-公式ZCodeとClaude Code CLIは、[ハーネス受け入れ一覧](harnesses.ja.md)における別々の必須対象です。両者の端から端までのケースはNOT RUNです。後述の基礎APIスモークは、一覧全体もクライアント連携のケースも終わらせません。
+公式ZCodeとClaude Code CLIは、[ハーネス受け入れ一覧](harnesses.ja.md)における別々の必須対象で、ケース別の状態はその一覧が正典です。後述の基礎APIスモークは一覧のAPI群に反映され、クライアント連携のケースを終わらせません。
 
 [2台でのNCCL通信検証](nccl-validation.ja.md)は、固定したbase imageで試験したcollectiveのパターンに合格しています。その範囲はtransportと合成データの正当性であり、参照Attentionやフルモデルとは別です。
 
