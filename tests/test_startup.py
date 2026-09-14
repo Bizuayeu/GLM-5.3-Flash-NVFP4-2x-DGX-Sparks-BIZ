@@ -46,6 +46,15 @@ class StartupConfigTests(unittest.TestCase):
         self.assertEqual(profile["resources"]["run_seconds"], 0)
         self.assertEqual(profile["resources"]["reserve_gib"], 3)
 
+    def test_reserve_accepts_fractional_gib(self):
+        self.profile["resources"]["reserve_gib"] = 2.5
+        config.validate(self.profile)
+        for bad in ("2.5", float("nan"), 0.5):
+            profile = copy.deepcopy(self.profile)
+            profile["resources"]["reserve_gib"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_jit_caches_live_in_the_mounted_runtime_cache(self):
         for rank in (0, 1):
             env = config.environment(self.profile, rank)
