@@ -55,6 +55,43 @@ Use the server root URL here: the CLI appends the Messages path. `local-test` is
 
 This is a CLI plan. Desktop, web and Remote Control have different configuration/support boundaries; consult [Anthropic's per-surface guide](https://code.claude.com/docs/en/llm-gateway-connect). Closing the client does not stop the model server.
 
+## ZCode telemetry and outbound traffic
+
+**Local inference routing and telemetry suppression are separate settings.** Use API key / Custom Provider from the [official configuration guide](https://zcode.z.ai/en/docs/configuration), pointing both main and helper models at your endpoint without official account login for this route. This alone does not establish that update or diagnostic traffic stops.
+
+For the unofficial [terminal wrapper](https://github.com/kingsword09/zcode-cli) (inspected distribution: `zcode-app-cli 3.11.2-24`), set these variables in the launching PowerShell:
+
+```powershell
+$env:ZCODE_DISABLE_MODEL_CATALOG_REFRESH = '1'
+$env:ZCODE_DISABLE_UPDATE_CHECK = '1'
+# Start your configured ZCode launcher from this PowerShell
+```
+
+These suppress model catalog refresh and the wrapper's update check; they are not a universal telemetry switch. Administrator privileges are unnecessary. For regular use, set them in the launcher and restart existing processes. **The same variables have not been verified to work in official Desktop.** The inspected Desktop distribution contains Aliyun RUM destination strings, but static strings alone do not establish actual transmission.
+
+After startup, inspect TCP connections for ZCode and its children from another PowerShell:
+
+```powershell
+$zcodeProcesses = @(Get-CimInstance Win32_Process)
+$zcodeIds = @($zcodeProcesses | Where-Object {
+    $_.Name -eq 'ZCode.exe' -or
+    ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'zcode')
+} | Select-Object -ExpandProperty ProcessId)
+do {
+    $previousCount = $zcodeIds.Count
+    $zcodeIds = @($zcodeIds + @($zcodeProcesses | Where-Object {
+        $_.ParentProcessId -in $zcodeIds
+    } | Select-Object -ExpandProperty ProcessId) | Sort-Object -Unique)
+} while ($zcodeIds.Count -gt $previousCount)
+Get-NetTCPConnection -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess -in $zcodeIds } |
+    Select-Object OwningProcess, State, RemoteAddress, RemotePort
+```
+
+Repeat just after startup and during inference, recording CLI and Desktop separately. This is a TCP snapshot, not coverage of short-lived connections, UDP or startup DNS activity. Empty results, especially when ZCode is closed, do not prove absence of transmission. IP addresses alone also do not establish destination domains or payloads.
+
+Consider additional DNS filtering or firewall rules only when enforced outbound restrictions are needed. Candidate destinations are `zcode.z.ai`, `api.z.ai` and `*.aliyuncs.com` (including RUM). Broad blocking can affect cloud features and other Aliyun use. Windows [dynamic FQDN rules](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/dynamic-keywords) require administrative configuration and Defender / Network Protection prerequisites; they are not required for ordinary ZCode use. Targeting a shared `node.exe` also prevents other applications using that executable from reaching those destinations. This guide does not automatically change Firewall or Defender settings.
+
 ## Required acceptance matrix
 
 For this fixed GLM template, keep thinking active. It always starts an assistant thinking block and does not read an off switch; avoid `thinking=false` / `enable_thinking=false`. The [model card](https://huggingface.co/zai-org/GLM-5.3-Flash) documents `reasoning_effort=low/high/max`, defaulting to max, and recommends `clear_thinking=true` for chat. Low effort is a chat test profile, not a claim to reproduce max-effort leaderboard scores. The matching parser/template leak is tracked in [vLLM #54744](https://github.com/vllm-project/vllm/issues/54744); [PR #54825](https://github.com/vllm-project/vllm/pull/54825) was open and unmerged when reviewed. Do not assume an arbitrary image includes it.

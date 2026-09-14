@@ -57,6 +57,43 @@ claude --model glm-5.3-flash-nvidia
 
 この案はCLI用です。Claude Desktop、Web、Remote Controlの接続方式まで同じと仮定しません。[クライアント別の公式案内](https://code.claude.com/docs/en/llm-gateway-connect)を参照してください。CLIを閉じてもサーバーは停止しません。
 
+## ZCodeのテレメトリと外向き通信
+
+**ローカル推論の設定と、テレメトリの停止は別です。** [公式設定ガイド](https://zcode.z.ai/en/docs/configuration)のAPI key／Custom Providerを使い、通常・補助モデルを自前endpointへ向けます。公式アカウントでのログインはこの経路では使いません。これだけで更新確認や診断通信まで止まるとは判断しません。
+
+非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)（確認した配布版: `zcode-app-cli 3.11.2-24`）では、起動元のPowerShellで次を設定します。
+
+```powershell
+$env:ZCODE_DISABLE_MODEL_CATALOG_REFRESH = '1'
+$env:ZCODE_DISABLE_UPDATE_CHECK = '1'
+# このPowerShellから、設定済みのZCodeランチャーを起動する
+```
+
+これはモデルカタログ更新とラッパーの更新確認を抑える設定で、全テレメトリを停止するスイッチではありません。管理者権限は不要です。常用するならランチャーに設定し、既存プロセスは再起動します。**公式Desktop版で同じ環境変数が有効とは確認できていません。** 調査したDesktop配布物にはAliyun RUMの宛先文字列が含まれますが、静的な文字列の存在だけでは実際の送信を証明できません。
+
+起動後、別のPowerShellでZCodeとその子プロセスのTCP接続を確認できます。
+
+```powershell
+$zcodeProcesses = @(Get-CimInstance Win32_Process)
+$zcodeIds = @($zcodeProcesses | Where-Object {
+    $_.Name -eq 'ZCode.exe' -or
+    ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'zcode')
+} | Select-Object -ExpandProperty ProcessId)
+do {
+    $previousCount = $zcodeIds.Count
+    $zcodeIds = @($zcodeIds + @($zcodeProcesses | Where-Object {
+        $_.ParentProcessId -in $zcodeIds
+    } | Select-Object -ExpandProperty ProcessId) | Sort-Object -Unique)
+} while ($zcodeIds.Count -gt $previousCount)
+Get-NetTCPConnection -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess -in $zcodeIds } |
+    Select-Object OwningProcess, State, RemoteAddress, RemotePort
+```
+
+起動直後と推論中に繰り返して確認し、CLIとDesktopは別に記録します。この一覧は一時点のTCP接続であり、短時間の通信、UDP、起動前後のDNS通信を網羅しません。空の結果、特にZCodeが終了している場合は「送信なし」の証明になりません。IPだけから送信先ドメインや内容も断定しません。
+
+外向き通信を強制的に制限したい場合だけ、DNSフィルターやFirewallを追加で検討します。対象候補は `zcode.z.ai`、`api.z.ai`、`*.aliyuncs.com`（RUMを含む）です。広い遮断はクラウド機能や他のAliyun利用にも影響します。Windowsの[動的FQDNルール](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/dynamic-keywords)には管理者による設定とDefender／Network Protection等の前提があり、通常のZCode利用に必須ではありません。共有の`node.exe`を対象にすると、同じ実行ファイルを使う他のアプリもその宛先へ接続できなくなる点に注意します。本手順ではFirewallやDefender設定を自動変更しません。
+
 ## 受け入れ試験一覧
 
 この固定GLMテンプレートは常にassistantのthinkingブロックを開始し、オフ指定を読みません。`thinking=false`／`enable_thinking=false`を送らず、思考を有効のまま使います。[公式モデルカード](https://huggingface.co/zai-org/GLM-5.3-Flash)は`reasoning_effort=low/high/max`（既定max）を案内し、チャットには`clear_thinking=true`を推奨しています。lowはチャット試験のprofileであり、maxで行う公式品質評価の再現とは区別します。今回と一致するparser/template不整合は[vLLM #54744](https://github.com/vllm-project/vllm/issues/54744)で報告され、[修正PR #54825](https://github.com/vllm-project/vllm/pull/54825)は確認時点で未マージでした。任意のイメージに修正済みとは仮定しません。
