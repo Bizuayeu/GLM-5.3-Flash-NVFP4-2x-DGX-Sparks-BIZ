@@ -35,7 +35,7 @@ CLIが終了コード0でも完了要求数0の場合があります。[結果�
 - TPOT／ITL: 公式クライアントの値と実出力長を記録する。TPOTから換算したdecode速度と、全要求の出力throughputは区別する。
 - 全体throughput: 測定区間に完了した出力tokenの合計／秒。単一要求の生成速度とは呼ばない。
 - E2E遅延: 要求ごとの値を保存し、取得できるclient/server待ち時間も区別する。
-- メモリ: 各機の利用可能メモリ最小値、コンテナのcurrent/peak/eventsを記録する。cgroupの値は重みbytesそのものではなく、GPU割当をすべて含むとも限らないため、ランタイムとホスト側の観測を併用する。
+- メモリ: 各機の利用可能メモリ最小値、コンテナのcurrent/peak/eventsを記録する。cgroupの値は重みbytesそのものではなく、GPU割当をすべて含むとも限らないため、ランタイムとホスト側の観測を併用する。各記録のコンテナ上限とhost reserveはそのrun時点の条件であり、配布既定は[examples/startup.example.toml](../examples/startup.example.toml)が正典。
 - 失敗: 全要求の完了と出力token数を確認し、エラー・短すぎる終了・中断・OOMを別記する。warmupや初回コンパイルを定常値に混ぜない。
 
 実行前にDocker以外のホスト作業とfabric通信も確認します。他作業を勝手に止めず、共有負荷が残る場合は明記します。初期の少数サンプルはbaseline・中央値の確認用で、本番p95/p99 SLAの証明には使いません。速度と併せて実文の応答、SSE、ツール往復、[ハーネス受け入れ](harnesses.ja.md)を検査します。
