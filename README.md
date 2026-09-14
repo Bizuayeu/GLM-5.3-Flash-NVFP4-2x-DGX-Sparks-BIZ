@@ -87,6 +87,7 @@ The fixture keeps the original widths, experts and selected tensor bytes, but is
 - Python 3.11+ for checkout-local tools. CPU checks run on Windows and Linux.
 - Linux ARM64, NVIDIA GPU-enabled Docker and a GB10 GPU for GPU validation.
 - Two suitable systems and a verified QSFP/RoCE path for the planned TP=2 configuration.
+- Host kernel: the measurements used `6.17.0-1032-nvidia`. Current DGX OS updates install `7.0.0-1019-nvidia`, whose defaults can break two-host RoCE; keep the previous kernel or boot with `kho=off`. See [host kernel and multi-node RoCE](docs/operations.md#host-kernel-and-multi-node-roce).
 - Storage on each deployment node for approximately 205 GB of model files, plus images, caches and optional fixtures. A full checkpoint does not fit one 128 GB node.
 
 ## Start from a checkout

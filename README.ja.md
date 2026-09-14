@@ -87,6 +87,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - ツール用にPython 3.11以上。CPU検査はWindows・Linuxで実行可能。
 - GPU検証にはLinux ARM64、NVIDIA GPU対応Docker、GB10。
 - TP=2には2台の実機と、検証済みのQSFP/RoCE接続。
+- ホストカーネル：実測は `6.17.0-1032-nvidia`。現在の DGX OS の更新で入る `7.0.0-1019-nvidia` は、既定設定のままだと2台間のRoCEが失敗することがあるため、旧カーネルを使い続けるか `kho=off` で起動する。[ホストカーネルと複数ノードRoCE](docs/operations.ja.md#ホストカーネルと複数ノードroce)を参照。
 - 各配置先に約205 GBの重み、加えてイメージ・cache・任意のfixtureを保存できる容量。全checkpointは128 GBの1台には収まりません。
 
 ## checkoutから準備する

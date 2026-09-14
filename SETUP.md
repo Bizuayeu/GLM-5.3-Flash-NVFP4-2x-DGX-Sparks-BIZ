@@ -27,6 +27,7 @@ Run read-only inventory on **each** host and save outputs privately:
 ```sh
 date -Is
 uname -a
+cat /proc/cmdline
 cat /etc/os-release
 nvidia-smi
 free -h
@@ -41,7 +42,9 @@ ibdev2netdev
 
 If a diagnostic is missing, record that fact and install only the required vendor-supported package within the deployment authorization. Do not blanket-upgrade the OS, driver or firmware as a diagnostic step. Compare both inventories; do not assume their interface names, HCA names or GID indices match.
 
-**Checkpoint:** both hosts accessible; resource and storage budget recorded; cable status known. Without the cable, continue steps 2–4 when their prerequisites hold and leave step 5 pending.
+**Kernel:** if `uname -r` shows `7.0.0-1019-nvidia`, or pending updates would install it, choose between keeping `6.17.0-1032-nvidia` and booting with `kho=off` as described in [host kernel and multi-node RoCE](docs/operations.md#host-kernel-and-multi-node-roce), before step 5. With that kernel's defaults, two-host RoCE can fail with `ibv_reg_mr_iova2 ... Cannot allocate memory`.
+
+**Checkpoint:** both hosts accessible; resource and storage budget recorded; kernel and boot parameters recorded; cable status known. Without the cable, continue steps 2–4 when their prerequisites hold and leave step 5 pending.
 
 ## 2. Prepare the same checkout on both hosts
 

@@ -45,6 +45,27 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 3. `build-reference` でreference imageを一度だけビルドする。base digestはロックから取る。複製する場合は、検証済みのローカル回線越しにDockerのimage save/loadを使い、実際のimage IDを比較する。
 4. [GPU 1台の検証](validation.ja.md)を実施する。image、精度、sourceのhash、生成した記録をまとめて保存する。
 
+## ホストカーネルと複数ノードRoCE
+
+**更新を入れる前と、2台で動かす手順の前に、カーネルを確認してください。** 本リポジトリの実測は、MSI EdgeXpert（MS-C931）上の `6.17.0-1032-nvidia`、ドライバー 580.173.02、ConnectX-7 ファームウェア 28.45.4028 で行いました。カーネル `7.0.0-1019-nvidia` は、ここでは未検証です。
+
+2026-09-15 時点の更新では、`linux-nvidia-hwe-24.04` 系のメタパッケージが `7.0.0-1019-nvidia` へ上がり、580 open ドライバーのモジュールもそのカーネル向けに入ります。`apt` の更新でも DGX Dashboard の更新でも入るため、新しく導入した機体も最初の更新の後はこのカーネルで起動します。
+
+このカーネルの既定設定では、2台間の RoCE 越しの NCCL が `NCCL WARN Call to ibv_reg_mr_iova2 failed with error Cannot allocate memory` で失敗することがあります。報告では、モデルのロードは済み、vLLM のプロファイル中や TP 通信で失敗し、`ib_write_bw` などの RDMA 単体試験は正常に見えます。NVIDIA の[更新に関する告知](https://forums.developer.nvidia.com/t/dgx-spark-update-advisory/383254)（2026-09-13）は、複数ノード・RoCE 構成の利用者に対し、DGX Dashboard 経由を含めてこのカーネルへの更新を見送るよう求めており、修正版は示していません。単体ノードの処理に影響するかは確認されていません。
+
+[NV-Kernels PR #590](https://github.com/NVIDIA/NV-Kernels/pull/590)（未マージ。投稿者による分析で、NVIDIA の見解ではない）は、原因を Kexec HandOver（KHO）と特定しています。`7.0.0-1019-nvidia` のビルドは `CONFIG_KEXEC_HANDOVER_ENABLE_DEFAULT=y` です（パッケージの config で確認。`6.17.0-1032-nvidia` は KHO を既定では有効にしない）。KHO は起動時に、後の kexec 用の scratch メモリを確保し、CMA のページブロックとして解放します。その報告では約 9.3 GiB（4,761 ページブロック）で、`CmaTotal` には計上されません。RDMA のメモリ登録はページを長期間固定し、固定するページは先に CMA の外へ移す必要があります。GPU がメモリを使い込んでいるとこの移動が失敗し、登録が `ENOMEM` を返します。
+
+2台とも同じ対応にしてください。
+
+| 選択 | 手順 | 補足 |
+|---|---|---|
+| `6.17.0-1032-nvidia` を使い続ける | 更新の前に `sudo apt-mark hold linux-nvidia-hwe-24.04 linux-image-nvidia-hwe-24.04 linux-headers-nvidia-hwe-24.04 linux-modules-nvidia-580-open-nvidia-hwe-24.04 linux-tools-nvidia-hwe-24.04`。既に 7.0 を入れた場合も旧カーネルは残るので、GRUB メニューの詳細オプションから起動する（コンソール接続が必要）。 | 本リポジトリで検証済みの状態。修正版カーネルが出たら hold を外す。 |
+| `7.0.0-1019-nvidia` を KHO 無効で使う | `/etc/default/grub` の `GRUB_CMDLINE_LINUX_DEFAULT` に、既存の値を残したまま `kho=off` を足す。`sudo update-grub` の後に再起動する。`/proc/cmdline` に `kho=off` があり、`sudo ls /sys/kernel/debug/kho` が "No such file or directory" で失敗することを確認する。 | 告知スレッドに投稿された回避策。PR では KHO 無効で、2台間のメモリ登録・NCCL・TP2 の試験が通ったと報告されている。本リポジトリでは未検証。KHO は kexec による稼働中更新のための機能で、この構成では使わない。 |
+
+どちらを選んでも、提供を始める前に [NCCL 検証](nccl-validation.ja.md)とフルモデルの起動をやり直してください。
+
+同じエラーの別の報告もあります。Ubuntu 汎用の 7.0 カーネル・ドライバー 595.84 の MS-C931 機で、空きが約 118 GiB あり重みのロード前だったにもかかわらず失敗し、MSI のボードファームウェア更新（組み込みコントローラー、SoC ファームウェア、USB-C PD）で解決したとしています（[MiaAI-Lab issue #259](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/issues/259)）。メモリに余裕があるのにこのエラーが出る場合は、メーカーのファームウェアも確認してください。
+
 ## ネットワークとサイト設定
 
 明示的な実験用reference経路には[起動設定TOML](startup-configuration.ja.md)を使います。以下の `service` の説明は、別系統の候補ランチャーとその検収ゲートについてのものです。

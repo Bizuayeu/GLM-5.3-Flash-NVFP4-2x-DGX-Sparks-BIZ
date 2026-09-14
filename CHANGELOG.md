@@ -12,6 +12,8 @@
 
 ### Added
 
+- Host kernel guidance for new and updated hosts (`docs/operations.md`, bilingual): current DGX OS updates install `7.0.0-1019-nvidia`, whose default-enabled Kexec HandOver can make two-host RoCE registration fail with `ibv_reg_mr_iova2 ... Cannot allocate memory`. Record NVIDIA's advisory, the open NV-Kernels analysis, the two choices (hold `6.17.0-1032-nvidia`, or boot with `kho=off` and verify it) and a separate firmware-related report with the same error. The setup runbook now records `/proc/cmdline` and makes the kernel choice before the two-host steps; the README prerequisites point there. `7.0.0-1019-nvidia` is not validated by this repository.
+
 - Optional `runtime.vision` startup key (false when absent, explicit in the template). `true` drops `--language-model-only` from both ranks so the vision tower loads, and adds `--limit-mm-per-prompt '{"video": 0}'`: **video input stays disabled**, because startup profiling would otherwise encode a 30,000-token video. It also sets `--mm-processor-cache-gb` from the optional `cache.mm_processor_cache_gb` (0.1 when absent) instead of vLLM's 4 GiB, which is held twice on the head. Image input remains unqualified and the shipped profile stays text/tools only.
 
 - Real-input 256K capacity and three-position retrieval checks on the existing combined image, with 3 GiB KV per rank and the existing 4 GiB memory reserve. Preserve the earlier 200K speed, tool-eval and FreedomBench measurements under their original profile.

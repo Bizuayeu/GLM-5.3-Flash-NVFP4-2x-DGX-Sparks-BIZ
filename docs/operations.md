@@ -45,6 +45,27 @@ After the transfer, run `download` once to register and check the fixed snapshot
 3. Build the reference image once with `build-reference`. Its base digest comes from the lock. To replicate it, use Docker image save/load over the verified local link and compare actual image IDs.
 4. Run the [single-GPU validation](validation.md). Keep the image, precision, source hashes and generated records together.
 
+## Host kernel and multi-node RoCE
+
+**Check the kernel before installing updates and before the two-host steps.** The measurements in this repository ran on `6.17.0-1032-nvidia` with driver 580.173.02 and ConnectX-7 firmware 28.45.4028 on MSI EdgeXpert (MS-C931). Kernel `7.0.0-1019-nvidia` is not validated here.
+
+Updates available as of 2026-09-15 move the `linux-nvidia-hwe-24.04` metapackages to `7.0.0-1019-nvidia`, with the 580 open driver modules built for it. An `apt` upgrade or a DGX Dashboard update installs it, so a newly installed system boots it after its first update.
+
+With that kernel's defaults, two-host NCCL over RoCE can fail with `NCCL WARN Call to ibv_reg_mr_iova2 failed with error Cannot allocate memory`. Reports describe the model loading and then failing during vLLM profiling or tensor-parallel communication, while raw RDMA tests such as `ib_write_bw` look healthy. NVIDIA's [update advisory](https://forums.developer.nvidia.com/t/dgx-spark-update-advisory/383254) (2026-09-13) recommends that multi-node/RoCE users hold off on this kernel, including updates through DGX Dashboard, and names no fixed release. Whether single-host workloads are affected is not established.
+
+The analysis in [NV-Kernels PR #590](https://github.com/NVIDIA/NV-Kernels/pull/590) (open; a contributor's analysis, not an NVIDIA statement) traces the failure to Kexec HandOver (KHO). The `7.0.0-1019-nvidia` build sets `CONFIG_KEXEC_HANDOVER_ENABLE_DEFAULT=y` (checked in its package config; `6.17.0-1032-nvidia` does not enable KHO by default). At boot, KHO reserves scratch memory for a later kexec and releases it as CMA pageblocks, about 9.3 GiB (4,761 pageblocks) in that report, without counting them in `CmaTotal`. RDMA memory registration pins pages long-term, and pinned pages must first move out of CMA; under GPU memory pressure that migration fails and registration returns `ENOMEM`.
+
+Configure both hosts the same way:
+
+| Choice | Steps | Notes |
+|---|---|---|
+| Keep `6.17.0-1032-nvidia` | Before upgrading: `sudo apt-mark hold linux-nvidia-hwe-24.04 linux-image-nvidia-hwe-24.04 linux-headers-nvidia-hwe-24.04 linux-modules-nvidia-580-open-nvidia-hwe-24.04 linux-tools-nvidia-hwe-24.04`. If 7.0 is already installed, the previous kernel stays installed; boot it from the GRUB menu's advanced options (console access required). | The validated state of this repository. Release the holds when a fixed kernel is published. |
+| Run `7.0.0-1019-nvidia` with KHO off | Add `kho=off` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`, keeping the existing values. Run `sudo update-grub` and reboot. Confirm `kho=off` in `/proc/cmdline`; `sudo ls /sys/kernel/debug/kho` must fail with "No such file or directory". | Posted in the advisory thread. The PR reports two-host registration, NCCL and TP2 workload tests passing with KHO off. Not yet validated by this repository. KHO serves kexec-based live update, which this deployment does not use. |
+
+After either choice, repeat the [NCCL validation](nccl-validation.md) and a full-model launch before serving.
+
+A separate report with the same error, on MS-C931 systems running an Ubuntu generic 7.0 kernel with driver 595.84, failed with about 118 GiB free before weights loaded and attributes the fix to MSI board firmware updates (embedded controller, SoC firmware, USB-C PD) ([MiaAI-Lab issue #259](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/issues/259)). If the error appears without memory pressure, check the vendor firmware as well.
+
 ## Network and site configuration
 
 For the explicit experimental reference path, use [one startup TOML](startup-configuration.md). The `service` instructions below describe the separate candidate launcher and its qualification gate.
