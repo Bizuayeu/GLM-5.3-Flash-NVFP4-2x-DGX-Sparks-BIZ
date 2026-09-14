@@ -54,6 +54,9 @@ expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
 # Numeric intervals must align to the actual scheduler block; no auto guessing.
 prefix_cache_retention_interval = "dense"
 # KDA checkpointを保持。denseならMTP切替時のblock値再指定は不要。
+mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM default 4)
+# Head-only image preprocessing cache (API and engine processes each hold one).
+# runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 3221225472 # 3 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.

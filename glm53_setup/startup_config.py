@@ -30,7 +30,10 @@ def validate(profile):
         if isinstance(expected, dict):
             optional = {
                 "startup.runtime": {"cuda_allocator_conf", "vision"},
-                "startup.cache": {"prefix_cache_retention_interval"},
+                "startup.cache": {
+                    "prefix_cache_retention_interval",
+                    "mm_processor_cache_gb",
+                },
                 "startup.api": {"prompt_tokens_details"},
             }.get(path, set())
             if path.startswith("startup.nodes["):
@@ -69,6 +72,12 @@ def validate(profile):
             )
     if type(profile["runtime"].get("vision", False)) is not bool:
         raise ValueError("runtime.vision must be true or false")
+    if "mm_processor_cache_gb" in profile["cache"]:
+        size = profile["cache"]["mm_processor_cache_gb"]
+        if type(size) not in (int, float) or not math.isfinite(size) or size < 0:
+            raise ValueError(
+                "cache.mm_processor_cache_gb must be a finite nonnegative number"
+            )
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported startup schema_version")
     for key in ("reference_image", "lpa_image"):
@@ -307,6 +316,10 @@ def serve_args(profile, rank, model_path):
         # Images only. Startup profiling encodes the largest item once, and a
         # 30,000-token video would otherwise set that peak.
         args += ["--limit-mm-per-prompt", json.dumps({"video": 0})]
+        # vLLM defaults to 4 GiB, duplicated in the head's API and engine
+        # processes; this host keeps about 1 GiB above the memory reserve.
+        size = profile["cache"].get("mm_processor_cache_gb", 0.1)
+        args += ["--mm-processor-cache-gb", str(size)]
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
     if profile["api"].get("prompt_tokens_details"):

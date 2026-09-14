@@ -159,6 +159,35 @@ class StartupConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "runtime.vision"):
             config.validate(self.profile)
 
+    def test_vision_processor_cache_is_small_by_default_and_explicit(self):
+        def cache_arg(profile):
+            args = config.serve_args(profile, 0, "/hf/model")
+            if "--mm-processor-cache-gb" not in args:
+                return None
+            return args[args.index("--mm-processor-cache-gb") + 1]
+
+        self.profile["cache"].pop("mm_processor_cache_gb", None)
+        self.profile["runtime"]["vision"] = False
+        config.validate(self.profile)
+        self.assertIsNone(cache_arg(self.profile))
+        # vLLM's 4 GiB default is duplicated in the head's API and engine
+        # processes; absent the key, vision uses the small repo default.
+        self.profile["runtime"]["vision"] = True
+        config.validate(self.profile)
+        self.assertEqual(cache_arg(self.profile), "0.1")
+        self.profile["cache"]["mm_processor_cache_gb"] = 0.25
+        config.validate(self.profile)
+        self.assertEqual(cache_arg(self.profile), "0.25")
+        self.profile["cache"]["mm_processor_cache_gb"] = 0
+        config.validate(self.profile)
+        self.assertEqual(cache_arg(self.profile), "0")
+        self.profile["runtime"]["vision"] = False
+        self.assertIsNone(cache_arg(self.profile))
+        for bad in (-1, "0.1", float("nan"), True):
+            self.profile["cache"]["mm_processor_cache_gb"] = bad
+            with self.assertRaisesRegex(ValueError, "mm_processor_cache_gb"):
+                config.validate(self.profile)
+
     def test_graph_combination_scope_is_explicit_until_integration(self):
         for section, key, value in (
             ("mtp", "enabled", True),
