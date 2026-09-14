@@ -38,7 +38,7 @@ flowchart LR
 
 | 施策 | 仕組み | 採否 | 既定 | 代表値と条件 | 正典 |
 |---|---|---|---|---|---|
-| P02 LPA | cut=32（0始まり）以降の層で過去tokenのMLPを省き、末尾512 tokenは通常計算。生成時は全層 | 実測あり（実験用。一般品質は別ゲート） | on（`lpa.enabled=true`） | 8,192入力・1出力で約21.6%短縮（単独）。長文照合6件・tool往復は合格 | [LPA](lpa.ja.md) |
+| P02 LPA | cut=32（0始まり）以降の層で過去tokenのMLPを省き、末尾512 tokenは通常計算。生成時は全層 | 実測あり（実験用。一般品質は別ゲート） | 既定off。バッチ用opt-in（`lpa.enabled=true`）——近似要求は共有prefixを公開しないため | 8,192入力・1出力で約21.6%短縮（単独）。長文照合6件・tool往復は合格 | [LPA](lpa.ja.md) |
 | P03 unpack融合 | FP8 MLA cacheの復元（コピー・FP32変換・scale乗算）をTriton 1 kernelに | 実測あり（部品一致・全モデルA/B/A。受入済みのP18併用の範囲で使用） | on（`cache.fused_unpack=true`） | 8Kの1出力対照で約17%短縮。短文decodeはほぼ不変 | [部品実測](component-validation.ja.md) |
 | P11 prefill chunk | schedulerのtoken予算を128／512／1024で比較 | 既定512を維持。1024はthroughput候補、128は不採用 | 512（`context.max_num_batched_tokens`） | 1024は2Kの全体出力を約4.6%（1クライアント）／5.7%（2クライアント）改善するが最長停止が延びる | [P11](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
 

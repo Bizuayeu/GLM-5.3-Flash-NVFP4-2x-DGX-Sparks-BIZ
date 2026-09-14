@@ -14,6 +14,8 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 ## Operating scope
 
+**LPA and prefix-cache reuse are mutually exclusive, so the distributed template ships `lpa.enabled = false` and this is a batch opt-in.** An approximated request publishes nothing to the shared prefix cache, and suppression continues through the exact tail and decode, because blocks computed after an approximated region still depend on approximated history. A workload that resends a growing prompt (any chat or coding harness) therefore never accumulates a reusable prefix while LPA is on: `break_even_tokens` compares one request's prefill cost and cannot see the reuse every later request forfeits. Enable LPA for a long input that is processed once, not for a conversation.
+
 The distributed TOML enables MTP coexistence. The corrected four-layer MTP3/fused-unpack/async fixture passed eight lengths from 3 to 8,192 tokens, including active KDA state comparisons, in `integration-fixture-v36`. The subsequent [serial full-model comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) records its limited task, timing, capacity and cancellation acceptance. Component token agreement is not a general full-model quality claim.
 
 - Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.

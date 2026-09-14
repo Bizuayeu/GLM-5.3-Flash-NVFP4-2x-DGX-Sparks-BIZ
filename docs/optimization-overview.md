@@ -38,7 +38,7 @@ flowchart LR
 
 | Measure | Mechanism | Decision | Default | Representative value and condition | Owner |
 |---|---|---|---|---|---|
-| P02 LPA | Skip historical MLP rows from layer 32 onward (zero-based cut); the last 512 tokens stay exact; generation runs all layers | Measured (experimental path; general quality is a separate gate) | on (`lpa.enabled=true`) | About 21.6% shorter at 8,192 input, one output token (standalone). Six long-document checks and a tool round trip passed | [LPA](lpa.md) |
+| P02 LPA | Skip historical MLP rows from layer 32 onward (zero-based cut); the last 512 tokens stay exact; generation runs all layers | Measured (experimental path; general quality is a separate gate) | off by default; batch opt-in (`lpa.enabled=true`) because an approximated request publishes no shared prefix | About 21.6% shorter at 8,192 input, one output token (standalone). Six long-document checks and a tool round trip passed | [LPA](lpa.md) |
 | P03 fused unpack | One Triton kernel for FP8 MLA cache unpacking (copy, FP32 conversion, scale multiply) | Measured (component parity and full-model A/B/A; used within the accepted P18 combined scope) | on (`cache.fused_unpack=true`) | About 17% shorter at 8K in the one-output control; short-input decode unchanged | [Component validation](component-validation.md) |
 | P11 prefill chunk | Scheduler token budget compared at 128 / 512 / 1024 | Default 512 retained; 1024 throughput candidate; 128 rejected | 512 (`context.max_num_batched_tokens`) | 1024 improves 2K aggregate output by about 4.6% (one client) / 5.7% (two clients) but lengthens the longest stall | [P11](benchmarks.md#independent-prefill-chunk-evaluation-p11) |
 

@@ -70,7 +70,11 @@ view = "local-views/glm53-mtp-compatible"
 [lpa]
 break_even_tokens = 128 # Conservative measured cutoff; recheck after changing the workload
 # APC復元後の適用可能長がこの値を超える場合だけLPA。校正済みの保守的な候補値。負荷を変えたら再確認。
-enabled = true
+enabled = false
+# Batch opt-in only. An approximated request publishes nothing to the shared
+# prefix cache, so enabling this makes every later request re-prefill in full.
+# バッチ用のopt-in。近似した要求は共有prefix cacheへ登録されないため、
+# 有効にすると以後の要求は毎回フルprefillに戻る。
 cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり
 tail = 512 # Last prompt tokens stay exact / 末尾の通常計算を残すトークン数
 skip_mla_queries = true

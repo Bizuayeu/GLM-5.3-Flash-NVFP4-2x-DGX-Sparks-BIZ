@@ -14,6 +14,8 @@
 
 ## 使用範囲
 
+**LPAとprefix cacheの再利用は両立しないため、配布テンプレートは `lpa.enabled = false` を既定とし、バッチ用のopt-inとして扱う。** 近似した要求は共有prefix cacheに何も登録せず、抑止は通常計算の末尾とdecodeまで続く（近似区間より後ろのblockも近似履歴に依存するため）。伸びるプロンプトを毎回送り直す用途（チャット・コーディングハーネス全般）では、LPAを有効にしている限り再利用可能なprefixが育たない。`break_even_tokens` は単一要求のprefill費用しか比較しておらず、以後の全要求が失う再利用を勘定に入れられないからである。LPAは「一度だけ処理する長い入力」に使い、会話には使わない。
+
 配布用TOMLではMTP併用を有効にしている。修正済みの四層MTP3／unpack融合／async fixtureは、`integration-fixture-v36` で3〜8,192 tokenの8条件と使用中のKDA状態比較を通過した。その後の[直列フルモデル比較](benchmarks.ja.md#直列併用の評価p18)に、限定した課題・速度・容量・切断復帰の受入結果を記録している。部品のtoken一致を一般的なフルモデル品質保証とはしない。
 
 - eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1/k=3併用は `allow_mtp=true` を明示し、[起動設定TOML](startup-configuration.ja.md)では自動設定する。APCは以下のscheduler統合済みP22経路を使う。

@@ -56,7 +56,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 [One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
 
-[LPA (late-prefill approximation)](docs/lpa.md) is enabled in the distributed startup template as an experimental path, with teacher replay, corpus sampling and projector fitting tools. Its quality/speed acceptance is separate from the baseline below.
+[LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed startup template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path. Its quality/speed acceptance is separate from the baseline below.
 
 | Scope | Status |
 |---|---|

@@ -38,7 +38,10 @@ class StartupConfigTests(unittest.TestCase):
             )
             self.assertEqual(env["GLM53_ASYNC_INDEX_CHECKS"], "1")
             self.assertEqual(env["GLM53_FUSED_UNPACK"], "1")
-            self.assertIn("GLM53_APC_LPA_CONFIG", env)
+            # LPA is a batch opt-in: the distributed profile keeps prefix caching
+            # instead, because an approximated request publishes nothing.
+            self.assertNotIn("GLM53_APC_LPA_CONFIG", env)
+            self.assertNotIn("--worker-extension-cls", args)
         self.assertEqual(profile["resources"]["run_seconds"], 0)
         self.assertEqual(profile["resources"]["reserve_gib"], 3)
 
