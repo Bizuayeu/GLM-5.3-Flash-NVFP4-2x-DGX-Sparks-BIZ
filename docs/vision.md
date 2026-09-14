@@ -68,7 +68,7 @@ One request built to 199,652 prompt tokens, with a passphrase in the middle, ret
 
 - Only one small synthetic image was tested. Images near the 8,000-token limit, many images in one session, and image quality in general are unmeasured.
 - The MTP draft is text-only; its acceptance rate on image requests is unmeasured. LPA with images is not validated (LPA ships disabled).
-- Sending an image from the ZCode or Claude Code user interface has not been checked; the requests above used the API directly.
+- In one ZCode terminal session (2026-09-15, one run), the model downloaded a screenshot with a shell command, read it with the file-read tool and correctly described text that appeared only in the image. Attaching an image directly to a ZCode prompt, and Claude Code, have not been checked; the measurements above used the API directly.
 - A request shape seen for the first time can still compile kernels while serving. After a restart or profile change, send representative requests (image, long text, tool call) before interactive use so that compilation happens while it is observed. Whether the kernels cached during serving remove those warnings on the next start is not yet confirmed.
 - The API server's unidentified 624 MiB mapping and its slow growth over long sessions are not characterized. `MALLOC_ARENA_MAX` could affect at most the 255 MiB in arenas.
 - One active sequence only; multiple sequences, long-term reliability and harness acceptance remain open.
