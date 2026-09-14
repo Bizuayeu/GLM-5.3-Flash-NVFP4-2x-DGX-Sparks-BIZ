@@ -26,8 +26,8 @@ The distributed TOML selects the serial optimized profile. This is a configurati
 
 | Item | Default |
 |---|---|
-| Execution | TP=2, eager, one sequence, 204,800 tokens, chunk512 |
-| Cache | FP8, 2.5 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on |
+| Execution | TP=2, eager, one sequence, 262,144 tokens, chunk512 |
+| Cache | FP8, 3 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on |
 | Speculation/approximation | MTP k=3, LPA cut32/tail512/B128, unused MLA queries skipped |
 | Checks/parallelism | Async index checks, EP off, no PP split |
 | Generation | temperature=0, max_tokens=512, reasoning_effort=low, clear_thinking=true |

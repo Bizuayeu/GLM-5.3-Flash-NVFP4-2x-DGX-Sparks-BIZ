@@ -6,7 +6,7 @@ One page showing which measure acts on which inference stage, what was adopted, 
 
 ## Baseline
 
-The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); see the separate [32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15) and [release candidate measurements](benchmarks.md#release-candidate-measurements) for the current combined defaults at 200K with KV 2.5 GiB per rank.
+The baseline is the [catalog's dated reference point](optimization-catalog.md#baseline-and-source-ownership) measured at context 16K with 1 GiB KV per rank ([initial matrix](benchmarks.md#initial-matrix)); see the separate [32K sweep](benchmarks.md#independent-context-sweep-through-32k-p15) and [release candidate measurements](benchmarks.md#release-candidate-measurements) for the earlier 200K combination; [256K checks](benchmarks.md#real-input-checks-at-256k) cover the current defaults with KV 3 GiB per rank.
 
 ## Where each measure acts
 
@@ -66,7 +66,7 @@ flowchart LR
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
 | P05 SM121 backend selection | Fit candidate widths to existing kernels | Rejected (width 2176 unsupported, numerical criteria unmet) | — (reference attention retained) | [Probe](component-validation.md#direct-padded-native-attention-probe) |
 | P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Held (components retained, no serving integration) | — (not integrated) | [CSA2](indexer-reuse.md) |
-| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [current 200K measurements](benchmarks.md#release-candidate-measurements) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
+| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [current 256K checks](benchmarks.md#real-input-checks-at-256k) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
 
 ### Operations (not a performance measure)
 
@@ -95,17 +95,17 @@ All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, 
 
 ## Performance and capacity Q&A
 
-These answers explain how to assess extensions of the current configuration. The adopted 200K limit is 204,800 input-plus-output tokens; 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
+These answers explain how to assess extensions of the current configuration. The adopted 256K limit is 262,144 input-plus-output tokens; 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
 
-### Q. With 2.5 GiB of KV cache per rank, can the configuration consistently accommodate a 200K context?
+### Q. With 3 GiB of KV cache per rank, can the configuration consistently accommodate a 256K context?
 
-**From a KV-capacity perspective, generally yes when the model, cache precision, MTP/LPA settings, parallel layout and single active sequence remain the same.** The text represented by a token does not change its KV format or size. Input plus generated tokens must stay within the limit. The [real-input 200K checks](benchmarks.md#real-input-checks-at-200k) establish capacity and limited retrieval for this configuration.
+**From a KV-capacity perspective, generally yes when the model, cache precision, MTP/LPA settings, parallel layout and single active sequence remain the same.** The text represented by a token does not change its KV format or size. Input plus generated tokens must stay within the limit. The [real-input 256K checks](benchmarks.md#real-input-checks-at-256k) establish capacity and limited retrieval for this configuration.
 
 Changes to APC history, branching, checkpoint retention, block alignment or concurrency require checking the resulting state and allocations. Workspace and other processes' RAM usage can also vary. Distinguish KV fit from uninterrupted-operation guarantees. See [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements).
 
 ### Q. If 12.5 GiB of KV cache is available per rank, can it accommodate a 1M context?
 
-**That is a promising KV budget to test.** GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so the requirement is not exactly five times larger. It may need less than 12.5 GiB. Check the pinned runtime's cache groups and state-slot counts.
+**That is a promising KV budget to test.** GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so a budget extrapolated from the earlier 200K setting is not an exact fivefold requirement. It may need less than 12.5 GiB. Check the pinned runtime's cache groups and state-slot counts.
 
 Weights, activations, indexer workspace, the OS and other allocations must fit outside that KV budget. Verify KV allocation, total host-RAM fit and completion of a real 1M request in that order.
 
@@ -113,17 +113,17 @@ Weights, activations, indexer workspace, the OS and other allocations must fit o
 
 **It is plausible and a natural configuration to investigate for 1M.** Disabling MTP releases approximately [7 GiB per rank in measured model memory](speculative-decoding.md#measured-k1-results). MTP weights are a fixed cost; they do not grow proportionally with context length.
 
-Increasing KV from 2.5 to 12.5 GiB adds 10 GiB. Using approximately 5.2 GiB from the [current minimum available RAM](benchmarks.md#real-input-checks-at-200k), simple arithmetic leaves only `5.2 + 7 − 10 ≈ 2.2 GiB`, before extra long-context workspace. Establish the actual KV requirement and fit the remaining workspace as well. Lowering the reserve reduces retained headroom; it does not create more RAM.
+Using the earlier 200K profile as the baseline, increasing KV from 2.5 to 12.5 GiB adds 10 GiB. Using approximately 5.2 GiB from its [measured minimum available RAM](benchmarks.md#real-input-checks-at-200k), simple arithmetic leaves only `5.2 + 7 − 10 ≈ 2.2 GiB`, before extra long-context workspace. Establish the actual KV requirement and fit the remaining workspace as well. Lowering the reserve reduces retained headroom; it does not create more RAM.
 
 ### Q. How much waiting should users expect with a 1M context?
 
-**First requests and requests without useful prefix-cache reuse can spend a long time processing the input (prefill). The relevant scale is tens of minutes.** The [current 200K measurement](benchmarks.md#real-input-checks-at-200k) took about eight minutes for the whole request, including input processing; even a simple fivefold extrapolation is about 40 minutes.
+**First requests and requests without useful prefix-cache reuse can spend a long time processing the input (prefill). The relevant scale is tens of minutes.** The [earlier 200K measurement](benchmarks.md#real-input-checks-at-200k) took about eight minutes for the whole request, including input processing; even a simple fivefold extrapolation is about 40 minutes.
 
 This is neither a measured 1M time nor a TTFT guarantee. Configuration changes, computational scaling, workspace and memory bandwidth may extend it further. A reusable prefix can sometimes reduce the wait, but repeatedly rereading a large input in conversation makes this latency a practical constraint.
 
 ### Q. Could 5 GiB of KV cache per rank make concurrent serving and EP or PP worthwhile?
 
-**It creates more room to investigate concurrent requests and a reason to reevaluate EP and PP.** Doubling KV does not guarantee that two maximum-length requests fit. Check per-sequence state and real input-plus-output lengths multiplied by concurrency. Current LPA supports one active sequence, so start with LPA disabled; MTP with multiple sequences also needs separate validation.
+**It creates more room to investigate concurrent requests and a reason to reevaluate EP and PP.** Increasing KV does not guarantee that two maximum-length requests fit. Check per-sequence state and real input-plus-output lengths multiplied by concurrency. Current LPA supports one active sequence, so start with LPA disabled; MTP with multiple sequences also needs separate validation.
 
 Larger batches may improve expert-compute efficiency or pipeline utilization, while communication and stage waiting can grow too. [EP](benchmarks.md#independent-expert-parallel-evaluation-p21) and [PP](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) were not adopted for performance on the measured workloads. Different concurrency and workloads merit reevaluation; a larger KV budget alone does not establish a speedup.
 
@@ -139,4 +139,4 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 
 - P06 Graphs: lift LPA's eager constraint and qualify on the full model
 - Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started
-- P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 200K and broader long-context coverage, multiple sequences with LPA
+- P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 256K and broader long-context coverage, multiple sequences with LPA

@@ -429,6 +429,21 @@ After those three suites, the same profile processed long inputs built by repeat
 
 Both checks had zero additional preemptions and no running/waiting requests after completion. On both ranks, LPA skipped 204,224/199,583 queries respectively at each of layers35/39/43, proving approximation actually ran. A short arithmetic follow-up also passed; both supervisors and the API remained running. Two-second memory samples covering loading, all suites and final verification reached minima of 5.198/6.287 GiB available. There was no reserve stop or OOM.
 
-These results support the distributed serial defaults of 200K, KV 2.5 GiB per rank, reserve 4 GiB and no deadline. Each long check is one capacity/limited-reference trial; it does not qualify numerical identity, every 200K history-edit pattern, multiple sequences, general quality or long-term reliability. Times include prefill and are whole-request latencies, not warm identical-prefix reuse speeds.
+These results supported the earlier distributed serial defaults of 200K, KV 2.5 GiB per rank, reserve 4 GiB and no deadline. Each long check is one capacity/limited-reference trial; it does not qualify numerical identity, every 200K history-edit pattern, multiple sequences, general quality or long-term reliability. Times include prefill and are whole-request latencies, not warm identical-prefix reuse speeds.
 
 Earlier tuning attempts with KV 4 GiB/reserve 5 GiB stopped during initialization at minimum availability4.945/4.984 GiB; KV 3 GiB/reserve 5 GiB stopped near initial generation at4.962 GiB on the head. These were reserve stops, not OOM. The earlier TLS-mismatched sparkDash jobs and disconnected tool-eval run are preserved as invalid measurements and excluded from the valid results above.
+
+### Real-input checks at 256K
+
+On 2026-09-14 (Asia/Tokyo), the existing combined image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` was restarted at **262,144 input-plus-output tokens with FP8 KV 3 GiB per rank**. Profile fingerprint: `4bd8232fc2af58e8938c7a4b99f3c13f90126e8da38e2ddf43a5e2100b4931f6`. Only context and KV changed from the 200K run above: TP2/eager/one sequence, chunk512, MTP3, LPA cut32/tail512/B128, APC/dense retention, fused unpack, async index checks, the 4 GiB host reserve and no lifetime deadline were retained.
+
+The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp validation corpus and method were reused, resetting prefix cache before each long request; both ranks reported zero cached-prefix tokens. Each case ran once, with a request timeout of 1,800 seconds.
+
+| Check | Input tokens | Generated tokens | Whole-request seconds | Result |
+|---|---:|---:|---:|---|
+| Full capacity | 262,080 | 64 | 581.961 | Exactly 262,144 total tokens; forced 64-token generation with finite logprobs |
+| Three-position retrieval | 261,595 | 131 | 565.989 | All three identifiers recovered; normal stop |
+
+Neither request increased preemption. A short arithmetic request passed afterward; both ranks and the API remained running, with no OOM or memory-guard stop. Two-second supervision from launch through these checks recorded minimum available RAM of **4.162 / 5.183 GiB** (head/peer).
+
+These scoped checks support the distributed **256K / 3 GiB-per-rank** defaults. They do not rerun or transfer the earlier 200K speed, tool-eval or FreedomBench scores to this profile, or qualify general long-context quality, every history-edit pattern, multiple sequences, actual harness behavior or long-term reliability. The test timeout is separate from client defaults; long cold requests need enough client waiting time.

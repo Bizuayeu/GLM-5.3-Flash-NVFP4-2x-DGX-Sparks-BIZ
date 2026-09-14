@@ -28,9 +28,9 @@ class StartupConfigTests(unittest.TestCase):
             env = config.environment(profile, rank)
             spec = json.loads(args[args.index("--speculative-config") + 1])
             self.assertEqual(spec["num_speculative_tokens"], 3)
-            self.assertEqual(args[args.index("--max-model-len") + 1], "204800")
+            self.assertEqual(args[args.index("--max-model-len") + 1], "262144")
             self.assertEqual(
-                args[args.index("--kv-cache-memory-bytes") + 1], "2684354560"
+                args[args.index("--kv-cache-memory-bytes") + 1], "3221225472"
             )
             self.assertIn("--enable-prefix-caching", args)
             self.assertEqual(

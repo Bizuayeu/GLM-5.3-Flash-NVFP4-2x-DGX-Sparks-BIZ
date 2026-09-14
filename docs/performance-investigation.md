@@ -4,7 +4,7 @@
 
 The [performance and quality catalog](optimization-catalog.md) ([日本語](optimization-catalog.ja.md)) owns the initiative list, dated baseline and next-version comparison fields. This document owns the detailed investigation procedures.
 
-See the [performance and capacity Q&A](optimization-overview.md#performance-and-capacity-qa) for KV budgets, 200K/1M contexts, waiting times and concurrent serving.
+See the [performance and capacity Q&A](optimization-overview.md#performance-and-capacity-qa) for KV budgets, 256K/1M contexts, waiting times and concurrent serving.
 
 These are measurement hypotheses, not diagnosed bottlenecks or promised speedups. Keep prefill latency, per-request decode latency and aggregate throughput separate. Nominal LPDDR bandwidth alone does not establish the cost of quantized MoE routing, sparse attention, scheduling or communication.
 

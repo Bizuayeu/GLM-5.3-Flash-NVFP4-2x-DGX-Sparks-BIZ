@@ -52,7 +52,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 ## What works in this beta
 
-**Distributed defaults select the serial optimized profile at 200K, KV 2.5 GiB per rank, reserve4 GiB and no lifetime deadline.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for speed, tool-eval and real 200K inputs, including the unmet tool-eval Safety Gate.
+**Distributed defaults select the serial optimized profile at 256K, KV 3 GiB per rank, reserve4 GiB and no lifetime deadline.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) validate the new context/KV defaults.
 
 [One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
 
@@ -76,7 +76,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
 
-[Canonical sparse candidate ordering](docs/candidate-order.md) is a shared GLM runtime change, enabled by default in newly built reference images. Updating source requires a rebuild; existing images and containers do not acquire the patch automatically. The [setup runbook](SETUP.md#4-prepare-images-and-test-the-reference-implementation) makes this an explicit installation step. The initial optimization comparisons used pre-change images. The candidate-order guide above records the subsequent full-model combined regression; [release measurements](docs/benchmarks.md#release-candidate-measurements) cover the current combination and real 200K inputs. A runtime rebuilt at another site still needs qualification.
+[Canonical sparse candidate ordering](docs/candidate-order.md) is a shared GLM runtime change, enabled by default in newly built reference images. Updating source requires a rebuild; existing images and containers do not acquire the patch automatically. The [setup runbook](SETUP.md#4-prepare-images-and-test-the-reference-implementation) makes this an explicit installation step. The initial optimization comparisons used pre-change images. The candidate-order guide above records the subsequent full-model combined regression; [release measurements](docs/benchmarks.md#release-candidate-measurements) cover the earlier 200K combination; [256K checks](docs/benchmarks.md#real-input-checks-at-256k) cover the current context/KV defaults. A runtime rebuilt at another site still needs qualification.
 
 ## Related research outside this repository
 
