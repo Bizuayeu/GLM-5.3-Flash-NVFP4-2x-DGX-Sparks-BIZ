@@ -40,13 +40,13 @@ ssh -N -L 127.0.0.1:8893:127.0.0.1:8893 node-a
 
 API側の認証を設定している場合は、そのローカルサービス専用の資格情報を使用します。Z.aiやAnthropicのクラウドキーをローカル試験へ流用しません。
 
-**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。ZCodeの`yolo`ではその拒否リストは参照されないため、[既存ファイルガード](#zcodeの権限モードと既存ファイルガード)が同ディレクトリへの`Write`／`Edit`を確認に変えます。シェル経由の書き込みは同ガードの破壊的パターン判定に委ねられます。
+**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。ZCodeの`yolo`ではその拒否リストは参照されないため、[既存ファイルガード](#zcodeの権限モードモデル上限既存ファイルガード)が同ディレクトリへの`Write`／`Edit`を確認に変えます。シェル経由の書き込みは同ガードの破壊的パターン判定に委ねられます。
 
 ### ZCode
 
 Model Settings → Add Providerから、専用の試験workspace・providerを作ります。OpenAI互換のローカルproviderを選び、Base URLをトンネル先の`http://127.0.0.1:8893/v1`、model IDを`glm-5.3-flash-nvidia`として試します。実際の要求パスで`/v1`が二重にならないことを確認します。ローカルAPIが認証を要求するなら一致する鍵を使い、無認証loopbackへUIが非空キーを要求する場合だけ秘密でない試験用値を使います。それは認証保護にはなりません。
 
-初回はテキスト・ツールのみを宣言し、画像、cloud providerへのfallback、外部連携、追加エージェントを既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
+初回はテキスト・ツールのみを宣言し、画像、cloud providerへのfallback、外部連携、追加エージェントを既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。モデルの`limit.context`をサーバの`max_model_len`に合わせ、`limit.output`は32000に留め、`modelStream.idleTimeoutMs`を長文prefillの実測より大きくします（[モデル上限](#zcodeの権限モードモデル上限既存ファイルガード)を参照）。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
 
 ### Claude Code CLI
 
@@ -67,7 +67,7 @@ claude --model glm-5.3-flash-nvidia
 
 この案はCLI用です。Claude Desktop、Web、Remote Controlの接続方式まで同じと仮定しません。[クライアント別の公式案内](https://code.claude.com/docs/en/llm-gateway-connect)を参照してください。CLIを閉じてもサーバーは停止しません。
 
-## ZCodeの権限モードと既存ファイルガード
+## ZCodeの権限モード・モデル上限・既存ファイルガード
 
 以下はDesktop同梱runtime（`resources/glm/zcode.cjs`、Desktop 3.11.2、runtime 0.16.5、2026-09-14）の静的読解に基づきます。版に束縛された事実であり、クライアント更新後は再確認します。受け入れケースを閉じるものではありません。
 
@@ -82,6 +82,10 @@ claude --model glm-5.3-flash-nvidia
 **ガード。** [examples/zcode-hooks/exists-guard.cjs](../examples/zcode-hooks/exists-guard.cjs)は「`yolo`で走らせ、既にあるものを変える時だけ確認する」を実装します。`Edit`は常に確認、`Write`は対象が存在すれば確認・新規なら許可、クライアント自身の`.zcode`配下への`Write`／`Edit`は確認（前述の拒否リストは`yolo`下では効かないため）、`Bash`は破壊的パターン（`rm`、`mv`、`cp`、`patch`、`Remove-Item`／`Copy-Item`、`git reset`／`clean`／`apply`、`/dev/null`と`NUL`以外へのリダイレクト等）に一致すれば確認・それ以外は許可、他のツールには関与しません。[examples/zcode-hooks/config.hooks.example.json](../examples/zcode-hooks/config.hooks.example.json)が`hooks.events.PreToolUse`の登録形（`type: "process"`、`command: "node"`）と`hooks.enabled`の有効化を示します。スクリプトはリポジトリ外に複製し、動作していた設定の複製を残し、スキーマ拒否された項目が設定ファイル全体を無効にすることを前提にします。runtimeはhookの終了コード0を判定、2を拒否として読み、それ以外の終了・起動失敗・timeoutは該当ツール呼び出しの失敗になります。GUIはシェルの`PATH`を継承しないため、適用する設定ではインタプリタを絶対パスで指定し、項目のtimeoutは上位の`hooks.timeoutMs`に委ねます。
 
 **確認した挙動（`20260914-zcode-exists-guard`、Desktop同梱CLIのheadless `--prompt`、ローカルモデル）。** 新規ファイルへの`Write`は許可され、ファイルが作られました。既存ファイルへの`Write`は`ask`に変わり、headlessには承認クライアントが無いためツール呼び出しが拒否され（"No permission client configured"）、ファイルは無変更でした。`Bash`のケースはZCode経由では未実施です。該当プロンプトの前にローカルAPIが応答しなくなり（再試行すべて`ECONNRESET`）、`Bash`分岐はスクリプト単体のstdin自己試験（`ls`は許可、`rm`／`Remove-Item`は確認）でしか確認していません。TUIやDesktopでは同じ`ask`が確認ダイアログになります。Desktop GUIは未実施です。
+
+**モデル上限と圧縮予算。** custom modelの各項目は`limit.context`と`limit.output`を持ちます。`limit.context`はクライアントのcontext窓になり（未設定なら200000）、`limit.output`は`maxOutputTokens`として毎リクエストの`max_tokens`に載ります（未設定なら32000）。固定GLMテンプレートは常にthinkingブロックを出し、vLLMはそれも`max_tokens`に数えるため、小さい値は思考＋本文を`finish_reason: length`で切ります。自動圧縮（既定strategy `preflight-v1`）は有効窓＝`limit.context` − min(`limit.output`, 21000)、発火＝有効窓 − 13000です。帰結は二つ。残ったままの小さな値は極端に早く圧縮を始め（32768／4096なら約15.7Kトークン）、また`limit.output`は`max_model_len` −（有効窓 − 13000）より小さく保つ必要があります。vLLMはprompt＋`max_tokens`が`max_model_len`を超える要求を拒否するためで、`max_model_len = 262144`ならその上限は約34000です。`limit.output`は32000に留め、モデル公称の64K〜128Kへは上げません。`limit.context`はサーバの`max_model_len`に合わせ、サーバprofileを変えたら両方を同時に変えます。既存セッションが作成時のモデル定義を保持するかは未確認なので、上限変更後は新しいセッションで始めます。
+
+**ストリームのidle timeout。** `modelStream.idleTimeoutMs`（bundleの既定600000、試験設定では60000）は要求送信から最初のSSEイベントまでも数え、ローカルサーバはprefill中に何も流しません。期限切れでクライアントは中断し、同じpromptで再試行し、再試行ごとに30秒を足して最大11回まで繰り返すため、prefillがこの値を超える長文ターンは完了しません。実測の要求全体遅延は200Kで473秒、256Kへの比例見積で約606秒なので、試験設定は700000にしています。`0`はtimerを無効にしますが停止検知を失います。`network.timeout`は補助HTTPクライアントに配線されており、モデルのストリームも縛るかは未確認です。
 
 **限界。** `Bash`の判定は文字列の経験則で漏れがあり、代替は`Bash`を全て確認にすることです。ガードはmatcherに合致するツール（`Write|Edit|Bash`）しか見ないため、将来版が追加する別のファイル書き込みツールはmatcherを広げない限り素通りします。`Edit`／`Write`の保護は存在で決まり内容では決まらないので、承認した上書きは全面上書きのままです。以上は一つのbundleの静的読解と一回のheadless実行であり、受け入れ結果ではありません。
 
