@@ -10,7 +10,7 @@
 
 ### Added
 
-- Optional `runtime.language_model_only` startup key (true when absent, explicit in the template). `false` drops `--language-model-only` from both ranks so the vision tower loads; image input remains unqualified and the shipped profile stays text/tools only.
+- Optional `runtime.vision` startup key (false when absent, explicit in the template). `true` drops `--language-model-only` from both ranks so the vision tower loads; image input remains unqualified and the shipped profile stays text/tools only.
 
 - Real-input 256K capacity and three-position retrieval checks on the existing combined image, with 3 GiB KV per rank and the existing 4 GiB memory reserve. Preserve the earlier 200K speed, tool-eval and FreedomBench measurements under their original profile.
 

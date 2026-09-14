@@ -25,8 +25,8 @@ pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
 pipeline_split_layer = 24 # PP2 stage0 layers [0,24), stage1 [24,45)
 # PP2は各stageにMLAが必要。24/21層は各21 MoE層を配置する候補で、容量保証ではない。
 seed = 42
-language_model_only = true # Omitted = true. false also loads the vision tower; unqualified
-# 未指定はtrue。falseで視覚塔も読み込む（画像入力は未検収）。
+vision = false # Omitted = false. true loads the vision tower for image input; unqualified
+# 未指定はfalse。trueで視覚塔を読み込み画像入力を受ける（未検収）。
 # Text/tools only; Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
 # テキスト・ツール専用。Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 

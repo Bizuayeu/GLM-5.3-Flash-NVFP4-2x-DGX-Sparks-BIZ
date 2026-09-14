@@ -131,28 +131,28 @@ class StartupConfigTests(unittest.TestCase):
             config.serve_args(self.profile, 0, "/hf/model"),
         )
 
-    def test_language_model_only_is_optional_and_defaults_to_text_only(self):
-        self.profile["runtime"].pop("language_model_only", None)
+    def test_vision_is_optional_and_defaults_to_text_only(self):
+        self.profile["runtime"].pop("vision", None)
         config.validate(self.profile)
         for rank in (0, 1):
             self.assertIn(
                 "--language-model-only",
                 config.serve_args(self.profile, rank, "/hf/model"),
             )
-        self.profile["runtime"]["language_model_only"] = True
+        self.profile["runtime"]["vision"] = False
         config.validate(self.profile)
         self.assertIn(
             "--language-model-only", config.serve_args(self.profile, 0, "/hf/model")
         )
-        self.profile["runtime"]["language_model_only"] = False
+        self.profile["runtime"]["vision"] = True
         config.validate(self.profile)
         for rank in (0, 1):
             self.assertNotIn(
                 "--language-model-only",
                 config.serve_args(self.profile, rank, "/hf/model"),
             )
-        self.profile["runtime"]["language_model_only"] = "false"
-        with self.assertRaisesRegex(ValueError, "language_model_only"):
+        self.profile["runtime"]["vision"] = "true"
+        with self.assertRaisesRegex(ValueError, "runtime.vision"):
             config.validate(self.profile)
 
     def test_graph_combination_scope_is_explicit_until_integration(self):
