@@ -25,7 +25,16 @@ The distribution contains source, pinned references and build instructions. Weig
 
 NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe. See [precision and validation scope](docs/validation.md).
 
-Original project code is **Apache-2.0**. Adapted MIT and Apache notices are retained. Model weights and container dependencies keep their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
+Licensing at a glance. Each artifact keeps its own terms; obligations and the rationale are in the [licensing guide](docs/licensing.md), provenance in the [third-party notices](THIRD_PARTY_NOTICES.md).
+
+| Artifact | License | Where it comes from |
+|---|---|---|
+| Original setup code and documents | **Apache-2.0** | This repository |
+| GLM-5.3-Flash NVFP4 weights | **MIT** (stated in the pinned NVIDIA model card; upstream Z.ai model is MIT) | Downloaded by the operator; not bundled |
+| Built container image | Per bundled component (CUDA, Torch, NCCL and others); not treated as one blanket license | Built by the operator from the pinned official base image |
+| ZCode / Claude Code harnesses | Each product's own terms | Installed separately; nothing is relicensed here |
+
+Distributing this repository as source, pinned references and build steps requires only Apache-2.0 compliance. Redistributing weights or built images adds those artifacts' conditions. Adapted MIT and Apache notices are retained. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
 
 See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets and remain untested.
 

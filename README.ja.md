@@ -25,7 +25,16 @@ NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換�
 
 NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin **W4A16**で実行しており、NVIDIAのW4A4 recipeとは演算精度が異なります。[精度と検証範囲](docs/validation.md)を参照してください。
 
-独自コードは **Apache-2.0**。取り込んだMIT・Apacheの通知を保持します。重みとコンテナ内依存にはそれぞれの条件が適用されます。[第三者通知](THIRD_PARTY_NOTICES.md)を参照してください。EXL3/TR3重み、DFlash2重み、Mia現行AGPL版を導入する構成ではありません。
+ライセンスの早見表。対象ごとに条件が違い、義務と選定理由は[ライセンス整理](docs/licensing.ja.md)、出所は[第三者通知](THIRD_PARTY_NOTICES.md)が正典です。
+
+| 対象 | ライセンス | 出所 |
+|---|---|---|
+| 独自のセットアップコード・文書 | **Apache-2.0** | 本リポジトリ |
+| GLM-5.3-Flash NVFP4 重み | **MIT**（固定NVIDIAモデルカードの表記。上流Z.aiモデルもMIT） | 利用者が取得。同梱しない |
+| 完成Dockerイメージ | 同梱物ごと（CUDA・Torch・NCCL等）。一括して一色とは扱わない | 利用者が固定の公式base imageから構築 |
+| ZCode／Claude Codeハーネス | 各製品の規約 | 別途導入。本リポジトリで再許諾しない |
+
+本リポジトリをソース・固定参照・ビルド手順として配る限り、必要なのはApache-2.0の条件だけです。重みや完成イメージを再配布する場合に、それぞれの条件が加わります。取り込んだMIT・Apacheの通知は保持します。EXL3/TR3重み、DFlash2重み、Mia現行AGPL版を導入する構成ではありません。
 
 [商用利用・改造・再配布の整理](docs/licensing.ja.md)に、対象別の許諾範囲と義務をまとめています。[ハーネス連携](docs/harnesses.ja.md)では公式ZCodeと実験的なClaude Code接続を扱い、両方を必須の受け入れ対象にしています。実接続テストは未実施です。
 

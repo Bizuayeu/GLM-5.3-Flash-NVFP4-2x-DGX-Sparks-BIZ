@@ -15,6 +15,18 @@
 
 Sources: [Apache sections 2–4 and 6–9](../LICENSE), [MIT text](../LICENSES/kingjones-MIT.txt), [pinned NVIDIA model card](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md).
 
+## MIT and Apache-2.0 compared
+
+Both are permissive: commercial use, modification, redistribution and inclusion in closed products are permitted, and neither requires publishing modified source for internal use or hosted services. They differ in three places.
+
+| Point | MIT | Apache-2.0 |
+|---|---|---|
+| Patents | Silent; no express patent grant | Express patent license from contributors, terminated for a party that starts patent litigation over the work |
+| Changed files | Keep the copyright and permission notice | Additionally mark each modified file as changed (this project's vLLM patching writes that comment into the patched source) |
+| Trademarks | Not addressed | No trademark rights are granted |
+
+Original code here is Apache-2.0 because the express patent grant and the change-marking rule make review easier for adopting organizations. The weights are MIT because that is what the upstream Z.ai model and the NVIDIA model card state; this project does not relicense them.
+
 ## Distributing Apache-covered material
 
 Supply the license, retain applicable upstream notices, and reproduce NOTICE attribution readably. **Mark each modified file; a changelog alone does not replace that requirement.** The patch generator adds change comments to modified vLLM files. Different terms for your modifications or a closed product can coexist with retained upstream obligations.
