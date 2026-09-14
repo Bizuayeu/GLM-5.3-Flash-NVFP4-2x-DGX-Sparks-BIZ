@@ -12,13 +12,21 @@
 //   Write  (target exists)        -> ask
 //   Write  (target absent)        -> allow
 //   Write/Edit under ~/.zcode     -> ask   (harness config directory; see docs/harnesses.md)
-//   Bash   (destructive pattern)  -> ask   (heuristic: string match on the command)
+//   Bash   (destructive pattern)  -> ask   (heuristic: string match on the command;
+//                                          rm/mv/cp/patch/git reset|apply..., PowerShell
+//                                          *-Item cmdlets, > and >> except to /dev/null or NUL)
 //   Bash   (otherwise)            -> allow
 //   any other tool                -> no opinion ({})
 //
 // Observed payload keys (2026-09-14, headless --prompt): tool_name, tool_input
 // {file_path (absolute), content} / {command}, cwd, permission_mode.
-// Set ZCODE_GUARD_LOG=<path> to append raw stdin for payload inspection.
+// Set ZCODE_GUARD_LOG=<path> to append raw stdin (including file content) for
+// payload inspection; unset it afterwards.
+//
+// Failure mode: the runtime treats exit code 0 as a decision, exit code 2 as
+// deny, and any other exit, spawn error or timeout as a failed tool call. A
+// bare "node" that is not on the client's PATH therefore fails every matched
+// call; use an absolute interpreter path in the applied configuration.
 "use strict";
 const fs = require("node:fs");
 const os = require("node:os");
@@ -26,11 +34,11 @@ const path = require("node:path");
 
 const DESTRUCTIVE = [
   /\brm\b/, /\brmdir\b/, /\bdel\b/, /\berase\b/, /\bunlink\b/,
-  /\bmv\b/, /\bmove\b/, /\bren(ame)?\b/,
-  /Remove-Item/i, /Move-Item/i, /Rename-Item/i, /Clear-Content/i, /\bri\b/, /\brd\b/,
-  /\bgit\s+(rm|clean|reset|checkout\s+--|restore|push\s+.*--force|branch\s+-D)\b/,
+  /\bmv\b/, /\bmove\b/, /\bren(ame)?\b/, /\bcp\b/, /\binstall\b/,
+  /Remove-Item/i, /Move-Item/i, /Rename-Item/i, /Copy-Item/i, /Clear-Content/i, /\bri\b/, /\brd\b/,
+  /\bgit\s+(rm|clean|reset|checkout\s+--|restore|apply|rebase|push\s+.*--force|branch\s+-D)\b/, /\bpatch\b/,
   /\btruncate\b/, /\bshred\b/, /\bsed\s+-i\b/, /\btee\b/,
-  /(^|[^<>])>{1,2}\s*[^&\s]/, // > and >> redirection (excludes >&2)
+  /(^|[^<>])>{1,2}\s*(?!\/dev\/null\b|NUL\b)[^&\s]/, // > and >> redirection (excludes >&2, /dev/null, NUL)
   /Set-Content/i, /Out-File/i, /Add-Content/i,
 ];
 

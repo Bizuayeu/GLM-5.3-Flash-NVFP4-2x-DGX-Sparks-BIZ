@@ -1,5 +1,7 @@
 {
-  "permission": { "mode": "yolo" },
+  "permission": {
+    "mode": "yolo"
+  },
   "hooks": {
     "enabled": true,
     "timeoutMs": 60000,
@@ -11,9 +13,10 @@
           "hooks": [
             {
               "type": "process",
-              "command": "node",
-              "args": ["C:/Users/<user>/.zcode/hooks/exists-guard.cjs"],
-              "timeoutMs": 5000,
+              "command": "C:/Program Files/nodejs/node.exe",
+              "args": [
+                "C:/Users/<user>/.zcode/hooks/exists-guard.cjs"
+              ],
               "statusMessage": "exists-guard"
             }
           ]

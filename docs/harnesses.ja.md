@@ -40,7 +40,7 @@ ssh -N -L 127.0.0.1:8893:127.0.0.1:8893 node-a
 
 API側の認証を設定している場合は、そのローカルサービス専用の資格情報を使用します。Z.aiやAnthropicのクラウドキーをローカル試験へ流用しません。
 
-**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。ZCodeの`yolo`ではその拒否リストは参照されないため、[既存ファイルガード](#zcodeの権限モードと既存ファイルガード)が同ディレクトリを代わりに守ります。
+**受け入れ試験中は、ハーネス自身のクライアント設定ディレクトリへの書き込みを拒否します**（ZCodeはユーザープロファイル直下の`.zcode`、Claude Codeは`CLAUDE_CONFIG_DIR`で指定した場所）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。ZCodeの`yolo`ではその拒否リストは参照されないため、[既存ファイルガード](#zcodeの権限モードと既存ファイルガード)が同ディレクトリへの`Write`／`Edit`を確認に変えます。シェル経由の書き込みは同ガードの破壊的パターン判定に委ねられます。
 
 ### ZCode
 
@@ -79,7 +79,7 @@ claude --model glm-5.3-flash-nvidia
 
 **hookの合成。** `PreToolUse` hookが返す`hookSpecificOutput.permissionDecision`はpolicyの結果と合成されます。`deny`は常に勝ち、`ask`はpolicyの`allow`（`mode.yolo`を含む）を確認に変え（`hook.PreToolUse.ask`）、`allow`はpolicyの`ask`を許可に変えます。主経路はhookの`ask`をプロジェクトルール限定のフィルタなしで承認brokerへ渡します。`yolo`を狭められる唯一の場所です。hookはstdinのJSONで`tool_name`、`tool_input`（`Write`／`Edit`は絶対パスの`file_path`と`content`、`Bash`は`command`）、`cwd`、`permission_mode`、`session_id`を受け取ります。
 
-**ガード。** [examples/zcode-hooks/exists-guard.cjs](../examples/zcode-hooks/exists-guard.cjs)は「`yolo`で走らせ、既にあるものを変える時だけ確認する」を実装します。`Edit`は常に確認、`Write`は対象が存在すれば確認・新規なら許可、クライアント自身の`.zcode`配下への`Write`／`Edit`は確認（前述の拒否リストは`yolo`下では効かないため）、`Bash`は破壊的パターン（`rm`、`mv`、`Remove-Item`、`git reset`／`clean`、リダイレクト等）に一致すれば確認・それ以外は許可、他のツールには関与しません。[examples/zcode-hooks/config.hooks.example.json](../examples/zcode-hooks/config.hooks.example.json)が`hooks.events.PreToolUse`の登録形（`type: "process"`、`command: "node"`）と`hooks.enabled`の有効化を示します。スクリプトはリポジトリ外に複製し、動作していた設定の複製を残し、スキーマ拒否された項目が設定ファイル全体を無効にすることを前提にします。
+**ガード。** [examples/zcode-hooks/exists-guard.cjs](../examples/zcode-hooks/exists-guard.cjs)は「`yolo`で走らせ、既にあるものを変える時だけ確認する」を実装します。`Edit`は常に確認、`Write`は対象が存在すれば確認・新規なら許可、クライアント自身の`.zcode`配下への`Write`／`Edit`は確認（前述の拒否リストは`yolo`下では効かないため）、`Bash`は破壊的パターン（`rm`、`mv`、`cp`、`patch`、`Remove-Item`／`Copy-Item`、`git reset`／`clean`／`apply`、`/dev/null`と`NUL`以外へのリダイレクト等）に一致すれば確認・それ以外は許可、他のツールには関与しません。[examples/zcode-hooks/config.hooks.example.json](../examples/zcode-hooks/config.hooks.example.json)が`hooks.events.PreToolUse`の登録形（`type: "process"`、`command: "node"`）と`hooks.enabled`の有効化を示します。スクリプトはリポジトリ外に複製し、動作していた設定の複製を残し、スキーマ拒否された項目が設定ファイル全体を無効にすることを前提にします。runtimeはhookの終了コード0を判定、2を拒否として読み、それ以外の終了・起動失敗・timeoutは該当ツール呼び出しの失敗になります。GUIはシェルの`PATH`を継承しないため、適用する設定ではインタプリタを絶対パスで指定し、項目のtimeoutは上位の`hooks.timeoutMs`に委ねます。
 
 **確認した挙動（`20260914-zcode-exists-guard`、Desktop同梱CLIのheadless `--prompt`、ローカルモデル）。** 新規ファイルへの`Write`は許可され、ファイルが作られました。既存ファイルへの`Write`は`ask`に変わり、headlessには承認クライアントが無いためツール呼び出しが拒否され（"No permission client configured"）、ファイルは無変更でした。`Bash`のケースはZCode経由では未実施です。該当プロンプトの前にローカルAPIが応答しなくなり（再試行すべて`ECONNRESET`）、`Bash`分岐はスクリプト単体のstdin自己試験（`ls`は許可、`rm`／`Remove-Item`は確認）でしか確認していません。TUIやDesktopでは同じ`ask`が確認ダイアログになります。Desktop GUIは未実施です。
 
