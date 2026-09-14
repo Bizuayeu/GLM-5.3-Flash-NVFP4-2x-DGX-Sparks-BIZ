@@ -58,4 +58,14 @@ Ordinary request-time medians below exclude one warmup and use five timed runs. 
 
 The observed median change ranged from -0.15% to +0.65%; the slight negative value is not evidence of a speed gain. In a separate candidate-order microbenchmark using captured IDs and 2,176 columns, CUDA-event time per call was about 0.043–0.047 ms for 1/8/10/13 rows and 0.292 ms for 512 rows (five samples of 100 calls, after ten warmups). Peak extra Torch allocation was 60 KiB for one row and about 21.3 MiB for 512 rows. These are transient candidate tensors, not a second KV cache.
 
-The runtime module was confirmed inside the built image, with no candidate-order injection from the test harness. All jobs completed without OOM. These results qualify the stated fixture controls only. Full-model TP=2, standard MTP, batching/APC/LPA combinations, sustained load and target-quality regressions remain separate. Earlier full-model measurements apply to their recorded images; rebuilding with this patch is a new runtime and requires the corresponding regression checks.
+The runtime module was confirmed inside the built image, with no candidate-order injection from the test harness. All jobs completed without OOM. The measurements above apply to the fixture controls. Subsequent full-model regression is recorded separately below.
+
+### Full-model TP=2 combined regression
+
+On 2026-09-14 (Asia/Tokyo), both ranks used rebuilt image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a`: C1, eager, 32K, MTP k=3, fusion, async index checks, dense APC retention and LPA. Both ranks passed the 172-test CPU suite with six skips.
+
+Ordinary / LPA / restored task scores were 22 / 24 / 21 out of 24, with no LPA-only regression. All three tool round trips, cancellation followed by another request, and 32,704 input + 64 output capacity cases passed; capacity preemption deltas were zero. History passed independent rescoring of 61 answers, nine boundaries and eviction. A separate 30,100-token midpoint edit restored H=9,216 and answered correctly in all three arms.
+
+A same-request replay of eight existing heldout cases scored 8/8 in each arm. An overlapping external client request invalidated part of the original run; that evidence was retained. Aggregation uses request-ID-audited earlier cases and rerun later cases. This is not a fresh unused test set. Private evidence: `records/20260913-mia-updates/canonical-v78-assessment.json`.
+
+For 128 output tokens, three measured requests after one warmup had median total seconds of 12.215 / 10.366 / 10.969 at 2,048 input; 28.205 / 24.529 / 28.790 at 8,192; and 39.976 / 34.547 / 40.099 at 16,320 with H=4,608. Generated token sequences differ in 34 of 36 paired measurements against the older image, so elapsed differences do not isolate sorting-kernel cost or establish a speed gain. Batching, sustained load, a trained Euryale proposer and numerical identity across all configurations remain unqualified.
