@@ -141,15 +141,19 @@ class StartupConfigTests(unittest.TestCase):
             )
         self.profile["runtime"]["vision"] = False
         config.validate(self.profile)
-        self.assertIn(
-            "--language-model-only", config.serve_args(self.profile, 0, "/hf/model")
-        )
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertIn("--language-model-only", args)
+        self.assertNotIn("--limit-mm-per-prompt", args)
         self.profile["runtime"]["vision"] = True
         config.validate(self.profile)
         for rank in (0, 1):
-            self.assertNotIn(
-                "--language-model-only",
-                config.serve_args(self.profile, rank, "/hf/model"),
+            args = config.serve_args(self.profile, rank, "/hf/model")
+            self.assertNotIn("--language-model-only", args)
+            # Video is disabled: startup profiling would otherwise push a
+            # 30,000-token video through the vision tower.
+            self.assertEqual(
+                json.loads(args[args.index("--limit-mm-per-prompt") + 1]),
+                {"video": 0},
             )
         self.profile["runtime"]["vision"] = "true"
         with self.assertRaisesRegex(ValueError, "runtime.vision"):

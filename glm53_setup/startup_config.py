@@ -304,6 +304,9 @@ def serve_args(profile, rank, model_path):
                 args.append("--no-enable-chunked-prefill")
     if profile["runtime"].get("vision", False):
         args.remove("--language-model-only")
+        # Images only. Startup profiling encodes the largest item once, and a
+        # 30,000-token video would otherwise set that peak.
+        args += ["--limit-mm-per-prompt", json.dumps({"video": 0})]
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
     if profile["api"].get("prompt_tokens_details"):

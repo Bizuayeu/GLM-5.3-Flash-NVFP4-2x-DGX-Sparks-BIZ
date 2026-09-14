@@ -46,7 +46,7 @@
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.md#expert-parallel-p21)を参照してください。
 
-`runtime.vision = false`（任意キー、未指定はfalse。テンプレートは明示）は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外すだけで、他は変えません。画像入力は未検収です。チェックポイントの量子化設定はbf16の視覚塔を除外しておらず、メモリ消費も未計測です。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
+`runtime.vision = false`（任意キー、未指定はfalse。テンプレートは明示）は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は無効で、送ると拒否されます。受け付けるのは画像だけです。** 理由は起動時のメモリです。vLLMは最大の入力1件を一度エンコードしてメモリを見積もり、このチェックポイントの動画の上限（30,000 token＝120,000パッチに制限済み）は画像1枚（最大8,000 token）よりはるかに大きいためです。1 promptあたりの画像枚数はvLLMの既定のままです（チャットハーネスは過去の画像を毎ターン送り直すため）。画像入力は未検収です。視覚塔はBF16で量子化の対象外（両方の除外リストに `model.visual*` があり、固定vLLMも量子化設定なしで組み立てる）ですが、メモリ消費は未計測です。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
 
