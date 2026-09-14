@@ -79,6 +79,6 @@ python -m glm53_setup apc-lpa-benchmark \
 | 全モデル | hitなし／部分hit／ほぼ全hit、pool・block・T・B境界、長文の証拠位置、別文書・projector設定・LPA offへの分離、tool、SSE、cancel、容量、両rank停止復旧を確認する |
 | 最終併用 | 既に採用したMTP3・unpack融合・非同期検査との組合せを同じ固定資産で検証し、機能受入・性能採用・既定設定を分けて記録する |
 
-各要求には、N、実復元H、R、LPA採否、最初の近似位置、共有上限、実際のquery省略数・cache登録範囲を残す。速度測定で重いtensor hashやprofilerを有効にしない。品質は逐語一致・タスク正答・状態診断・復帰対照を分け、未完了を合格へ繰り上げない。検証用4 GiB reserveと通常8 GiB reserveを区別する。
+各要求には、N、実復元H、R、LPA採否、最初の近似位置、共有上限、実際のquery省略数・cache登録範囲を残す。速度測定で重いtensor hashやprofilerを有効にしない。品質は逐語一致・タスク正答・状態診断・復帰対照を分け、未完了を合格へ繰り上げない。run ごとの host reserve をそのまま記録し、fixture の検証用 reserve を配布 profile の `resources.reserve_gib` と読み替えない。
 
 起動オプションは既存のカテゴリ別TOMLへまとめ、APC優先モードとB、共通資料を通常計算する要求指定を文書化する。対応imageのmarkerを必須とし、schedulerの登録上限を確定できない手動RPCとの併用は拒否する。無効な要求オプションと内部policyの持込みはinput processorでも検査し、schedulerへ投入する前に入力エラーにする。

@@ -56,7 +56,7 @@ The checker requires complete request/output counts and finite positive metrics.
 - TPOT/ITL: report the official client's values and exact output lengths. A decode-rate estimate derived from TPOT is distinct from total output throughput.
 - Aggregate throughput: completed output tokens per measured benchmark window; do not label it a single-request decode rate.
 - E2E latency: retain per-request observations and distinguish client/server queues where available.
-- Memory: save each host's available-memory minimum and container memory current/peak/events. A cgroup peak is not a model-memory counter and may omit GPU allocations; combine it with runtime and host observations.
+- Memory: save each host's available-memory minimum and container memory current/peak/events. Each record states the container cap and host reserve that run used; those are historical conditions, and the distributed defaults live in [examples/startup.example.toml](../examples/startup.example.toml). A cgroup peak is not a model-memory counter and may omit GPU allocations; combine it with runtime and host observations.
 - Failures: require all measured requests to complete with expected output counts; report errors, premature endings, cancellations and OOM separately. Keep warmup and compilation outside the reported steady-state samples.
 
 Inspect host jobs and fabric traffic before a run. Preserve other operators' jobs and label any shared load. These small initial samples support a baseline/median, not a production p95/p99 SLA. Pair speed measurements with real text, streaming, tool round-trip and [harness acceptance](harnesses.md) results.

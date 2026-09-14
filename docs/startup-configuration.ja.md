@@ -31,7 +31,7 @@
 | 投機・近似 | MTP k=3、LPA cut32／tail512／B128、未使用MLA query省略 |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | 生成 | temperature=0、max_tokens=512、reasoning_effort=low、clear_thinking=true |
-| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕4 GiB |
+| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 
 **導入時はimage ID、両機の接続情報、MTP view、LPA projectorとhashを準備してください。** imageとprojectorのゼロ値は差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。

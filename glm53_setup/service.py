@@ -186,8 +186,9 @@ def preflight(site, lock, snapshot):
         line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
     )
     available_gib = int(meminfo["MemAvailable"].split()[0]) / 1024**2
-    # 87.743 GiB payload/rank + 8 GiB KV candidate + 8 GiB OS reserve + ~4 GiB
-    # provisional runtime allowance; measured peak remains a separate gate.
+    # 87.743 GiB payload/rank + 8 GiB KV candidate + 8 GiB OS reserve + a few GiB
+    # of runtime allowance, which `resources.reserve_gib` now sets; this floor is
+    # unchanged by that setting and measured peak remains a separate gate.
     checks["startup_memory"] = available_gib >= 108
     existing = run("docker", "ps", "-a", "--format", "{{.Names}}").splitlines()
     checks["rank_container_absent"] = f"glm53-nvidia-rank{site['rank']}" not in existing

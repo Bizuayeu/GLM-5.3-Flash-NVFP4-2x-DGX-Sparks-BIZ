@@ -52,7 +52,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 ## What works in this beta
 
-**Distributed defaults select the serial optimized profile at 256K, KV 3 GiB per rank, reserve4 GiB and no lifetime deadline.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) validate the new context/KV defaults.
+**Distributed defaults select the serial optimized profile at 256K, KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) validate the new context/KV defaults.
 
 [One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
 

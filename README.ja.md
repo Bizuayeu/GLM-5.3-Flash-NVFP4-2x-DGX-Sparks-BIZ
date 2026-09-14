@@ -52,7 +52,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 ## このベータ版で確認した範囲
 
-**配布既定は256K・KV各3 GiB・保護4 GiB・時間制限なしの直列最適化構成です。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)に新しいコンテキスト・KV既定値の検証をまとめています。
+**配布既定は256K・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)に新しいコンテキスト・KV既定値の検証をまとめています。
 
 [起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
 
