@@ -93,6 +93,40 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 
 All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
 
+## Performance and capacity Q&A
+
+These answers explain how to assess extensions of the current configuration. The adopted 200K limit is 204,800 input-plus-output tokens; 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
+
+### Q. With 2.5 GiB of KV cache per rank, can the configuration consistently accommodate a 200K context?
+
+**From a KV-capacity perspective, generally yes when the model, cache precision, MTP/LPA settings, parallel layout and single active sequence remain the same.** The text represented by a token does not change its KV format or size. Input plus generated tokens must stay within the limit. The [real-input 200K checks](benchmarks.md#real-input-checks-at-200k) establish capacity and limited retrieval for this configuration.
+
+Changes to APC history, branching, checkpoint retention, block alignment or concurrency require checking the resulting state and allocations. Workspace and other processes' RAM usage can also vary. Distinguish KV fit from uninterrupted-operation guarantees. See [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements).
+
+### Q. If 12.5 GiB of KV cache is available per rank, can it accommodate a 1M context?
+
+**That is a promising KV budget to test.** GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so the requirement is not exactly five times larger. It may need less than 12.5 GiB. Check the pinned runtime's cache groups and state-slot counts.
+
+Weights, activations, indexer workspace, the OS and other allocations must fit outside that KV budget. Verify KV allocation, total host-RAM fit and completion of a real 1M request in that order.
+
+### Q. Could disabling MTP and reducing the memory reserve make 1M operation feasible?
+
+**It is plausible and a natural configuration to investigate for 1M.** Disabling MTP releases approximately [7 GiB per rank in measured model memory](speculative-decoding.md#measured-k1-results). MTP weights are a fixed cost; they do not grow proportionally with context length.
+
+Increasing KV from 2.5 to 12.5 GiB adds 10 GiB. Using approximately 5.2 GiB from the [current minimum available RAM](benchmarks.md#real-input-checks-at-200k), simple arithmetic leaves only `5.2 + 7 − 10 ≈ 2.2 GiB`, before extra long-context workspace. Establish the actual KV requirement and fit the remaining workspace as well. Lowering the reserve reduces retained headroom; it does not create more RAM.
+
+### Q. How much waiting should users expect with a 1M context?
+
+**First requests and requests without useful prefix-cache reuse can spend a long time processing the input (prefill). The relevant scale is tens of minutes.** The [current 200K measurement](benchmarks.md#real-input-checks-at-200k) took about eight minutes for the whole request, including input processing; even a simple fivefold extrapolation is about 40 minutes.
+
+This is neither a measured 1M time nor a TTFT guarantee. Configuration changes, computational scaling, workspace and memory bandwidth may extend it further. A reusable prefix can sometimes reduce the wait, but repeatedly rereading a large input in conversation makes this latency a practical constraint.
+
+### Q. Could 5 GiB of KV cache per rank make concurrent serving and EP or PP worthwhile?
+
+**It creates more room to investigate concurrent requests and a reason to reevaluate EP and PP.** Doubling KV does not guarantee that two maximum-length requests fit. Check per-sequence state and real input-plus-output lengths multiplied by concurrency. Current LPA supports one active sequence, so start with LPA disabled; MTP with multiple sequences also needs separate validation.
+
+Larger batches may improve expert-compute efficiency or pipeline utilization, while communication and stage waiting can grow too. [EP](benchmarks.md#independent-expert-parallel-evaluation-p21) and [PP](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) were not adopted for performance on the measured workloads. Different concurrency and workloads merit reevaluation; a larger KV budget alone does not establish a speedup.
+
 ## Do not reinterpret
 
 - Do not add or multiply gains from different experiments; images, inputs and KV budgets differ between them

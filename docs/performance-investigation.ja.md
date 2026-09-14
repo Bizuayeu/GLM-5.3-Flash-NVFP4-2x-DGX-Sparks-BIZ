@@ -4,6 +4,8 @@
 
 施策の一覧、基準日、次版比較の項目は[性能・品質施策台帳](optimization-catalog.ja.md)（[English](optimization-catalog.md)）が所有します。本書は詳細な調査手順を所有します。
 
+KV容量、200K／1Mコンテキスト、待ち時間、複数同時実行の考え方は[性能と容量のQ&A](optimization-overview.ja.md#性能と容量のqa)を参照してください。
+
 以下は測定のための仮説であり、特定済みのボトルネックや約束された高速化ではありません。prefillのレイテンシ、要求ごとのdecodeレイテンシ、aggregate throughputは分けて扱います。LPDDRの公称帯域だけでは、量子化MoEのrouting、sparse attention、scheduling、通信のコストは決まりません。
 
 部品・全モデルの実測結果とその限界は[部品検証](component-validation.ja.md)に記録します。
