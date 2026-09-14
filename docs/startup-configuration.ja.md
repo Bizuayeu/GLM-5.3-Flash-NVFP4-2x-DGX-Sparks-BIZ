@@ -6,7 +6,7 @@
 
 | カテゴリ | 管理するもの |
 |---|---|
-| `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed |
+| `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed、テキスト専用の切替 |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
 | `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker |
@@ -45,6 +45,8 @@
 **P22のGPU状態隔離・校正・最終併用・held-out参照評価を確認済みです。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `startup ask` は判断をサーバーへ任せます。テンプレートは `lpa.enabled = false` を既定とし、バッチ入力に限って用途ごとに有効化します（近似した要求は共有cacheに何も登録しないため）。有効にしている間、要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。`api.prompt_tokens_details = true`（任意キー、未指定は無効）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。APCなしの通常の `startup ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.ja.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.md#expert-parallel-p21)を参照してください。
+
+`runtime.language_model_only = true`（任意キー、未指定はtrue。テンプレートは明示）は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`false` は両rankからこのフラグを外すだけで、他は変えません。画像入力は未検収です。チェックポイントの量子化設定はbf16の視覚塔を除外しておらず、メモリ消費も未計測です。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
 

@@ -29,7 +29,7 @@ def validate(profile):
     def check(value, expected, path):
         if isinstance(expected, dict):
             optional = {
-                "startup.runtime": {"cuda_allocator_conf"},
+                "startup.runtime": {"cuda_allocator_conf", "language_model_only"},
                 "startup.cache": {"prefix_cache_retention_interval"},
                 "startup.api": {"prompt_tokens_details"},
             }.get(path, set())
@@ -67,6 +67,8 @@ def validate(profile):
             raise ValueError(
                 "runtime.cuda_allocator_conf must be a single-line string, including empty"
             )
+    if type(profile["runtime"].get("language_model_only", True)) is not bool:
+        raise ValueError("runtime.language_model_only must be true or false")
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported startup schema_version")
     for key in ("reference_image", "lpa_image"):
@@ -300,6 +302,8 @@ def serve_args(profile, rank, model_path):
             args.remove(flag)
             if key == "chunked_prefill":
                 args.append("--no-enable-chunked-prefill")
+    if not profile["runtime"].get("language_model_only", True):
+        args.remove("--language-model-only")
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
     if profile["api"].get("prompt_tokens_details"):

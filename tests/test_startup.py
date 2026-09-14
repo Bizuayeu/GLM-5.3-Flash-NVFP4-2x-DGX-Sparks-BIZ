@@ -33,6 +33,7 @@ class StartupConfigTests(unittest.TestCase):
                 args[args.index("--kv-cache-memory-bytes") + 1], "3221225472"
             )
             self.assertIn("--enable-prefix-caching", args)
+            self.assertIn("--language-model-only", args)
             self.assertEqual(
                 args[args.index("--prefix-cache-retention-interval") + 1], "None"
             )
@@ -129,6 +130,30 @@ class StartupConfigTests(unittest.TestCase):
             "--enable-prompt-tokens-details",
             config.serve_args(self.profile, 0, "/hf/model"),
         )
+
+    def test_language_model_only_is_optional_and_defaults_to_text_only(self):
+        self.profile["runtime"].pop("language_model_only", None)
+        config.validate(self.profile)
+        for rank in (0, 1):
+            self.assertIn(
+                "--language-model-only",
+                config.serve_args(self.profile, rank, "/hf/model"),
+            )
+        self.profile["runtime"]["language_model_only"] = True
+        config.validate(self.profile)
+        self.assertIn(
+            "--language-model-only", config.serve_args(self.profile, 0, "/hf/model")
+        )
+        self.profile["runtime"]["language_model_only"] = False
+        config.validate(self.profile)
+        for rank in (0, 1):
+            self.assertNotIn(
+                "--language-model-only",
+                config.serve_args(self.profile, rank, "/hf/model"),
+            )
+        self.profile["runtime"]["language_model_only"] = "false"
+        with self.assertRaisesRegex(ValueError, "language_model_only"):
+            config.validate(self.profile)
 
     def test_graph_combination_scope_is_explicit_until_integration(self):
         for section, key, value in (
