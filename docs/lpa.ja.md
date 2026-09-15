@@ -51,7 +51,40 @@ tar -xzf state/lpa/glm53-lpa-cut32-v1.tar.gz -C state/lpa
 python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/lpa-projector.lock.json").read_text()); f=p("state/lpa")/m["artifact"]/m["file"]; assert f.stat().st_size == m["bytes"]; assert hashlib.sha256(f.read_bytes()).hexdigest() == m["sha256"]; print("Projector verified:", f)'
 ```
 
-`state/startup.toml`の`[lpa].projector`を`"lpa/glm53-lpa-cut32-v1/projector.pt"`にし、lockの`sha256`を`[lpa].projector_sha256`へ転記します。`cut=32`を維持し、tailと損益分岐値はテンプレートの実測設定を使います。対応するLPA imageを指定し、[対応する用途](#使用範囲)でのみ`lpa.enabled=true`にします。LPAの実測範囲はテキスト専用なので、そのprofileは`runtime.vision=false`にしてください。稼働中profileの変更には通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。取得だけではLPAの有効化もサーバー再起動も行いません。
+取得だけではLPAの有効化もサーバー再起動も行いません。有効化は、次の導入者による明示的な操作です。
+
+### 起動profileでLPAを有効にする
+
+LPAは[対応する用途](#使用範囲)（一度だけ処理する長い入力）に限って有効にし、会話には使いません。両ホストで同じ`state/startup.toml`を編集します。
+
+```toml
+[runtime]
+lpa_image = "sha256:<両ホストで確認したimage ID>"   # GLM53_LPA_API=2 を持つimage
+vision = false          # LPAの実測範囲はテキスト専用
+
+# テキスト専用profileは文書化済みの256K代替であり、画像既定のvisionだけを
+# 切った構成ではない（docs/startup-configuration.ja.md#配布用の既定設定）。
+[context]
+max_model_len = 262144
+[cache]
+kv_cache_memory_bytes = 3221225472   # 各rank 3 GiB
+[resources]
+reserve_gib = 3                      # 2.5はこのprofileで未検証
+
+[lpa]
+enabled = true
+cut = 32                # 配布projectorに対応する値。変更しない
+projector = "lpa/glm53-lpa-cut32-v1/projector.pt"   # このTOMLからの相対パス、または絶対パス
+projector_sha256 = "<config/lpa-projector.lock.json の sha256>"
+```
+
+- **image**：`lpa.enabled = true`にすると、ランチャーは`reference_image`ではなく`runtime.lpa_image`を選びます。preflightはそのimageに`GLM53_LPA_API=2` markerを要求し、`cache.prefix_caching`が有効なまま（テンプレート既定。[APC優先経路](startup-configuration.ja.md#コマンド)を選ぶ）なら`GLM53_APC_LPA_API=1`も要求します。[現行イメージの契約](startup-configuration.ja.md#現行イメージの契約)に沿って現行ソースからビルドしたimageは両方を持ちます。`docker image inspect <id>`で確認し、両ホストで同じIDを使います。
+- **projector**：preflightは`[lpa].projector`が指すファイルのSHA-256を再計算し、`projector_sha256`と一致しなければ拒否します。`cut = 32`・`tail`・`break_even_tokens`はテンプレートの値のままにします。これがこのprojectorの実測設定です。
+- **テキスト専用**：`runtime.vision = false`を[テキスト専用256Kの代替](startup-configuration.ja.md#配布用の既定設定)（context 262,144・各rank KV 3 GiB・reserve 3 GiB）と組で使います。画像既定の`vision`だけを切った構成は実測したprofileではなく、テキスト専用でのreserve 2.5 GiBは未検証です。
+- **検査してから切替**：各ホストで`python -m glm53_setup startup preflight --config state/startup.toml --rank N`を実行し、`projector_sha256`・`lpa_worker`・`image_id`の合格を確認します。上記のどの編集もprofile fingerprintを変えるため、稼働中の対では通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。稼働中サーバーと一致しないprofileは`startup ask`が拒否します。
+- **要求ごとの例外**：LPA有効中でも、要求に`"vllm_xargs": {"glm53_lpa_mode": "off"}`を付ければ通常計算して共有prefix cacheを育てられます。[起動設定](startup-configuration.ja.md#コマンド)を参照。
+
+無効へ戻すには`enabled = false`にして切り替えます。projector関連のキーは残して構いません。
 
 ### モデルカードと学習来歴
 
@@ -68,10 +101,10 @@ python -m glm53_setup lpa-corpus --output records/corpus-ja --documents 512
 python -m glm53_setup lpa-corpus --subset en-wiki --output records/corpus-en --documents 128
 python -m glm53_setup lpa-corpus --subset code --shard 300 --output records/corpus-code --documents 128
 python -m glm53_setup lpa-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
-python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
+python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 32 --rank 256 --ridge 0.001
 ```
 
-文書数・rank・ridgeはpilot用の値で、最適値ではない。採取器はLLM-jp corpusのrevisionを固定し、出典metaを保持して転送量に上限を置く。正規化した全文hashでtrain/validation/testを分ける。コードはdatasetの元リポジトリ別ライセンス情報からMIT/Apache/BSD/ISC表記のものを選ぶ。コーパス全体を本リポジトリのApacheライセンスとして扱わず、出力した出典・各subsetの条件を保持する。[LLM-jp corpusの説明](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3)を参照。
+文書数・rank・ridgeはpilot用の値で、最適値ではない。`--cut 32`が配布projectorの再現で、pilotでは同じ採取からまずcut 40を学習し、その後cut 32を選定した。採取器はLLM-jp corpusのrevisionを固定し、出典metaを保持して転送量に上限を置く。正規化した全文hashでtrain/validation/testを分ける。コードはdatasetの元リポジトリ別ライセンス情報からMIT/Apache/BSD/ISC表記のものを選ぶ。コーパス全体を本リポジトリのApacheライセンスとして扱わず、出力した出典・各subsetの条件を保持する。[LLM-jp corpusの説明](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3)を参照。
 
 ## 教師採取と実験の制御
 

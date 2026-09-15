@@ -51,7 +51,40 @@ tar -xzf state/lpa/glm53-lpa-cut32-v1.tar.gz -C state/lpa
 python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/lpa-projector.lock.json").read_text()); f=p("state/lpa")/m["artifact"]/m["file"]; assert f.stat().st_size == m["bytes"]; assert hashlib.sha256(f.read_bytes()).hexdigest() == m["sha256"]; print("Projector verified:", f)'
 ```
 
-For `state/startup.toml`, set `[lpa].projector = "lpa/glm53-lpa-cut32-v1/projector.pt"` and copy `sha256` from the lock into `[lpa].projector_sha256`. Keep `cut=32`; the template supplies the measured tail and crossover settings. Enable `lpa.enabled=true` only for the [supported workload](#operating-scope), with a matching LPA image. LPA's measured scope is text-only; use `runtime.vision=false` for that profile. Changing a running profile requires the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch). Downloading the asset does not enable LPA or restart a server.
+Downloading the asset does not enable LPA or restart a server. Enabling it is the explicit operator step below.
+
+### Enable LPA in the startup profile
+
+Enable LPA only for the [supported workload](#operating-scope): a long input processed once, not a conversation. On both hosts, edit the same `state/startup.toml`:
+
+```toml
+[runtime]
+lpa_image = "sha256:<image ID verified on both hosts>"   # carries GLM53_LPA_API=2
+vision = false          # LPA's measured scope is text-only
+
+# The text-only profile is the documented 256K alternative, not the image
+# defaults with vision switched off (docs/startup-configuration.md#distributed-defaults).
+[context]
+max_model_len = 262144
+[cache]
+kv_cache_memory_bytes = 3221225472   # 3 GiB per rank
+[resources]
+reserve_gib = 3                      # 2.5 is not validated for this profile
+
+[lpa]
+enabled = true
+cut = 32                # matches the distributed projector; keep it
+projector = "lpa/glm53-lpa-cut32-v1/projector.pt"   # relative to this TOML, or absolute
+projector_sha256 = "<sha256 from config/lpa-projector.lock.json>"
+```
+
+- **Image**: `lpa.enabled = true` makes the launcher select `runtime.lpa_image` instead of `reference_image`. Preflight requires the `GLM53_LPA_API=2` marker in that image, and `GLM53_APC_LPA_API=1` as well while `cache.prefix_caching` stays on (the template default, which selects the [APC-first path](startup-configuration.md#commands)). An image built from current source against the [current image contract](startup-configuration.md#current-image-contract) carries both; check with `docker image inspect <id>` and use the same ID on both hosts.
+- **Projector**: preflight recomputes the SHA-256 of the file named by `[lpa].projector` and rejects a mismatch with `projector_sha256`. Keep `cut = 32`, `tail` and `break_even_tokens` at the template values, which are the measured settings for this projector.
+- **Text-only**: set `runtime.vision = false` together with the [text-only 256K alternative](startup-configuration.md#distributed-defaults) (262,144 context, 3 GiB KV per rank, 3 GiB reserve). The image-input defaults with only `vision` switched off are not a measured profile, and a 2.5 GiB reserve is not validated for text-only.
+- **Check, then switch**: run `python -m glm53_setup startup preflight --config state/startup.toml --rank N` on each host and confirm `projector_sha256`, `lpa_worker` and `image_id` pass. Any of these edits changes the profile fingerprint, so a running pair needs the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch); `startup ask` refuses a profile that no longer matches the running server.
+- **Per request**: while LPA is enabled, a request can still compute normally with `"vllm_xargs": {"glm53_lpa_mode": "off"}` to prime the shared prefix cache; see [startup configuration](startup-configuration.md#commands).
+
+To turn LPA off again, set `enabled = false` and switch; the projector keys may stay in the file.
 
 ### Model card and training provenance
 
@@ -68,10 +101,10 @@ python -m glm53_setup lpa-corpus --output records/corpus-ja --documents 512
 python -m glm53_setup lpa-corpus --subset en-wiki --output records/corpus-en --documents 128
 python -m glm53_setup lpa-corpus --subset code --shard 300 --output records/corpus-code --documents 128
 python -m glm53_setup lpa-fixture --fixture /fixture --output /out/oracle --cut 0 --skip-mla-queries --lengths 3 4 5 127 128 129 511 512 513 8705
-python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 40 --rank 256 --ridge 0.001
+python -m glm53_setup lpa-train --captures /out/teacher --output /out/projector --cut 32 --rank 256 --ridge 0.001
 ```
 
-The sampling sizes and rank/ridge values are pilot parameters, not established optima. The sampler pins the LLM-jp corpus revision, retains source metadata, limits compressed bytes read and partitions normalized document hashes into train/validation/test. The code sample uses the dataset's per-repository license metadata to retain MIT/Apache/BSD/ISC entries. It does not apply the repository's Apache license to all corpus data. Preserve the emitted attribution and subset licenses; see the [LLM-jp corpus README](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3).
+The sampling sizes and rank/ridge values are pilot parameters, not established optima; `--cut 32` reproduces the distributed projector, and the pilot first fitted cut 40 from the same capture before cut 32 was selected. The sampler pins the LLM-jp corpus revision, retains source metadata, limits compressed bytes read and partitions normalized document hashes into train/validation/test. The code sample uses the dataset's per-repository license metadata to retain MIT/Apache/BSD/ISC entries. It does not apply the repository's Apache license to all corpus data. Preserve the emitted attribution and subset licenses; see the [LLM-jp corpus README](https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3).
 
 ## Teacher collection and experimental control
 
