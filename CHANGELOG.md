@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-09-15
+
+- README (both languages): distributing the source also carries the copyright and license notices of the adapted third-party code (MIT and Apache), as the licensing guide and third-party notices already state; the sentence that said "only Apache-2.0" contradicted the sentence after it.
+- Include `examples/server.example.toml` in the Docker build context; `.dockerignore` still whitelisted the pre-1.1.0 name, so the reference image would not have built.
+- Operations: `server preflight` prints its checks and only `server start` writes them under `records/`; the 1.1.0 text said preflight recorded them. Document the runtime state links for source-archive deployments with `ln -sT` and the `readlink -f` output that distinguishes a correct link from a nested `state/state`.
+
 ## 1.1.0 — 2026-09-15
 
 ### Changed
