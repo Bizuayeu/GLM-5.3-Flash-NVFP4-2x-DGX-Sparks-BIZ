@@ -23,6 +23,16 @@ checkoutの起動経路は `python -m glm53_setup server …` の一本です。
 
 LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[projector lock](../config/lpa-projector.lock.json)の写しです。ソースcheckoutのアーカイブに、このディレクトリは含まれません。
 
+ソースアーカイブには`state/`と`records/`も意図的に含めません。serverランチャーを使う前に、新しいcheckoutから各ホストの永続領域へsymlinkを作成します。
+
+```sh
+ln -s /srv/glm53/state /srv/glm53/source/state
+ln -s /srv/glm53/records /srv/glm53/source/records
+readlink -f /srv/glm53/source/state /srv/glm53/source/records
+```
+
+絶対パスを使い、復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
+
 ```text
 state/lpa/glm53-lpa-cut32-v1/
 ├── projector.pt

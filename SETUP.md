@@ -62,6 +62,15 @@ python tools/check_publication.py
 
 Do not copy `state/`, credentials or local records into Git. Each host owns its own state. Use the default `$HOME/.cache/huggingface` for this release: the launcher assumes that location. Custom cache environment variables are not integrated into its mount resolution yet. Store state and reports under this checkout's `state/` and `records/`.
 
+When deploying a source archive to a new checkout, connect its Git-excluded runtime directories to the host's persistent state before running `server preflight` or `cluster switch`. The source archive intentionally omits these directories. Keep the old checkout and its records intact until the new pair is ready:
+
+```sh
+ln -s /srv/glm53/state /srv/glm53/source/state
+ln -s /srv/glm53/records /srv/glm53/source/records
+```
+
+Use the actual absolute paths on each host and verify both links with `readlink -f`. Do not copy credentials or raw records into the source archive. The `state/server.toml` path used by a switch must be the same path that the remote checkout resolves through this link.
+
 **Checkpoint:** same source commit and lock on both nodes; CPU tests pass.
 
 ## 3. Acquire the checkpoint once and verify each copy

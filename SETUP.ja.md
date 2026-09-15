@@ -62,6 +62,15 @@ python tools/check_publication.py
 
 `state/`、認証情報、ローカル記録はGitに含めません。状態は各ノード固有です。本リリースでは既定の`$HOME/.cache/huggingface`を使用してください。起動コードのマウント解決はまだカスタムキャッシュ環境変数に対応していません。状態とレポートはチェックアウト内の`state/`、`records/`へ保存します。
 
+ソースアーカイブを新しいcheckoutへ展開したときは、`server preflight`や`cluster switch`の前に、Git除外の実行時ディレクトリを各ホストの永続領域へ接続します。ソースアーカイブには意図的に含まれません。新しい対がreadyになるまで旧checkoutと記録を保持します。
+
+```sh
+ln -s /srv/glm53/state /srv/glm53/source/state
+ln -s /srv/glm53/records /srv/glm53/source/records
+```
+
+各ホストの実際の絶対パスを使い、`readlink -f`で両方のリンク先を確認してください。認証情報や生の記録をソースアーカイブへコピーしません。切替で使う`state/server.toml`は、リモートcheckoutがこのリンク越しに解決する同じパスである必要があります。
+
 **通過条件:** 両機のソース・ロック一致、CPUテスト合格。
 
 ## 3. 重みを一度取得し、それぞれのコピーを検証する

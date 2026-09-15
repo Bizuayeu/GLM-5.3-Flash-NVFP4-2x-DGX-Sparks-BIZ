@@ -23,6 +23,16 @@ This section owns deployment storage paths. The model ID, revision and base-imag
 
 The LPA asset expands as follows. `manifest.json` is a copy of the [projector lock](../config/lpa-projector.lock.json); source checkout archives do not include this directory.
 
+A source archive also omits `state/` and `records/` by design. A host deployment must create symlinks from the new checkout to its persistent runtime directories before using the server launcher:
+
+```sh
+ln -s /srv/glm53/state /srv/glm53/source/state
+ln -s /srv/glm53/records /srv/glm53/source/records
+readlink -f /srv/glm53/source/state /srv/glm53/source/records
+```
+
+Use absolute host paths, retain the old checkout for recovery, and never place credentials or raw records in the source archive.
+
 ```text
 state/lpa/glm53-lpa-cut32-v1/
 ├── projector.pt
