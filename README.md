@@ -35,7 +35,7 @@ Licensing at a glance. Each artifact keeps its own terms; obligations and the ra
 | Built container image | Per bundled component (CUDA, Torch, NCCL and others); not treated as one blanket license | Built by the operator from the pinned official base image |
 | ZCode / Claude Code harnesses | Each product's own terms | Installed separately; nothing is relicensed here |
 
-Distributing this repository as source, pinned references and build steps requires only Apache-2.0 compliance. Redistributing weights or built images adds those artifacts' conditions. Adapted MIT and Apache notices are retained. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
+Distributing this repository as source, pinned references and build steps requires Apache-2.0 compliance plus retention of the copyright and license notices of the adapted third-party code (MIT and Apache). Redistributing weights or built images adds those artifacts' conditions. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
 
 See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets, and that document is the single source for their run status.
 
