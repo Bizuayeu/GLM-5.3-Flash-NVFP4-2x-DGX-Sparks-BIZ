@@ -166,6 +166,15 @@ def rpc(action, rank, value):
                     raise
                 return {"ready": False}
         return {"ready": True}
+    if action == "warmup":
+        profile = server.thaw(value["launch"]["manifest"])
+        if rank != 0 or not profile["generation"].get("warmup", False):
+            return {"skipped": True}
+        owned_record(value)
+        state = ROOT / "state/startup-rank0.json"
+        if server.read_json(state)["name"] != value["name"]:
+            raise ValueError("Running rank 0 is not this attempt")
+        return server.warmup_running(profile)
     raise ValueError("Unknown cluster operation")
 
 
@@ -206,7 +215,9 @@ class SSHBackend:
                     input=json.dumps({"action": action, "rank": rank, "value": value}),
                     text=True,
                     capture_output=True,
-                    timeout=120,
+                    # The ladder's long rung pays a full prefill (about 500 s
+                    # at 200K measured); everything else answers in seconds.
+                    timeout=self.timeout if action == "warmup" else 120,
                 )
             except subprocess.TimeoutExpired:
                 if attempt + 1 == attempts:
@@ -239,6 +250,10 @@ class SSHBackend:
 
     def stop(self, rank, identity):
         return self.call("stop", rank, identity)
+
+    def warmup(self, rows):
+        head = next(r for r in rows if r["rank"] == 0)
+        return self.call("warmup", 0, head["identity"])
 
     def ready(self, rows):
         if {r["rank"] for r in rows} != {0, 1}:

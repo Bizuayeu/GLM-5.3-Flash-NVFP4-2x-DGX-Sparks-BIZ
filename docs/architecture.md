@@ -8,7 +8,7 @@ The project is a checkout-local operator toolkit. Source archives contain no wei
 |---|---|
 | `glm53_setup/__main__.py` | Fixed command dispatch; no dynamic user-supplied module loading |
 | `glm53_setup/config.py` | Checkout paths and validated pinned configuration |
-| `glm53_setup/server.py`, `server_config.py` | Launch/client orchestration and categorized TOML settings |
+| `glm53_setup/server.py`, `server_config.py`, `capacity.py`, `warmup.py` | Launch/client orchestration, categorized TOML settings, KV boot-line decomposition and the post-readiness request ladder |
 | `glm53_setup/host.py` | Host-side helpers shared by the launcher: site validation, serve arguments, fabric checks, snapshot resolution, subprocess execution |
 | `glm53_setup/download.py`, `images.py`, `build_reference.py` | Asset preparation and guarded local operations |
 | `glm53_setup/validation/` | Explicit CPU/GPU inspection, fixture creation and assessment |

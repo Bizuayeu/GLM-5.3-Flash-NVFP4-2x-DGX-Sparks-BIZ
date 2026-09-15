@@ -32,6 +32,40 @@ class ClusterOwnershipTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cluster.rpc("start", 0, identity)
 
+    def test_warmup_rpc_runs_only_for_the_owned_running_head_when_requested(self):
+        profile = server_config.load(
+            Path(__file__).resolve().parents[1] / "examples/server.example.toml"
+        )
+        launch = {
+            "manifest": server.freeze(profile, {}),
+            "config_path": "/srv/glm53/state/server.toml",
+        }
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+            patch.object(
+                server, "warmup_running", return_value={"passed": True}
+            ) as run,
+        ):
+            identity = cluster.rpc("reserve", 0, launch)
+            self.assertEqual(cluster.rpc("warmup", 1, identity), {"skipped": True})
+            (Path(tmp) / "state").mkdir()
+            server.write_json(
+                Path(tmp) / "state/startup-rank0.json", {"name": "someone-else"}
+            )
+            with self.assertRaises(ValueError):
+                cluster.rpc("warmup", 0, identity)
+            server.write_json(
+                Path(tmp) / "state/startup-rank0.json", {"name": identity["name"]}
+            )
+            self.assertEqual(cluster.rpc("warmup", 0, identity), {"passed": True})
+            run.assert_called_once()
+            off = copy.deepcopy(launch)
+            off["manifest"]["profile"]["generation"]["warmup"] = False
+            off["manifest"] = server.freeze(off["manifest"]["profile"], {})
+            quiet = cluster.rpc("reserve", 0, off)
+            self.assertEqual(cluster.rpc("warmup", 0, quiet), {"skipped": True})
+
     def test_swapped_attempt_record_is_not_allowed_to_stop_a_container(self):
         with (
             tempfile.TemporaryDirectory() as tmp,

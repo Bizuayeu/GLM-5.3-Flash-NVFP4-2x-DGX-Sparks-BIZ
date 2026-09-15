@@ -58,6 +58,12 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 | P21 Expert Parallel | TP=2・DP=1・2系列・各rank固定KV予算を維持し、Expert層の分割だけをTPからEPへ変更する独立実験 | Expert計算効率と全体throughput。追加メモリ、通信、個別TTFT/ITL、品質も比較 | **今回の性能施策として不採用・既定off。** 全モデルA/B/Aの全4ケースで両off対照より遅い。限定品質・切断復帰・16K×2容量は通過。別負荷・併用は別検収。[実測](benchmarks.ja.md#expert-parallel-の独立評価p21) |
 | P22 APC優先＋未処理部分のLPA | 全状態を揃えて復元したHと適用可能長max(0,N-T-H)で判断。通常計算由来だけを共有し、最初の近似以降は共有登録を抑止 | 既存prefixの再利用と長い残余prefillの短縮、要求間での近似状態の混入防止 | **単独校正、限定品質・運用、MTP／融合／async併用と最終held-outを完了。** prefix再利用重視ではMTPなしを選ぶ。[実装契約](apc-lpa-design.ja.md)／[構成別の結果](benchmarks.ja.md#同一入力を再利用する場合の差) |
 
+**追加施策（2026-09-16）：**
+
+| 施策 | 作業 | 期待する効果／指標 | 現在の状態／手順 |
+|---|---|---|---|
+| P23 NVFP4がBF16のまま残す射影のFP8 weight-only | checkpointの除外リストがBF16のまま残す重み——全層の `self_attn*`（両rank合計11.29 GiB）、`shared_experts*`（1.97 GiB）、`lm_head`（1.18 GiB。safetensorsヘッダから実測）——をload時に出力チャネルごとにFP8 e4m3へ量子化する。NVFP4のexpert・固定カーネル・MTP draftは変えない | 毎tokenで読まれる射影の重み転送量を減らす。短文・長文入力のdecode tok/s、TTFT、メモリを測る | **候補、未着手。** 着想はMia PR #139（AGPL-3.0、コードは採用しない。そのPRが対象にする先頭のdense MLP層は当方では既にNVFP4）。門は品質：q/k射影のFP8化はsparse-MLAのtop-k候補選択を動かし得て、[候補順序の正規化](candidate-order.ja.md)で安定させた部分に触る。出典のPR自身が品質を暫定としている。既定を変える前に、同一imageのA/B/A（復元対照つき）・MTP採択パネル・FreedomBenchが要る。同PRのadaptive verification lengthは見送りのまま：eagerのMTP k=3には保つべきCUDA graphがない |
+
 P12は測定軸、P13はscheduler設定、P14は投入順序の実験です。同じ改善を三つに数えません。また、MTPは単一系列でも複数の投機行をまとめて検証できるため、GEMM寄りの仕事を得る前提が必ずしも`max_num_seqs > 1`ではありません。
 
 ## 業務利用の品質・採用ゲート
@@ -84,7 +90,7 @@ FreedomBenchは、著者の正答に対する一致を測る、対象範囲の�
 
 単体の判断には、**機能受入（検証範囲付き）／性能採用／既定on・off／併用未検収・検収済み**を別々に記録します。「機能受入・性能差は誤差内・既定off・併用未検収」も有効な結論です。部品や小層fixtureの合格を全モデル対応へ繰り上げません。
 
-P06では、Graph用のメモリ保持、起動時capture時間、対応shapeとbuffer寿命、異常時の復旧を確認します。Graphは副作用ゼロの設定ではありません。LPAのprefill経路とMTPの投機経路はP18で確認し、速度だけを理由に全経路をGraph化しません。PyTorchの[CUDA Graph制約とメモリ管理](https://docs.pytorch.org/docs/main/notes/cuda.html#cuda-graphs)を参照。
+P06では、Graph用のメモリ保持、起動時capture時間、対応shapeとbuffer寿命、異常時の復旧を確認します。Graph採用前には、位置別の投機採択率が1.00ちょうどに張り付いていないことも確認します。CUDA graph併用時のその値はvllm-project/vllm#53030の兆候（起動後の検査はMia PR #70に記載）であり、実際の採択率ではありません。Graphは副作用ゼロの設定ではありません。LPAのprefill経路とMTPの投機経路はP18で確認し、速度だけを理由に全経路をGraph化しません。PyTorchの[CUDA Graph制約とメモリ管理](https://docs.pytorch.org/docs/main/notes/cuda.html#cuda-graphs)を参照。
 
 ### 比較記録の共通項目
 

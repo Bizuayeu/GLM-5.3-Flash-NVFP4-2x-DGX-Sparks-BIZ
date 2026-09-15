@@ -12,7 +12,7 @@
 |---|---|---|
 | `runtime.vision` | `true` | 両rankから `--language-model-only` を外して視覚塔を読み込み、`--limit-mm-per-prompt '{"video": 0}'` を付ける |
 | `context.max_model_len` | 204800 | テキスト専用構成の262,144から縮小 |
-| `cache.kv_cache_memory_bytes` | 2684354560（各rank 2.5 GiB） | 3 GiBから縮小。runtimeが報告したKV収容量は235,016 token（上限の1.15倍） |
+| `cache.kv_cache_memory_bytes` | 2684354560（各rank 2.5 GiB） | 3 GiBから縮小。起動行の235,016 tokenは `max_model_len` の1.15倍、つまりpoolの最大同時実行数をtoken単位で表した値で、会話を何token保持できるかではない（[`server capacity`](server-configuration.ja.md#kv容量とramの条件)） |
 | `cache.mm_processor_cache_gb` | 0.1 | vLLM既定の4 GiBではなく `--mm-processor-cache-gb 0.1` |
 | `resources.reserve_gib` | 2.5 | 3から変更。保護の見積もりは[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件) |
 
@@ -69,6 +69,6 @@
 - 試したのは小さな合成画像1枚だけです。8,000 token近い画像、1セッション内の多数の画像、画像理解の品質全般は未計測です。
 - MTPのdraftはテキスト専用で、画像を含む要求での受理率は未計測です。画像とLPAの併用も未検証です（LPAは配布既定で無効）。
 - ZCodeのターミナル版の会話1回（2026-09-15）で、モデルがシェルコマンドでスクリーンショットを保存し、ファイル読み取りツールで読み、画像の中にしかない文言を正しく説明しました。ZCodeのプロンプトへ画像を直接添付する操作とClaude Codeは未確認です。上の実測はAPIへ直接送りました。
-- 初めて来る形の要求では、今でも配信中にカーネルをコンパイルし得ます。再起動や構成変更の後は、対話で使う前に代表的な要求（画像、長文、tool呼び出し）を流し、コンパイルを見ている時間帯に済ませてください。配信中にキャッシュしたカーネルで次回起動時の警告が消えるかは、まだ確認していません。
+- 初めて来る形の要求では、今でも配信中にカーネルをコンパイルし得ます。`server warmup` は配信中にコンパイルが観測された形（短文・tool呼び出し・画像・`generation.warmup_long_tokens` の長文段）を流し、その間にコンパイルされたカーネル名を記録します。`generation.warmup = true` なら `cluster switch` がreadiness後に自動実行します（[運用](operations.ja.md#監視停滞検知warmup)）。配信中にキャッシュされたカーネルで次回起動の警告が消えるかは、次のladder記録で読めます。
 - APIサーバの正体不明の624 MiBの領域と、長いセッションでのゆっくりした増加は特定できていません。`MALLOC_ARENA_MAX` が影響し得るのは、アリーナ分の255 MiBまでです。
 - 同時実行1のみです。複数系列、長期の信頼性、ハーネスの受け入れは未完了です。

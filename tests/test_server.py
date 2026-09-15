@@ -135,6 +135,55 @@ class ServerConfigTests(unittest.TestCase):
                 "GLM53_FUSED_UNPACK", config.environment(self.profile, rank)
             )
 
+    def test_dev_endpoints_toggle_is_optional_and_explicit(self):
+        # Omitted or false: the stock surface; the dev router stays unmounted.
+        for rank in (0, 1):
+            self.assertNotIn(
+                "VLLM_SERVER_DEV_MODE", config.environment(self.profile, rank)
+            )
+        self.profile["api"]["dev_endpoints"] = True
+        config.validate(self.profile)
+        for rank in (0, 1):
+            self.assertEqual(
+                config.environment(self.profile, rank)["VLLM_SERVER_DEV_MODE"], "1"
+            )
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertIs(distributed["api"]["dev_endpoints"], False)
+        for bad in (1, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["api"]["dev_endpoints"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
+    def test_stall_and_warmup_keys_are_optional_nonnegative(self):
+        for section, key in (
+            ("resources", "stall_seconds"),
+            ("generation", "warmup_long_tokens"),
+        ):
+            profile = copy.deepcopy(self.profile)
+            profile[section].pop(key, None)
+            config.validate(profile)
+            profile[section][key] = 0
+            config.validate(profile)
+            for bad in (-1, 1.5, "600", True):
+                profile[section][key] = bad
+                with self.assertRaises(ValueError):
+                    config.validate(profile)
+        profile = copy.deepcopy(self.profile)
+        profile["generation"]["warmup"] = "yes"
+        with self.assertRaises(ValueError):
+            config.validate(profile)
+        # The long rung must leave room for the answer inside the context.
+        profile = copy.deepcopy(self.profile)
+        profile["generation"]["warmup_long_tokens"] = (
+            profile["context"]["max_model_len"] - profile["generation"]["max_tokens"]
+        )
+        with self.assertRaises(ValueError):
+            config.validate(profile)
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertEqual(distributed["resources"]["stall_seconds"], 600)
+        self.assertIs(distributed["generation"]["warmup"], True)
+
     def test_prompt_tokens_details_flag_is_optional_and_explicit(self):
         self.profile["api"]["prompt_tokens_details"] = True
         config.validate(self.profile)
@@ -270,6 +319,7 @@ class ServerConfigTests(unittest.TestCase):
         ]:
             with self.subTest(seconds=seconds):
                 self.profile["resources"]["run_seconds"] = seconds
+                self.profile["resources"]["stall_seconds"] = 0
                 with (
                     patch("pathlib.Path.open", mock_open()),
                     patch.object(
@@ -288,12 +338,123 @@ class ServerConfigTests(unittest.TestCase):
                     patch.object(server.host, "run") as stop,
                     patch.object(server.subprocess, "run"),
                 ):
-                    server.supervise(self.profile, "owned", Path("record"))
+                    server.supervise(self.profile, "owned", Path("record"), 0)
                     write.assert_any_call(
                         Path("record/stop-reason.json"), {"reason": reason}
                     )
                     stop.assert_called_once_with("docker", "stop", "owned")
                     self.assertEqual(sleep.call_count, sleeps)
+
+    def _supervise(self, samples, monotonic, rank=0, stall=600):
+        self.profile["resources"]["run_seconds"] = 0
+        self.profile["resources"]["stall_seconds"] = stall
+        with (
+            patch("pathlib.Path.open", mock_open()),
+            patch.object(
+                server, "inspect_owned", return_value={"State": {"Running": True}}
+            ),
+            patch.object(server, "available_gib", return_value=100),
+            patch.object(server, "progress_sample", side_effect=samples) as probe,
+            patch.object(server.time, "monotonic", side_effect=monotonic),
+            patch.object(server.time, "sleep"),
+            patch.object(server, "write_json") as write,
+            patch.object(server.host, "run") as stop,
+            patch.object(server.subprocess, "run"),
+        ):
+            server.supervise(self.profile, "owned", Path("record"), rank)
+        return probe, write, stop
+
+    def test_engine_stall_stops_only_when_every_progress_signal_is_frozen(self):
+        running = {
+            "vllm:num_requests_running": 1,
+            "vllm:kv_cache_usage_perc": 0.5,
+            "vllm:prompt_tokens_total": 100,
+            "vllm:generation_tokens_total": 40,
+        }
+        prefilling = {**running, "vllm:kv_cache_usage_perc": 0.6}
+        # Sample at 0 s, prefill moves the KV usage at 500 s, then nothing
+        # moves from 500 s to 1200 s: the stall clock restarts at the move.
+        # monotonic: stall base, one read per move, one per frozen check.
+        probe, write, stop = self._supervise(
+            [running, prefilling, prefilling, prefilling],
+            [0, 0, 500, 900, 1200],
+        )
+        self.assertEqual(probe.call_count, 4)
+        write.assert_any_call(
+            Path("record/stop-reason.json"),
+            {"reason": "engine-stall", "stall_seconds": 600, "progress": prefilling},
+        )
+        stop.assert_called_once_with("docker", "stop", "owned")
+
+    def test_idle_engine_unreachable_metrics_and_rank_one_never_stall(self):
+        idle = {
+            "vllm:num_requests_running": 0,
+            "vllm:kv_cache_usage_perc": 0.0,
+            "vllm:prompt_tokens_total": 100,
+            "vllm:generation_tokens_total": 40,
+        }
+        frozen = {**idle, "vllm:num_requests_running": 1}
+        for name, samples in (
+            ("idle", [idle, idle, idle, StopIteration]),
+            ("unreachable", [frozen, None, None, StopIteration]),
+        ):
+            with self.subTest(name=name):
+                # Neither an idle engine nor a lost sample counts as a stall,
+                # however long the clock runs; the probe runs out first.
+                with self.assertRaises(StopIteration):
+                    self._supervise(
+                        samples, [0, 0, 5000, 5000, 9000, 9000, 20000, 20000]
+                    )
+        # The worker has no API; /metrics is never asked for.
+        with patch.object(server, "progress_sample") as probe:
+            with (
+                patch("pathlib.Path.open", mock_open()),
+                patch.object(
+                    server, "inspect_owned", return_value={"State": {"Running": False}}
+                ),
+                patch.object(server.host, "run"),
+                patch.object(server.subprocess, "run"),
+                patch.object(server, "write_json"),
+            ):
+                self.profile["resources"]["stall_seconds"] = 600
+                server.supervise(self.profile, "owned", Path("record"), 1)
+            probe.assert_not_called()
+
+    def test_unobservable_metrics_never_stop_the_head(self):
+        for error in (TimeoutError(), ConnectionResetError(), ValueError("x")):
+            with self.subTest(error=type(error).__name__):
+                with patch.object(server, "metrics_text", side_effect=error):
+                    self.assertIsNone(server.progress_sample(self.profile))
+        with patch.object(server, "metrics_text", return_value="# nothing\n"):
+            self.assertIsNone(server.progress_sample(self.profile))
+
+    def test_metrics_parser_sums_label_sets_and_ignores_comments(self):
+        text = (
+            "# HELP vllm:num_requests_running x\n"
+            'vllm:num_requests_running{engine="0",model="m"} 1.0\n'
+            'vllm:num_requests_running{engine="1",model="m"} 2.0\n'
+            'vllm:generation_tokens_total{model="m"} 5\n'
+            'vllm:other{model="m"} 9\n'
+            "vllm:kv_cache_usage_perc{} nan-ish\n"
+        )
+        self.assertEqual(
+            server.parse_metrics(text, server.PROGRESS_SIGNALS),
+            {"vllm:num_requests_running": 3.0, "vllm:generation_tokens_total": 5.0},
+        )
+
+    def test_dev_endpoints_gate_reset_and_capacity_layout(self):
+        self.profile["lpa"]["enabled"] = False
+        self.assertFalse(server.dev_endpoints(self.profile))
+        self.profile["api"]["dev_endpoints"] = True
+        self.assertTrue(server.dev_endpoints(self.profile))
+        with (
+            patch.object(server, "container_logs", return_value=""),
+            patch.object(server, "metrics_text", return_value=""),
+            patch.object(server, "collective_rpc") as rpc,
+        ):
+            report = server.capacity_report(self.profile, "owned")
+            rpc.assert_not_called()  # No LPA extension: no layout RPC.
+        self.assertIn("withheld", report["cached_conversations"])
 
     def test_categories_control_both_ranks_and_context(self):
         self.profile["context"]["max_model_len"] = 8192

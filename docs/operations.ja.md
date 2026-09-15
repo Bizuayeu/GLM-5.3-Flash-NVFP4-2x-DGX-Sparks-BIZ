@@ -123,6 +123,14 @@ preflightの合格は資材と設定の確認であり、品質や可用性の�
 
 rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
 
+## 監視・停滞検知・warmup
+
+各rankの前面の監視プロセスは2秒ごとに `MemAvailable` を読み、`resources.reserve_gib` を割ると自分のcontainerを停止します（`stop-reason: memory-reserve`）。rank 0では `resources.stall_seconds` が正のとき、同じ周期で `/metrics` も読みます。要求がrunningのまま、生成token計数・prompt token計数・KV使用率・running数のどれもその秒数動かなければ、`stop-reason: engine-stall` で停止し、止まったままの標本を記録します。engineが固まっても `/health` は200を返し続ける（V1のhealth checkはworkerを調べない）ので、生存の信号にはなりません。chunked prefillの間はKV使用率が動き、prompt token計数は最初の出力tokenで加算されるため、長いpromptは停滞になりません。テンプレートの600秒は `generation.timeout_seconds` と同じ値で、実測で最長の要求（200K、506秒）が収まります。`/metrics` に届かないときは証拠なしとして数えません。監視による停止はもう一方のrankを残すので、新しいpairを起動する前にそちらも止めます（`cluster switch` は不完全なpairを拒否します）。これらの記述はMia PR #70の現場記録を参考にしました。そこでの2件はどちらも、containerを強制終了し、短いCUDA probeでGPUを確かめ、再起動するだけで復旧し、電源断は要りませんでした。
+
+参照機はホストページ用に16 GiBのswapを持ちます。`vm.swappiness=0` は新しいページアウトを止めますが、既にswapに出たページは戻しません。長いprefill中に古いswapページへ触れたことがGB10のUVM livelockの引き金だったと同じ出典が報告しています。両containerが止まっている間に残りのswapを巡回します：`sudo swapoff -a && sudo swapon -a`。swapファイル自体は残します。swapを無くすと、確保の山でworkerがkillされました。
+
+`server warmup` はreadiness後に、通常のchat endpointへ要求のladderを流します。短文1往復、tool呼び出し、合成画像1枚（`runtime.vision` 有効時）、`generation.warmup_long_tokens` を指定した場合はその長さのprompt（配信中のtokenizerで長さを合わせる）です。これらは配信中にカーネルのコンパイルが観測された形です（[画像入力](vision.ja.md#限界と未解決の事項)）。固定の起動はvLLM自身のJIT warmupを無効にしており、そのコンパイルの山が一度headを保護余裕の下へ押し下げました。コンパイル済みカーネルはruntime cacheに残るため、profileごとの最初の起動以後は、ladderは主に「何もコンパイルされない」ことの確認になります。記録（`records/<stamp>-warmup-r0/result.json`）には段ごとの秒数・prompt token・結果、jit monitorがladderの前と最中に報告したカーネル名、その後prefix cacheをリセットしたか（`api.dev_endpoints = true` のときだけ。それ以外ではwarmupのpromptは追い出されるまでcacheに残る）が入ります。`generation.warmup = true` なら、`cluster switch` は両rankのreadiness後にrank 0でladderを実行し、結果を `result.json` の `warmup` に残します。ladderの失敗は記録されるだけで、切替の失敗や巻き戻しにはなりません。`cluster resume` はreadinessを再観測するだけでladderは流さないので、必要なら後からhead上で `server warmup` を実行します。長文段は起動のたびにフルprefillを払います（200Kで約500秒の実測）。
+
 ## 復旧と記録
 
 スクリプトは、失敗したcontainerや重みを削除せず、再起動用のwatchdogも導入しません。`server stop` が停止するのは、このランチャーの所有ラベルを持つcontainerだけです。同じrank名を作り直す前に、ログを保存し、停止したcontainerの名前を変更してください。分散実行で障害が起きた後は、両rankをまとめて再初期化します。

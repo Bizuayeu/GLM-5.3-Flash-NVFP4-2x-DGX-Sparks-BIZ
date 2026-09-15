@@ -34,7 +34,9 @@ def validate(profile):
                     "prefix_cache_retention_interval",
                     "mm_processor_cache_gb",
                 },
-                "server.api": {"prompt_tokens_details"},
+                "server.api": {"prompt_tokens_details", "dev_endpoints"},
+                "server.resources": {"stall_seconds"},
+                "server.generation": {"warmup", "warmup_long_tokens"},
             }.get(path, set())
             if path.startswith("server.nodes["):
                 optional = {"additional_rails"}
@@ -78,6 +80,17 @@ def validate(profile):
             raise ValueError(
                 "cache.mm_processor_cache_gb must be a finite nonnegative number"
             )
+    if type(profile["api"].get("dev_endpoints", False)) is not bool:
+        raise ValueError("api.dev_endpoints must be true or false")
+    if type(profile["generation"].get("warmup", False)) is not bool:
+        raise ValueError("generation.warmup must be true or false")
+    for section, key in (
+        ("resources", "stall_seconds"),
+        ("generation", "warmup_long_tokens"),
+    ):
+        value = profile[section].get(key, 0)
+        if type(value) is not int or value < 0:
+            raise ValueError(f"{section}.{key} must be a nonnegative integer")
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported profile schema_version")
     for key in ("reference_image", "lpa_image"):
@@ -167,6 +180,12 @@ def validate(profile):
         raise ValueError("temperature must be nonnegative")
     if profile["generation"]["max_tokens"] >= profile["context"]["max_model_len"]:
         raise ValueError("Reserve context space for the input prompt")
+    if (
+        profile["generation"].get("warmup_long_tokens", 0)
+        + profile["generation"]["max_tokens"]
+        >= profile["context"]["max_model_len"]
+    ):
+        raise ValueError("warmup_long_tokens plus max_tokens must fit the context")
     if profile["generation"]["reasoning_effort"] not in {"low", "high", "max"}:
         raise ValueError(
             "Use a supported reasoning_effort; thinking-off is unqualified"
@@ -245,6 +264,7 @@ def environment(profile, rank):
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]
         or profile["validation"]["expert_worker"]
+        or profile["api"].get("dev_endpoints", False)
     ):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 — 2026-09-16
+
+### Added
+
+- **Post-readiness warmup ladder** (`server warmup`; `generation.warmup`, `generation.warmup_long_tokens`). Sends the request shapes that were observed compiling kernels while serving (short text, tool call, one image, an optional long prompt sized with the served tokenizer), records per-rung timing and the kernels the jit monitor reported before and during the ladder, and resets the prefix cache afterwards when the dev routes are mounted. `cluster switch` runs it on rank 0 after both ranks are ready and stores the result under `warmup`; a ladder failure never fails or rolls back the switch. Informed by Mia PR #170; rungs come from this kit's own records, not that PR's.
+- **Engine stall detection** (`resources.stall_seconds`, template 600, rank 0 only). The supervisor reads `/metrics` in its existing 2 s cycle and stops with `stop-reason: engine-stall` when requests are running but the generation-token count, prompt-token count, KV-cache usage and running count have all been frozen for that long. `/health` stays 200 while the engine is wedged, so it was never a liveness signal. Prefill progress counts as activity; an unreachable `/metrics` never counts. Operations now also carries the swap-cycling note. Informed by Mia PR #70.
+- **`server capacity`.** Reads the running head's boot log and `/metrics` and prints the KV pool as it is: the stock `GPU KV cache size` line decomposed into blocks, blocks per maximum-length request and group block widths, stating that the stock figure is `max_concurrency × max_model_len`. A cached-conversation estimate is printed only for a profile that loads the LPA worker extension (whose RPC names the group spec kinds) and is withheld for any group kind it does not model. The vision document's "235,016 tokens of KV capacity" wording was that misreading and is corrected. Informed by Mia PR #94; no runtime patch.
+- **`api.dev_endpoints`** (optional, default false). Mounts vLLM's dev routes (`/reset_prefix_cache`, `/collective_rpc`, `/sleep`, …) on the loopback API for a distributed profile, so benchmarks and the warmup cleanup can reset the prefix cache without a restart. The routes are unauthenticated, as launch contracts already state. Informed by Mia PR #37.
+- **P23 filed in the catalog**: FP8 weight-only for the projections the NVFP4 checkpoint leaves in BF16 (`self_attn*` 11.29 GiB, `shared_experts*` 1.97 GiB, `lm_head` 1.18 GiB across both ranks, read from the safetensors headers). Candidate only, quality-gated, not started; adaptive verification length stays rejected. The P06 resumption criteria gain the spec-acceptance-pinned-at-1.00 check (vllm#53030).
+
+### Changed
+
+- All new profile keys are optional; existing `state/server.toml` files and running pairs stay valid and recoverable. `supervise` now takes the rank. The SSH transport allows the readiness timeout for the warmup call because the long rung pays a full prefill.
+
 ## 1.1.1 — 2026-09-15
 
 - README (both languages): distributing the source also carries the copyright and license notices of the adapted third-party code (MIT and Apache), as the licensing guide and third-party notices already state; the sentence that said "only Apache-2.0" contradicted the sentence after it.

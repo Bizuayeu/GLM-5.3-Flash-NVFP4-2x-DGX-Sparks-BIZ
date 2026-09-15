@@ -8,7 +8,7 @@
 |---|---|
 | `glm53_setup/__main__.py` | 固定したコマンド振り分け。利用者が指定するモジュールの動的読込は行わない |
 | `glm53_setup/config.py` | checkout内のパスと、検査済みの固定設定 |
-| `glm53_setup/server.py`、`server_config.py` | 起動・クライアント制御と、カテゴリ別のTOML設定 |
+| `glm53_setup/server.py`、`server_config.py`、`capacity.py`、`warmup.py` | 起動・クライアント制御、カテゴリ別のTOML設定、KV起動行の分解、readiness後の要求ladder |
 | `glm53_setup/host.py` | ランチャーが共用するホスト側の補助：サイト設定の検査、serve引数、fabric検査、snapshot解決、subprocess実行 |
 | `glm53_setup/download.py`、`images.py`、`build_reference.py` | 資材の準備と、ガード付きのローカル操作 |
 | `glm53_setup/validation/` | 明示的なCPU／GPU検査、fixtureの作成と判定 |

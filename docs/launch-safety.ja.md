@@ -8,7 +8,7 @@ P10（メモリ）、P19／P22（APC）、E03（運用）を拡張する項目�
 
 共通送信処理は非空の `API_KEY` を優先し、それが空／未設定なら非空の `VLLM_API_KEY` を使います。両方とも空／未設定ならAuthorizationを送りません。`server ask`、それを使うベンチ、profiler制御、componentの準備確認が対象です。宛先originはモデルAPIとして明示し、同一originを含めredirectは拒否します。ダウンロード経路には適用しません。キーを設定やfingerprintへ入れず、HTTP例外にはヘッダーや応答本文を保存しません。401／403は失敗として記録し、成功した測定から欠測として除きません。
 
-固定vLLMの認証middlewareが保護するのは `/v1`・`/v2`・`/inference`・`/cohere` です。`/health`・`/metrics`・`/tokenize`・`/collective_rpc`・`/reset_prefix_cache`・profiler制御は保護しません。Bearer送信だけでサーバー側の保護範囲は変わりません。APIはloopback限定を維持します。今回追加するのはクライアント認証対応であり、公開サーバー用の認証層ではありません。
+固定vLLMの認証middlewareが保護するのは `/v1`・`/v2`・`/inference`・`/cohere` です。`/health`・`/metrics`・`/tokenize`・`/collective_rpc`・`/reset_prefix_cache`・profiler制御は保護しません。Bearer送信だけでサーバー側の保護範囲は変わりません。APIはloopback限定を維持します。今回追加するのはクライアント認証対応であり、公開サーバー用の認証層ではありません。 `api.dev_endpoints = true` は、本来devモードで動かないprofileにもdev経路（cache reset・collective RPC・sleep）を載せます。これらも同様に無認証です（[サーバー設定](server-configuration.ja.md#コマンド)）。
 
 ## allocatorと共通起動設定
 

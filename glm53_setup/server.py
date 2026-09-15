@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import host, model_http
+from . import capacity, host, model_http, warmup
 from . import server_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .host import available_gib
@@ -199,9 +199,53 @@ def thaw(manifest):
     return manifest["profile"]
 
 
-def supervise(profile, name, record):
+PROGRESS_SIGNALS = (
+    "vllm:num_requests_running",
+    "vllm:kv_cache_usage_perc",
+    "vllm:prompt_tokens_total",
+    "vllm:generation_tokens_total",
+)
+
+
+def parse_metrics(text, names):
+    """Sum each named Prometheus sample over its label sets; absent names are omitted."""
+    totals = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        head, _, value = line.rpartition(" ")
+        name = head.split("{", 1)[0]
+        if name in names:
+            try:
+                totals[name] = totals.get(name, 0.0) + float(value)
+            except ValueError:
+                continue
+    return totals
+
+
+def metrics_text(profile, timeout=2):
+    with model_http.open_response(
+        f"http://127.0.0.1:{profile['api']['port']}", "/metrics", timeout=timeout
+    ) as response:
+        return response.read().decode("utf-8", "replace")
+
+
+def progress_sample(profile):
+    """The four signals a wedged engine stops moving; None when unobservable."""
+    try:
+        sample = parse_metrics(metrics_text(profile), PROGRESS_SIGNALS)
+    except Exception:  # noqa: BLE001 - a read that fails or stalls is not a stalled engine
+        return None
+    return sample if PROGRESS_SIGNALS[0] in sample else None
+
+
+def supervise(profile, name, record, rank):
     seconds = profile["resources"]["run_seconds"]
     deadline = time.monotonic() + seconds if seconds else None
+    # Only the head serves /metrics; /health answers 200 while the engine is
+    # wedged, so progress is read from the request counters instead.
+    stall = profile["resources"].get("stall_seconds", 0) if rank == 0 else 0
+    last, moved = None, (time.monotonic() if stall else None)
     try:
         with (record / "resources.jsonl").open("a", encoding="utf-8") as log:
             while True:
@@ -209,22 +253,28 @@ def supervise(profile, name, record):
                 if not info["State"]["Running"]:
                     break
                 available = available_gib()
-                log.write(
-                    json.dumps({"epoch": time.time(), "available_gib": available})
-                    + "\n"
-                )
+                entry = {"epoch": time.time(), "available_gib": available}
+                reason = None
+                if available < profile["resources"]["reserve_gib"]:
+                    reason = {"reason": "memory-reserve"}
+                elif deadline is not None and time.monotonic() >= deadline:
+                    reason = {"reason": "run-deadline"}
+                elif stall:
+                    sample = progress_sample(profile)
+                    if sample is not None:
+                        entry["progress"] = sample
+                        if sample[PROGRESS_SIGNALS[0]] <= 0 or sample != last:
+                            last, moved = sample, time.monotonic()
+                        elif time.monotonic() - moved >= stall:
+                            reason = {
+                                "reason": "engine-stall",
+                                "stall_seconds": stall,
+                                "progress": sample,
+                            }
+                log.write(json.dumps(entry) + "\n")
                 log.flush()
-                if available < profile["resources"]["reserve_gib"] or (
-                    deadline is not None and time.monotonic() >= deadline
-                ):
-                    write_json(
-                        record / "stop-reason.json",
-                        {
-                            "reason": "memory-reserve"
-                            if available < profile["resources"]["reserve_gib"]
-                            else "run-deadline"
-                        },
-                    )
+                if reason is not None:
+                    write_json(record / "stop-reason.json", reason)
                     break
                 time.sleep(2)  # Same sampling cadence as the measured experiments.
     finally:
@@ -269,6 +319,73 @@ def post(profile, path, body):
 def collective_rpc(profile, method, **kwargs):
     body = {"method": method, "kwargs": kwargs, "timeout": 600}
     return post(profile, "/collective_rpc", body)["results"]
+
+
+def container_logs(name):
+    return subprocess.run(
+        ["docker", "logs", name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    ).stdout.decode("utf-8", "replace")
+
+
+def dev_endpoints(profile):
+    return (
+        profile["api"].get("dev_endpoints", False)
+        or profile["lpa"]["enabled"]
+        or profile["validation"]["component_worker"]
+        or profile["validation"]["expert_worker"]
+    )
+
+
+def capacity_report(profile, name):
+    """Decompose the KV boot line for the running head; read-only."""
+    layout = None
+    if profile["lpa"]["enabled"] and dev_endpoints(profile):
+        layout = collective_rpc(profile, "apc_cache_layout")[0]
+    return capacity.summarize(
+        profile, container_logs(name), metrics_text(profile), layout
+    )
+
+
+def warmup_report(profile, name):
+    """Run the request ladder against the running head."""
+
+    def count_tokens(text):
+        return post(
+            profile,
+            "/tokenize",
+            {"model": profile["api"]["served_model_name"], "prompt": text},
+        )["count"]
+
+    def reset():
+        if post(profile, "/reset_prefix_cache", {}) != {"success": True}:
+            raise ValueError("Prefix cache reset was not acknowledged")
+
+    return warmup.run(
+        profile,
+        ask=lambda request: ask(profile, request),
+        count_tokens=count_tokens,
+        logs=lambda: container_logs(name),
+        clock=time.monotonic,
+        reset=reset if dev_endpoints(profile) else None,
+    )
+
+
+def warmup_running(profile):
+    """Ladder for the running rank 0 owned by this profile; records the result."""
+    state, info = running_head(profile)
+    if not info["State"]["Running"]:
+        raise ValueError("warmup requires the running rank 0")
+    with request_lock():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        record = ROOT / "records" / (stamp + "-warmup-r0")
+        record.mkdir(parents=True)
+        result = warmup_report(profile, state["name"])
+    result["record"] = str(record)
+    write_json(record / "result.json", result)
+    return result
 
 
 def ask(profile, request, sender=post):
@@ -341,6 +458,8 @@ def main(argv=None):
             "stop",
             "status",
             "ask",
+            "capacity",
+            "warmup",
         ],
     )
     parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
@@ -412,6 +531,20 @@ def main(argv=None):
         return
     if os.name != "posix":
         parser.error("Run this action on the Linux model host; plan works on Windows")
+    if args.action in ("capacity", "warmup"):
+        if args.rank != 0:
+            parser.error(f"{args.action} requires rank 0")
+        if args.action == "warmup":
+            result = warmup_running(profile)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if not result["passed"]:
+                raise SystemExit(1)
+            return
+        current, info = running_head(profile)
+        if not info["State"]["Running"]:
+            parser.error("capacity requires the running rank 0")
+        print(json.dumps(capacity_report(profile, current["name"]), indent=2))
+        return
     if args.action in ("status", "ask"):
         current = read_json(state)
         info = inspect_owned(current["name"])
@@ -493,7 +626,7 @@ def main(argv=None):
         "Supervising in foreground; Ctrl+C, low memory or an enabled deadline stops this rank.",
         flush=True,
     )
-    supervise(profile, name, record)
+    supervise(profile, name, record, args.rank)
 
 
 if __name__ == "__main__":

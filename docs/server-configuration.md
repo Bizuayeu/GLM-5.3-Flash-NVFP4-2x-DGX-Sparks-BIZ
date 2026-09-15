@@ -34,6 +34,8 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Generation | temperature=0, max_tokens=4096, reasoning_effort=low, clear_thinking=true |
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 2.5 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
+| Supervision | `stall_seconds=600`: rank 0 also stops when requests are running but no `/metrics` signal moves for 600 s (`engine-stall`); `api.dev_endpoints=false` |
+| Warmup | `warmup=true`, `warmup_long_tokens=0`: text, tool and image rungs after readiness; no long rung until set |
 
 The text-only alternative sets `runtime.vision = false`, `max_model_len = 262144` and `kv_cache_memory_bytes = 3221225472`; its [256K checks](benchmarks.md#real-input-checks-at-256k) ran with a 4 GiB reserve, and a 2.5 GiB reserve is not validated for it.
 
@@ -50,6 +52,10 @@ See [launch contracts and operational validation](launch-safety.md) for authenti
 `runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget. It requires an image with `GLM53_EXPERT_PARALLEL_API=1`; this marker identifies configuration support, not successful EP qualification. Initial scope is eager, one/two sequences and no MTP/LPA/fusion/APC. Existing TOMLs must explicitly include the new key; no silent missing-key fallback is provided. See the [independent EP plan](performance-investigation.md#expert-parallel-p21) before use.
 
 `runtime.vision` is optional and false when absent; the template sets `true`. `false` keeps `--language-model-only`, so the vision tower is not loaded and requests stay text/tools only. `true` removes that flag on both ranks and adds `--limit-mm-per-prompt '{"video": 0}'`. **Video input is disabled and rejected even with `vision = true`; only images are accepted.** The reason is startup memory: vLLM profiles by encoding the largest item once, and this checkpoint's video budget (capped at 30,000 tokens, 120,000 patches) is far larger than one image (up to 8,000 tokens). The image count per prompt keeps the vLLM default, because chat harnesses resend earlier images every turn. With vision on, `cache.mm_processor_cache_gb` (optional, 0.1 when absent) sets `--mm-processor-cache-gb`, the preprocessed-image cache that vLLM keeps in both the API and engine processes, which run on rank 0 only; the vLLM default of 4 GiB could take up to 8 GiB of host RAM on the head. A processed image larger than the budget is served uncached (with a warning) rather than rejected. The vision tower is BF16 and excluded from quantization (`model.visual*` in both exclusion lists, and the pinned vLLM builds it with no quantization config). Measurements, the head's memory margin and open items are in [image input at 200K](vision.md). Validation fixtures still load text-only regardless of this key.
+
+`api.dev_endpoints` (optional, false when absent) sets `VLLM_SERVER_DEV_MODE=1` on both ranks, which mounts vLLM's dev routes on the loopback API: `/reset_prefix_cache`, `/reset_mm_cache`, `/collective_rpc`, `/sleep`, `/wake_up` and `/server_info`. LPA, component and expert profiles already run in that mode; the key exists so that a distributed profile (LPA off) can reset the prefix cache without a restart for benchmarks and for the warmup ladder's cleanup. The routes have no authentication ([launch contracts](launch-safety.md#model-api-clients)); leave it off on a kit with other local users.
+
+`resources.stall_seconds` (optional, 0 = off when absent; template 600) and `generation.warmup` / `generation.warmup_long_tokens` (optional, false / 0 when absent) are described under [supervision, stall detection and warmup](operations.md#supervision-stall-detection-and-warmup). Changing any of them changes the profile fingerprint, so they take effect at the next switch.
 
 `runtime.pipeline_parallel_size=1` retains TP=2. Setting it to 2 selects TP=1/PP=2 on the same two nodes and requires `GLM53_PIPELINE_API=1`. `pipeline_split_layer` sets the first stage's layer count; the default candidate 24 produces stages 24/21, each with 21 MoE layers in this pinned model. It is not a memory-fit guarantee. Both stages must contain MLA, so this checkpoint accepts boundaries 4–43. Initial scope is one sequence, eager and no EP/MTP/LPA/fusion/APC. The [small-fixture observations](component-validation.md#eight-layer-pp-observations) do not qualify full-model speed, long-context numerical equivalence or production use. Include both keys explicitly when updating a TOML.
 
@@ -81,8 +87,12 @@ When the API is ready, from another head terminal:
 python -m glm53_setup server ask --prompt "Reply with exactly GLM-OK."
 python -m glm53_setup server ask --request request.json
 python -m glm53_setup server status --rank 0
+python -m glm53_setup server capacity
+python -m glm53_setup server warmup
 python -m glm53_setup server stop --rank 0
 ```
+
+`capacity` reads the running head's boot log and `/metrics` and prints the KV pool as it is: the stock `GPU KV cache size` line decomposed into `num_gpu_blocks`, blocks per maximum-length request and the group block widths, with the note that the stock figure is `max_concurrency × max_model_len`. A cached-conversation estimate (blocks and conversations at 16K, 64K and `max_model_len`, dense retention, block-aligned hits, nothing running) is printed only for a profile that loads the LPA worker extension, whose `apc_cache_layout` RPC names each group's spec kind; otherwise, or when a group kind is not modelled, that figure is withheld rather than guessed. `warmup` runs the request ladder under the request lock and writes `records/<stamp>-warmup-r0/result.json`; it exits nonzero when a rung failed.
 
 Use `--rank 1` on the worker to inspect/stop it. All actions accept `--config path/to/settings.toml`. Restart both ranks after editing settings; the client refuses a profile different from the running container's fingerprint. Generation defaults apply to `server ask`; external clients supply their own request options.
 
@@ -110,7 +120,7 @@ On each node, weights, KV/cache state, activation/indexer workspaces, MTP/Graph 
 
 Insufficient KV can cause startup rejection or runtime waiting, preemption and recomputation. The fixed pool does not automatically expand to meet demand. Other allocations or an insufficient RAM budget can still cause OOM or guard stops. [vLLM preemption](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
-Retain the runtime's reported capacity/concurrency estimates, then test the intended input-plus-output length × concurrency while observing preemption, both ranks' minimum free memory, OOM and guard stops. A current preflight pass does not replace this maximum-capacity test. See the [independent batching measurements](benchmarks.md#independent-active-batching) for actual coverage.
+The boot line `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` is `N = C × L` for this hybrid model (MLA, IndexPool tail, KDA state groups and the MTP draft share one block pool with one id per group per aligned segment). `N` is therefore a concurrency figure in token units, not the number of conversation tokens the prefix cache can hold; `server capacity` prints the decomposition and, where the group kinds are known, the conversation estimate. Retain the runtime's reported capacity/concurrency estimates, then test the intended input-plus-output length × concurrency while observing preemption, both ranks' minimum free memory, OOM and guard stops. A current preflight pass does not replace this maximum-capacity test. See the [independent batching measurements](benchmarks.md#independent-active-batching) for actual coverage.
 
 ## Current image contract
 

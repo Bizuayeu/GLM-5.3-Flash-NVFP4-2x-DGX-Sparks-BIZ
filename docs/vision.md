@@ -12,7 +12,7 @@ The distributed profile accepts **text, tool calls and images** at 204,800 input
 |---|---|---|
 | `runtime.vision` | `true` | Removes `--language-model-only` on both ranks, so the vision tower loads; adds `--limit-mm-per-prompt '{"video": 0}'` |
 | `context.max_model_len` | 204800 | Down from 262,144 in the text-only profile |
-| `cache.kv_cache_memory_bytes` | 2684354560 (2.5 GiB per rank) | Down from 3 GiB; the runtime reported 235,016 tokens of KV capacity (1.15× the limit) |
+| `cache.kv_cache_memory_bytes` | 2684354560 (2.5 GiB per rank) | Down from 3 GiB. The boot line reported 235,016 tokens, which is 1.15× `max_model_len`: the pool's maximum concurrency in token units, not a cached-conversation capacity ([`server capacity`](server-configuration.md#kv-capacity-and-ram-requirements)) |
 | `cache.mm_processor_cache_gb` | 0.1 | `--mm-processor-cache-gb 0.1` instead of vLLM's 4 GiB |
 | `resources.reserve_gib` | 2.5 | Down from 3; see the guard arithmetic in [KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements) |
 
@@ -69,6 +69,6 @@ One request built to 199,652 prompt tokens, with a passphrase in the middle, ret
 - Only one small synthetic image was tested. Images near the 8,000-token limit, many images in one session, and image quality in general are unmeasured.
 - The MTP draft is text-only; its acceptance rate on image requests is unmeasured. LPA with images is not validated (LPA ships disabled).
 - In one ZCode terminal session (2026-09-15, one run), the model downloaded a screenshot with a shell command, read it with the file-read tool and correctly described text that appeared only in the image. Attaching an image directly to a ZCode prompt, and Claude Code, have not been checked; the measurements above used the API directly.
-- A request shape seen for the first time can still compile kernels while serving. After a restart or profile change, send representative requests (image, long text, tool call) before interactive use so that compilation happens while it is observed. Whether the kernels cached during serving remove those warnings on the next start is not yet confirmed.
+- A request shape seen for the first time can still compile kernels while serving. `server warmup` sends the shapes that were observed compiling (short text, tool call, image, and the long rung set by `generation.warmup_long_tokens`) and records which kernels compiled during the ladder; `cluster switch` runs it after readiness when `generation.warmup = true` ([operations](operations.md#supervision-stall-detection-and-warmup)). Whether the kernels cached during serving remove those warnings on the next start is read off the next ladder record.
 - The API server's unidentified 624 MiB mapping and its slow growth over long sessions are not characterized. `MALLOC_ARENA_MAX` could affect at most the 255 MiB in arenas.
 - One active sequence only; multiple sequences, long-term reliability and harness acceptance remain open.

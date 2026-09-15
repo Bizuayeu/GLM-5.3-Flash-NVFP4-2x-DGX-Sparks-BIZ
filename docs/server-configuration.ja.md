@@ -34,6 +34,8 @@
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕2.5 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
+| 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
+| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に短文・tool・画像の段を流す。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false`、`max_model_len = 262144`、`kv_cache_memory_bytes = 3221225472` です。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は保護余裕4 GiBで実施しており、2.5 GiBでは未検証です。
 
@@ -50,6 +52,10 @@
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.ja.md#expert-parallelp21)を参照してください。
 
 `runtime.vision` は任意キーで、未指定はfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は無効で、送ると拒否されます。受け付けるのは画像だけです。** 理由は起動時のメモリです。vLLMは最大の入力1件を一度エンコードしてメモリを見積もり、このチェックポイントの動画の上限（30,000 token＝120,000パッチに制限済み）は画像1枚（最大8,000 token）よりはるかに大きいためです。1 promptあたりの画像枚数はvLLMの既定のままです（チャットハーネスは過去の画像を毎ターン送り直すため）。Vision有効時は `cache.mm_processor_cache_gb`（任意キー、未指定は0.1）が `--mm-processor-cache-gb` を決めます。これは前処理済み画像のキャッシュで、vLLMはAPIプロセスとエンジンプロセスの両方に持ち、どちらもrank 0にだけ載ります。vLLMの既定4 GiBのままだと、headのホストRAMを最大8 GiB使い得ます。上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。視覚塔はBF16で量子化の対象外です（両方の除外リストに `model.visual*` があり、固定vLLMも量子化設定なしで組み立てる）。実測、headのメモリ余裕、未解決の事項は[200Kでの画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
+
+`api.dev_endpoints`（任意キー、未指定はfalse）は両rankに `VLLM_SERVER_DEV_MODE=1` を渡し、loopbackのAPIにvLLMのdev経路（`/reset_prefix_cache`・`/reset_mm_cache`・`/collective_rpc`・`/sleep`・`/wake_up`・`/server_info`）を載せます。LPA・component・expertのprofileは元からこのモードで動きます。このキーは、LPA offの配布profileでもベンチやwarmupの後始末のために再起動なしでprefix cacheを消せるようにするためのものです。これらの経路は無認証です（[起動契約](launch-safety.ja.md#モデルapiクライアント)）。他のローカル利用者がいる機体では off のままにします。
+
+`resources.stall_seconds`（任意、未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（任意、未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。いずれもprofileのfingerprintを変えるため、次の切替から有効になります。
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
 
@@ -81,8 +87,12 @@ APIが準備できたら、headの別端末から送信できます。
 python -m glm53_setup server ask --prompt "GLM-OK とだけ返してください。"
 python -m glm53_setup server ask --request request.json
 python -m glm53_setup server status --rank 0
+python -m glm53_setup server capacity
+python -m glm53_setup server warmup
 python -m glm53_setup server stop --rank 0
 ```
+
+`capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。
 
@@ -101,6 +111,8 @@ run_seconds = 0
 ## KV容量とRAMの条件
 
 **最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。
+
+起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。
 
 このランチャーの`cache.kv_cache_memory_bytes`は、**各rankで要求間共有する固定KV poolのバイト予算**です。1 GiBを指定したまま同時数を1→2にしても、各rankのKV予算は1 GiBのままです。要求1本あたり1 GiBでも、2台の予算を自由に合算した一つのpoolでもありません。バイト指定時は`gpu_memory_utilization`によるKV容量の自動推定を使わないため、この比率をRAM全体の保護上限として扱いません。[vLLMの設定仕様](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 

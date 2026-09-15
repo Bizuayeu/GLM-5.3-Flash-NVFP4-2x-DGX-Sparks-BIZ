@@ -38,8 +38,35 @@ class Backend:
     def ready(self, rows):
         self.calls.append(("ready", tuple(r["identity"]["name"] for r in rows)))
 
+    def warmup(self, rows):
+        self.calls.append(("warmup", tuple(r["identity"]["name"] for r in rows)))
+        return {"skipped": True}
+
 
 class SwitchTests(unittest.TestCase):
+    def test_warmup_failure_is_recorded_and_never_rolls_back_a_complete_pair(self):
+        backend = Backend()
+        backend.start = lambda rank, identity: backend.calls.append(
+            ("start", rank, identity["name"])
+        )
+
+        def broken(rows):
+            backend.calls.append(("warmup", "raised"))
+            raise OperationFailure("warmup", 0, "remote-operation-failed", 1)
+
+        backend.warmup = broken
+        reports = []
+        result = switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["warmup"]["failed"])
+        self.assertEqual(result["warmup"]["failure"]["action"], "warmup")
+        self.assertEqual(backend.calls[-2:][0][0], "ready")
+        self.assertEqual(backend.calls[-1], ("warmup", "raised"))
+        self.assertNotIn("recovery_errors", result)
+        self.assertEqual(result["recovery"], [])
+        # The saved journal already said complete before the ladder ran.
+        self.assertIn("complete", [r["status"] for r in reports[:-1]])
+
     def test_lost_recovery_observation_does_not_destroy_the_recovering_pair(self):
         backend = Backend()
 

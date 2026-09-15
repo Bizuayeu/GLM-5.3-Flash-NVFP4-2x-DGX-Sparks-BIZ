@@ -93,7 +93,6 @@ def switch(backend, launch, *, save):
         backend.ready(report["new"])
         report["status"] = "complete"
         save(report)
-        return report
     except Exception as error:  # noqa: BLE001 - every transport failure requires owned cleanup
         report["status"] = "failed"
         report["error"] = type(error).__name__
@@ -156,3 +155,11 @@ def switch(backend, launch, *, save):
         raise RuntimeError(
             "Switch failed; inspect the saved cleanup and recovery result"
         ) from None
+    # The pair is complete before the ladder runs: warmup is evidence for the
+    # operator, not a readiness gate, so its failure never triggers recovery.
+    try:
+        report["warmup"] = backend.warmup(report["new"])
+    except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
+        report["warmup"] = {"failed": True, **failure_details(error)}
+    save(report)
+    return report
