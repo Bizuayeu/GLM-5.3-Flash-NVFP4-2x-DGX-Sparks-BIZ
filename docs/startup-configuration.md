@@ -31,7 +31,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Cache | FP8, 2.5 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on, image preprocessing cache 0.1 GiB |
 | Speculation/approximation | MTP k=3; LPA off (cut32/tail512/B128 with unused MLA queries skipped when enabled) |
 | Checks/parallelism | Async index checks, EP off, no PP split |
-| Generation | temperature=0, max_tokens=512, reasoning_effort=low, clear_thinking=true |
+| Generation | temperature=0, max_tokens=4096, reasoning_effort=low, clear_thinking=true |
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 2.5 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 

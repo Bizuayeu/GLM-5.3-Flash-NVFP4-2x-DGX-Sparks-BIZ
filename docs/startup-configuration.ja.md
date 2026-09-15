@@ -31,7 +31,7 @@
 | キャッシュ | FP8、各rank 2.5 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
-| 生成 | temperature=0、max_tokens=512、reasoning_effort=low、clear_thinking=true |
+| 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕2.5 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 

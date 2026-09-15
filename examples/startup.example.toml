@@ -106,7 +106,7 @@ prompt_tokens_details = true # Report usage.prompt_tokens_details.cached_tokens 
 # Defaults used by `startup ask`; these are request options, not vLLM flags.
 # startup ask の既定値。サーバー起動フラグではなくリクエスト設定。
 temperature = 0.0
-max_tokens = 512
+max_tokens = 4096 # Thinking counts against this; a one-line answer at low effort used about 600 / 思考も含む。low の一行回答で約600
 reasoning_effort = "low"
 clear_thinking = true
 timeout_seconds = 600 # Same timeout as the measured experiment client
