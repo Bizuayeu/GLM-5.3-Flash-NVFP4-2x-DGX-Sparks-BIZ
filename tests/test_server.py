@@ -4,15 +4,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import mock_open, patch
 
-from glm53_setup import startup
-from glm53_setup import startup_config as config
+from glm53_setup import server
+from glm53_setup import server_config as config
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class StartupConfigTests(unittest.TestCase):
+class ServerConfigTests(unittest.TestCase):
     def setUp(self):
-        self.profile = config.load(ROOT / "examples/startup.example.toml")
+        self.profile = config.load(ROOT / "examples/server.example.toml")
         # Independent feature tests start from an explicit all-off baseline.
         self.profile["runtime"]["index_checks"] = "auto"
         self.profile["runtime"]["vision"] = False
@@ -23,7 +23,7 @@ class StartupConfigTests(unittest.TestCase):
         self.profile["cache"].pop("prefix_cache_retention_interval", None)
 
     def test_distributed_profile_wires_combined_paths_on_both_ranks(self):
-        profile = config.load(ROOT / "examples/startup.example.toml")
+        profile = config.load(ROOT / "examples/server.example.toml")
         for rank in (0, 1):
             args = config.serve_args(profile, rank, "/hf/mtp-view")
             env = config.environment(profile, rank)
@@ -92,17 +92,17 @@ class StartupConfigTests(unittest.TestCase):
 
     def test_toml_validation_stays_at_load_and_command_boundaries(self):
         with patch.object(config, "validate", wraps=config.validate) as validate:
-            config.load(ROOT / "examples/startup.example.toml")
+            config.load(ROOT / "examples/server.example.toml")
             self.assertEqual(validate.call_count, 1)
             validate.reset_mock()
             config.serve_args(self.profile, 0, "/hf/model")
             validate.assert_not_called()
-            startup.command(self.profile, ROOT / "state/startup.toml", 0, "test")
+            server.command(self.profile, ROOT / "state/server.toml", 0, "test")
             self.assertEqual(validate.call_count, 1)
             validate.reset_mock()
             self.profile["context"]["max_num_seqs"] = 0
             with self.assertRaises(ValueError):
-                startup.command(self.profile, ROOT / "state/startup.toml", 0, "test")
+                server.command(self.profile, ROOT / "state/server.toml", 0, "test")
             self.assertEqual(validate.call_count, 1)
 
     def test_throughput_sequences_are_separate_from_lpa_layout(self):
@@ -273,22 +273,22 @@ class StartupConfigTests(unittest.TestCase):
                 with (
                     patch("pathlib.Path.open", mock_open()),
                     patch.object(
-                        startup,
+                        server,
                         "inspect_owned",
                         return_value={"State": {"Running": True}},
                     ),
                     patch.object(
-                        startup,
+                        server,
                         "available_gib",
                         side_effect=[100, self.profile["resources"]["reserve_gib"] - 1],
                     ),
-                    patch.object(startup.time, "monotonic", side_effect=[0, 1000000]),
-                    patch.object(startup.time, "sleep") as sleep,
-                    patch.object(startup, "write_json") as write,
-                    patch.object(startup.service, "run") as stop,
-                    patch.object(startup.subprocess, "run"),
+                    patch.object(server.time, "monotonic", side_effect=[0, 1000000]),
+                    patch.object(server.time, "sleep") as sleep,
+                    patch.object(server, "write_json") as write,
+                    patch.object(server.host, "run") as stop,
+                    patch.object(server.subprocess, "run"),
                 ):
-                    startup.supervise(self.profile, "owned", Path("record"))
+                    server.supervise(self.profile, "owned", Path("record"))
                     write.assert_any_call(
                         Path("record/stop-reason.json"), {"reason": reason}
                     )
@@ -330,8 +330,8 @@ class StartupConfigTests(unittest.TestCase):
     def test_command_mounts_mtp_view_and_projector_without_mutating_cache(self):
         self.profile["lpa"]["enabled"] = True
         self.profile["mtp"]["enabled"] = True
-        path = ROOT / "state/startup.toml"
-        args = startup.command(
+        path = ROOT / "state/server.toml"
+        args = server.command(
             self.profile, path, 1, "test-container", ROOT / "state/test-hf"
         )
         self.assertIn(
@@ -359,7 +359,7 @@ class StartupConfigTests(unittest.TestCase):
             return {"results": []}
 
         with self.assertRaisesRegex(RuntimeError, "generation failed"):
-            startup.ask(
+            server.ask(
                 self.profile,
                 {"messages": [{"role": "user", "content": "hello"}]},
                 sender,
@@ -370,9 +370,9 @@ class StartupConfigTests(unittest.TestCase):
     def test_request_discards_tokenization_mismatch(self):
         self.profile["lpa"]["enabled"] = True
         responses = [{"tokens": [1, 2]}, {}, {"usage": {"prompt_tokens": 3}}, {}]
-        with patch.object(startup, "post", side_effect=responses) as sender:
+        with patch.object(server, "post", side_effect=responses) as sender:
             with self.assertRaisesRegex(ValueError, "Tokenization differs"):
-                startup.ask(
+                server.ask(
                     self.profile,
                     {"messages": [{"role": "user", "content": "hello"}]},
                     sender,
@@ -382,7 +382,7 @@ class StartupConfigTests(unittest.TestCase):
     def test_image_capability_markers_follow_enabled_features(self):
         # A missing or empty image env fails every required marker closed.
         for image_config in ({}, {"Env": None}):
-            checks = startup.image_capability_checks(
+            checks = server.image_capability_checks(
                 self.profile, {"Config": image_config}
             )
             self.assertEqual(checks, {"reference_attention": False})
@@ -390,7 +390,7 @@ class StartupConfigTests(unittest.TestCase):
         self.profile["cache"]["prefix_caching"] = True
         self.profile["cache"]["fused_unpack"] = True
         env = ["GLM53_REFERENCE_ATTENTION=1", "GLM53_LPA_API=2", "GLM53_APC_LPA_API=1"]
-        checks = startup.image_capability_checks(self.profile, {"Config": {"Env": env}})
+        checks = server.image_capability_checks(self.profile, {"Config": {"Env": env}})
         self.assertEqual(
             checks,
             {
@@ -405,22 +405,22 @@ class StartupConfigTests(unittest.TestCase):
         self.assertNotIn("decode_graph_support", checks)
 
     def test_profile_mismatch_cannot_control_unrelated_container(self):
-        info = {"Config": {"Labels": {startup.LABEL: "old"}}}
-        with patch.object(startup.service, "run", return_value=json.dumps([info])):
+        info = {"Config": {"Labels": {server.LABEL: "old"}}}
+        with patch.object(server.host, "run", return_value=json.dumps([info])):
             with self.assertRaises(ValueError):
-                startup.inspect_owned("container", "new")
+                server.inspect_owned("container", "new")
 
     def test_stop_does_not_depend_on_valid_edited_settings(self):
         with (
-            patch.object(startup.os, "name", "posix"),
-            patch.object(startup, "read_json", return_value={"name": "owned"}),
-            patch.object(startup, "inspect_owned"),
+            patch.object(server.os, "name", "posix"),
+            patch.object(server, "read_json", return_value={"name": "owned"}),
+            patch.object(server, "inspect_owned"),
             patch.object(
-                startup.settings, "load", side_effect=ValueError("bad TOML")
+                server.settings, "load", side_effect=ValueError("bad TOML")
             ) as load,
-            patch.object(startup.service, "run", return_value="stopped") as run,
+            patch.object(server.host, "run", return_value="stopped") as run,
         ):
-            startup.main(["stop", "--rank", "0"])
+            server.main(["stop", "--rank", "0"])
             load.assert_not_called()
             run.assert_called_once_with("docker", "stop", "owned")
 

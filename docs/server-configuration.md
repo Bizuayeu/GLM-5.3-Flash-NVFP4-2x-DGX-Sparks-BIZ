@@ -1,8 +1,8 @@
-# One startup configuration
+# One server configuration
 
-[日本語](startup-configuration.ja.md)
+[日本語](server-configuration.ja.md)
 
-Copy [the commented TOML](../examples/startup.example.toml) to `state/startup.toml` and put the same file on both Linux hosts. This controls the **experimental reference launcher** and its serial chat client. The ordinary `service` command retains its separate, unfinished qualification gate.
+Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml` and put the same file on both Linux hosts. This controls the launcher and its serial chat client.
 
 | Category | Controls |
 |---|---|
@@ -22,7 +22,7 @@ The model/revision and build base stay in [runtime.lock.json](../config/runtime.
 
 ## Distributed defaults
 
-The distributed TOML selects the serial optimized profile with [image input at 200K](vision.md). This is a configuration choice, not production or harness qualification. Existing `state/startup.toml` files are not updated automatically.
+The distributed TOML selects the serial optimized profile with [image input at 200K](vision.md). This is a configuration choice, not production or harness qualification. Existing `state/server.toml` files are not updated automatically.
 
 | Item | Default |
 |---|---|
@@ -45,7 +45,7 @@ The lifetime is fixed at launch. Apply a changed `run_seconds` to running superv
 
 See [launch contracts and operational validation](launch-safety.md) for authenticated clients, allocator unset/empty handling, all-HCA checks and the two-rank pre-stop/switch procedure. These extend P10/P19/P22/E03; implementation does not establish multi-rail traffic or full operational qualification.
 
-**P22 has scoped GPU isolation, crossover, combined and final held-out evidence.** When LPA and prefix caching are both enabled, an image with `GLM53_APC_LPA_API=1` is required. The scheduler chooses from the jointly restored prefix and `lpa.break_even_tokens`; the template uses the conservative measured cutoff 128 from the [P22 calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22). Shared publication stops at the first approximation and remains stopped through the exact tail/decode. `startup ask` leaves the decision to the server in this mode. The template ships `lpa.enabled = false`; enable it per workload for batch inputs only, since an approximated request publishes nothing to the shared cache. While it is enabled, use `"vllm_xargs": {"glm53_lpa_mode": "off"}` in a request to compute normally and grow exact shared cache. `api.prompt_tokens_details = true` (optional key, default off when absent) adds `--enable-prompt-tokens-details` so `usage.prompt_tokens_details.cached_tokens` reports the restored prefix; without it vLLM returns `null` and harness cache displays stay at zero even when the cache hits. Ordinary no-APC `startup ask` uses the same threshold with H=0. See the [implementation contract](apc-lpa-design.md). The new threshold key must be explicit in every updated TOML.
+**P22 has scoped GPU isolation, crossover, combined and final held-out evidence.** When LPA and prefix caching are both enabled, an image with `GLM53_APC_LPA_API=1` is required. The scheduler chooses from the jointly restored prefix and `lpa.break_even_tokens`; the template uses the conservative measured cutoff 128 from the [P22 calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22). Shared publication stops at the first approximation and remains stopped through the exact tail/decode. `server ask` leaves the decision to the server in this mode. The template ships `lpa.enabled = false`; enable it per workload for batch inputs only, since an approximated request publishes nothing to the shared cache. While it is enabled, use `"vllm_xargs": {"glm53_lpa_mode": "off"}` in a request to compute normally and grow exact shared cache. `api.prompt_tokens_details = true` (optional key, default off when absent) adds `--enable-prompt-tokens-details` so `usage.prompt_tokens_details.cached_tokens` reports the restored prefix; without it vLLM returns `null` and harness cache displays stay at zero even when the cache hits. Ordinary no-APC `server ask` uses the same threshold with H=0. See the [implementation contract](apc-lpa-design.md). The new threshold key must be explicit in every updated TOML.
 
 `runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget. It requires an image with `GLM53_EXPERT_PARALLEL_API=1`; this marker identifies configuration support, not successful EP qualification. Initial scope is eager, one/two sequences and no MTP/LPA/fusion/APC. Existing TOMLs must explicitly include the new key; no silent missing-key fallback is provided. See the [independent EP plan](performance-investigation.md#expert-parallel-p21) before use.
 
@@ -62,15 +62,15 @@ Before changing context or concurrency, review [KV capacity and RAM requirements
 Inspect generated commands from the checkout root (also works on Windows):
 
 ```sh
-python -m glm53_setup startup plan --rank 0
-python -m glm53_setup startup plan --rank 1
+python -m glm53_setup server plan --rank 0
+python -m glm53_setup server plan --rank 1
 ```
 
-On each Linux host, `startup preflight --rank N` checks assets, fabric, image identity and available memory. Start rank 1 first, then rank 0, in separate terminals on their respective hosts:
+On each Linux host, `server preflight --rank N` checks assets, fabric, image identity and available memory. Start rank 1 first, then rank 0, in separate terminals on their respective hosts:
 
 ```sh
-python -m glm53_setup startup start --rank 1 --experimental
-python -m glm53_setup startup start --rank 0 --experimental
+python -m glm53_setup server start --rank 1
+python -m glm53_setup server start --rank 0
 ```
 
 The commands stay in the foreground supervising their own containers; keep the terminals running. `resources.run_seconds` **includes model loading**. Increase it before a longer session. Ctrl+C, deadline or low memory stops that rank. Stop both ranks after a distributed failure. Containers and `records/` logs/configuration snapshots are retained; no automatic deletion or restart occurs.
@@ -78,13 +78,13 @@ The commands stay in the foreground supervising their own containers; keep the t
 When the API is ready, from another head terminal:
 
 ```sh
-python -m glm53_setup startup ask --prompt "Reply with exactly GLM-OK."
-python -m glm53_setup startup ask --request request.json
-python -m glm53_setup startup status --rank 0
-python -m glm53_setup startup stop --rank 0
+python -m glm53_setup server ask --prompt "Reply with exactly GLM-OK."
+python -m glm53_setup server ask --request request.json
+python -m glm53_setup server status --rank 0
+python -m glm53_setup server stop --rank 0
 ```
 
-Use `--rank 1` on the worker to inspect/stop it. All actions accept `--config path/to/settings.toml`. Restart both ranks after editing settings; the client refuses a profile different from the running container's fingerprint. Generation defaults apply to `startup ask`; external clients supply their own request options.
+Use `--rank 1` on the worker to inspect/stop it. All actions accept `--config path/to/settings.toml`. Restart both ranks after editing settings; the client refuses a profile different from the running container's fingerprint. Generation defaults apply to `server ask`; external clients supply their own request options.
 
 ## Runtime limit and continuous operation
 

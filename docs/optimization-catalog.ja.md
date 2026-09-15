@@ -22,7 +22,7 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 
 **P05の判断：不採用。** 候補幅2176のdecode非対応、数値検査未達、prefill限定試験の形状拒否を踏まえ、今回のbackend選定は終了します。候補を削って合わせる変更は行っていません。再評価は上流の対応変更時とし、他施策へ進みます。[部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験)。
 
-**テンプレート既定の更新（2026-09-15）：** 配布用の起動テンプレートは `lpa.enabled = false` と `runtime.vision = true`（204,800 token、KV各rank 2.5 GiB）を既定にしました。P02／P22の採否は変えていません。近似した要求は共有prefix cacheに何も登録しないため、LPAはバッチ用のopt-inになり（[LPAの使用範囲](lpa.ja.md#使用範囲)）、画像入力構成は[200Kでの画像入力](vision.ja.md)に記録しています。これらは既定値の判断であり、下記の基準日付きの状態欄を変えるものではありません。現在の値は[起動設定](startup-configuration.ja.md#配布用の既定設定)が正典です。
+**テンプレート既定の更新（2026-09-15）：** 配布用の起動テンプレートは `lpa.enabled = false` と `runtime.vision = true`（204,800 token、KV各rank 2.5 GiB）を既定にしました。P02／P22の採否は変えていません。近似した要求は共有prefix cacheに何も登録しないため、LPAはバッチ用のopt-inになり（[LPAの使用範囲](lpa.ja.md#使用範囲)）、画像入力構成は[200Kでの画像入力](vision.ja.md)に記録しています。これらは既定値の判断であり、下記の基準日付きの状態欄を変えるものではありません。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です。
 
 ## 性能施策一覧
 
@@ -38,8 +38,8 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 | P06 CUDA Graphs | hostへ戻る判定・動的処理・buffer寿命を整理し、対応shapeでcapture/replay | CPUのstep/launch overhead低減、特に定常decode改善 | **全モデル未検収。** LPAのeager制約を解く検証が必要。単体capture成功とサーバー全体対応は別。[性能調査](performance-investigation.ja.md#kernel-launchと同期) |
 | P07 launch・同期の計測 | 両rankのkernel／CUDA launch API／NCCL／host syncを別集計。prefill対照との差分でtokenあたりの数を推定 | 律速を特定し、削減前後を再現可能にする | **実測済み。** P03でlaunchは減ったがNCCL回数は不変。イベント時間の和を壁時計時間としない。[CUDA実測](component-validation.ja.md) |
 | P08 sync／copy／変換の追加削減 | P07で残る転送・dtype変換・host往復を特定。反復する重み変換を観測した場合だけload時の並べ替えも比較 | 余剰レイテンシ・UMAメモリ交通・一時bufferの削減 | **非同期index検査を独立opt-inとして受入。** 128出力で小幅改善、同期・copy各22回/token削減。GPU kernelは11回増加。配布既定async、直列併用はP18で実測。[実測](benchmarks.ja.md#cpu同期削減の独立評価p08) |
-| P09 FP8 KVの独立評価 | 重み精度を固定し、対応backendのFP8／BF16 KVを比較。量子化scale、pool容量、読み出し精度を検査 | cache容量削減による長文・同時数拡大。速度の方向と品質は実測で決める | **FP8経路は使用済み、dtype間A/Bは未了。** 現行起動系はFP8固定。BF16比較にはcache形式・runtime対応が必要。[起動設定](startup-configuration.ja.md) |
-| P10 UMA・メモリ運用 | KV pin、memory utilization、host空き、コンテナ上限、swap・cache状態を再現条件として固定 | OOM・swap由来の遅延を抑え、測定再現性と収容限界を把握 | **ガード・設定あり、系統的最適化は未了。** `drop_caches`は必要なcold-load比較に限定し、定常推論の高速化手段と混同しない。[起動設定](startup-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md) |
+| P09 FP8 KVの独立評価 | 重み精度を固定し、対応backendのFP8／BF16 KVを比較。量子化scale、pool容量、読み出し精度を検査 | cache容量削減による長文・同時数拡大。速度の方向と品質は実測で決める | **FP8経路は使用済み、dtype間A/Bは未了。** 現行起動系はFP8固定。BF16比較にはcache形式・runtime対応が必要。[起動設定](server-configuration.ja.md) |
+| P10 UMA・メモリ運用 | KV pin、memory utilization、host空き、コンテナ上限、swap・cache状態を再現条件として固定 | OOM・swap由来の遅延を抑え、測定再現性と収容限界を把握 | **ガード・設定あり、系統的最適化は未了。** `drop_caches`は必要なcold-load比較に限定し、定常推論の高速化手段と混同しない。[起動設定](server-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md) |
 | P11 Prefill chunk × Kpool／indexer | chunk予算を変え、pool・tail・cache境界とその前後で通常／分割処理を比較 | 長文prefillと混合負荷のITLを改善し、状態・候補の取り扱いを維持 | **128は不採用、1024はthroughput候補。** 2K全体出力改善と最長ITL悪化を併記。既定512、1024の16K×2容量は確認済み。[実測](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
 | P12 同時ストリーム計測 | client×1／×2／×4とserverのactive seq数を別記し、TTFT・queue・個別ITL・aggregateを同じ表にする | 単発と並列のtradeoff、待ち行列、長文投入による停止を検出 | **待ち行列と実batchを区別して測定済み。** P13でactive2と複数decode行を確認。[実測](benchmarks.ja.md#標準batchingの独立評価) |
 | P13 標準batching | LPAなしのseqs=2→4で実batch重複を確認。逐語決定性とタスク品質を分けて検収 | aggregate throughput向上と、個別レイテンシ・メモリの増減把握 | **限定throughput用途の2系列を受入。** 内容・tool確認と16K×2容量確認は別記。既定1系列、4系列・併用は未検収。[実測](benchmarks.ja.md#標準batchingの独立評価) |

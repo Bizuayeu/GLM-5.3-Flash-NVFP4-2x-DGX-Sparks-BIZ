@@ -90,7 +90,7 @@ def main(argv=None):
     if details[1] is None:
         print(
             "The server did not report prompt_tokens_details. Set "
-            "api.prompt_tokens_details in the startup TOML "
+            "api.prompt_tokens_details in the server TOML "
             "(--enable-prompt-tokens-details) before reading any cache display.",
             file=sys.stderr,
         )

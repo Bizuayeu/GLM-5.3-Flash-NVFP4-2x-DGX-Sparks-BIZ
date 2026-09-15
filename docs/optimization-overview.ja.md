@@ -24,7 +24,7 @@ flowchart LR
 
 ## 施策と現在地
 
-「採否」は台帳の判断（採用／受入／保留／不採用）、「既定」は[起動設定TOML](startup-configuration.ja.md)の既定値です。機能受入・性能採用・既定値・併用検収は別々に判断されており、採用でも既定onとは限りません。用途別の有効化は[用途別の構成](#用途別の構成)を参照してください。
+「採否」は台帳の判断（採用／受入／保留／不採用）、「既定」は[起動設定TOML](server-configuration.ja.md)の既定値です。機能受入・性能採用・既定値・併用検収は別々に判断されており、採用でも既定onとは限りません。用途別の有効化は[用途別の構成](#用途別の構成)を参照してください。
 
 ### prefix復元（繰り返す会話）
 
@@ -91,7 +91,7 @@ flowchart LR
 | throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
 | 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収は未了 |
 
-いずれも[起動設定TOML](startup-configuration.ja.md)の`[mtp]`・`[lpa]`・`[cache]`・`[context]`・`[runtime]`で切り替え、対応imageのmarkerが必要です。
+いずれも[起動設定TOML](server-configuration.ja.md)の`[mtp]`・`[lpa]`・`[cache]`・`[context]`・`[runtime]`で切り替え、対応imageのmarkerが必要です。
 
 ## 性能と容量のQ&A
 
@@ -101,7 +101,7 @@ flowchart LR
 
 **KV容量の観点では、現在と同じモデル・cache精度・MTP/LPA・並列方式・同時1系列なら、基本的にははい。** tokenが表す文字列によって、token当たりのKVの形式やサイズが変わるわけではありません。入力と生成の合計が上限内であることが条件です。[256Kの実入力確認](benchmarks.ja.md#256kでの実入力確認)で、この構成の容量と限定参照を検証しています。
 
-APCの履歴・分岐・checkpoint保持、blockの整列、同時数を変えた場合は、必要な状態と割当も確認します。KV以外の作業領域や他プロセスのRAM使用も変動するため、KVの収容条件と無停止運用の保証は分けて判断してください。[KV容量とRAMの条件](startup-configuration.ja.md#kv容量とramの条件)
+APCの履歴・分岐・checkpoint保持、blockの整列、同時数を変えた場合は、必要な状態と割当も確認します。KV以外の作業領域や他プロセスのRAM使用も変動するため、KVの収容条件と無停止運用の保証は分けて判断してください。[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件)
 
 ### Q. KVキャッシュを各rankに12.5 GiB用意できれば、1Mコンテキストを利用できますか？
 

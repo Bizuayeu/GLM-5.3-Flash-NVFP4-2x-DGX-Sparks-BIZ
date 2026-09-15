@@ -19,8 +19,8 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| 運用手順 | 資材の保管場所、取得、機体準備、起動ゲート、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
-| 起動設定 | カテゴリ別の起動TOML、KV／RAM条件、imageの契約、LPA／MTPの制約 | [EN](startup-configuration.md) | [JA](startup-configuration.ja.md) |
+| 運用手順 | 資材の保管場所、取得、機体準備、起動検査、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
+| 起動設定 | カテゴリ別の起動TOML、KV／RAM条件、imageの契約、LPA／MTPの制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFPネットワーク | QSFP直結とNetworkManagerの永続profile | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL検証 | 2台のcollective診断とその限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | 起動契約 | APIクライアント認証、allocator伝達、全レール検査、両rank切替と復旧、APC履歴検証 | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
@@ -56,7 +56,7 @@
 | 事実 | 正典 |
 |---|---|
 | モデルID、固定revision、base image digest、ローカル参照タグ、固定vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
-| 起動設定のスキーマと全キー | [examples/startup.example.toml](../examples/startup.example.toml)。説明は[起動設定](startup-configuration.ja.md) |
+| 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)。説明は[起動設定](server-configuration.ja.md) |
 | MTPの投機設定例 | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |
@@ -65,7 +65,7 @@
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
 | 配布LPA projectorのURL、hash、形式、教師・学習来歴 | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json)。配布ファイル構成は[運用手順](operations.ja.md#資材の保管場所とパス) |
-| どちらのランチャーか：`startup`（実験用reference）と `service`（ゲート付き候補） | [運用手順](operations.ja.md#二つのランチャー) |
+| `server preflight` が起動前に検査すること、保証しないこと | [運用手順](operations.ja.md#フルモデルの起動検査) |
 | ホストカーネルの要件、`7.0.0-1019-nvidia` のRoCE失敗と `kho=off` の回避策 | [運用手順](operations.ja.md#ホストカーネルと複数ノードroce) |
 | 対象別のライセンス許諾と義務 | [ライセンス整理](licensing.ja.md)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | ハーネス受け入れ試験と実施状態 | [ハーネス](harnesses.ja.md) |

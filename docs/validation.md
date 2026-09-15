@@ -79,7 +79,7 @@ The reference image loaded all 45 language layers on two GB10 hosts with Marlin 
 
 The full model passed basic served-ID, English/Japanese final-answer, OpenAI SSE, harmless automatic tool/argument/return, and Anthropic Messages/count_tokens smoke checks. Chat acceptance with low reasoning effort also passed these final-answer/tool criteria. Reasoning text differed on replay; it remains a diagnostic rather than a requirement for identical free-form wording. The unsupported thinking-off request caused parser/content mixing and is not an accepted configuration; see [harness settings](harnesses.md).
 
-[Official vLLM synthetic benchmarks](benchmarks.md) completed all planned measured requests. Test containers were stopped afterward. These results do not unlock the current routine launcher, establish full application quality or certify production deployment.
+[Official vLLM synthetic benchmarks](benchmarks.md) completed all planned measured requests. Test containers were stopped afterward. These results do not establish full application quality or certify production deployment.
 
 The [MTP k=1 candidate](speculative-decoding.md) subsequently passed its small loading fixture, all five matched full-model benchmark cases and the same 11 basic API checks. A separate metadata view preserves the original checkpoint while excluding its BF16 MTP layer from global NVFP4. The guide records draft acceptance, additional memory, workload-dependent gains and the unresolved distributed shutdown limitation. Actual ZCode and Claude Code acceptance remains separate.
 

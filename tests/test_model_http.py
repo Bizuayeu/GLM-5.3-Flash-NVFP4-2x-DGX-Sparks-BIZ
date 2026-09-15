@@ -4,7 +4,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from glm53_setup import model_http, startup
+from glm53_setup import model_http, server
 
 
 class ModelHTTPTests(unittest.TestCase):
@@ -52,8 +52,8 @@ class ModelHTTPTests(unittest.TestCase):
             ThreadingHTTPServer(("127.0.0.1", 0), Handler) for _ in range(2)
         ]
         self.threads = []
-        for server in self.servers:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+        for httpd in self.servers:
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             self.threads.append(thread)
         self.origin = f"http://127.0.0.1:{self.servers[0].server_port}"
@@ -62,9 +62,9 @@ class ModelHTTPTests(unittest.TestCase):
         ].redirect = f"http://127.0.0.1:{self.servers[1].server_port}/leaked"
 
     def tearDown(self):
-        for server, thread in zip(self.servers, self.threads):
-            server.shutdown()
-            server.server_close()
+        for httpd, thread in zip(self.servers, self.threads):
+            httpd.shutdown()
+            httpd.server_close()
             thread.join()
 
     def test_precedence_empty_and_no_key_on_actual_requests(self):
@@ -109,7 +109,7 @@ class ModelHTTPTests(unittest.TestCase):
             self.assertIn(b"[DONE]", response.read())
         self.assertEqual(self.requests[-1][1], "Bearer stream-key")
         with patch.dict("os.environ", {"API_KEY": "test-model-key"}, clear=True):
-            result = startup.post(
+            result = server.post(
                 {
                     "api": {"port": self.servers[0].server_port},
                     "generation": {"timeout_seconds": 5},

@@ -2,9 +2,9 @@
 
 [日本語](SETUP.ja.md) · [Project overview](README.md)
 
-The explicit experimental reference path uses [one startup TOML](docs/startup-configuration.md). The routine qualification procedure below remains separate.
+The launcher and its client read [one server TOML](docs/server-configuration.md).
 
-**This release has experimental results for a serial full-model TP=2 reference profile. The routine launcher and full quality/reliability remain unqualified, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status); do not declare deployment complete from the experimental results.**
+**This release has experimental results for a serial full-model TP=2 reference profile. Full quality/reliability remain unqualified, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status); do not declare deployment complete from the experimental results.**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
@@ -100,26 +100,24 @@ Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-
 
 **Checkpoint:** correct two-rank collective data and intended transport demonstrated, or explicitly pending/failed with evidence.
 
-## 6. Qualify the full model — current blocker
+## 6. Qualify the full model
 
-The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) now have evidence for one active sequence. The remaining blocker is routine deployment qualification and receipt/runtime binding, not lack of any full-model experiment.
+The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) have evidence for one active sequence. What remains open is acceptance for routine use, listed below; it is a matter of recorded evidence, not of a separate launcher.
 
 Optional [MTP k=1 and k=3 experiments](docs/speculative-decoding.md) have also passed the basic API and matched benchmark cases; k=3 is preferred for further evaluation. Prepare their separate metadata view on each host before enabling speculation; a flag alone misclassifies the BF16 MTP tensors. Follow the documented memory/performance comparison and preserve the MTP-off baseline.
 
 Inspect without launching:
 
 ```sh
-python -m glm53_setup service plan --site state/site.json
-python -m glm53_setup service preflight --site state/site.json
+python -m glm53_setup server plan --rank 0
+python -m glm53_setup server preflight --rank 0
 ```
 
-These commands require matching download state. Preflight also requires the future qualification receipt, so a missing receipt is an expected failure at this stage, not something to bypass.
+Both require a matching download state, the built reference image on that host and a filled-in server TOML; the [launch checks](docs/operations.md#full-model-launch-checks) list what preflight covers. Do not change the lock's base digest into the reference tag: it anchors image preparation and source patching.
 
-**The current `service` candidate still selects the lock's base image. Its native GB10 NoPE path is blocked; building the reference image does not switch that launcher.** Before deployment, engineering must qualify the full two-rank reference path (or a corrected native path), bind the launcher and validation receipt to that exact runtime/precision/settings, and provide a reproducible receipt-producing workflow. Do not change the lock's base digest into the reference tag: it also anchors image preparation and source patching.
+Never relax a failing check, reuse the one-GPU fixture as two-rank evidence, truncate attention candidates, or silently substitute precision.
 
-Never handwrite `state/kernel-validation.json`, reuse the one-GPU fixture as that receipt, relax a failing gate, truncate attention candidates, or silently substitute precision. This release intentionally cannot yet be used for unattended deployment through this gate.
-
-After a future qualified workflow exists, verify at least:
+Before calling a profile ready for routine use, verify and record at least:
 
 - All language layers load on two ranks; peak memory, reserve and KV allocation measured on each host; no OOM or swap thrashing.
 - Short/long text, declared context boundaries, concurrent/serial requests, cancellation and repeated request/state behavior meet documented criteria.
@@ -127,11 +125,11 @@ After a future qualified workflow exists, verify at least:
 - Precision/backend, quality and latency/throughput meet a declared baseline and acceptance criteria. Do not claim W4A4 behavior from W4A16 evidence.
 - Controlled stop/restart and distributed failure recovery succeed within the approved test window; both ranks recover together.
 
-**Checkpoint:** blocked in this release until the workflow and actual qualification evidence exist.
+**Checkpoint:** the reference profile has the evidence listed in the README status table; routine-use acceptance stays open until the items above are recorded.
 
 ## 7. Serve and accept — only after step 6 passes
 
-Use the qualified launcher, worker first then head, as described in [operations](docs/operations.md#full-model-launch-gate). Record both image IDs, source/model revisions, arguments, settings and start logs. Check the API through loopback or a reviewed SSH tunnel, then repeat text and harmless tool acceptance tests through the actual client.
+Start rank 1 first and then rank 0 with `server start`, as described in [server configuration](docs/server-configuration.md#commands). Record both image IDs, source/model revisions, arguments, settings and start logs. Check the API through loopback or a reviewed SSH tunnel, then repeat text and harmless tool acceptance tests through the actual client.
 
 Run the [harness acceptance matrix](docs/harnesses.md) for **both official ZCode and Claude Code CLI**. Basic API success alone does not close either client target. Keep client versions, non-secret settings and separate case results. Review [artifact-specific licensing](docs/licensing.md) before distributing a deployment.
 

@@ -8,14 +8,15 @@ The project is a checkout-local operator toolkit. Source archives contain no wei
 |---|---|
 | `glm53_setup/__main__.py` | Fixed command dispatch; no dynamic user-supplied module loading |
 | `glm53_setup/config.py` | Checkout paths and validated pinned configuration |
-| `glm53_setup/startup.py`, `startup_config.py` | Experimental launch/client orchestration and categorized TOML settings |
-| `glm53_setup/download.py`, `images.py`, `build_reference.py`, `service.py` | Asset preparation and guarded local operations |
+| `glm53_setup/server.py`, `server_config.py` | Launch/client orchestration and categorized TOML settings |
+| `glm53_setup/host.py` | Host-side helpers shared by the launcher: site validation, serve arguments, fabric checks, snapshot resolution, subprocess execution |
+| `glm53_setup/download.py`, `images.py`, `build_reference.py` | Asset preparation and guarded local operations |
 | `glm53_setup/validation/` | Explicit CPU/GPU inspection, fixture creation and assessment |
 | `glm53_setup/runtime/` | Source-pinned NoPE adaptation and candidate-preserving reference calculation |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/validation/run_lpa.py`, `lpa_corpus.py`, `train_lpa.py` | LPA fixture verification, corpus preparation and projector fitting |
 | `config/` | Model/image pins and `lpa-projector.lock.json` (Release URL, checksum, teacher and training provenance); no credentials or measured site configuration |
-| `examples/` | Site, startup and MTP speculative templates containing illustrative values only |
+| `examples/` | Server profile and MTP speculative templates containing illustrative values only |
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |
 | `glm53_setup/validation/freedombench.py`, `freedom_scoring.py`, `apc_history.py`, `profile_trace.py`, `benchmark_*.py` | FreedomBench runner and scoring, APC history regression, trace event accounting and component benchmarks |
@@ -34,7 +35,7 @@ The project is a checkout-local operator toolkit. Source archives contain no wei
 
 The CLI imports GPU dependencies only when the selected command actually needs them. Help, configuration and CPU tests work without Torch or vLLM installed on the host. GPU programs execute inside the pinned image.
 
-The commented `examples/startup.example.toml` doubles as the complete startup schema. Full TOML validation happens at `startup_config.load` and the independently callable `startup.command` boundary. `serve_args` consumes an already validated profile and does not reread the schema; it is an internal assembly step, not an input-validation entry point. Small fabric-specific guards remain independent.
+The commented `examples/server.example.toml` doubles as the complete server profile schema. Full TOML validation happens at `server_config.load` and the independently callable `server.command` boundary. `serve_args` consumes an already validated profile and does not reread the schema; it is an internal assembly step, not an input-validation entry point. Small fabric-specific guards remain independent.
 
 Model ID and revision have one configuration source: [runtime.lock.json](../config/runtime.lock.json). Mutable files stay rooted at the checkout, independently of the caller's working directory. Run the toolkit from a maintained checkout; it is not offered as a general Python library.
 
@@ -42,4 +43,4 @@ The reference image modifies two vLLM source files only after checking their ful
 
 ## Validation boundaries
 
-Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model TP=2 qualification are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot open the TP=2 launch gate.
+Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model TP=2 qualification are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot stand in for two-rank evidence.

@@ -2,11 +2,11 @@
 
 [English](launch-safety.md)
 
-P10（メモリ）、P19／P22（APC）、E03（運用）を拡張する項目です。高速化施策として重複計上しません。実装とCPU契約の確認に加え、実コンテナ・全モデルの回帰結果を採用前に別途記録します。通常の `service` の検収ゲートは維持します。
+P10（メモリ）、P19／P22（APC）、E03（運用）を拡張する項目です。高速化施策として重複計上しません。実装とCPU契約の確認に加え、実コンテナ・全モデルの回帰結果を採用前に別途記録します。
 
 ## モデルAPIクライアント
 
-共通送信処理は非空の `API_KEY` を優先し、それが空／未設定なら非空の `VLLM_API_KEY` を使います。両方とも空／未設定ならAuthorizationを送りません。`startup ask`、それを使うベンチ、profiler制御、componentの準備確認が対象です。宛先originはモデルAPIとして明示し、同一originを含めredirectは拒否します。ダウンロード経路には適用しません。キーを設定やfingerprintへ入れず、HTTP例外にはヘッダーや応答本文を保存しません。401／403は失敗として記録し、成功した測定から欠測として除きません。
+共通送信処理は非空の `API_KEY` を優先し、それが空／未設定なら非空の `VLLM_API_KEY` を使います。両方とも空／未設定ならAuthorizationを送りません。`server ask`、それを使うベンチ、profiler制御、componentの準備確認が対象です。宛先originはモデルAPIとして明示し、同一originを含めredirectは拒否します。ダウンロード経路には適用しません。キーを設定やfingerprintへ入れず、HTTP例外にはヘッダーや応答本文を保存しません。401／403は失敗として記録し、成功した測定から欠測として除きません。
 
 固定vLLMの認証middlewareが保護するのは `/v1`・`/v2`・`/inference`・`/cohere` です。`/health`・`/metrics`・`/tokenize`・`/collective_rpc`・`/reset_prefix_cache`・profiler制御は保護しません。Bearer送信だけでサーバー側の保護範囲は変わりません。APIはloopback限定を維持します。今回追加するのはクライアント認証対応であり、公開サーバー用の認証層ではありません。
 
@@ -17,8 +17,8 @@ P10（メモリ）、P19／P22（APC）、E03（運用）を拡張する項目�
 環境変数の上書きは起動元で一度だけ解決します。
 
 ```sh
-python -m glm53_setup startup freeze --config state/startup.toml --output state/launch.json
-python -m glm53_setup startup plan --config state/startup.toml --launch state/launch.json --rank 0
+python -m glm53_setup server freeze --config state/server.toml --output state/launch.json
+python -m glm53_setup server plan --config state/server.toml --launch state/launch.json --rank 0
 ```
 
 環境変数は空文字でも「存在」すればTOMLより優先します。同じ凍結JSONを両rankへ配布し、start／preflightの `--launch` へ渡します。rank側の環境変数は再解決しません。ローカルallocator環境変数がある直接起動では、凍結済みmanifestを必須とします。manifestは解決済みprofileとlockに結び付くfingerprintを含み、APIキーは含みません。`freeze` は既存manifestを上書きしません。
@@ -30,13 +30,13 @@ python -m glm53_setup startup plan --config state/startup.toml --launch state/la
 単一レールでも `=hca:1` とport 1を明示します。portを省略すると、そのHCAの全portが対象となり、検査した範囲を超えるためです。[NVIDIAのNCCL HCA指定仕様](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-ib-hca)を参照してください。
 
 ```sh
-python -m glm53_setup cluster switch --config state/startup.toml \
+python -m glm53_setup cluster switch --config state/server.toml \
   --hosts spark-head spark-peer --checkout /srv/glm53/source \
-  --remote-config /srv/glm53/state/startup.toml \
-  --output records/switch-run --experimental
+  --remote-config /srv/glm53/state/server.toml \
+  --output records/switch-run
 ```
 
-両hostには同じ監査済みcheckout・image・資材を用意します。`--remote-config` はprojector相対パスのLinux側基準、共通の凍結manifestは設定値を指定します。必要に応じて `--ssh-config` を指定します。停止前に両rankの資材・fabricと共通source／image／model／profile／allocatorを検査し、停止直前にも再照合します。重みの照合はindex hash・shardサイズ・ローカルfile識別であり、元の重み完全性検査の代わりではありません。ロード用の空きメモリ検査は停止後に行います。
+両hostには同じ監査済みcheckout・image・資材を用意します。停止前のsource識別検査は不一致を拒否するため、切替の前に両方のcheckoutを更新します。稼働中の対は起動時のprofileパスを `state/startup-rank<N>.json` に記録しており、切替失敗後の復旧はその記録パスから旧profileを再起動します。profileファイルを改名する場合（1.1.0で `state/server.toml` へ移動）は移動ではなく複製し、新しい対の準備完了を確認してから旧ファイルを削除してください。`--remote-config` はprojector相対パスのLinux側基準、共通の凍結manifestは設定値を指定します。必要に応じて `--ssh-config` を指定します。停止前に両rankの資材・fabricと共通source／image／model／profile／allocatorを検査し、停止直前にも再照合します。重みの照合はindex hash・shardサイズ・ローカルfile識別であり、元の重み完全性検査の代わりではありません。ロード用の空きメモリ検査は停止後に行います。
 
 停止前の不合格では稼働中コンテナを維持します。停止後の不合格では今回予約した起動分だけを停止し、記録済みの旧profileで復旧を試みます。停止確認が取れない場合は競合する復旧起動を避けます。結果に失敗・cleanup・復旧を分けて残します。停止を伴う切替であり、原子的な無停止切替ではありません。稼働rankに設定パスの記録がない場合は復旧条件が揃わないため停止前に拒否します。他用途のコンテナは停止しません。
 
@@ -48,7 +48,7 @@ python -m glm53_setup cluster switch --config state/startup.toml \
 
 ## APCの履歴検証
 
-固定runtimeはキー省略時に **0** を使い、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を明示できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す設定です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。配布用TOMLは、履歴・保持圧力・A/B/Aと直列併用の実測を踏まえ `dense` を明示します。[配布既定](startup-configuration.ja.md#配布用の既定設定)とruntimeの省略時挙動を区別してください。
+固定runtimeはキー省略時に **0** を使い、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を明示できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す設定です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。配布用TOMLは、履歴・保持圧力・A/B/Aと直列併用の実測を踏まえ `dense` を明示します。[配布既定](server-configuration.ja.md#配布用の既定設定)とruntimeの省略時挙動を区別してください。
 
 `"dense"` は固定CLIの `None` に対応し、MTP切替でblock幅が変わっても値を書き直さず全checkpointを保持します。数値の間隔は比較実験用に残します。今回の整列されたKDA配置では、denseとKDA block幅と同じ間隔は同じ標準のdense maskになります。最終併用は別途検査します。
 

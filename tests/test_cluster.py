@@ -5,17 +5,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from glm53_setup import cluster, startup, startup_config
+from glm53_setup import cluster, server, server_config
 
 
 class ClusterOwnershipTests(unittest.TestCase):
     def test_cancelled_reserved_job_cannot_launch_after_transport_returns(self):
-        profile = startup_config.load(
-            Path(__file__).resolve().parents[1] / "examples/startup.example.toml"
+        profile = server_config.load(
+            Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         launch = {
-            "manifest": startup.freeze(profile, {}),
-            "config_path": "/srv/glm53/state/startup.toml",
+            "manifest": server.freeze(profile, {}),
+            "config_path": "/srv/glm53/state/server.toml",
         }
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -24,10 +24,10 @@ class ClusterOwnershipTests(unittest.TestCase):
             identity = cluster.rpc("reserve", 0, launch)
             with patch.object(cluster, "inspect_attempt", return_value=None):
                 cluster.rpc("stop", 0, identity)
-            with patch.object(startup, "main") as start:
+            with patch.object(server, "main") as start:
                 cluster.main(["job", "--record", identity["record"]])
                 start.assert_not_called()
-            finished = startup.read_json(Path(identity["record"]) / "finished.json")
+            finished = server.read_json(Path(identity["record"]) / "finished.json")
             self.assertEqual(finished["status"], "cancelled before launch")
             with self.assertRaises(ValueError):
                 cluster.rpc("start", 0, identity)

@@ -1,8 +1,8 @@
 # GLM起動設定の一括管理
 
-[English](startup-configuration.md)
+[English](server-configuration.md)
 
-[コメント付きTOML](../examples/startup.example.toml)を `state/startup.toml` にコピーし、両Linuxノードに同じ内容を置きます。このファイルを**実験用referenceランチャー**と専用送信コマンドが共通で読みます。従来の `service` の通常運用認定ゲートは別に残ります。
+[コメント付きTOML](../examples/server.example.toml)を `state/server.toml` にコピーし、両Linuxノードに同じ内容を置きます。このファイルをランチャーと専用送信コマンドが共通で読みます。
 
 | カテゴリ | 管理するもの |
 |---|---|
@@ -22,7 +22,7 @@
 
 ## 配布用の既定設定
 
-配布用TOMLは、[200Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/startup.toml` は自動更新されません。
+配布用TOMLは、[200Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/server.toml` は自動更新されません。
 
 | 項目 | 既定値 |
 |---|---|
@@ -45,7 +45,7 @@
 
 認証クライアント、allocatorの未指定／空文字、全HCA検査、両rankの停止前検査と切替は[起動契約と運用検証](launch-safety.ja.md)を参照してください。P10／P19／P22／E03の追加範囲であり、複数レール実通信などの未検収を機能実装と区別します。
 
-**P22のGPU状態隔離・校正・最終併用・held-out参照評価を確認済みです。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `startup ask` は判断をサーバーへ任せます。テンプレートは `lpa.enabled = false` を既定とし、バッチ入力に限って用途ごとに有効化します（近似した要求は共有cacheに何も登録しないため）。有効にしている間、要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。`api.prompt_tokens_details = true`（任意キー、未指定は無効）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。APCなしの通常の `startup ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.ja.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
+**P22のGPU状態隔離・校正・最終併用・held-out参照評価を確認済みです。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `server ask` は判断をサーバーへ任せます。テンプレートは `lpa.enabled = false` を既定とし、バッチ入力に限って用途ごとに有効化します（近似した要求は共有cacheに何も登録しないため）。有効にしている間、要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。`api.prompt_tokens_details = true`（任意キー、未指定は無効）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。APCなしの通常の `server ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.ja.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.ja.md#expert-parallelp21)を参照してください。
 
@@ -62,15 +62,15 @@
 リポジトリ直下で生成される起動条件を確認します。これはWindowsでも実行できます。
 
 ```sh
-python -m glm53_setup startup plan --rank 0
-python -m glm53_setup startup plan --rank 1
+python -m glm53_setup server plan --rank 0
+python -m glm53_setup server plan --rank 1
 ```
 
-各Linuxノードの `startup preflight --rank N` でモデル・fabric・イメージID・空きメモリを確認できます。worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。
+各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・空きメモリを確認できます。worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。
 
 ```sh
-python -m glm53_setup startup start --rank 1 --experimental
-python -m glm53_setup startup start --rank 0 --experimental
+python -m glm53_setup server start --rank 1
+python -m glm53_setup server start --rank 0
 ```
 
 起動コマンドは前面に残り、自分のコンテナを監視します。端末を維持してください。`resources.run_seconds` の期限には**モデルのロード時間も含まれます**。長時間使う場合は起動前に延ばします。Ctrl+C・期限到達・空きメモリ不足でそのランクを停止します。分散実行に異常が出た場合は両ランクを停止します。コンテナと `records/` のログ・起動設定は残し、自動削除や自動再起動はしません。
@@ -78,10 +78,10 @@ python -m glm53_setup startup start --rank 0 --experimental
 APIが準備できたら、headの別端末から送信できます。
 
 ```sh
-python -m glm53_setup startup ask --prompt "GLM-OK とだけ返してください。"
-python -m glm53_setup startup ask --request request.json
-python -m glm53_setup startup status --rank 0
-python -m glm53_setup startup stop --rank 0
+python -m glm53_setup server ask --prompt "GLM-OK とだけ返してください。"
+python -m glm53_setup server ask --request request.json
+python -m glm53_setup server status --rank 0
+python -m glm53_setup server stop --rank 0
 ```
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。

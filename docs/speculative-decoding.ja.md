@@ -34,7 +34,7 @@ python tools/prepare_mtp_view.py \
 
 [設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。検証したk=3を使う場合は、`num_speculative_tokens`だけを3にした[speculative.mtp3.json](../examples/speculative.mtp3.json)へ置き換えます。本体のMarlin、eager、APCなし、同時実行1、比較対象のcontext/KV設定を維持します。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
 
-通常ランチャーの検収ガードを回避するための手順ではありません。元へ戻す場合は原snapshotを指定し、投機設定を外します。viewと試験記録は保持します。
+通常運用としての受け入れではありません。元へ戻す場合は原snapshotを指定し、投機設定を外します。viewと試験記録は保持します。
 
 ## 合否と性能比較
 

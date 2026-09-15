@@ -2,11 +2,11 @@
 
 [日本語](launch-safety.ja.md)
 
-These changes extend P10 (memory), P19/P22 (APC) and E03 (operations). They do not introduce another acceleration claim. Implementation and CPU contracts are present; real-container and full-model regression results must be recorded separately before adoption. The regular `service` qualification gate remains unchanged.
+These changes extend P10 (memory), P19/P22 (APC) and E03 (operations). They do not introduce another acceleration claim. Implementation and CPU contracts are present; real-container and full-model regression results must be recorded separately before adoption.
 
 ## Model API clients
 
-The common transport uses a nonempty `API_KEY`, otherwise a nonempty `VLLM_API_KEY`. If both are empty or absent it sends no Authorization header. This includes `startup ask`, dependent benchmarks, profiler controls and component readiness checks. The origin must explicitly identify the model API; all redirects are refused, including same-origin redirects. Downloads use a separate unauthenticated transport. Keys are never settings or fingerprint inputs; HTTP failures expose the status code without headers or response bodies. HTTP 401/403 are failures, not samples omitted from a successful score.
+The common transport uses a nonempty `API_KEY`, otherwise a nonempty `VLLM_API_KEY`. If both are empty or absent it sends no Authorization header. This includes `server ask`, dependent benchmarks, profiler controls and component readiness checks. The origin must explicitly identify the model API; all redirects are refused, including same-origin redirects. Downloads use a separate unauthenticated transport. Keys are never settings or fingerprint inputs; HTTP failures expose the status code without headers or response bodies. HTTP 401/403 are failures, not samples omitted from a successful score.
 
 The pinned vLLM authentication middleware guards `/v1`, `/v2`, `/inference` and `/cohere`. It does **not** authenticate `/health`, `/metrics`, `/tokenize`, `/collective_rpc`, `/reset_prefix_cache` or profiler controls. Sending Bearer credentials does not change that server-side boundary. The listener remains loopback-only. This change adds client authentication, not a new public server authentication layer.
 
@@ -17,8 +17,8 @@ Optional `runtime.cuda_allocator_conf` maps to `PYTORCH_CUDA_ALLOC_CONF`. Omissi
 Resolve environment overrides once on the launch-origin host:
 
 ```sh
-python -m glm53_setup startup freeze --config state/startup.toml --output state/launch.json
-python -m glm53_setup startup plan --config state/startup.toml --launch state/launch.json --rank 0
+python -m glm53_setup server freeze --config state/server.toml --output state/launch.json
+python -m glm53_setup server plan --config state/server.toml --launch state/launch.json --rank 0
 ```
 
 The environment's **presence**, including an empty value, overrides TOML. Copy the same frozen JSON to both ranks and supply `--launch` on start/preflight. Rank hosts do not resolve their own allocator environments. A direct start with a local allocator environment requires a frozen manifest. The manifest contains the resolved profile and its lock-bound fingerprint, with no API key. Existing manifests cannot be overwritten by `freeze`.
@@ -30,13 +30,13 @@ Each node retains its primary `hca`, `interface`, `local_ip` and `gid_index` (po
 The primary single-rail case also selects port 1 explicitly (`=hca:1`). Omitting a port permits all ports on that HCA, which would exceed the checked scope. See [NVIDIA's NCCL HCA selection contract](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-ib-hca).
 
 ```sh
-python -m glm53_setup cluster switch --config state/startup.toml \
+python -m glm53_setup cluster switch --config state/server.toml \
   --hosts spark-head spark-peer --checkout /srv/glm53/source \
-  --remote-config /srv/glm53/state/startup.toml \
-  --output records/switch-run --experimental
+  --remote-config /srv/glm53/state/server.toml \
+  --output records/switch-run
 ```
 
-Both hosts need the same audited checkout, images and assets. `--remote-config` supplies the Linux path base for relative projector paths; the shared frozen manifest supplies settings. `--ssh-config` can select an SSH config. Static assets/fabric and common source/image/model/profile/allocator identities are checked on both ranks and rechecked before stopping. Weight identities use index hashes, shard sizes and local file identities; this is not a replacement for the original weight-integrity verification. The load-memory gate runs after stop.
+Both hosts need the same audited checkout, images and assets; the pre-stop source-identity check rejects a mismatch, so update both checkouts before switching. A running pair records the profile path it was started from in `state/startup-rank<N>.json`, and recovery after a failed switch relaunches the old profile from that recorded path: when the profile file is renamed (1.1.0 moved it to `state/server.toml`), copy rather than move, and delete the old file only after the new pair is confirmed ready. `--remote-config` supplies the Linux path base for relative projector paths; the shared frozen manifest supplies settings. `--ssh-config` can select an SSH config. Static assets/fabric and common source/image/model/profile/allocator identities are checked on both ranks and rechecked before stopping. Weight identities use index hashes, shard sizes and local file identities; this is not a replacement for the original weight-integrity verification. The load-memory gate runs after stop.
 
 Pre-stop failures preserve running containers. Post-stop failures clean up only newly reserved owned attempts, then attempt the recorded old profile. Cleanup uncertainty prevents a competing recovery launch. Results distinguish failure, cleanup and recovery; this is a stop/start procedure with downtime, not an atomic switch. A live rank without a recorded configuration path is rejected before stop because its recovery is not established. Other containers are not stopped.
 
@@ -48,7 +48,7 @@ On the owned two-host test system, an intentionally mismatched projector hash le
 
 ## APC history qualification
 
-Omitting the retention key preserves the pinned runtime default **0**: semantic checkpoints/replay boundaries and shared-prefix junctions; it does not mean dense retention. Optional `cache.prefix_cache_retention_interval` forwards the native flag as an explicit experiment. A positive interval equal to the actual scheduler block retains KDA checkpoints at each such boundary. Full-attention retention stays dense; `KpoolTailManager` remains a private one-block ring with no APC publication. This is checkpoint preservation, not a blanket reduction of all groups. The fixed runtime rejects positive intervals that do not align to its resolved scheduler block. The distributed TOML explicitly selects `dense` following the scoped history, pressure, A/B/A and serial integration evidence. Distinguish [distributed defaults](startup-configuration.md#distributed-defaults) from the runtime behavior when the key is absent.
+Omitting the retention key preserves the pinned runtime default **0**: semantic checkpoints/replay boundaries and shared-prefix junctions; it does not mean dense retention. Optional `cache.prefix_cache_retention_interval` forwards the native flag as an explicit experiment. A positive interval equal to the actual scheduler block retains KDA checkpoints at each such boundary. Full-attention retention stays dense; `KpoolTailManager` remains a private one-block ring with no APC publication. This is checkpoint preservation, not a blanket reduction of all groups. The fixed runtime rejects positive intervals that do not align to its resolved scheduler block. The distributed TOML explicitly selects `dense` following the scoped history, pressure, A/B/A and serial integration evidence. Distinguish [distributed defaults](server-configuration.md#distributed-defaults) from the runtime behavior when the key is absent.
 
 The value `"dense"` selects the pinned CLI's `None` value and keeps every checkpoint without requiring a new numeric block width when MTP is toggled. Numeric intervals remain available for controlled experiments. In the measured aligned KDA layout, dense retention and an interval equal to the KDA block both use the native dense mask; final integration still requires its own checks.
 

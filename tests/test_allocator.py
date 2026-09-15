@@ -2,14 +2,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from glm53_setup import startup
-from glm53_setup import startup_config as config
+from glm53_setup import server
+from glm53_setup import server_config as config
 
 
 class AllocatorTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(__file__).resolve().parents[1]
-        self.profile = config.load(self.root / "examples/startup.example.toml")
+        self.profile = config.load(self.root / "examples/server.example.toml")
 
     def test_origin_resolves_unset_value_and_empty_identically_for_both_ranks(self):
         for env, expected in [
@@ -27,8 +27,8 @@ class AllocatorTests(unittest.TestCase):
                 with patch.dict(
                     "os.environ", {"PYTORCH_CUDA_ALLOC_CONF": f"wrong-host-{rank}"}
                 ):
-                    command = startup.command(
-                        frozen, self.root / "state/startup.toml", rank, "test"
+                    command = server.command(
+                        frozen, self.root / "state/server.toml", rank, "test"
                     )
                 values = [
                     x for x in command if x.startswith("PYTORCH_CUDA_ALLOC_CONF=")
@@ -57,12 +57,12 @@ class AllocatorTests(unittest.TestCase):
                 config.validate(self.profile)
 
     def test_frozen_manifest_survives_other_host_env_and_detects_tampering(self):
-        manifest = startup.freeze(self.profile, {"PYTORCH_CUDA_ALLOC_CONF": ""})
+        manifest = server.freeze(self.profile, {"PYTORCH_CUDA_ALLOC_CONF": ""})
         with patch.dict("os.environ", {"PYTORCH_CUDA_ALLOC_CONF": "different"}):
-            loaded = startup.thaw(manifest)
+            loaded = server.thaw(manifest)
         self.assertEqual(loaded["runtime"]["cuda_allocator_conf"], "")
         manifest["profile"]["runtime"]["cuda_allocator_conf"] = (
             "backend:cudaMallocAsync"
         )
         with self.assertRaisesRegex(ValueError, "no longer matches"):
-            startup.thaw(manifest)
+            server.thaw(manifest)

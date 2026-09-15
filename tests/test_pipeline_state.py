@@ -3,14 +3,14 @@ import importlib.util
 import unittest
 from types import SimpleNamespace as NS
 
-from glm53_setup import startup_config
+from glm53_setup import server_config
 from glm53_setup.config import ROOT
 from glm53_setup.runtime.pipeline_state import validate_pipeline
 
 
 class PipelineStartupTests(unittest.TestCase):
     def profile(self):
-        profile = startup_config.load(ROOT / "examples/startup.example.toml")
+        profile = server_config.load(ROOT / "examples/server.example.toml")
         profile["mtp"]["enabled"] = False
         profile["lpa"]["enabled"] = False
         profile["cache"]["prefix_caching"] = False
@@ -19,19 +19,19 @@ class PipelineStartupTests(unittest.TestCase):
 
     def test_two_nodes_switch_from_tp_to_pp_with_explicit_stage_partition(self):
         profile = self.profile()
-        before = startup_config.fingerprint(profile)
+        before = server_config.fingerprint(profile)
         profile["runtime"]["pipeline_parallel_size"] = 2
         profile["runtime"]["pipeline_split_layer"] = 24
-        startup_config.validate(profile)
-        self.assertNotEqual(before, startup_config.fingerprint(profile))
+        server_config.validate(profile)
+        self.assertNotEqual(before, server_config.fingerprint(profile))
         for rank in (0, 1):
-            args = startup_config.serve_args(profile, rank, "/hf/model")
+            args = server_config.serve_args(profile, rank, "/hf/model")
             self.assertEqual(args[args.index("--nnodes") + 1], "2")
             self.assertEqual(args[args.index("--tensor-parallel-size") + 1], "1")
             self.assertEqual(args[args.index("--pipeline-parallel-size") + 1], "2")
             self.assertNotIn("--enable-expert-parallel", args)
             self.assertEqual(
-                startup_config.environment(profile, rank)["VLLM_PP_LAYER_PARTITION"],
+                server_config.environment(profile, rank)["VLLM_PP_LAYER_PARTITION"],
                 "24,21",
             )
 
@@ -53,7 +53,7 @@ class PipelineStartupTests(unittest.TestCase):
             trial = copy.deepcopy(profile)
             trial[section][key] = value
             with self.assertRaises(ValueError):
-                startup_config.validate(trial)
+                server_config.validate(trial)
 
 
 class PipelineScopeTests(unittest.TestCase):

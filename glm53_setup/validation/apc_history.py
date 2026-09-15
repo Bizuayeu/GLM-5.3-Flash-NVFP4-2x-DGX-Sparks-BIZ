@@ -10,7 +10,7 @@ import time
 from functools import partial
 from pathlib import Path
 
-from .. import model_http, startup, startup_config
+from .. import model_http, server, server_config
 from ..io import write_json
 
 
@@ -166,7 +166,7 @@ def main(argv=None):
         "--block-tokens",
         type=int,
         required=True,
-        help="Actual scheduler block from this server's startup evidence",
+        help="Actual scheduler block from this server's launch record",
     )
     parser.add_argument("--corpus-tokens", type=int, default=16000)
     parser.add_argument(
@@ -191,9 +191,9 @@ def main(argv=None):
         )
     if args.case_ids and not args.timing_only:
         parser.error("The functional matrix cannot silently omit cases")
-    profile = startup_config.load(args.config)
+    profile = server_config.load(args.config)
     if (
-        not startup_config.apc_lpa_enabled(profile)
+        not server_config.apc_lpa_enabled(profile)
         or profile["profiling"]["enabled"]
         or min(args.block_tokens, args.repeats, args.pressure_histories) < 1
         or args.corpus_tokens < 2 * args.block_tokens
@@ -233,9 +233,9 @@ def main(argv=None):
         write_json(args.output / "result.json", report)
 
     def post(path, body):
-        return startup.post(profile, path, body)
+        return server.post(profile, path, body)
 
-    rpc = partial(startup.collective_rpc, profile)
+    rpc = partial(server.collective_rpc, profile)
 
     def metrics():
         with model_http.open_response(
@@ -288,7 +288,7 @@ def main(argv=None):
         return hits[0], workers
 
     def chat(body, expected, mode):
-        body = startup_config.request_body(profile, body)
+        body = server_config.request_body(profile, body)
         ids = encode(body)
         if len(ids) + body["max_tokens"] > profile["context"]["max_model_len"]:
             raise ValueError("History exceeds the qualified context budget")
@@ -313,8 +313,8 @@ def main(argv=None):
 
     save()
     try:
-        with startup.request_lock():
-            state, info = startup.running_head(profile)
+        with server.request_lock():
+            state, info = server.running_head(profile)
             if not info["State"]["Running"]:
                 raise ValueError("The configured dedicated server is not running")
             report.update(
@@ -323,7 +323,7 @@ def main(argv=None):
                 cache_layout=rpc("apc_cache_layout"),
                 status="running",
             )
-            expected_retention = startup_config.retention_interval(profile)
+            expected_retention = server_config.retention_interval(profile)
             if any(
                 row["retention_interval"] != expected_retention
                 for row in report["cache_layout"]
@@ -366,7 +366,7 @@ def main(argv=None):
                 report["timing_cases"] = []
 
                 def prefill(body):
-                    encoded = encode(startup_config.request_body(profile, body))
+                    encoded = encode(server_config.request_body(profile, body))
                     before = metrics()
                     began = time.perf_counter()
                     response = post(

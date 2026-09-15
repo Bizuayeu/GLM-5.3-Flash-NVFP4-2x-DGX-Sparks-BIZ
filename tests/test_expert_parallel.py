@@ -2,13 +2,13 @@ import copy
 import unittest
 from pathlib import Path
 
-from glm53_setup import startup_config as config
+from glm53_setup import server_config as config
 
 
 class ExpertParallelConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(
-            Path(__file__).resolve().parents[1] / "examples/startup.example.toml"
+            Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         # EP experiments isolate partitioning from the distributed combination.
         self.profile["mtp"]["enabled"] = False

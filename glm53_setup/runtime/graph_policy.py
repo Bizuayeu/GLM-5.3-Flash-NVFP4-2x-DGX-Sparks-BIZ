@@ -1,6 +1,6 @@
 """Keep LPA's Python hooks in eager prefill while decode replays native graphs."""
 
-# cc-defer: LPA/Graph routing is fixture preparation, not a supported startup
+# cc-defer: LPA/Graph routing is fixture preparation, not a supported launch path
 # combination; qualify its GPU state and full-model integration before enabling.
 
 import os

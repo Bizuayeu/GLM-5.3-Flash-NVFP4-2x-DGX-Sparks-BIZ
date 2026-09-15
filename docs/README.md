@@ -19,8 +19,8 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| Operations | Artifact storage paths, acquisition, host preparation, launch gate, recovery | [EN](operations.md) | [JA](operations.ja.md) |
-| Startup configuration | The categorized startup TOML, KV/RAM conditions, image contract, LPA/MTP constraints | [EN](startup-configuration.md) | [JA](startup-configuration.ja.md) |
+| Operations | Artifact storage paths, acquisition, host preparation, launch checks, recovery | [EN](operations.md) | [JA](operations.ja.md) |
+| Server configuration | The categorized server TOML, KV/RAM conditions, image contract, LPA/MTP constraints | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFP network | Direct QSFP connection and persistent NetworkManager profiles | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL validation | Two-host collective diagnostic and its limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | Launch contracts | API client authentication, allocator propagation, all-rail checks, two-rank switch and recovery, APC history qualification | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
@@ -46,7 +46,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Optimization catalog | Initiative IDs P01–P22 / E01–E03, decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | Performance investigation | Measurement procedures: launches and synchronization, task grouping, EP, TP versus PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | Speculative decoding | MTP metadata view, k=1 and k=3 measurements | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
-| LPA | Late-prefill approximation: projector download/model card, enabling it in the startup profile, mechanism, scope, reproduction, evidence | [EN](lpa.md) | [JA](lpa.ja.md) |
+| LPA | Late-prefill approximation: projector download/model card, enabling it in the server profile, mechanism, scope, reproduction, evidence | [EN](lpa.md) | [JA](lpa.ja.md) |
 | APC-first LPA design | Shared-cache contract for combining prefix caching with LPA (P22) | [EN](apc-lpa-design.md) | [JA](apc-lpa-design.ja.md) |
 | Candidate order | Canonical sparse-candidate ordering in the reference image | [EN](candidate-order.md) | [JA](candidate-order.ja.md) |
 | Indexer reuse | CSA2 candidate reuse and restricted rescoring components | [EN](indexer-reuse.md) | [JA](indexer-reuse.ja.md) |
@@ -57,7 +57,7 @@ Every document has one role; other documents link to it instead of repeating its
 |---|---|
 | Model ID, pinned revision, base-image digest, local reference tag, pinned vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | Distributed LPA projector URL, file hash, format, teacher and training provenance | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json); package layout in [operations](operations.md#artifact-storage-and-paths) |
-| Startup schema and every startup key | [examples/startup.example.toml](../examples/startup.example.toml), explained in [startup configuration](startup-configuration.md) |
+| Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml), explained in [server configuration](server-configuration.md) |
 | MTP speculative configuration examples | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |
@@ -65,7 +65,7 @@ Every document has one role; other documents link to it instead of repeating its
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
-| Which launcher is which: `startup` (experimental reference) versus `service` (gated candidate) | [Operations](operations.md#two-launchers) |
+| What `server preflight` checks before a start, and what it does not certify | [Operations](operations.md#full-model-launch-checks) |
 | Host kernel requirement, the `7.0.0-1019-nvidia` RoCE failure and the `kho=off` workaround | [Operations](operations.md#host-kernel-and-multi-node-roce) |
 | License permissions and obligations by artifact | [Licensing guide](licensing.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | Harness acceptance cases and their run status | [Harnesses](harnesses.md) |

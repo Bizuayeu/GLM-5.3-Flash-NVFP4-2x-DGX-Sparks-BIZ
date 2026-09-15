@@ -11,11 +11,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import model_http, service
-from . import startup_config as settings
+from . import host, model_http
+from . import server_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
+from .host import available_gib
 from .io import read_json, write_json
-from .service import available_gib
 
 LABEL = "glm53.experiment.startup"
 
@@ -94,10 +94,10 @@ def command(profile, config_path, rank, name, cache=None):
 
 
 def inspect_owned(name, fingerprint=None):
-    info = json.loads(service.run("docker", "inspect", name))[0]
+    info = json.loads(host.run("docker", "inspect", name))[0]
     owner = (info["Config"].get("Labels") or {}).get(LABEL)
     if not owner or (fingerprint and owner != fingerprint):
-        raise ValueError("Container does not belong to this startup profile")
+        raise ValueError("Container does not belong to this server profile")
     return info
 
 
@@ -142,7 +142,7 @@ def image_capability_checks(profile, image):
 def preflight(profile, config_path, rank, *, check_memory=True):
     cache = Path.home() / ".cache/huggingface"
     lock = load_lock()
-    source = service.snapshot_from_state(
+    source = host.snapshot_from_state(
         read_json(ROOT / "state/download-status.json"), lock
     )
     expected = model_path(
@@ -152,7 +152,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         raise ValueError("Download state must identify the pinned HF cache snapshot")
     model = model_path(profile, cache)
     metadata = read_json(model / "config.json")
-    checks = service.fabric_checks(settings.site(profile, rank))
+    checks = host.fabric_checks(settings.site(profile, rank))
     checks["full_model"] = metadata["text_config"][
         "num_hidden_layers"
     ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
@@ -169,7 +169,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
                 == profile["lpa"]["projector_sha256"]
             )
     image = json.loads(
-        service.run("docker", "image", "inspect", settings.selected_image(profile))
+        host.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
     checks.update(image_capability_checks(profile, image))
@@ -177,7 +177,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         checks["startup_memory"] = (
             available_gib() >= profile["resources"]["minimum_available_gib"]
         )
-    # This is an explicit experiment, not the routine service qualification path.
+    # Reference-profile preflight; qualification status lives in the documents.
     return {
         "scope": "experimental-reference",
         "checks": checks,
@@ -230,7 +230,7 @@ def supervise(profile, name, record):
     finally:
         info = inspect_owned(name)
         if info["State"]["Running"]:
-            service.run("docker", "stop", name)
+            host.run("docker", "stop", name)
         write_json(record / "container-inspect.json", inspect_owned(name))
         with (record / "server.log").open("w", encoding="utf-8") as log:
             subprocess.run(
@@ -343,24 +343,17 @@ def main(argv=None):
             "ask",
         ],
     )
-    parser.add_argument("--config", type=Path, default=ROOT / "state/startup.toml")
+    parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
     parser.add_argument("--rank", type=int, choices=[0, 1], default=0)
-    parser.add_argument(
-        "--experimental",
-        action="store_true",
-        help="Required for start; does not qualify routine service",
-    )
     parser.add_argument("--prompt")
     parser.add_argument("--run-id", help="Unique coordinator-owned launch ID")
     parser.add_argument("--request", type=Path)
     parser.add_argument(
         "--launch",
         type=Path,
-        help="Shared frozen JSON from startup freeze; host allocator environment is ignored",
+        help="Shared frozen JSON from server freeze; host allocator environment is ignored",
     )
-    parser.add_argument(
-        "--output", type=Path, help="New output file for startup freeze"
-    )
+    parser.add_argument("--output", type=Path, help="New output file for server freeze")
     args = parser.parse_args(argv)
     args.config = args.config.resolve()
     state = ROOT / f"state/startup-rank{args.rank}.json"
@@ -370,7 +363,7 @@ def main(argv=None):
             parser.error("Run stop on the Linux model host")
         current = read_json(state)
         inspect_owned(current["name"])
-        print(service.run("docker", "stop", current["name"]))
+        print(host.run("docker", "stop", current["name"]))
         return
     profile = (
         thaw(read_json(args.launch)) if args.launch else settings.load(args.config)
@@ -395,7 +388,7 @@ def main(argv=None):
         and "PYTORCH_CUDA_ALLOC_CONF" in os.environ
     ):
         parser.error(
-            "Freeze the launch-origin allocator once with startup freeze and pass the same --launch JSON to both ranks"
+            "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to both ranks"
         )
     if args.action == "plan":
         print(
@@ -448,8 +441,6 @@ def main(argv=None):
                 )
                 print(json.dumps(ask(profile, body), ensure_ascii=False, indent=2))
         return
-    if args.action == "start" and not args.experimental:
-        parser.error("start requires --experimental; routine service remains gated")
     if args.action == "start":
 
         def interrupted(signum, frame):
@@ -474,7 +465,7 @@ def main(argv=None):
         if not re.fullmatch(r"[0-9a-f]{32}", args.run_id):
             parser.error("run-id must be a 32-character hexadecimal launch ID")
     name = f"glm53-startup-r{args.rank}-{args.run_id or stamp.lower()}"
-    record = ROOT / "records" / (stamp + f"-startup-r{args.rank}")
+    record = ROOT / "records" / (stamp + f"-server-r{args.rank}")
     record.mkdir(parents=True)
     (ROOT / "state/tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
     if profile["profiling"]["enabled"]:
@@ -483,7 +474,7 @@ def main(argv=None):
     write_json(record / "preflight.json", result)
     write_json(record / "settings.json", profile)
     write_json(record / "command.json", cmd)
-    print(service.run(*cmd), flush=True)
+    print(host.run(*cmd), flush=True)
     try:
         write_json(
             state,
@@ -496,7 +487,7 @@ def main(argv=None):
         )
     except BaseException:
         inspect_owned(name)
-        service.run("docker", "stop", name)
+        host.run("docker", "stop", name)
         raise
     print(
         "Supervising in foreground; Ctrl+C, low memory or an enabled deadline stops this rank.",

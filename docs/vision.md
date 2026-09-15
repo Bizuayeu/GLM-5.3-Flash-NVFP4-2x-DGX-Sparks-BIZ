@@ -1,12 +1,12 @@
 # Image input (vision) at 200K
 
-[日本語](vision.ja.md) · [Startup configuration](startup-configuration.md) · [Document map](README.md)
+[日本語](vision.ja.md) · [Server configuration](server-configuration.md) · [Document map](README.md)
 
 The distributed profile accepts **text, tool calls and images** at 204,800 input-plus-output tokens. **Video input is disabled and rejected.** This page records how that profile was reached, what was measured on the reference hosts (MSI EdgeXpert MS-C931, about 121 GiB usable memory each) on 2026-09-15, and what remains unqualified. It is scoped evidence for one active sequence on TP=2, not production or harness qualification.
 
 ## Settings
 
-[Startup configuration](startup-configuration.md#distributed-defaults) owns the keys; this is the image-related subset of the template.
+[Server configuration](server-configuration.md#distributed-defaults) owns the keys; this is the image-related subset of the template.
 
 | Key | Value | Effect |
 |---|---|---|
@@ -14,7 +14,7 @@ The distributed profile accepts **text, tool calls and images** at 204,800 input
 | `context.max_model_len` | 204800 | Down from 262,144 in the text-only profile |
 | `cache.kv_cache_memory_bytes` | 2684354560 (2.5 GiB per rank) | Down from 3 GiB; the runtime reported 235,016 tokens of KV capacity (1.15× the limit) |
 | `cache.mm_processor_cache_gb` | 0.1 | `--mm-processor-cache-gb 0.1` instead of vLLM's 4 GiB |
-| `resources.reserve_gib` | 2.5 | Down from 3; see the guard arithmetic in [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements) |
+| `resources.reserve_gib` | 2.5 | Down from 3; see the guard arithmetic in [KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements) |
 
 A client must declare image input and must not declare video. For ZCode, set the model's `limit.context` to 204800 and `modalities.input` to `["text", "image"]` ([ZCode model limits](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard)). The 256K text-only alternative is `runtime.vision = false` with `max_model_len = 262144` and 3 GiB KV per rank; its [256K checks](benchmarks.md#real-input-checks-at-256k) ran with a 4 GiB reserve, and a 2.5 GiB reserve is not validated for it.
 

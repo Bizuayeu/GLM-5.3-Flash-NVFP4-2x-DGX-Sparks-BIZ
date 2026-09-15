@@ -2,16 +2,11 @@
 
 [日本語](operations.ja.md)
 
-**Routine TP=2 deployment is not qualified yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md); the guarded routine launcher remains a candidate implementation.
+**Routine TP=2 deployment is not accepted yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md). Whether a profile is experimental or ready for routine use is shown by its recorded acceptance status (the README status table and the [harness acceptance matrix](harnesses.md#acceptance-matrix-and-status)), not by a command name.
 
-## Two launchers
+## One launcher
 
-The checkout has two launch paths, and evidence from one does not qualify the other.
-
-| Command | Role | Status |
-|---|---|---|
-| `python -m glm53_setup startup …` | Experimental reference launcher and serial client, driven by [one startup TOML](startup-configuration.md); the two-rank [switch and recovery procedure](launch-safety.md#all-rail-checks-and-two-rank-switch) wraps it | Every full-model measurement in this repository ran through it. Experimental: no routine-deployment qualification |
-| `python -m glm53_setup service …` | Guarded routine-deployment candidate with `state/site.json` and the [full-model launch gate](#full-model-launch-gate) | `plan` and `preflight` are for inspection. `start` still selects the lock's base image, whose native GB10 NoPE path is blocked, and requires a qualification receipt that no workflow produces yet; building the reference image does not switch it |
+The checkout has one launch path: `python -m glm53_setup server …`, driven by [one server TOML](server-configuration.md) and wrapped by the two-rank [switch and recovery procedure](launch-safety.md#all-rail-checks-and-two-rank-switch) when a pair is already running. Every full-model measurement in this repository ran through it, and the [launch checks](#full-model-launch-checks) below are the checks it performs before a start.
 
 ## Artifact storage and paths
 
@@ -21,9 +16,9 @@ This section owns deployment storage paths. The model ID, revision and base-imag
 |---|---|---|
 | Base checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | Fixed model/config/tokenizer view. Weight files link into the sibling `blobs/` directory, which holds their data |
 | MTP metadata view, required by distributed defaults | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | Links existing tensor data and adjusts quantization metadata for the checkpoint's BF16 MTP; [create the view](speculative-decoding.md#prepare-a-view-on-each-linux-host) without editing the original snapshot |
-| LPA projector, required when `lpa.enabled = true` (off in the template) | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`; selected by `[lpa].projector` relative to the [startup TOML](startup-configuration.md) or absolute | Separate Release asset, outside the NVIDIA snapshot and source archive. [Download and verify](lpa.md#download-the-trained-projector) on both hosts, or train a matching projector; [enabling](lpa.md#enable-lpa-in-the-startup-profile) is a separate profile edit and switch. Plain inference and batching do not require it |
+| LPA projector, required when `lpa.enabled = true` (off in the template) | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`; selected by `[lpa].projector` relative to the [server TOML](server-configuration.md) or absolute | Separate Release asset, outside the NVIDIA snapshot and source archive. [Download and verify](lpa.md#download-the-trained-projector) on both hosts, or train a matching projector; [enabling](lpa.md#enable-lpa-in-the-startup-profile) is a separate profile edit and switch. Plain inference and batching do not require it |
 | Docker base/reference images | Docker-managed storage | Pull the fixed base and build the reference image from this source. Source checkout, image and checkpoint are separate artifacts |
-| Local configuration and acquisition state | `<checkout>/state/` | Site startup settings and `download-status.json`; the latter records the actual acquired `snapshot` path |
+| Local configuration and acquisition state | `<checkout>/state/` | The server TOML and `download-status.json`; the latter records the actual acquired `snapshot` path |
 | Runtime/JIT cache and evidence | `<checkout>/state/tp2-runtime-cache/`, `<checkout>/records/` | Regenerable runtime data and private execution records; not model weights or distribution inputs. Distributed startup points the Triton, TileLang and TorchInductor caches into the runtime cache so compiled kernels survive restarts |
 
 The LPA asset expands as follows. `manifest.json` is a copy of the [projector lock](../config/lpa-projector.lock.json); source checkout archives do not include this directory.
@@ -42,7 +37,7 @@ state/lpa/glm53-lpa-cut32-v1/
     └── ZAI-GLM-MIT.txt
 ```
 
-The experimental startup launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
+The server launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
 
 The downloader follows Hugging Face cache environment settings, but the current launcher assumes the default cache root. For this release, leave `HF_HOME`/`HF_HUB_CACHE` unset when acquiring these assets and use the documented default. A successful custom-cache download does not establish that the launcher can find or mount it.
 
@@ -53,7 +48,7 @@ python -c 'from pathlib import Path; from glm53_setup.config import MODEL, REVIS
 python -c 'import json; from glm53_setup.config import STATE; s = json.loads((STATE / "download-status.json").read_text()); print(s.get("status"), s.get("snapshot", "not recorded"))'
 ```
 
-The second command requires prior acquisition registration in this checkout. Neither printed path nor `status=complete` substitutes for checksum verification. Startup settings must reference the image actually built and inspected on both machines.
+The second command requires prior acquisition registration in this checkout. Neither printed path nor `status=complete` substitutes for checksum verification. Server settings must reference the image actually built and inspected on both machines.
 
 ## Acquire and verify once
 
@@ -93,36 +88,34 @@ A separate report with the same error, on MS-C931 systems running an Ubuntu gene
 
 ## Network and site configuration
 
-For the explicit experimental reference path, use [one startup TOML](startup-configuration.md). The `service` instructions below describe the separate candidate launcher and its qualification gate.
-
 For physical connection and persistent IPv4 configuration, use the [QSFP hands-on guide](qsfp-network.md).
 
-Copy `examples/site.example.json` to `state/site.json` separately on each host. Replace all illustrative values with observations from that host:
+Record each host's measured values in the `[nodes]` section of the [server TOML](server-configuration.md), which is the same file on both hosts:
 
-- rank 0 or 1, local fabric IPv4 and head fabric IPv4;
+- local fabric IPv4 and head fabric IPv4;
 - Ethernet interface, RDMA HCA and that interface's RoCEv2 GID index;
-- unused API and rendezvous ports.
+- unused API and rendezvous ports in `[api]`.
 
 The HCA and GID number need not match between hosts. Confirm the GID maps to the local IPv4 and net device. Use MTU 9000 only when both endpoints and the whole path support it. Verify the actual NCCL transport and collective correctness before loading the full model; a successful SSH connection is not an RDMA test.
 
 ```sh
-python -m glm53_setup service plan
-python -m glm53_setup service preflight
+python -m glm53_setup server plan --rank 0
+python -m glm53_setup server preflight --rank 0
 ```
 
-`plan` prints arguments without starting a container. `preflight` records failures and exits nonzero if any requirement is missing. It also requires a completed, matching download state.
+`plan` prints the container command without starting anything. `preflight` records its checks under `records/` and exits nonzero if any fails; it requires a completed, matching download state.
 
-## Full-model launch gate
+## Full-model launch checks
 
-The candidate `service start` path requires a `state/kernel-validation.json` receipt with a passing `tp2-kernel-validation` result tied to the exact image and model revision. **This release does not yet include a completed producer/workflow for that receipt.** It must come from real two-rank qualification, not manual editing or a one-GPU fixture.
+`server preflight --rank N` checks, on each host, the pinned snapshot and MTP view, the fabric settings, the selected image ID and its capability markers, the projector checksum when LPA is enabled and the available memory; `server start` runs the same checks and refuses to start on a failure. The two-rank switch repeats them on both ranks before stopping a running pair and again before starting the new one.
 
-The candidate launcher still selects the lock's base image, whose native NoPE path is blocked. Building the reference image does not select it for serving. Full-model qualification must implement and validate that runtime selection and its receipt binding; see [the ordered setup gate](../SETUP.md#6-qualify-the-full-model--current-blocker).
+A passing preflight certifies assets and configuration, not quality or availability: the remaining acceptance items for routine use are listed in [the setup runbook](../SETUP.md#6-qualify-the-full-model), and the current status per scope is in the README status table. Do not relax a failing check, truncate attention candidates or silently substitute precision to get past it.
 
-After that future qualification, rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous. The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
+Rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous. The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
 
 ## Recovery and records
 
-The scripts do not delete failed containers or weights and do not install a restart watchdog. `service stop` stops only a container carrying this deployment's ownership label. Save its logs and rename a stopped container before recreating the same rank name. Reinitialize both ranks together after a distributed failure.
+The scripts do not delete failed containers or weights and do not install a restart watchdog. `server stop` stops only a container carrying this launcher's ownership label. Save its logs and rename a stopped container before recreating the same rank name. Reinitialize both ranks together after a distributed failure.
 
 `state/` holds current acquisition/site state. `records/` holds per-run evidence. A paused acquisition is an intentional stop: verification waiting exits with code 2 and does not restart the download. Do not start a new acquisition while a local transfer is in progress.
 

@@ -9,7 +9,7 @@ import urllib.error
 from functools import partial
 from pathlib import Path
 
-from glm53_setup import model_http, startup, startup_config
+from glm53_setup import model_http, server, server_config
 from glm53_setup.io import write_json
 from glm53_setup.validation.indexer_overlap import compare_candidates
 
@@ -20,7 +20,7 @@ def main(argv=None):
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    profile = startup_config.load(args.config)
+    profile = server_config.load(args.config)
     if not profile["validation"]["component_worker"]:
         parser.error("Explicit component worker profile required")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -36,9 +36,9 @@ def main(argv=None):
         write_json(args.output / "result.json", report)
 
     def post(path, body):
-        return startup.post(profile, path, body)
+        return server.post(profile, path, body)
 
-    rpc = partial(startup.collective_rpc, profile)
+    rpc = partial(server.collective_rpc, profile)
 
     def complete(ids, count):
         began = time.perf_counter()
@@ -88,10 +88,10 @@ def main(argv=None):
                 time.sleep(5)
         else:
             raise TimeoutError("Model readiness deadline exceeded")
-        current, info = startup.running_head(profile)
+        current, info = server.running_head(profile)
         report["image"] = info["Image"]
         report["container"] = current["name"]
-        with startup.request_lock():
+        with server.request_lock():
             text_bytes = args.corpus.read_bytes()
             report["corpus_sha256"] = hashlib.sha256(text_bytes).hexdigest()
             documents = [

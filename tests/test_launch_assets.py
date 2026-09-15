@@ -14,10 +14,10 @@ class LaunchAssetTests(unittest.TestCase):
             model = Path(tmp)
             with (
                 patch.object(
-                    launch_assets.startup, "preflight", return_value={"passed": True}
+                    launch_assets.server, "preflight", return_value={"passed": True}
                 ),
-                patch.object(launch_assets.startup, "model_path", return_value=model),
-                patch.object(launch_assets.service, "run") as run,
+                patch.object(launch_assets.server, "model_path", return_value=model),
+                patch.object(launch_assets.host, "run") as run,
             ):
                 with self.assertRaisesRegex(ValueError, "Tokenizer assets"):
                     launch_assets.inspect({}, Path("profile.toml"), 0)

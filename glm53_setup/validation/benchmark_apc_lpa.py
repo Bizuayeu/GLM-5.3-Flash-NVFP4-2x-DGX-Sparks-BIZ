@@ -8,7 +8,7 @@ import statistics
 import time
 from pathlib import Path
 
-from .. import startup, startup_config
+from .. import server, server_config
 from ..io import write_json
 
 
@@ -29,9 +29,9 @@ def main(argv=None):
     )
     parser.add_argument("--repeats", type=int, default=5)
     args = parser.parse_args(argv)
-    profile = startup_config.load(args.config)
+    profile = server_config.load(args.config)
     if (
-        not startup_config.apc_lpa_enabled(profile)
+        not server_config.apc_lpa_enabled(profile)
         or profile["lpa"]["break_even_tokens"] != 0
         or profile["lpa"]["cut"] != 32
         or not profile["lpa"]["skip_mla_queries"]
@@ -64,7 +64,7 @@ def main(argv=None):
         write_json(args.output / "result.json", report)
 
     def post(path, body):
-        return startup.post(profile, path, body)
+        return server.post(profile, path, body)
 
     def reset():
         if post("/reset_prefix_cache", {}) != {"success": True}:
@@ -125,8 +125,8 @@ def main(argv=None):
 
     save()
     try:
-        with startup.request_lock():
-            state, info = startup.running_head(profile)
+        with server.request_lock():
+            state, info = server.running_head(profile)
             if not info["State"]["Running"]:
                 raise ValueError("The dedicated calibration server is not running")
             report.update(

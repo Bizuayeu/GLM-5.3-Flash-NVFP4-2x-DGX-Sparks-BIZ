@@ -4,7 +4,7 @@
 
 前段の表現から後段各層の正規化済みAttention入力を予測し、GLM本来のAttention処理でキャッシュと再帰状態を作る。過去tokenのMLP計算を省略し、生成時は全層を実行する。本体のcheckpointは変更せず、小さな補助器だけを学習する。
 
-機能名は **LPA（Late-prefill approximation）**。起動設定は `[lpa]`、CLIは `lpa-fixture`・`lpa-corpus`・`lpa-train` と表記する。[現行イメージの契約](startup-configuration.ja.md#現行イメージの契約)に合わせて再ビルドし、旧インターフェースは残さない。
+機能名は **LPA（Late-prefill approximation）**。起動設定は `[lpa]`、CLIは `lpa-fixture`・`lpa-corpus`・`lpa-train` と表記する。[現行イメージの契約](server-configuration.ja.md#現行イメージの契約)に合わせて再ビルドし、旧インターフェースは残さない。
 
 着想は[きしだ氏のQwen3実験](https://nowokay.hatenablog.com/entry/2026/09/11/120001)から。GLMへの適用には、独立した状態・品質の検査を設けている。
 
@@ -18,10 +18,10 @@
 
 配布用TOMLではMTP併用を有効にしている。修正済みの四層MTP3／unpack融合／async fixtureは、`integration-fixture-v36` で3〜8,192 tokenの8条件と使用中のKDA状態比較を通過した。その後の[直列フルモデル比較](benchmarks.ja.md#直列併用の評価p18)に、限定した課題・速度・容量・切断復帰の受入結果を記録している。部品のtoken一致を一般的なフルモデル品質保証とはしない。
 
-- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1/k=3併用は `allow_mtp=true` を明示し、[起動設定TOML](startup-configuration.ja.md)では自動設定する。APCは以下のscheduler統合済みP22経路を使う。
+- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1/k=3併用は `allow_mtp=true` を明示し、[起動設定TOML](server-configuration.ja.md)では自動設定する。APCは以下のscheduler統合済みP22経路を使う。
 - 入力末尾の指定範囲は通常計算する。全入力が保護範囲に収まる場合は、補助器の読込・実行をせず通常経路へ戻す。
 - 過去の状態は近似になる。Decodeを全層で行っても、元モデルの確率分布が厳密に復元されるわけではない。
-- 実験用worker extensionであり、通常ランチャーや各コーディングハーネスの常用検収とは別。開発用RPCはloopbackに限定する。
+- 実験用worker extensionであり、起動profileの通常運用としての受け入れや各コーディングハーネスの常用検収とは別。開発用RPCはloopbackに限定する。
 
 ### APCと共有状態の由来
 
@@ -55,7 +55,7 @@ python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/l
 
 ### 起動profileでLPAを有効にする
 
-LPAは[対応する用途](#使用範囲)（一度だけ処理する長い入力）に限って有効にし、会話には使いません。両ホストで同じ`state/startup.toml`を編集します。
+LPAは[対応する用途](#使用範囲)（一度だけ処理する長い入力）に限って有効にし、会話には使いません。両ホストで同じ`state/server.toml`を編集します。
 
 ```toml
 [runtime]
@@ -63,7 +63,7 @@ lpa_image = "sha256:<両ホストで確認したimage ID>"   # GLM53_LPA_API=2 �
 vision = false          # LPAの実測範囲はテキスト専用
 
 # テキスト専用profileは文書化済みの256K代替であり、画像既定のvisionだけを
-# 切った構成ではない（docs/startup-configuration.ja.md#配布用の既定設定）。
+# 切った構成ではない（docs/server-configuration.ja.md#配布用の既定設定）。
 [context]
 max_model_len = 262144
 [cache]
@@ -78,11 +78,11 @@ projector = "lpa/glm53-lpa-cut32-v1/projector.pt"   # このTOMLからの相対�
 projector_sha256 = "<config/lpa-projector.lock.json の sha256>"
 ```
 
-- **image**：`lpa.enabled = true`にすると、ランチャーは`reference_image`ではなく`runtime.lpa_image`を選びます。preflightはそのimageに`GLM53_LPA_API=2` markerを要求し、`cache.prefix_caching`が有効なまま（テンプレート既定。[APC優先経路](startup-configuration.ja.md#コマンド)を選ぶ）なら`GLM53_APC_LPA_API=1`も要求します。[現行イメージの契約](startup-configuration.ja.md#現行イメージの契約)に沿って現行ソースからビルドしたimageは両方を持ちます。`docker image inspect <id>`で確認し、両ホストで同じIDを使います。
+- **image**：`lpa.enabled = true`にすると、ランチャーは`reference_image`ではなく`runtime.lpa_image`を選びます。preflightはそのimageに`GLM53_LPA_API=2` markerを要求し、`cache.prefix_caching`が有効なまま（テンプレート既定。[APC優先経路](server-configuration.ja.md#コマンド)を選ぶ）なら`GLM53_APC_LPA_API=1`も要求します。[現行イメージの契約](server-configuration.ja.md#現行イメージの契約)に沿って現行ソースからビルドしたimageは両方を持ちます。`docker image inspect <id>`で確認し、両ホストで同じIDを使います。
 - **projector**：preflightは`[lpa].projector`が指すファイルのSHA-256を再計算し、`projector_sha256`と一致しなければ拒否します。`cut = 32`・`tail`・`break_even_tokens`はテンプレートの値のままにします。これがこのprojectorの実測設定です。
-- **テキスト専用**：`runtime.vision = false`を[テキスト専用256Kの代替](startup-configuration.ja.md#配布用の既定設定)（context 262,144・各rank KV 3 GiB・reserve 3 GiB）と組で使います。画像既定の`vision`だけを切った構成は実測したprofileではなく、テキスト専用でのreserve 2.5 GiBは未検証です。
-- **検査してから切替**：各ホストで`python -m glm53_setup startup preflight --config state/startup.toml --rank N`を実行し、`projector_sha256`・`lpa_worker`・`image_id`の合格を確認します。上記のどの編集もprofile fingerprintを変えるため、稼働中の対では通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。稼働中サーバーと一致しないprofileは`startup ask`が拒否します。
-- **要求ごとの例外**：LPA有効中でも、要求に`"vllm_xargs": {"glm53_lpa_mode": "off"}`を付ければ通常計算して共有prefix cacheを育てられます。[起動設定](startup-configuration.ja.md#コマンド)を参照。
+- **テキスト専用**：`runtime.vision = false`を[テキスト専用256Kの代替](server-configuration.ja.md#配布用の既定設定)（context 262,144・各rank KV 3 GiB・reserve 3 GiB）と組で使います。画像既定の`vision`だけを切った構成は実測したprofileではなく、テキスト専用でのreserve 2.5 GiBは未検証です。
+- **検査してから切替**：各ホストで`python -m glm53_setup server preflight --config state/server.toml --rank N`を実行し、`projector_sha256`・`lpa_worker`・`image_id`の合格を確認します。上記のどの編集もprofile fingerprintを変えるため、稼働中の対では通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。稼働中サーバーと一致しないprofileは`server ask`が拒否します。
+- **要求ごとの例外**：LPA有効中でも、要求に`"vllm_xargs": {"glm53_lpa_mode": "off"}`を付ければ通常計算して共有prefix cacheを育てられます。[起動設定](server-configuration.ja.md#コマンド)を参照。
 
 無効へ戻すには`enabled = false`にして切り替えます。projector関連のキーは残して構いません。
 

@@ -4,8 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import service, startup
-from . import startup_config as settings
+from . import host, server
+from . import server_config as settings
 from .config import ROOT, load_lock
 
 
@@ -15,16 +15,16 @@ def sha(path):
 
 
 def inspect(profile, config_path, rank):
-    checks = startup.preflight(profile, config_path, rank, check_memory=False)
+    checks = server.preflight(profile, config_path, rank, check_memory=False)
     if not checks["passed"]:
         raise ValueError("Static launch checks failed: " + json.dumps(checks["checks"]))
-    model = startup.model_path(profile, Path.home() / ".cache/huggingface")
+    model = server.model_path(profile, Path.home() / ".cache/huggingface")
     if not all(
         (model / name).is_file() for name in ("tokenizer.json", "tokenizer_config.json")
     ):
         raise ValueError("Tokenizer assets required by the pinned model are missing")
     index_path = model / "model.safetensors.index.json"
-    index = startup.read_json(index_path)
+    index = server.read_json(index_path)
     names = sorted(set(index["weight_map"].values()))
     if not names:
         raise ValueError("Empty model weight index")
@@ -56,11 +56,9 @@ def inspect(profile, config_path, rank):
         for p in sorted((ROOT / directory).rglob("*"))
         if p.is_file() and p.suffix in (".py", ".json")
     }
-    source["examples/startup.example.toml"] = sha(
-        ROOT / "examples/startup.example.toml"
-    )
+    source["examples/server.example.toml"] = sha(ROOT / "examples/server.example.toml")
     image = json.loads(
-        service.run("docker", "image", "inspect", settings.selected_image(profile))
+        host.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     image_allocator = next(
         (

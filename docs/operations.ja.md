@@ -2,16 +2,11 @@
 
 [English](operations.md)
 
-**通常運用としてのTP=2デプロイは、まだ検収されていません。** 直列のフルモデル参照profileには[実験結果](validation.ja.md#フルモデルtp2の実験範囲)と[初期ベンチ](benchmarks.ja.md)がありますが、ガード付きの通常ランチャーは候補実装のままです。
+**通常運用としてのTP=2デプロイは、まだ受け入れていません。** 直列のフルモデル参照profileには[実験結果](validation.ja.md#フルモデルtp2の実験範囲)と[初期ベンチ](benchmarks.ja.md)があります。profileが実験段階か通常運用可能かは、記録した受け入れ状態（READMEの状態表と[ハーネス受け入れ一覧](harnesses.ja.md#受け入れ試験一覧と実施状態)）で示し、コマンド名では示しません。
 
-## 二つのランチャー
+## ランチャーは一つ
 
-checkoutには起動経路が二つあり、一方の証拠は他方の検収になりません。
-
-| コマンド | 役割 | 状態 |
-|---|---|---|
-| `python -m glm53_setup startup …` | [起動設定TOML](startup-configuration.ja.md)で動く実験用referenceランチャーと直列クライアント。両rankの[切替・復旧手順](launch-safety.ja.md#全レール検査と両rankの切替)はこれを包む | 本リポジトリの全モデル実測はすべてこの経路で行った。実験用であり、通常運用の検収ではない |
-| `python -m glm53_setup service …` | `state/site.json` と[フルモデルの起動ゲート](#フルモデルの起動ゲート)を持つ、ガード付きの通常運用候補 | `plan`・`preflight` は確認用。`start` はロックのbase imageを選択したままで、そのnative GB10 NoPE経路には動作阻害があり、まだ生成手順のない検収証跡を要求する。reference imageをビルドしても切り替わらない |
+checkoutの起動経路は `python -m glm53_setup server …` の一本です。[起動設定TOML](server-configuration.ja.md)で動き、稼働中の対がある場合は両rankの[切替・復旧手順](launch-safety.ja.md#全レール検査と両rankの切替)がこれを包みます。本リポジトリの全モデル実測はすべてこの経路で行い、起動前に行う検査は下記の[起動検査](#フルモデルの起動検査)です。
 
 ## 資材の保管場所とパス
 
@@ -21,7 +16,7 @@ checkoutには起動経路が二つあり、一方の証拠は他方の検収に
 |---|---|---|
 | 本体checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | 固定したモデル・config・tokenizerのview。重みファイルは同階層の `blobs/` ディレクトリへリンクし、データ本体はそちらが持つ |
 | MTPメタデータview（配布既定で必要） | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | 既存のtensorデータをリンクし、checkpoint同梱のBF16 MTPに合わせて量子化メタデータを調整する。元のsnapshotを編集せずに[viewを作成](speculative-decoding.ja.md#各linuxホストでの準備)する |
-| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](startup-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
+| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
 | runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheをruntime cacheへ向け、コンパイル済みkernelを再起動後も残す |
@@ -93,36 +88,34 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 
 ## ネットワークとサイト設定
 
-明示的な実験用reference経路には[起動設定TOML](startup-configuration.ja.md)を使います。以下の `service` の説明は、別系統の候補ランチャーとその検収ゲートについてのものです。
-
 物理接続と永続的なIPv4設定は、[QSFPのハンズオン手順](qsfp-network.ja.md)に従います。
 
-`examples/site.example.json` を各ホストで個別に `state/site.json` へコピーします。例示値はすべて、そのホストで実測した値へ置き換えてください。
+各ホストで実測した値を、[起動設定TOML](server-configuration.ja.md)の `[nodes]` 節に記録します。同じファイルを両ホストに置きます。
 
-- rank 0または1、自機のfabric IPv4、headのfabric IPv4
+- 自機のfabric IPv4、headのfabric IPv4
 - Ethernet interface、RDMAのHCA、そのinterfaceのRoCEv2 GID index
-- 未使用のAPIポートとrendezvousポート
+- `[api]` の未使用のAPIポートとrendezvousポート
 
 HCAとGIDの番号は、両ホストで一致している必要はありません。GIDが自機のIPv4とnet deviceに対応することを確認してください。MTU 9000は、両端と経路全体が対応する場合にだけ使います。フルモデルをロードする前に、実際のNCCL transportとcollectiveの正当性を検証します。SSHで接続できることはRDMAの試験ではありません。
 
 ```sh
-python -m glm53_setup service plan
-python -m glm53_setup service preflight
+python -m glm53_setup server plan --rank 0
+python -m glm53_setup server preflight --rank 0
 ```
 
-`plan` はcontainerを起動せずに引数を表示します。`preflight` は失敗を記録し、要件が欠けていれば非ゼロで終了します。あわせて、完了済みで内容の一致するダウンロード状態も要求します。
+`plan` は何も起動せずにcontainerコマンドを表示します。`preflight` は検査結果を `records/` に記録し、一つでも失敗すれば非ゼロで終了します。完了済みで内容の一致するダウンロード状態が必要です。
 
-## フルモデルの起動ゲート
+## フルモデルの起動検査
 
-候補である `service start` の経路は、実イメージとモデルrevisionに結び付いた `tp2-kernel-validation` の合格結果を持つ `state/kernel-validation.json` の証跡を要求します。**本リリースには、その証跡を生成する完成した手順がまだありません。** 証跡は実際の2 rank検収から得るものであり、手編集やGPU 1台のfixtureから作るものではありません。
+`server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。両rankの切替では、稼働中の対を止める前と新しい対を起動する前に、両rankでこの検査を繰り返します。
 
-候補ランチャーはロックのbase imageを選択したままで、そのnative NoPE経路には動作阻害があります。reference imageをビルドしても、提供用としてそれが選ばれるわけではありません。フルモデルの検収では、このruntime選択と証跡の結び付けを実装して検証する必要があります。[順序付きのセットアップゲート](../SETUP.ja.md#6-フルモデルの検証--現在の停止条件)を参照してください。
+preflightの合格は資材と設定の確認であり、品質や可用性の保証ではありません。通常運用として受け入れるまでに残る項目は[セットアップ手順](../SETUP.ja.md#6-フルモデルの検証)に、範囲別の現状はREADMEの状態表にあります。失敗した検査の緩和、attention候補の切り捨て、無断の精度変更で通過させないでください。
 
-将来その検収が済んだ後は、rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
+rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
 
 ## 復旧と記録
 
-スクリプトは、失敗したcontainerや重みを削除せず、再起動用のwatchdogも導入しません。`service stop` が停止するのは、このデプロイの所有ラベルを持つcontainerだけです。同じrank名を作り直す前に、ログを保存し、停止したcontainerの名前を変更してください。分散実行で障害が起きた後は、両rankをまとめて再初期化します。
+スクリプトは、失敗したcontainerや重みを削除せず、再起動用のwatchdogも導入しません。`server stop` が停止するのは、このランチャーの所有ラベルを持つcontainerだけです。同じrank名を作り直す前に、ログを保存し、停止したcontainerの名前を変更してください。分散実行で障害が起きた後は、両rankをまとめて再初期化します。
 
 `state/` は現在の取得状態とサイト設定を保持し、`records/` はrunごとの証跡を保持します。休止中の取得は意図的な停止です。検証の待機は終了コード2で終わり、ダウンロードを再開しません。ローカル移送の実行中に、新しい取得を開始しないでください。
 

@@ -2,7 +2,7 @@
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
-**全モデルTP=2の参照profileを試験・実測済みです。通常運用の `service` ランチャーはkernel検証の証跡が揃うまでゲート付きのままで、ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
+**全モデルTP=2の参照profileを試験・実測済みです。通常運用としての受け入れは未了で、ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.ja.md) · [検証範囲](docs/validation.ja.md) · [構成](docs/architecture.ja.md) · [文書一覧](docs/README.ja.md)
 
@@ -47,7 +47,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 - **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。評価全体の検収は未了です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
-速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。MTP有効時の設定例も3で、[k=1との比較結果](docs/speculative-decoding.ja.md#k3の比較結果)を根拠としています。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/startup-configuration.ja.md#配布用の既定設定)を確認してください。
+速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。MTP有効時の設定例も3で、[k=1との比較結果](docs/speculative-decoding.ja.md#k3の比較結果)を根拠としています。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定)を確認してください。
 
 業務利用に適するかは検収によって判断します。BIZの語を認定済みの意味にはせず、確認済みの範囲と残る条件を以下と各検証文書に示します。
 
@@ -55,7 +55,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 **配布既定は、画像入力を受ける200K（204,800 token）・KV各2.5 GiB・保護2.5 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
-[起動設定の一括管理](docs/startup-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、実験用ランチャーと専用クライアントから使えます。
+[起動設定の一括管理](docs/server-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、ランチャーと専用クライアントから使えます。
 
 [LPA（後段Prefill近似）](docs/lpa.ja.md)は配布テンプレートでは無効で、バッチ用のopt-inです（近似した要求は共有prefix cacheに登録されないため）。教師状態の復元・コーパス採取・補助器学習の道具はその経路向けに同梱しています。品質・速度の検収は、下記の基準構成とは別に扱います。
 
@@ -125,7 +125,7 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2ランチャーは**検収前**です。起動には実測したノード設定と検証記録が必要ですが、本リリースにはTP=2の検収を完了できる手順一式はまだありません。合格記録を手書きで作らず、`service plan`・`service preflight`で確認してください。ゲート付きの `service` と実験用の `startup` の違いと、残る検証は[運用手順](docs/operations.ja.md#二つのランチャー)に記載しています。
+TP=2の参照profileは**実測済みだが通常運用としては未受け入れ**です。`server preflight` は起動前に各ホストで資材・fabric・image・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れまでに残る項目は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
 
 ## ローカルデータと開発
 

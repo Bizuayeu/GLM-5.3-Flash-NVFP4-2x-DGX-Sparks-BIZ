@@ -1,4 +1,4 @@
-"""Typed operator settings shared by experimental launch and chat requests."""
+"""Typed operator settings shared by the launcher and its chat client."""
 
 import copy
 import hashlib
@@ -9,7 +9,7 @@ import re
 import tomllib
 from pathlib import Path, PurePosixPath
 
-from . import service
+from . import host
 from .config import MODEL_LAYERS, ROOT, load_lock
 
 
@@ -23,20 +23,20 @@ def load(path):
 def validate(profile):
     # The shipped, commented file also defines the complete schema. No silent
     # defaults: a typo or missing category must not silently change a launch.
-    with (ROOT / "examples/startup.example.toml").open("rb") as stream:
+    with (ROOT / "examples/server.example.toml").open("rb") as stream:
         schema = tomllib.load(stream)
 
     def check(value, expected, path):
         if isinstance(expected, dict):
             optional = {
-                "startup.runtime": {"cuda_allocator_conf", "vision"},
-                "startup.cache": {
+                "server.runtime": {"cuda_allocator_conf", "vision"},
+                "server.cache": {
                     "prefix_cache_retention_interval",
                     "mm_processor_cache_gb",
                 },
-                "startup.api": {"prompt_tokens_details"},
+                "server.api": {"prompt_tokens_details"},
             }.get(path, set())
-            if path.startswith("startup.nodes["):
+            if path.startswith("server.nodes["):
                 optional = {"additional_rails"}
             if (
                 not isinstance(value, dict)
@@ -57,7 +57,7 @@ def validate(profile):
         elif type(value) is not type(expected):
             raise ValueError(f"Invalid type in {path}")
 
-    check(profile, schema, "startup")
+    check(profile, schema, "server")
     if "prefix_cache_retention_interval" in profile["cache"]:
         interval = profile["cache"]["prefix_cache_retention_interval"]
         if interval != "dense" and (type(interval) is not int or interval < 0):
@@ -79,7 +79,7 @@ def validate(profile):
                 "cache.mm_processor_cache_gb must be a finite nonnegative number"
             )
     if profile["schema_version"] != 1:
-        raise ValueError("Unsupported startup schema_version")
+        raise ValueError("Unsupported profile schema_version")
     for key in ("reference_image", "lpa_image"):
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", profile["runtime"][key]):
             raise ValueError(f"runtime.{key} must be an immutable image ID")
@@ -196,7 +196,7 @@ def validate(profile):
         # the corresponding MTP/APC/batching integration is qualified.
         raise ValueError("Graph experiments require one sequence, no MTP/prefix cache")
     for rank in (0, 1):
-        service.validate_site(site(profile, rank))
+        host.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile["api"][key]):
             raise ValueError(f"Invalid api.{key}")
@@ -226,7 +226,7 @@ def selected_image(profile):
 
 
 def environment(profile, rank):
-    result = service.fabric_env(site(profile, rank))
+    result = host.fabric_env(site(profile, rank))
     result.update(
         NCCL_SOCKET_FAMILY="AF_INET",
         NVIDIA_TF32_OVERRIDE="0",
@@ -292,8 +292,8 @@ def asynchronous_index_checks(profile):
 
 
 def serve_args(profile, rank, model_path):
-    """Assemble a profile already validated by load() or startup.command()."""
-    args = service.serve_args(site(profile, rank), model_path)
+    """Assemble a profile already validated by load() or server.command()."""
+    args = host.serve_args(site(profile, rank), model_path)
     values = {
         "--served-model-name": profile["api"]["served_model_name"],
         "--reasoning-parser": profile["api"]["reasoning_parser"],
@@ -419,12 +419,12 @@ def retention_interval(profile):
 def request_body(profile, request):
     body = copy.deepcopy(request)
     if body.get("stream") or not body.get("messages"):
-        raise ValueError("startup ask requires messages and a non-streaming request")
+        raise ValueError("server ask requires messages and a non-streaming request")
     if (
         body.get("model", profile["api"]["served_model_name"])
         != profile["api"]["served_model_name"]
     ):
-        raise ValueError("Request model does not match startup profile")
+        raise ValueError("Request model does not match server profile")
     body["model"] = profile["api"]["served_model_name"]
     for key in ("temperature", "max_tokens", "reasoning_effort"):
         body.setdefault(key, profile["generation"][key])

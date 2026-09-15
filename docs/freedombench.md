@@ -50,7 +50,7 @@ Short original questions may fit entirely within the exact LPA tail. Report bypa
 
 ## Runner and scoring requirements
 
-On the Linux model host, use `python -m glm53_setup freedombench --benchmark-dir <pinned-source-directory> --output records/<new-run> --config state/startup.toml`. The local adapter parses literal questions without executing upstream Python, uses the selected local client and holds the single-controller lock. `--limit` produces a labeled pilot, not a full-suite result. Mark each untested profile or extension NOT RUN until its own evidence is recorded.
+On the Linux model host, use `python -m glm53_setup freedombench --benchmark-dir <pinned-source-directory> --output records/<new-run> --config state/server.toml`. The local adapter parses literal questions without executing upstream Python, uses the selected local client and holds the single-controller lock. `--limit` produces a labeled pilot, not a full-suite result. Mark each untested profile or extension NOT RUN until its own evidence is recorded.
 
 The pinned [runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py) uses TrustedRouter by default, fetches a provider catalog unless models are explicit, and retries responses without an extractable choice up to four additional times. Its defaults include concurrency 8 and an 8,192-token output budget. **Do not run the upstream defaults against this deployment.** Use the local-only adapter around the existing serial client; verify its parser/prompt compatibility offline before GPU execution. A URL override alone is not proof that SDK catalog/failover traffic stays local.
 

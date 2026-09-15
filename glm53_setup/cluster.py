@@ -1,4 +1,4 @@
-"""Preflight both ranks, then perform an owned, recoverable experimental switch."""
+"""Preflight both ranks, then perform an owned, recoverable two-rank switch."""
 
 import argparse
 import json
@@ -12,7 +12,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import launch_assets, model_http, service, startup, startup_config
+from . import host, launch_assets, model_http, server, server_config
 from .config import ROOT
 from .io import write_json
 from .switch import OperationFailure, switch
@@ -22,15 +22,15 @@ def current(rank):
     path = ROOT / f"state/startup-rank{rank}.json"
     if not path.exists():
         return None
-    state = startup.read_json(path)
-    info = startup.inspect_owned(state["name"], state["fingerprint"])
+    state = server.read_json(path)
+    info = server.inspect_owned(state["name"], state["fingerprint"])
     if not info["State"]["Running"]:
         return None
     if "config_path" not in state:
         raise ValueError("Running rank has no recorded configuration path for recovery")
-    profile = startup.read_json(Path(state["record"]) / "settings.json")
+    profile = server.read_json(Path(state["record"]) / "settings.json")
     manifest = {"profile": profile, "fingerprint": state["fingerprint"]}
-    startup.thaw(manifest)
+    server.thaw(manifest)
     return {
         "name": state["name"],
         "fingerprint": state["fingerprint"],
@@ -40,9 +40,9 @@ def current(rank):
 
 def inspect_attempt(identity):
     # Missing is meaningful only after a successful Docker inventory query.
-    names = service.run("docker", "ps", "-a", "--format", "{{.Names}}").splitlines()
+    names = host.run("docker", "ps", "-a", "--format", "{{.Names}}").splitlines()
     return (
-        startup.inspect_owned(identity["name"], identity["fingerprint"])
+        server.inspect_owned(identity["name"], identity["fingerprint"])
         if identity["name"] in names
         else None
     )
@@ -52,7 +52,7 @@ def owned_record(identity):
     record = Path(identity["record"]).resolve()
     if not record.is_relative_to((ROOT / "records").resolve()):
         raise ValueError("Attempt record must belong to this checkout")
-    if startup.read_json(record / "identity.json") != identity:
+    if server.read_json(record / "identity.json") != identity:
         raise ValueError("Attempt identity changed")
     return record
 
@@ -64,7 +64,7 @@ def rpc(action, rank, value):
         return current(rank)
     if action == "prepare":
         return launch_assets.inspect(
-            startup.thaw(value["manifest"]), Path(value["config_path"]), rank
+            server.thaw(value["manifest"]), Path(value["config_path"]), rank
         )
     if action == "reserve":
         run_id = uuid.uuid4().hex
@@ -110,7 +110,7 @@ def rpc(action, rank, value):
             write_json(record / "cancel.json", {"cancelled": True})
             job = record / "job.json"
             if job.exists():
-                pid = startup.read_json(job)["pid"]
+                pid = server.read_json(job)["pid"]
                 cmdline = Path(f"/proc/{pid}/cmdline")
                 if cmdline.exists():
                     args = cmdline.read_bytes().split(b"\0")
@@ -122,7 +122,7 @@ def rpc(action, rank, value):
                             "Supervisor PID no longer belongs to this attempt"
                         )
                     os.kill(pid, signal.SIGTERM)
-                    # job and startup share a process; SIGTERM runs supervisor
+                    # job and server share a process; SIGTERM runs supervisor
                     # cleanup. Confirm it exited before checking Docker to avoid
                     # a delayed launch racing a recovery attempt.
                     for _ in range(60):
@@ -133,23 +133,23 @@ def rpc(action, rank, value):
                         raise TimeoutError("Attempt supervisor did not terminate")
         info = inspect_attempt(value)
         if info is not None and info["State"]["Running"]:
-            service.run("docker", "stop", value["name"])
+            host.run("docker", "stop", value["name"])
         return {"stopped": True}
     if action == "poll":
         record = owned_record(value)
         finished = record / "finished.json"
         if finished.exists():
-            return {"failed": True, "finished": startup.read_json(finished)}
+            return {"failed": True, "finished": server.read_json(finished)}
         info = inspect_attempt(value)
         if info is None:
             return {"ready": False}
         if not info["State"]["Running"]:
             return {"failed": True}
         state = ROOT / f"state/startup-rank{rank}.json"
-        if not state.exists() or startup.read_json(state)["name"] != value["name"]:
+        if not state.exists() or server.read_json(state)["name"] != value["name"]:
             return {"ready": False}
         if rank == 0:
-            profile = startup.thaw(value["launch"]["manifest"])
+            profile = server.thaw(value["launch"]["manifest"])
             logs = subprocess.check_output(
                 ["docker", "logs", "--tail", "200", value["name"]],
                 stderr=subprocess.STDOUT,
@@ -308,7 +308,6 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--record", type=Path)
     parser.add_argument("--ready-timeout", type=int, default=1800)
-    parser.add_argument("--experimental", action="store_true")
     args = parser.parse_args(argv)
     if args.action == "resume":
         if not all((args.output, args.hosts, args.checkout)) or args.ready_timeout < 1:
@@ -318,7 +317,7 @@ def main(argv=None):
         backend = SSHBackend(
             args.hosts, args.checkout, args.ssh_config, args.ready_timeout
         )
-        result = resume(backend, startup.read_json(args.output / "result.json"))
+        result = resume(backend, server.read_json(args.output / "result.json"))
         write_json(args.output / "result.json", result)
         print(
             json.dumps(
@@ -335,7 +334,7 @@ def main(argv=None):
         print(json.dumps(rpc(payload["action"], payload["rank"], payload["value"])))
         return
     if args.action == "job":
-        identity = startup.read_json(args.record / "identity.json")
+        identity = server.read_json(args.record / "identity.json")
         owned_record(identity)
         write_json(args.record / "job.json", {"pid": os.getpid()})
         if (args.record / "cancel.json").exists():
@@ -344,10 +343,9 @@ def main(argv=None):
             )
             return
         try:
-            startup.main(
+            server.main(
                 [
                     "start",
-                    "--experimental",
                     "--config",
                     identity["launch"]["config_path"],
                     "--launch",
@@ -374,19 +372,18 @@ def main(argv=None):
                 args.hosts,
                 args.checkout,
                 args.output,
-                args.experimental,
             )
         )
         or args.ready_timeout < 1
     ):
         parser.error(
-            "switch requires --config, --remote-config, --hosts, --checkout, --output, --experimental and positive readiness timeout"
+            "switch requires --config, --remote-config, --hosts, --checkout, --output and positive readiness timeout"
         )
     if not args.remote_config.startswith("/") or not args.checkout.startswith("/"):
         parser.error("Remote paths must be absolute Linux paths")
     args.output.mkdir(parents=True, exist_ok=False)
     launch = {
-        "manifest": startup.freeze(startup_config.load(args.config)),
+        "manifest": server.freeze(server_config.load(args.config)),
         "config_path": args.remote_config,
     }
     write_json(args.output / "launch.json", launch)

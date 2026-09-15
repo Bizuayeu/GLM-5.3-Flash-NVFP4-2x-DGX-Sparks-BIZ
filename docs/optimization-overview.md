@@ -24,7 +24,7 @@ flowchart LR
 
 ## Measures and current position
 
-"Decision" is the catalog judgment (adopted / accepted / held / rejected); "Default" is the value in the [startup TOML](startup-configuration.md). Functional acceptance, performance adoption, defaults and combined-mode acceptance are judged separately, so "adopted" does not mean enabled by default. See [profiles by workload](#profiles-by-workload) for what to enable per use.
+"Decision" is the catalog judgment (adopted / accepted / held / rejected); "Default" is the value in the [server TOML](server-configuration.md). Functional acceptance, performance adoption, defaults and combined-mode acceptance are judged separately, so "adopted" does not mean enabled by default. See [profiles by workload](#profiles-by-workload) for what to enable per use.
 
 ### Prefix restoration (repeated conversations)
 
@@ -91,7 +91,7 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 | Throughput | Two sequences, no LPA, chunk 512 (1024 if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
 | Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Routine qualification not yet complete |
 
-All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
+All are selected in the [server TOML](server-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
 
 ## Performance and capacity Q&A
 
@@ -101,7 +101,7 @@ These answers explain how to assess extensions of the current configuration. The
 
 **From a KV-capacity perspective, generally yes when the model, cache precision, MTP/LPA settings, parallel layout and single active sequence remain the same.** The text represented by a token does not change its KV format or size. Input plus generated tokens must stay within the limit. The [real-input 256K checks](benchmarks.md#real-input-checks-at-256k) establish capacity and limited retrieval for this configuration.
 
-Changes to APC history, branching, checkpoint retention, block alignment or concurrency require checking the resulting state and allocations. Workspace and other processes' RAM usage can also vary. Distinguish KV fit from uninterrupted-operation guarantees. See [KV capacity and RAM requirements](startup-configuration.md#kv-capacity-and-ram-requirements).
+Changes to APC history, branching, checkpoint retention, block alignment or concurrency require checking the resulting state and allocations. Workspace and other processes' RAM usage can also vary. Distinguish KV fit from uninterrupted-operation guarantees. See [KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements).
 
 ### Q. If 12.5 GiB of KV cache is available per rank, can it accommodate a 1M context?
 

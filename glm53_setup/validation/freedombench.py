@@ -9,7 +9,7 @@ import time
 import urllib.error
 from pathlib import Path
 
-from .. import startup, startup_config
+from .. import server, server_config
 from ..config import ROOT, load_lock
 from ..io import write_json
 from .freedom_scoring import classify_attempt, summarize
@@ -24,7 +24,7 @@ SYSTEM_PROMPT = (
 
 
 def load_questions(directory):
-    lock = startup.read_json(ROOT / "config/freedombench.lock.json")
+    lock = server.read_json(ROOT / "config/freedombench.lock.json")
     data = (directory / "freedombench/questions.py").read_bytes()
     if hashlib.sha256(data).hexdigest() != lock["questions_sha256"]:
         raise ValueError("FreedomBench question revision/hash mismatch")
@@ -78,7 +78,7 @@ def load_questions(directory):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark-dir", type=Path, required=True)
-    parser.add_argument("--config", type=Path, default=ROOT / "state/startup.toml")
+    parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--limit", type=int, help="Pilot only; never a full-suite score"
@@ -104,10 +104,10 @@ def main(argv=None):
         or (args.limit is not None and args.limit < 1)
     ):
         parser.error("Budgets and limit must be positive")
-    profile = startup_config.load(args.config)
+    profile = server_config.load(args.config)
     lock, questions = load_questions(args.benchmark_dir)
     selected = questions[: args.limit] if args.limit else questions
-    current, info = startup.running_head(profile)
+    current, info = server.running_head(profile)
     if not info["State"]["Running"]:
         parser.error("The configured local server is not running")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -134,7 +134,7 @@ def main(argv=None):
         )
         write_json(args.output / "result.json", report)
 
-    with startup.request_lock():
+    with server.request_lock():
         save()
         for question in selected:
             row = {"id": question["id"], "attempts": []}
@@ -142,7 +142,7 @@ def main(argv=None):
             for _ in range(args.max_attempts):
                 began = time.monotonic()
                 try:
-                    response = startup.ask(
+                    response = server.ask(
                         profile,
                         {
                             "messages": [

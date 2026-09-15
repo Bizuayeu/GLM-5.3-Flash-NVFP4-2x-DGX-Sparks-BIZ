@@ -50,7 +50,7 @@ temperature0、effort low、clear_thinking=true、上流互換の出力上限8,1
 
 ## 実装・採点時の注意
 
-Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/startup.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。未検証の構成・独自拡張は、その実測までNOT RUNとして残す。
+Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/server.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。未検証の構成・独自拡張は、その実測までNOT RUNとして残す。
 
 固定版の[runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py)は既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
 

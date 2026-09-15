@@ -39,7 +39,7 @@ kernel側の作業はtraceに基づいて優先順位を付けます。LPAの層
 
 ## Throughputと決定性
 
-最初に実装したlaunch削減の候補は `cache.fused_unpack` です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定値は[起動設定](startup-configuration.ja.md#配布用の既定設定)が正典です（直列併用の受入後はon）。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
+最初に実装したlaunch削減の候補は `cache.fused_unpack` です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です（直列併用の受入後はon）。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
 
 部品単体の計測は、現在のソースをマウントしたGPUイメージ内で `python -m glm53_setup.validation.benchmark_unpack --output /path/to/new-record` を実行します。出力の厳密一致を検査し、warmupを除外して5回の計時batchを記録し、各経路を別々にprofileします。試験したGB10では、2,176件と17,408件のいずれもkernelが4回から1回に減り、観測された部品の中央値はそれぞれ約0.045→0.011 ms、0.630→0.212 msでした。この合成の部品サイズは候補行1本分と8本分に相当し、モデル全体の高速化を示すものではありません。trace／結果JSONは、イメージとソースの識別情報とともに保持します。
 
@@ -55,7 +55,7 @@ kernel側の作業はtraceに基づいて優先順位を付けます。LPAの層
 
 **現在地：全モデルの独立A/B/Aを完了。試験した負荷では不採用、既定off（2026-09-13）。** [実測と限定した品質・容量の結果](benchmarks.ja.md#expert-parallel-の独立評価p21)を参照。これは採用済みの[active 2系列のbatching実験](benchmarks.ja.md#標準batchingの独立評価)や、別のノード対で行った配布だけの起動受け入れとは別です。以下は比較の手順を記録したものです。
 
-固定版のFusedMoEの並列設定では、TP=2／DP=1にEPを加えると、完全なexpertを2つの分割へ対応付けます。Marlinが宣言する並列対応はこの構成を受け付け、その実行経路はexpert mapを受け取ります。DP／PCP／SPがすべて1の場合、EPを有効にしても `use_all2all_kernels` はfalseです。本実験がDeepEPを呼ぶことや、集団通信をすべて無くすことを前提にしません。これらはソース上の互換性の確認であり、読込・所有関係・数値挙動が成功することの証明ではありません。[起動オプション](startup-configuration.ja.md)は対応するイメージのmarkerを要求し、未検証の最適化の組合せを拒否します。
+固定版のFusedMoEの並列設定では、TP=2／DP=1にEPを加えると、完全なexpertを2つの分割へ対応付けます。Marlinが宣言する並列対応はこの構成を受け付け、その実行経路はexpert mapを受け取ります。DP／PCP／SPがすべて1の場合、EPを有効にしても `use_all2all_kernels` はfalseです。本実験がDeepEPを呼ぶことや、集団通信をすべて無くすことを前提にしません。これらはソース上の互換性の確認であり、読込・所有関係・数値挙動が成功することの証明ではありません。[起動オプション](server-configuration.ja.md)は対応するイメージのmarkerを要求し、未検証の最適化の組合せを拒否します。
 
 同じ2基のGPU上でTP=2・DP=1を維持します。変えるのはexpert層の分割であり、モデルの複製追加やKV予約の拡大ではありません。このトポロジは[vLLMのEP解説](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/#layer-behavior-with-ep-enabled)が説明していますが、実際の対応は固定版runtimeで確認する必要があります。[tenhksparkの起動例](https://github.com/tenhkspark/glm53-flash-nvfp4-dgx-spark/blob/main/serve/start-head.sh)は本実験の動機になりましたが、そのnative attention、他の設定、aggregate throughputは、ここでのEP単独の利得を示すものではありません。
 
@@ -71,7 +71,7 @@ kernel側の作業はtraceに基づいて優先順位を付けます。LPAの層
 
 **現在地：全モデルの独立した時間A/B/Aを完了。試験した生成負荷では不採用、既定TP2（2026-09-13）。** PPはprefillを改善しましたが、decodeは遅くなりました。限定した課題・tool・切断の検査は通過し、profilerの再開始で障害が出たため、PPの容量とdecodeのtrace採取は未完了です。[結果と限界](benchmarks.ja.md#tp2pp2の独立評価p17)を参照。
 
-未改変の[固定版モデルソース](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/models/glm5next/nvidia/model.py)は、`make_empty_intermediate_tensors` が無いためPPを弾き、その部分的なPP分岐も遅延したmHCの `post`／`comb` 状態を落とします。本リポジトリの固定patchはこれらの契約を実装し、全モデル評価の前に、8層のfixtureで転送される4つのtensorすべてを検査します。[起動設定](startup-configuration.ja.md)には、層分割を明示した実験用のPP2 profileがあります。eager実行、1系列、EP／LPA／MTP／融合／APCの無効が必要です。
+未改変の[固定版モデルソース](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/models/glm5next/nvidia/model.py)は、`make_empty_intermediate_tensors` が無いためPPを弾き、その部分的なPP分岐も遅延したmHCの `post`／`comb` 状態を落とします。本リポジトリの固定patchはこれらの契約を実装し、全モデル評価の前に、8層のfixtureで転送される4つのtensorすべてを検査します。[起動設定](server-configuration.ja.md)には、層分割を明示した実験用のPP2 profileがあります。eager実行、1系列、EP／LPA／MTP／融合／APCの無効が必要です。
 
 今後のPP比較では、精度・prompt・メモリ予算を同一に保ち、層の割当、KDA／MLAの状態、mHCの境界、rankのメモリ、障害からの復旧を確認します。集団通信の回数を「層数×2」と仮定せず、実際のeventを数えます。MTP／LPAへの対応と、より広い容量の検収は別の作業です。
 

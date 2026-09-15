@@ -2,7 +2,7 @@
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
-**A full-model TP=2 reference profile has been tested and measured. The routine `service` launcher remains gated until a kernel-validation receipt exists, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
+**A full-model TP=2 reference profile has been tested and measured. Acceptance for routine use is still open, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
@@ -47,7 +47,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
 - **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
 
-For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). The distributed startup template enables this serial optimized profile; see [startup defaults and required assets](docs/startup-configuration.md#distributed-defaults).
+For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. The example uses three tokens when MTP is enabled, based on the [comparison against k=1](docs/speculative-decoding.md#measured-k3-comparison). The distributed server template enables this serial optimized profile; see [server defaults and required assets](docs/server-configuration.md#distributed-defaults).
 
 Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified below and in the linked validation documents.
 
@@ -55,9 +55,9 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 **Distributed defaults select the serial optimized profile with image input at 200K (204,800 tokens), KV 2.5 GiB per rank, reserve 2.5 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input at 200K](docs/vision.md) records the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
 
-[One startup TOML](docs/startup-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the experimental reference launcher and client.
+[One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
 
-[LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed startup template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path. Its quality/speed acceptance is separate from the baseline below.
+[LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed server template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path. Its quality/speed acceptance is separate from the baseline below.
 
 | Scope | Status |
 |---|---|
@@ -71,10 +71,10 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
 | ZCode / Claude Code harness integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
 | MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
-| Prefix caching (APC), one active sequence | Accepted for the measured serial long-prefix reuse workload (experimental); enabled in the startup template; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
+| Prefix caching (APC), one active sequence | Accepted for the measured serial long-prefix reuse workload (experimental); enabled in the server template; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
 | APC-first LPA (P22), one active sequence | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; LPA itself ships disabled as a batch opt-in; [contract](docs/apc-lpa-design.md) |
 | Checkpoint retention, one active sequence | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and its final combined integration is qualified separately; [contracts](docs/launch-safety.md) |
-| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the startup template; [overview](docs/optimization-overview.md) |
+| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the server template; [overview](docs/optimization-overview.md) |
 | Image input at 200K (vision), one active sequence | One synthetic image answered correctly, text/tool regressions passed, video rejected; one image read through a ZCode tool call described correctly; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
 | Other MTP depths, video input, full application quality, production reliability and maximum performance | **Not validated** |
 
@@ -125,7 +125,7 @@ The fixed model revision, base-image digest and local reference tag are in [conf
 
 Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
-The TP=2 launcher is **not yet qualified**. It retains a validation gate and requires measured per-node network settings. This release does not provide a completed TP=2 qualification workflow; do not fabricate its validation receipt. Use `service plan` and `service preflight` for inspection, and see [operations](docs/operations.md#two-launchers) for how that gated `service` path differs from the experimental `startup` launcher and for the remaining qualification steps.
+The TP=2 reference profile is **measured but not accepted for routine use**. `server preflight` checks assets, fabric, image identity and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for the acceptance items that remain open.
 
 ## Local data and contribution
 

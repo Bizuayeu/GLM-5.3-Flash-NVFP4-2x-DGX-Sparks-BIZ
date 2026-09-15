@@ -2,27 +2,27 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-from glm53_setup import startup_config
+from glm53_setup import server_config
 
 
 class RetentionConfigTests(unittest.TestCase):
     def test_native_checkpoint_interval_is_optional_and_explicit(self):
-        profile = startup_config.load(
-            Path(__file__).resolve().parents[1] / "examples/startup.example.toml"
+        profile = server_config.load(
+            Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         self.assertEqual(
             profile["cache"].pop("prefix_cache_retention_interval"), "dense"
         )
-        startup_config.validate(profile)
+        server_config.validate(profile)
         self.assertNotIn(
             "--prefix-cache-retention-interval",
-            startup_config.serve_args(profile, 0, "/hf/model"),
+            server_config.serve_args(profile, 0, "/hf/model"),
         )
         for interval in (0, 4352, 4608, "dense"):
             profile["cache"]["prefix_cache_retention_interval"] = interval
-            startup_config.validate(profile)
+            server_config.validate(profile)
             for rank in (0, 1):
-                args = startup_config.serve_args(profile, rank, "/hf/model")
+                args = server_config.serve_args(profile, rank, "/hf/model")
                 self.assertEqual(
                     args[args.index("--prefix-cache-retention-interval") + 1],
                     "None" if interval == "dense" else str(interval),
@@ -30,11 +30,11 @@ class RetentionConfigTests(unittest.TestCase):
         for invalid in (-1, True, None, "none"):
             profile["cache"]["prefix_cache_retention_interval"] = invalid
             with self.assertRaises(ValueError):
-                startup_config.validate(profile)
+                server_config.validate(profile)
         profile["cache"].pop("prefix_cache_retention_interval")
         profile["cache"].pop("prefix_caching")
         with self.assertRaisesRegex(ValueError, "Unknown/missing settings"):
-            startup_config.validate(profile)
+            server_config.validate(profile)
 
 
 @unittest.skipUnless(importlib.util.find_spec("vllm"), "Pinned vLLM image required")

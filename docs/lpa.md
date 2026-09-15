@@ -4,7 +4,7 @@
 
 This experiment predicts the normalized attention inputs of later GLM layers, builds their cache and recurrent state with the existing attention implementation, and skips historical MLP rows. Generation still executes all language layers. The checkpoint is unchanged; only a small auxiliary projector is fitted.
 
-The feature name is **LPA (Late-prefill approximation)**. Configuration uses `[lpa]`; commands are `lpa-fixture`, `lpa-corpus` and `lpa-train`. Rebuild images against the [current image contract](startup-configuration.md#current-image-contract); old interfaces are not retained.
+The feature name is **LPA (Late-prefill approximation)**. Configuration uses `[lpa]`; commands are `lpa-fixture`, `lpa-corpus` and `lpa-train`. Rebuild images against the [current image contract](server-configuration.md#current-image-contract); old interfaces are not retained.
 
 The starting point was [Kishida's Qwen3 experiment](https://nowokay.hatenablog.com/entry/2026/09/11/120001). The GLM adaptation has its own state and quality tests.
 
@@ -18,10 +18,10 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 The distributed TOML enables MTP coexistence. The corrected four-layer MTP3/fused-unpack/async fixture passed eight lengths from 3 to 8,192 tokens, including active KDA state comparisons, in `integration-fixture-v36`. The subsequent [serial full-model comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) records its limited task, timing, capacity and cancellation acceptance. Component token agreement is not a general full-model quality claim.
 
-- Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [startup TOML](startup-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.
+- Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [server TOML](server-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
-- This is an experimental worker extension, not qualification of the routine deployment launcher or either coding harness. Keep its development RPC on loopback.
+- This is an experimental worker extension, not an acceptance of the server profile for routine use or of either coding harness. Keep its development RPC on loopback.
 
 ### APC and shared-state provenance
 
@@ -53,9 +53,9 @@ python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/l
 
 Downloading the asset does not enable LPA or restart a server. Enabling it is the explicit operator step below.
 
-### Enable LPA in the startup profile
+### Enable LPA in the server profile
 
-Enable LPA only for the [supported workload](#operating-scope): a long input processed once, not a conversation. On both hosts, edit the same `state/startup.toml`:
+Enable LPA only for the [supported workload](#operating-scope): a long input processed once, not a conversation. On both hosts, edit the same `state/server.toml`:
 
 ```toml
 [runtime]
@@ -63,7 +63,7 @@ lpa_image = "sha256:<image ID verified on both hosts>"   # carries GLM53_LPA_API
 vision = false          # LPA's measured scope is text-only
 
 # The text-only profile is the documented 256K alternative, not the image
-# defaults with vision switched off (docs/startup-configuration.md#distributed-defaults).
+# defaults with vision switched off (docs/server-configuration.md#distributed-defaults).
 [context]
 max_model_len = 262144
 [cache]
@@ -78,11 +78,11 @@ projector = "lpa/glm53-lpa-cut32-v1/projector.pt"   # relative to this TOML, or 
 projector_sha256 = "<sha256 from config/lpa-projector.lock.json>"
 ```
 
-- **Image**: `lpa.enabled = true` makes the launcher select `runtime.lpa_image` instead of `reference_image`. Preflight requires the `GLM53_LPA_API=2` marker in that image, and `GLM53_APC_LPA_API=1` as well while `cache.prefix_caching` stays on (the template default, which selects the [APC-first path](startup-configuration.md#commands)). An image built from current source against the [current image contract](startup-configuration.md#current-image-contract) carries both; check with `docker image inspect <id>` and use the same ID on both hosts.
+- **Image**: `lpa.enabled = true` makes the launcher select `runtime.lpa_image` instead of `reference_image`. Preflight requires the `GLM53_LPA_API=2` marker in that image, and `GLM53_APC_LPA_API=1` as well while `cache.prefix_caching` stays on (the template default, which selects the [APC-first path](server-configuration.md#commands)). An image built from current source against the [current image contract](server-configuration.md#current-image-contract) carries both; check with `docker image inspect <id>` and use the same ID on both hosts.
 - **Projector**: preflight recomputes the SHA-256 of the file named by `[lpa].projector` and rejects a mismatch with `projector_sha256`. Keep `cut = 32`, `tail` and `break_even_tokens` at the template values, which are the measured settings for this projector.
-- **Text-only**: set `runtime.vision = false` together with the [text-only 256K alternative](startup-configuration.md#distributed-defaults) (262,144 context, 3 GiB KV per rank, 3 GiB reserve). The image-input defaults with only `vision` switched off are not a measured profile, and a 2.5 GiB reserve is not validated for text-only.
-- **Check, then switch**: run `python -m glm53_setup startup preflight --config state/startup.toml --rank N` on each host and confirm `projector_sha256`, `lpa_worker` and `image_id` pass. Any of these edits changes the profile fingerprint, so a running pair needs the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch); `startup ask` refuses a profile that no longer matches the running server.
-- **Per request**: while LPA is enabled, a request can still compute normally with `"vllm_xargs": {"glm53_lpa_mode": "off"}` to prime the shared prefix cache; see [startup configuration](startup-configuration.md#commands).
+- **Text-only**: set `runtime.vision = false` together with the [text-only 256K alternative](server-configuration.md#distributed-defaults) (262,144 context, 3 GiB KV per rank, 3 GiB reserve). The image-input defaults with only `vision` switched off are not a measured profile, and a 2.5 GiB reserve is not validated for text-only.
+- **Check, then switch**: run `python -m glm53_setup server preflight --config state/server.toml --rank N` on each host and confirm `projector_sha256`, `lpa_worker` and `image_id` pass. Any of these edits changes the profile fingerprint, so a running pair needs the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch); `server ask` refuses a profile that no longer matches the running server.
+- **Per request**: while LPA is enabled, a request can still compute normally with `"vllm_xargs": {"glm53_lpa_mode": "off"}` to prime the shared prefix cache; see [server configuration](server-configuration.md#commands).
 
 To turn LPA off again, set `enabled = false` and switch; the projector keys may stay in the file.
 

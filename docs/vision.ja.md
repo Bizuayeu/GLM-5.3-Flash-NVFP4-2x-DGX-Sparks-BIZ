@@ -1,12 +1,12 @@
 # 200Kでの画像入力（Vision）
 
-[English](vision.md) · [起動設定](startup-configuration.ja.md) · [文書一覧](README.ja.md)
+[English](vision.md) · [起動設定](server-configuration.ja.md) · [文書一覧](README.ja.md)
 
 配布構成は、入出力合計204,800 tokenで**テキスト・ツール呼び出し・画像**を受け付けます。**動画入力は無効で、送ると拒否します。** この文書は、その構成に至った経緯、参照ホスト（MSI EdgeXpert MS-C931、各約121 GiB利用可能）での2026-09-15の実測、未検収の事項をまとめます。TP=2・同時実行1での限定した証拠であり、本番やハーネスの検収ではありません。
 
 ## 設定
 
-キーの正典は[起動設定](startup-configuration.ja.md#配布用の既定設定)です。以下はテンプレートのうち画像入力に関わる部分です。
+キーの正典は[起動設定](server-configuration.ja.md#配布用の既定設定)です。以下はテンプレートのうち画像入力に関わる部分です。
 
 | キー | 値 | 効果 |
 |---|---|---|
@@ -14,7 +14,7 @@
 | `context.max_model_len` | 204800 | テキスト専用構成の262,144から縮小 |
 | `cache.kv_cache_memory_bytes` | 2684354560（各rank 2.5 GiB） | 3 GiBから縮小。runtimeが報告したKV収容量は235,016 token（上限の1.15倍） |
 | `cache.mm_processor_cache_gb` | 0.1 | vLLM既定の4 GiBではなく `--mm-processor-cache-gb 0.1` |
-| `resources.reserve_gib` | 2.5 | 3から変更。保護の見積もりは[KV容量とRAMの条件](startup-configuration.ja.md#kv容量とramの条件) |
+| `resources.reserve_gib` | 2.5 | 3から変更。保護の見積もりは[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件) |
 
 クライアントは画像入力を宣言し、動画は宣言しません。ZCodeではモデルの `limit.context` を204800、`modalities.input` を `["text", "image"]` にします（[ZCodeのモデル上限](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)）。256Kテキスト専用の代替は、`runtime.vision = false`、`max_model_len = 262144`、各rank 3 GiBのKVです。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は保護余裕4 GiBで実施しており、2.5 GiBでは未検証です。
 

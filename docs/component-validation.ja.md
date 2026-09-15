@@ -48,9 +48,9 @@ GPU部品の検査は、全FP8 byteコードと選定したFP32 scale（符号�
 
 ## 再現手順と残る統合
 
-[起動設定](startup-configuration.ja.md)で `validation.component_worker=true` を指定し、LPA/MTPをoff、検証済みimageを使います。head側で `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record` を実行します。driverは全応答、実token数、A/B/Aの再現性、時間サンプル、rankごとの重なりを保存します。対応するprofiler traceと資源ログも残してください。
+[起動設定](server-configuration.ja.md)で `validation.component_worker=true` を指定し、LPA/MTPをoff、検証済みimageを使います。head側で `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record` を実行します。driverは全応答、実token数、A/B/Aの再現性、時間サンプル、rankごとの重なりを保存します。対応するprofiler traceと資源ログも残してください。
 
-[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。この測定時点ではunpack融合の既定はoffでした。現在の値は[起動設定](startup-configuration.ja.md#配布用の既定設定)を参照してください。
+[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。この測定時点ではunpack融合の既定はoffでした。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)を参照してください。
 
 ## Decode Graphのfixture独立評価
 
@@ -131,7 +131,7 @@ source固定の実験的なモデルpatchは、BF16のhidden／residual tensor�
 
 再試行（`pipeline-v17-pp2-b`）は **不合格** です。SSHの一時的な不通が再起動なしに解消した後、そのログからstageごとのMamba cache仕様の不一致を確認しました。両コンテナともOOMなしで終了しています。固定版のGLMのcacheグループ化は、Mamba層を持つすべてのstageにMLA層があることも明示的に要求します。したがって、4層モデルを2+2に分割する構成はPP fixtureとして不適切です。これを動かすためにcacheの契約を緩めたり、SSH中断の原因をこのモデル側の失敗から推測したりはしません。
 
-fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要です。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](startup-configuration.ja.md)では、対応するimageと併せてPPを選択できます。全モデルでの受け入れは別扱いです。
+fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要です。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](server-configuration.ja.md)では、対応するimageと併せてPPを選択できます。全モデルでの受け入れは別扱いです。
 
 ### 8層PPの観測
 
@@ -184,7 +184,7 @@ EP観測器のSHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a5
 
 このfixtureの要求時間は16出力tokenを含み、最初のサンプルにはshape依存のJITが含まれる場合があります。全モデルの性能を示す値ではありません。8,705入力までは、生成tokenが全armで一致しました。16,319では、各armとも最初のtokenが同じ2候補の間で変動し、厳密な同点か0.03125のlogprob差になりました。off／onの組は3／6回、off／復帰は5／6回一致しています。arm内の共有prefix logprob差の最大は約0.0632でした。他の長さでもcache hitなしに確率の変動が見られ、bitwise同値も原因の特定も主張しません。
 
-**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。この時点のAPCの既定はoffで、現在はonです（[起動設定](startup-configuration.ja.md#配布用の既定設定)）。LPA／APCは下記のP22の契約を別に使います。
+**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。この時点のAPCの既定はoffで、現在はonです（[起動設定](server-configuration.ja.md#配布用の既定設定)）。LPA／APCは下記のP22の契約を別に使います。
 
 ## APC優先LPAのcache隔離（P22）
 

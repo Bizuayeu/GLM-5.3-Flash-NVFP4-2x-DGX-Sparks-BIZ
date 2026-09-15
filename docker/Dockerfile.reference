@@ -2,7 +2,7 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 COPY glm53_setup /opt/glm53/glm53_setup
 COPY config /opt/glm53/config
-COPY examples/startup.example.toml /opt/glm53/examples/startup.example.toml
+COPY examples/server.example.toml /opt/glm53/examples/server.example.toml
 COPY pyproject.toml /opt/glm53/pyproject.toml
 COPY LICENSE NOTICE /opt/glm53/
 COPY LICENSES /opt/glm53/LICENSES
