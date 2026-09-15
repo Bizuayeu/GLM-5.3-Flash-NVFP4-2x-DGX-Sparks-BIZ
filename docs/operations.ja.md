@@ -113,7 +113,7 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server preflight --rank 0
 ```
 
-`plan` は何も起動せずにcontainerコマンドを表示します。`preflight` は検査結果を `records/` に記録し、一つでも失敗すれば非ゼロで終了します。完了済みで内容の一致するダウンロード状態が必要です。
+`plan` は何も起動せずにcontainerコマンドを表示します。`preflight` は検査結果をJSONで表示し、一つでも失敗すれば非ゼロで終了します。完了済みで内容の一致するダウンロード状態が必要です。`start` は同じ検査を先に行い、合格したときだけ検査結果・設定・containerコマンドを `records/<timestamp>-server-r<N>/` に保存します。
 
 ## フルモデルの起動検査
 

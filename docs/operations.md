@@ -113,7 +113,7 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server preflight --rank 0
 ```
 
-`plan` prints the container command without starting anything. `preflight` records its checks under `records/` and exits nonzero if any fails; it requires a completed, matching download state.
+`plan` prints the container command without starting anything. `preflight` prints its checks as JSON and exits nonzero if any fails; it requires a completed, matching download state. `start` runs the same checks first and, only when they pass, saves them with the settings and the container command under `records/<timestamp>-server-r<N>/`.
 
 ## Full-model launch checks
 
