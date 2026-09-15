@@ -2,7 +2,7 @@
 
 Read README.md before changing this model deployment; docs/README.md lists every document's role and which file owns each fact. Keep pinned model revisions and runtime settings explicit. Put CPU contract tests in tests/ and reproducible validation summaries in docs/.
 
-For deployment, read SETUP.md and its linked operations/validation documents first. This is a beta: full-model TP=2 is unqualified, and no qualification-receipt producer exists yet. Do not fabricate a receipt or bypass the gate. Respect explicitly paused downloads and preserve other workloads. Record each action and its evidence privately under records/.
+For deployment, read SETUP.md and its linked operations/validation documents first. Routine full-model TP=2 deployment is unqualified, and no qualification-receipt producer exists yet. Do not fabricate a receipt or bypass the gate. Respect explicitly paused downloads and preserve other workloads. Record each action and its evidence privately under records/.
 
 Use `python -m glm53_setup` from the checkout. Run `python -m unittest discover -s tests -t . -v`, Ruff checks, and `python tools/check_publication.py` after relevant changes. Keep every English/Japanese document pair consistent; docs/README.md lists the pairs. Original code uses Apache-2.0; preserve all adapted-code notices.
 

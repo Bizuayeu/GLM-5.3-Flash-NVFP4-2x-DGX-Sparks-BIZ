@@ -89,7 +89,7 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 | Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. LPA is a batch opt-in (off in the template) and forfeits shared prefix reuse. Business-use and harness acceptance pending |
 | Prefix-reuse-heavy | APC + LPA (P22, B = 128) + `dense` retention, no MTP | Repeated-input and mid-edit A/B/A | Grow the shared cache with exact priming; cold requests slightly slower |
 | Throughput | Two sequences, no LPA, chunk 512 (1024 if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
-| Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Beta without routine qualification |
+| Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Routine qualification not yet complete |
 
 All are selected in the [startup TOML](startup-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
 

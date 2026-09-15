@@ -89,7 +89,7 @@ flowchart LR
 | 生成重視・直列 | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | 1系列・eager。LPAはバッチ用opt-in（テンプレートではoff）で、共有prefixの再利用を失う。業務検収・ハーネスは未了 |
 | prefix再利用重視 | APC＋LPA（P22、B=128）＋`dense`保持、MTPなし | 同一入力再利用・途中編集のA/B/A | 通常primingで共有cacheを育てる。cold処理は小幅悪化 |
 | throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
-| 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収未了のベータ版 |
+| 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収は未了 |
 
 いずれも[起動設定TOML](startup-configuration.ja.md)の`[mtp]`・`[lpa]`・`[cache]`・`[context]`・`[runtime]`で切り替え、対応imageのmarkerが必要です。
 

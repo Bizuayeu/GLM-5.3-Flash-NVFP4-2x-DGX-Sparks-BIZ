@@ -1,4 +1,4 @@
-# Operations — beta
+# Operations
 
 [日本語](operations.ja.md)
 
@@ -28,7 +28,7 @@ This section owns deployment storage paths. The model ID, revision and base-imag
 
 The experimental startup launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
 
-The downloader follows Hugging Face cache environment settings, but the current launcher assumes the default cache root. For this beta, leave `HF_HOME`/`HF_HUB_CACHE` unset when acquiring these assets and use the documented default. A successful custom-cache download does not establish that the launcher can find or mount it.
+The downloader follows Hugging Face cache environment settings, but the current launcher assumes the default cache root. For this release, leave `HF_HOME`/`HF_HUB_CACHE` unset when acquiring these assets and use the documented default. A successful custom-cache download does not establish that the launcher can find or mount it.
 
 Inspect the expected and recorded locations without starting a download, from the checkout on each Linux host:
 
@@ -98,9 +98,9 @@ python -m glm53_setup service preflight
 
 ## Full-model launch gate
 
-The candidate `service start` path requires a `state/kernel-validation.json` receipt with a passing `tp2-kernel-validation` result tied to the exact image and model revision. **This beta does not yet include a completed producer/workflow for that receipt.** It must come from real two-rank qualification, not manual editing or a one-GPU fixture.
+The candidate `service start` path requires a `state/kernel-validation.json` receipt with a passing `tp2-kernel-validation` result tied to the exact image and model revision. **This release does not yet include a completed producer/workflow for that receipt.** It must come from real two-rank qualification, not manual editing or a one-GPU fixture.
 
-The candidate launcher still selects the lock's base image, whose native NoPE path is blocked. Building the reference image does not select it for serving. Full-model qualification must implement and validate that runtime selection and its receipt binding; see [the ordered setup gate](../SETUP.md#6-qualify-the-full-model--current-beta-blocker).
+The candidate launcher still selects the lock's base image, whose native NoPE path is blocked. Building the reference image does not select it for serving. Full-model qualification must implement and validate that runtime selection and its receipt binding; see [the ordered setup gate](../SETUP.md#6-qualify-the-full-model--current-blocker).
 
 After that future qualification, rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous. The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
 

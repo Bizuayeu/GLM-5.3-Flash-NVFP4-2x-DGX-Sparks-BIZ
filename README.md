@@ -2,7 +2,7 @@
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
-**BETA — a limited full-model TP=2 reference profile has been tested. Production and harness qualification are not complete.**
+**A full-model TP=2 reference profile has been tested and measured. The routine `service` launcher remains gated until a kernel-validation receipt exists, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
@@ -50,7 +50,7 @@ For decode acceleration, we selected **the checkpoint's standard MTP with three 
 
 Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified below and in the linked validation documents.
 
-## What works in this beta
+## What has been verified
 
 **Distributed defaults select the serial optimized profile with image input at 200K (204,800 tokens), KV 2.5 GiB per rank, reserve 2.5 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input at 200K](docs/vision.md) records the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
 
@@ -68,7 +68,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
 | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
 | Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
-| ZCode / Claude Code harness integration | Basic API group passed; official ZCode Desktop and Claude Code client cases **not closed** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
+| ZCode / Claude Code harness integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
 | MTP k=1 / k=3 with BF16 draft, one active sequence | Basic API and matched benchmark cases passed; k=3 preferred for further experiments; [setup, gains and costs](docs/speculative-decoding.md) |
 | Prefix caching (APC), one active sequence | Accepted for the measured serial long-prefix reuse workload (experimental); enabled in the startup template; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
 | APC-first LPA (P22), one active sequence | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; LPA itself ships disabled as a batch opt-in; [contract](docs/apc-lpa-design.md) |
@@ -124,7 +124,7 @@ The fixed model revision, base-image digest and local reference tag are in [conf
 
 Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
-The TP=2 launcher is **not yet qualified**. It retains a validation gate and requires measured per-node network settings. This beta does not provide a completed TP=2 qualification workflow; do not fabricate its validation receipt. Use `service plan` and `service preflight` for inspection, and see [operations](docs/operations.md#two-launchers) for how that gated `service` path differs from the experimental `startup` launcher and for the remaining qualification steps.
+The TP=2 launcher is **not yet qualified**. It retains a validation gate and requires measured per-node network settings. This release does not provide a completed TP=2 qualification workflow; do not fabricate its validation receipt. Use `service plan` and `service preflight` for inspection, and see [operations](docs/operations.md#two-launchers) for how that gated `service` path differs from the experimental `startup` launcher and for the remaining qualification steps.
 
 ## Local data and contribution
 

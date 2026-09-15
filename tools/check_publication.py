@@ -125,12 +125,6 @@ def audit(root, files):
                     f.startswith(relative + "/") for f in files
                 ):
                     problems.append(f"non-public Markdown target: {name} -> {relative}")
-    for name in ("README.md", "README.ja.md", "SETUP.md", "SETUP.ja.md"):
-        if (
-            name in files
-            and "beta" not in (root / name).read_text(encoding="utf-8").lower()
-        ):
-            problems.append(f"missing beta disclosure: {name}")
     return problems
 
 
@@ -158,8 +152,8 @@ def main():
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]
-        if not re.fullmatch(r"\d+\.\d+\.\d+b\d+", project["version"]):
-            problems.append("expected beta version")
+        if not re.fullmatch(r"\d+\.\d+\.\d+", project["version"]):
+            problems.append("expected release version")
         if project["license"] != "Apache-2.0":
             problems.append("unexpected project license")
     for problem in problems:

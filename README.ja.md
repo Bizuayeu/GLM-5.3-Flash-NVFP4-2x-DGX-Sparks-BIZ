@@ -2,7 +2,7 @@
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
-**BETA（ベータ版）— 限定した参照profileで全モデルTP=2を試験済みです。本番運用・ハーネスの検収は未完了です。**
+**全モデルTP=2の参照profileを試験・実測済みです。通常運用の `service` ランチャーはkernel検証の証跡が揃うまでゲート付きのままで、ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.ja.md) · [検証範囲](docs/validation.ja.md) · [構成](docs/architecture.ja.md) · [文書一覧](docs/README.ja.md)
 
@@ -50,7 +50,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 業務利用に適するかは検収によって判断します。BIZの語を認定済みの意味にはせず、確認済みの範囲と残る条件を以下と各検証文書に示します。
 
-## このベータ版で確認した範囲
+## 確認した範囲
 
 **配布既定は、画像入力を受ける200K（204,800 token）・KV各2.5 GiB・保護2.5 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
@@ -68,7 +68,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
-| ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。公式ZCode DesktopとClaude Codeのクライアント試験は**未完了**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
+| ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode DesktopとClaude Codeのクライアント試験は**未実施**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
 | Prefix caching（APC）・同時実行1 | 実測した直列の長文prefix再利用の実験用途で受入。起動テンプレートで有効。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | APC優先LPA（P22）・同時実行1 | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。LPA自体は配布テンプレートで無効（バッチ用opt-in）。[契約](docs/apc-lpa-design.ja.md) |
@@ -124,7 +124,7 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2ランチャーは**検収前**です。起動には実測したノード設定と検証記録が必要ですが、本ベータ版にはTP=2の検収を完了できる手順一式はまだありません。合格記録を手書きで作らず、`service plan`・`service preflight`で確認してください。ゲート付きの `service` と実験用の `startup` の違いと、残る検証は[運用手順](docs/operations.ja.md#二つのランチャー)に記載しています。
+TP=2ランチャーは**検収前**です。起動には実測したノード設定と検証記録が必要ですが、本リリースにはTP=2の検収を完了できる手順一式はまだありません。合格記録を手書きで作らず、`service plan`・`service preflight`で確認してください。ゲート付きの `service` と実験用の `startup` の違いと、残る検証は[運用手順](docs/operations.ja.md#二つのランチャー)に記載しています。
 
 ## ローカルデータと開発
 

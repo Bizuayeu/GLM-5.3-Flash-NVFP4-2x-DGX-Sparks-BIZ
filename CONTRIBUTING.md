@@ -2,7 +2,7 @@
 
 [日本語](CONTRIBUTING.ja.md)
 
-This is a beta engineering project. Keep claims limited to the exact hardware, image, weights, precision and workload tested.
+This is an engineering project with a measured scope. Keep claims limited to the exact hardware, image, weights, precision and workload tested.
 
 Use Python 3.11 or newer and run from a checkout:
 

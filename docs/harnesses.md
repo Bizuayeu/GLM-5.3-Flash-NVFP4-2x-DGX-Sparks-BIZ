@@ -30,7 +30,7 @@ The pinned vLLM [Claude Code guide](https://github.com/vllm-project/vllm/blob/38
 
 ## Candidate setup
 
-These are **planned settings, not a validated deployment recipe**. Do not bypass the beta's startup gate. Record client version/distribution hash, server source/image/revision and effective arguments first. Use the API port from your startup TOML; the example template uses 8893 on loopback.
+These are **planned settings, not a validated deployment recipe**. Do not bypass the startup gate. Record client version/distribution hash, server source/image/revision and effective arguments first. Use the API port from your startup TOML; the example template uses 8893 on loopback.
 
 Open a dedicated PowerShell for an SSH tunnel (`node-a` is illustrative; add your existing `-F` configuration when needed):
 
@@ -133,7 +133,9 @@ Judge normal acceptance by final answers, structured tool calls, tool results an
 
 ## Acceptance matrix and status
 
-Status values: PASS, PARTIAL (some criteria met, listed), BLOCKED (cannot run; evidence and alternative recorded), NOT RUN. Run the API group first, then every shared H case separately for each harness with real requests and artifacts. Source availability or a truncated GPU fixture cannot replace actual requests. Status as of 2026-09-14; run IDs refer to private `records/`.
+Status values: PASS, PARTIAL (some criteria met, listed), BLOCKED (cannot run; evidence and alternative recorded), NOT RUN. Run the API group first, then every shared H case separately for each harness with real requests and artifacts. Source availability or a truncated GPU fixture cannot replace actual requests. Status as of 2026-09-15; run IDs refer to private `records/`.
+
+**Run `20260915-harness-h-sandbox` (2026-09-15).** All eleven shared H cases were executed once through the npm `zcode-app-cli` 3.11.2-24 TUI (`yolo` with the existing-file guard hook, main and lite bound to `glm-5.3-flash-nvidia` at the loopback tunnel, `limit.context` 204800, `limit.output` 32000) against a small fixture repository with a seeded bug and a unittest suite. Under the distribution rule above these results are evidence for that distribution only; the official Desktop GUI and Claude Code have not run any H case. The PARTIAL cells name the untested part.
 
 | ID | Target | Action and acceptance criterion | Status |
 |---|---|---|---|
@@ -145,17 +147,17 @@ Status values: PASS, PARTIAL (some criteria met, listed), BLOCKED (cannot run; e
 | ZC-02 | ZCode | Declared input capabilities (text, tools and image; no video) respected; no silent substitution with a default cloud model | Same as ZC-01: official NOT RUN / BLOCKED; npm distribution smoke shows main and lite bound to the local served ID with catalog refresh disabled |
 | CC-01 | Claude Code | Isolated configuration starts; main/helper requests reach the served ID without auth/model-resolution loops | NOT RUN |
 | CC-02 | Claude Code | Anthropic tool IDs, streamed JSON, reasoning and stop_reason allow continuing after tool results | NOT RUN |
-| H-01 | Both | Read two small fixture-repo files and explain their actual content; do not claim unread content was inspected | NOT RUN |
-| H-02 | Both | Fix one small bug; only authorized files receive the intended diff | NOT RUN |
-| H-03 | Both | Execute an approved local test and report results consistent with its real exit code/log | NOT RUN |
-| H-04 | Both | Deny a harmless marker-file creation once; verify no file was created and approval was not bypassed | NOT RUN |
-| H-05 | Both | Preserve arguments/results/order across read → edit → test tool rounds, with additional agents disabled | NOT RUN |
-| H-06 | Both | Cancel generation/tool waiting, then accept a fresh request; no infinite retry, orphan job or dead server | NOT RUN |
-| H-07 | Both | Restart/resume the test conversation with the same local destination and approval settings | NOT RUN |
-| H-08 | Both | Exercise the actual context boundary; explicit compaction/error without silent history loss; do not assume 200k/1M support | NOT RUN |
-| H-09 | Both | Observe inference destinations; an unavailable local endpoint must not cause cloud inference fallback. Record ancillary traffic separately from claims of offline operation | NOT RUN. Supporting evidence for the npm distribution: the recorded TCP sample above showed only the loopback tunnel during one prompt; outage fallback untested; official Desktop and Claude Code not sampled |
-| H-10 | Both | Complete the same small read/fix/test/report task; retain API traces, artifacts, correctness and latency | NOT RUN |
-| H-11 | Both | Confirm the supported reasoning profile reaches the local service, no unsupported off flag is sent, and reasoning remains separate from final content; record unsupported effort mapping explicitly | NOT RUN (API-02/04 ran at different effort settings; the mapping per client is untested) |
+| H-01 | Both | Read two small fixture-repo files and explain their actual content; do not claim unread content was inspected | npm CLI PASS (`20260915-harness-h-sandbox`): two fixture files explained from their actual content; the unread test file was reported as unread. Desktop / Claude Code NOT RUN |
+| H-02 | Both | Fix one small bug; only authorized files receive the intended diff | npm CLI PASS (same run): the off-by-one in `calc.py` removed; `git diff` showed that one file only. Desktop / Claude Code NOT RUN |
+| H-03 | Both | Execute an approved local test and report results consistent with its real exit code/log | npm CLI PASS (same run): red with two of five tests failing and exit 1, then green with all five passing and exit 0, reported as logged. Desktop / Claude Code NOT RUN |
+| H-04 | Both | Deny a harmless marker-file creation once; verify no file was created and approval was not bypassed | npm CLI PARTIAL (same run): the guard turned the `Write` under `.zcode` into a prompt and no approval was bypassed, but the marker was created after a client-side approval, so "deny once, nothing created" is not met. Desktop / Claude Code NOT RUN |
+| H-05 | Both | Preserve arguments/results/order across read → edit → test tool rounds, with additional agents disabled | npm CLI PASS (same run): about fifteen tool rounds (read, test, edit, diff, commit, write, remove, config read, curl, background job start and stop) kept arguments, results and order. Desktop / Claude Code NOT RUN |
+| H-06 | Both | Cancel generation/tool waiting, then accept a fresh request; no infinite retry, orphan job or dead server | npm CLI PARTIAL (same run): a background job was stopped with no orphan process and the server answered 200 afterwards; interrupting generation itself and the infinite-retry check are untested. Desktop / Claude Code NOT RUN |
+| H-07 | Both | Restart/resume the test conversation with the same local destination and approval settings | npm CLI PASS (same run): the session was resumed after a client restart with the same session ID, endpoint, model limits, permission mode and hook. Desktop / Claude Code NOT RUN |
+| H-08 | Both | Exercise the actual context boundary; explicit compaction/error without silent history loss; do not assume 200k/1M support | npm CLI PARTIAL (same run): `limit.context` 204800 matches the server `max_model_len` from `/v1/models` and `limit.output` is 32000; behaviour near the limit and compaction are untested. Desktop / Claude Code NOT RUN |
+| H-09 | Both | Observe inference destinations; an unavailable local endpoint must not cause cloud inference fallback. Record ancillary traffic separately from claims of offline operation | npm CLI PARTIAL (same run): the model route is the loopback tunnel and no fallback setting exists; outage fallback untested. Ancillary traffic in that run: two user-requested `curl` calls to `api.fxtwitter.com` and `pbs.twimg.com`; client telemetry was not sampled (see the 2026-09-14 TCP sample above). Desktop / Claude Code NOT RUN |
+| H-10 | Both | Complete the same small read/fix/test/report task; retain API traces, artifacts, correctness and latency | npm CLI PARTIAL (same run): the read/fix/test/report task completed with artifacts and correctness kept in the run log and Git history; no API tap and no latency measurement. Desktop / Claude Code NOT RUN |
+| H-11 | Both | Confirm the supported reasoning profile reaches the local service, no unsupported off flag is sent, and reasoning remains separate from final content; record unsupported effort mapping explicitly | npm CLI PARTIAL (same run): no off flag is configured or sent and no reasoning text leaked into final answers; `reasoning_effort` on the wire was not tapped. Desktop / Claude Code NOT RUN |
 
 For H-08, use the actual server limit from the startup TOML; alignment with client context assumptions remains untested. Multi-agent, MCP and image workflows are later, separate tests.
 

@@ -1,4 +1,4 @@
-# 運用手順 — ベータ版
+# 運用手順
 
 [English](operations.md)
 
@@ -28,7 +28,7 @@ checkoutには起動経路が二つあり、一方の証拠は他方の検収に
 
 実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。両ホストのディスクに完全なcheckpointが必要です。TP=2が分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
 
-ダウンローダーはHugging Faceのcache環境設定に従いますが、現行のランチャーは既定のcache rootを前提とします。このベータ版では、これらの資材を取得する際に `HF_HOME`／`HF_HUB_CACHE` を設定せず、文書化した既定の場所を使ってください。任意のcacheへのダウンロードが成功しても、ランチャーがそれを見つけてmountできることの証明にはなりません。
+ダウンローダーはHugging Faceのcache環境設定に従いますが、現行のランチャーは既定のcache rootを前提とします。本リリースでは、これらの資材を取得する際に `HF_HOME`／`HF_HUB_CACHE` を設定せず、文書化した既定の場所を使ってください。任意のcacheへのダウンロードが成功しても、ランチャーがそれを見つけてmountできることの証明にはなりません。
 
 ダウンロードを始めずに、想定される場所と記録された場所を確認します。各Linuxホストのcheckoutで実行してください。
 
@@ -98,9 +98,9 @@ python -m glm53_setup service preflight
 
 ## フルモデルの起動ゲート
 
-候補である `service start` の経路は、実イメージとモデルrevisionに結び付いた `tp2-kernel-validation` の合格結果を持つ `state/kernel-validation.json` の証跡を要求します。**このベータ版には、その証跡を生成する完成した手順がまだありません。** 証跡は実際の2 rank検収から得るものであり、手編集やGPU 1台のfixtureから作るものではありません。
+候補である `service start` の経路は、実イメージとモデルrevisionに結び付いた `tp2-kernel-validation` の合格結果を持つ `state/kernel-validation.json` の証跡を要求します。**本リリースには、その証跡を生成する完成した手順がまだありません。** 証跡は実際の2 rank検収から得るものであり、手編集やGPU 1台のfixtureから作るものではありません。
 
-候補ランチャーはロックのbase imageを選択したままで、そのnative NoPE経路には動作阻害があります。reference imageをビルドしても、提供用としてそれが選ばれるわけではありません。フルモデルの検収では、このruntime選択と証跡の結び付けを実装して検証する必要があります。[順序付きのセットアップゲート](../SETUP.ja.md#6-フルモデルの検証--現ベータ版の停止条件)を参照してください。
+候補ランチャーはロックのbase imageを選択したままで、そのnative NoPE経路には動作阻害があります。reference imageをビルドしても、提供用としてそれが選ばれるわけではありません。フルモデルの検収では、このruntime選択と証跡の結び付けを実装して検証する必要があります。[順序付きのセットアップゲート](../SETUP.ja.md#6-フルモデルの検証--現在の停止条件)を参照してください。
 
 将来その検収が済んだ後は、rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
 

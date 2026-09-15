@@ -1,10 +1,10 @@
-# Deployment runbook — BETA
+# Deployment runbook
 
 [日本語](SETUP.ja.md) · [Project overview](README.md)
 
 The explicit experimental reference path uses [one startup TOML](docs/startup-configuration.md). The routine qualification procedure below remains separate.
 
-**This beta has experimental results for a serial full-model TP=2 reference profile. The routine launcher, full quality/reliability and harness acceptance remain unqualified; do not declare deployment complete from the experimental results.**
+**This release has experimental results for a serial full-model TP=2 reference profile. The routine launcher and full quality/reliability remain unqualified, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status); do not declare deployment complete from the experimental results.**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
@@ -60,7 +60,7 @@ python -m unittest discover -s tests -t . -v
 python tools/check_publication.py
 ```
 
-Do not copy `state/`, credentials or local records into Git. Each host owns its own state. Use the default `$HOME/.cache/huggingface` for this beta: the launcher assumes that location. Custom cache environment variables are not integrated into its mount resolution yet. Store state and reports under this checkout's `state/` and `records/`.
+Do not copy `state/`, credentials or local records into Git. Each host owns its own state. Use the default `$HOME/.cache/huggingface` for this release: the launcher assumes that location. Custom cache environment variables are not integrated into its mount resolution yet. Store state and reports under this checkout's `state/` and `records/`.
 
 **Checkpoint:** same source commit and lock on both nodes; CPU tests pass.
 
@@ -96,11 +96,11 @@ Have a person physically connect the supported cable. Follow the vendor's networ
 
 Inventory the live Ethernet interface, HCA and RoCEv2 GID mapped to each local IPv4. Configure [per-host site settings](docs/operations.md#network-and-site-configuration). Treat every example value as a placeholder. MTU changes must work end-to-end; do not blindly set 9000. Test both directions and distinguish SSH/IP connectivity from RDMA transport.
 
-Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-validation.md). Save the command, tool version, rank placement, transport log, payload sizes, data checks and measured bandwidth. Confirm the intended RDMA interfaces and passing data checks. **This beta has no production bandwidth threshold or full-model qualification workflow.** Agree on the performance criterion and document it before accepting performance; a ping or an unexamined bandwidth number cannot close it.
+Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-validation.md). Save the command, tool version, rank placement, transport log, payload sizes, data checks and measured bandwidth. Confirm the intended RDMA interfaces and passing data checks. **This release has no production bandwidth threshold or full-model qualification workflow.** Agree on the performance criterion and document it before accepting performance; a ping or an unexamined bandwidth number cannot close it.
 
 **Checkpoint:** correct two-rank collective data and intended transport demonstrated, or explicitly pending/failed with evidence.
 
-## 6. Qualify the full model — current beta blocker
+## 6. Qualify the full model — current blocker
 
 The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) now have evidence for one active sequence. The remaining blocker is routine deployment qualification and receipt/runtime binding, not lack of any full-model experiment.
 
@@ -127,7 +127,7 @@ After a future qualified workflow exists, verify at least:
 - Precision/backend, quality and latency/throughput meet a declared baseline and acceptance criteria. Do not claim W4A4 behavior from W4A16 evidence.
 - Controlled stop/restart and distributed failure recovery succeed within the approved test window; both ranks recover together.
 
-**Checkpoint:** blocked in this beta until the workflow and actual qualification evidence exist.
+**Checkpoint:** blocked in this release until the workflow and actual qualification evidence exist.
 
 ## 7. Serve and accept — only after step 6 passes
 
@@ -156,4 +156,4 @@ Keep a private `records/<run-id>/REPORT.md` containing: timestamp/timezone; obje
 
 Suggested AI task:
 
-> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the two authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where this beta lacks a qualification workflow or physical prerequisite, record the blocker and continue independent preparation. Do not create a passing receipt or declare deployment complete without actual evidence.
+> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the two authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where this release lacks a qualification workflow or physical prerequisite, record the blocker and continue independent preparation. Do not create a passing receipt or declare deployment complete without actual evidence.

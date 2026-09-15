@@ -8,7 +8,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| README | What is deployed, supported hardware, beta scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
+| README | What is deployed, supported hardware, verified scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | — |
@@ -78,5 +78,5 @@ Every document has one role; other documents link to it instead of repeating its
 
 - Change history lives in the [changelog](../CHANGELOG.md) and Git; documents do not accumulate "what changed" notes.
 - A measured number appears once, in its owner document, with image, source and workload conditions. Other pages link to it.
-- Beta status is disclosed in the README and setup runbook; `python tools/check_publication.py` fails without it and rejects links to `records/`, plan files or paths outside the repository.
+- The release version is owned by `pyproject.toml` and each version is described in the [Changelog](../CHANGELOG.md); `python tools/check_publication.py` requires a plain semantic version there and rejects links to `records/`, plan files or paths outside the repository.
 - Related research outside this repository, such as the Euryale draft-proposer project, is described in the README without links, because it is not part of this distribution; other documents mention it only in passing.

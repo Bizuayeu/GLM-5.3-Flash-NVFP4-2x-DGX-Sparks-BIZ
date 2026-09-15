@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased — beta
+## 1.0.0 — 2026-09-15
 
 ### Changed
 
+- Release 1.0.0 and retire the beta label: the version lives in `pyproject.toml`, the publication audit now requires a plain semantic version instead of a beta disclosure, and every README, runbook and document heading that said "beta" now states the same facts without it. The `service` launcher stays gated pending a kernel-validation receipt; nothing about qualification changed.
+- Record the first full pass over the shared harness cases H-01–H-11 (`20260915-harness-h-sandbox`): all eleven ran once on the npm `zcode-app-cli` 3.11.2-24 TUI against a fixture repository, 5 PASS and 6 PARTIAL with the untested part named per case; official ZCode Desktop and Claude Code remain NOT RUN. The README status row and the acceptance matrix carry the per-case result.
 - Raise the template's `generation.max_tokens` from 512 to 4096. The value only shapes `startup ask` requests, but the fixed GLM template always thinks first and vLLM counts that block against `max_tokens`: at `reasoning_effort=low` a one-line answer spent about 600 tokens, so the 512 default returned `finish_reason: length` with no visible content. Existing `state/startup.toml` files are not changed; editing one changes the profile fingerprint, so a running pair reports `settings_changed` and `startup ask` refuses it until the next switch.
 
 - Documentation refactor for single ownership and freshness, in both languages: recast stale default-value claims in the measurement documents (APC, fused unpack, `index_checks`, the 8 GiB reserve) as dated history that points at the startup configuration; add the `startup`/`service` launcher distinction as one owner section in operations and a document-map row; extend the architecture table to the runtime, cluster, validation, tools and hook modules that exist; split the README prefix-caching status row; fix the stranded `Lifetime` row in the startup defaults table, four Japanese pages whose language switch linked to themselves, Japanese pages that linked English counterparts, and spaces dropped before numbers in benchmark prose; merge the duplicated `Changed` section of this file. Inline the benchmark and NCCL command blocks in the Japanese documents so each language reads on its own. No measured value or run condition changed, and no existing heading was renamed.

@@ -8,7 +8,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| README | 導入するもの、対応機体、ベータ版の範囲、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
+| README | 導入するもの、対応機体、確認した範囲、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | — |
@@ -78,5 +78,5 @@
 
 - 変更履歴は[Changelog](../CHANGELOG.md)とGitに置き、各文書に「何を直したか」を溜めない。
 - 実測値は正典の文書に一度だけ、image・source・負荷条件とともに書く。他の文書はリンクで参照する。
-- ベータ版であることはREADMEと手順書に明記する。`python tools/check_publication.py` はこの明記を必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
+- 版数は `pyproject.toml` が所有し、版ごとの内容は[Changelog](../CHANGELOG.md)に書く。`python tools/check_publication.py` は素のsemantic versionを必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
 - 本リポジトリ外の関連研究（Euryaleの投機draft研究など）は配布物に含まれないため、READMEでリンクなしに説明する。他の文書では言及に留める。

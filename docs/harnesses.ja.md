@@ -30,7 +30,7 @@ ZCodeは[公式サイト](https://zcode.z.ai/en)でGLM向けの公式ハーネ�
 
 ## 初回接続の候補手順
 
-以下は**フルモデル起動後に試す設定案**であり、検収済みの配備手順ではありません。ベータ版の起動ガードを迂回しません。実行時にはクライアントの版と配布物hash、サーバーのソース・イメージ・revision・起動引数を先に記録します。APIポートは起動TOMLの値を使います（例示テンプレートはloopbackの8893）。
+以下は**フルモデル起動後に試す設定案**であり、検収済みの配備手順ではありません。起動ガードを迂回しません。実行時にはクライアントの版と配布物hash、サーバーのソース・イメージ・revision・起動引数を先に記録します。APIポートは起動TOMLの値を使います（例示テンプレートはloopbackの8893）。
 
 管理用SSH設定のホスト名を使い、Windowsの別PowerShellでトンネルを開きます（`node-a`は例示。別ファイルが必要なら`-F`を指定）。
 
@@ -133,7 +133,9 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 
 ## 受け入れ試験一覧と実施状態
 
-状態の値はPASS、PARTIAL（一部の条件のみ合格。内訳を記す）、BLOCKED（実行不能。根拠と代替を記録）、NOT RUN。API群を先に行い、共通群Hは両ハーネスで別々に実リクエストと成果物で判定します。文書・ソースの存在や小型fixtureの合格では代用しません。状態は2026-09-14時点で、run IDは非公開`records/`を指します。
+状態の値はPASS、PARTIAL（一部の条件のみ合格。内訳を記す）、BLOCKED（実行不能。根拠と代替を記録）、NOT RUN。API群を先に行い、共通群Hは両ハーネスで別々に実リクエストと成果物で判定します。文書・ソースの存在や小型fixtureの合格では代用しません。状態は2026-09-15時点で、run IDは非公開`records/`を指します。
+
+**run `20260915-harness-h-sandbox`（2026-09-15）。** 共通群H-01〜H-11の全11ケースを、npm `zcode-app-cli` 3.11.2-24のTUI（`yolo`＋既存ファイルガードhook、通常・liteともloopbackトンネル先の `glm-5.3-flash-nvidia`、`limit.context` 204800、`limit.output` 32000）で、バグを仕込んだ小さな試験repoとunittestを対象に一巡しました。上記の配布形態の規則により、この結果はその配布形態の証拠に限られ、公式Desktop GUIとClaude CodeはHケースを一つも実行していません。PARTIALの欄には未試験の部分を記します。
 
 | ID | 対象 | 操作と合格条件 | 状態 |
 |---|---|---|---|
@@ -145,17 +147,17 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 | ZC-02 | ZCode | 宣言した入力（テキスト・ツール・画像、動画なし）を尊重。クラウドの既定モデルへ無断で置換されない | ZC-01と同じ：公式はNOT RUN／BLOCKED。npm配布のスモークでは通常・liteの両方がローカルserved IDに固定され、カタログ更新は無効 |
 | CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない | NOT RUN |
 | CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる | NOT RUN |
-| H-01 | 両方 | 小さな試験repoの2ファイルを読み、実内容に基づく説明を返す。未読内容を読んだと報告しない | NOT RUN |
-| H-02 | 両方 | 小さなバグを1件修正し、許可したファイルだけに意図したdiffが生じる | NOT RUN |
-| H-03 | 両方 | 許可したローカルテストを実行し、終了コードと実ログに一致する成否を報告する | NOT RUN |
-| H-04 | 両方 | 無害なmarkerファイル作成を一度拒否し、作成されないことを確認。承認を迂回しない | NOT RUN |
-| H-05 | 両方 | 読み取り→編集→検査の複数ツール往復で引数・結果・順序を維持する。追加エージェントなしの初期条件で実施 | NOT RUN |
-| H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない | NOT RUN |
-| H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する | NOT RUN |
-| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | NOT RUN |
-| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | NOT RUN。npm配布の補助証拠として、上記のTCP採取では一問の間にloopbackトンネル以外の接続先なし。停止時fallbackは未試験、公式DesktopとClaude Codeは未採取 |
-| H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する | NOT RUN |
-| H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する | NOT RUN（API-02／04は異なるeffort設定で実施。クライアントごとの変換は未試験） |
+| H-01 | 両方 | 小さな試験repoの2ファイルを読み、実内容に基づく説明を返す。未読内容を読んだと報告しない | npm CLI PASS（`20260915-harness-h-sandbox`）：試験repoの2ファイルを実内容どおりに説明。未読のテストファイルは未読と明示。Desktop／Claude CodeはNOT RUN |
+| H-02 | 両方 | 小さなバグを1件修正し、許可したファイルだけに意図したdiffが生じる | npm CLI PASS（同run）：`calc.py` のoff-by-oneを除去。`git diff` はその1ファイルのみ。Desktop／Claude CodeはNOT RUN |
+| H-03 | 両方 | 許可したローカルテストを実行し、終了コードと実ログに一致する成否を報告する | npm CLI PASS（同run）：red（テスト五件中二件失敗、exit 1）→ green（五件合格、exit 0）。報告は実ログと一致。Desktop／Claude CodeはNOT RUN |
+| H-04 | 両方 | 無害なmarkerファイル作成を一度拒否し、作成されないことを確認。承認を迂回しない | npm CLI PARTIAL（同run）：guardは `.zcode` 配下への `Write` を確認プロンプトに変え、承認の迂回はなし。ただしmarkerはクライアント側の承認後に作成されたため「一度拒否し、作成されない」条件は未達。Desktop／Claude CodeはNOT RUN |
+| H-05 | 両方 | 読み取り→編集→検査の複数ツール往復で引数・結果・順序を維持する。追加エージェントなしの初期条件で実施 | npm CLI PASS（同run）：読み取り・テスト・編集・diff・commit・書き込み・削除・設定読み・curl・bgジョブ起動と停止の約15往復で引数・結果・順序を維持。Desktop／Claude CodeはNOT RUN |
+| H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない | npm CLI PARTIAL（同run）：bgジョブを停止し残留プロセスなし、停止後もサーバーは200応答。生成中の割り込みと無限再試行の確認は未試験。Desktop／Claude CodeはNOT RUN |
+| H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する | npm CLI PASS（同run）：クライアント再起動後に同一セッションIDで再開し、接続先・モデル上限・権限モード・hookが再起動前と一致。Desktop／Claude CodeはNOT RUN |
+| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | npm CLI PARTIAL（同run）：`limit.context` 204800はサーバーの `/v1/models` の `max_model_len` と一致、`limit.output` は32000。上限付近の挙動と圧縮は未試験。Desktop／Claude CodeはNOT RUN |
+| H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | npm CLI PARTIAL（同run）：モデル経路はloopbackトンネルでfallback設定なし。停止時fallbackは未試験。同runの付随通信はユーザー依頼の `curl` 2件（`api.fxtwitter.com`、`pbs.twimg.com`）。クライアントのtelemetryは未採取（上記2026-09-14のTCP採取を参照）。Desktop／Claude CodeはNOT RUN |
+| H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する | npm CLI PARTIAL（同run）：読解・修正・テスト・報告の課題を完遂し、成果物と正確性はrun logとGit履歴に保存。APIログと遅延計測は未取得。Desktop／Claude CodeはNOT RUN |
+| H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する | npm CLI PARTIAL（同run）：オフ引数は設定・送信ともになし、最終回答への推論文の漏れなし。リクエスト中の `reasoning_effort` は未採取。Desktop／Claude CodeはNOT RUN |
 
 H-08の上限は起動TOMLの実サーバー設定を正典とし、クライアント側のcontext認識との整合は未確認です。並列エージェント・MCP・画像は初回合格後の別試験です。
 
