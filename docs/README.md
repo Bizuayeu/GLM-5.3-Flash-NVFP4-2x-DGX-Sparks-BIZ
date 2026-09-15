@@ -64,6 +64,7 @@ Every document has one role; other documents link to it instead of repeating its
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
+| Which launcher is which: `startup` (experimental reference) versus `service` (gated candidate) | [Operations](operations.md#two-launchers) |
 | Host kernel requirement, the `7.0.0-1019-nvidia` RoCE failure and the `kho=off` workaround | [Operations](operations.md#host-kernel-and-multi-node-roce) |
 | License permissions and obligations by artifact | [Licensing guide](licensing.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | Harness acceptance cases and their run status | [Harnesses](harnesses.md) |

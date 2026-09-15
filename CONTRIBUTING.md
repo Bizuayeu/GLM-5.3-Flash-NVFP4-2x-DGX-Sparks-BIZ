@@ -21,4 +21,4 @@ GPU checks are separate from CPU tests. Use the pinned image and record effectiv
 - Keep original notices for copied/adapted code. New project contributions are submitted under Apache-2.0; third-party portions keep their applicable notices.
 - Mark modified upstream files prominently and review the [licensing guide](docs/licensing.md) for the actual distribution scope.
 - Keep ZCode and Claude Code results separate in the [harness acceptance matrix](docs/harnesses.md); never mark unexecuted cases passed.
-- Update the English and Japanese READMEs together when their user-visible instructions change.
+- Update the English and Japanese versions of every paired document together when user-visible content changes; the [document map](docs/README.md) lists the pairs.

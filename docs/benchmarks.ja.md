@@ -1,8 +1,8 @@
 # TP=2ベンチマークの方法
 
-[English／実行例](benchmarks.md) · [検証範囲](validation.ja.md)
+[English](benchmarks.md) · [検証範囲](validation.ja.md)
 
-本書はMTPなしの基準値です。任意の投機profileは[MTP k=1の比較結果](speculative-decoding.ja.md#k1の実測結果)を参照してください。
+本書はTP=2ベンチの方法、MTPなしの基準値、独立施策の全モデル実行（P08・P11・P13〜P15・P17〜P19・P21・P22・checkpoint保持）、リリース候補・200K・256Kの実入力確認を所有します。MTP k=1／k=3の比較は[投機的デコーディング](speculative-decoding.ja.md)、現在の画像入力の既定は[200Kでの画像入力](vision.ja.md)を参照してください。
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
@@ -22,11 +22,32 @@ GB10 2台、TP=2、Marlin W4A16、全候補保持の参照attention、eager、MT
 
 ## 実行方法
 
-[英語版のコマンド形](benchmarks.md#reproducible-command-shape)を、試験サーバーと同一のイメージで実行します。ベンチ用クライアントにはGPUを割り当てず、検証済みtokenizerをローカルmountし、HFのoffline設定を使います。引数はそのイメージの`vllm bench serve --help=all`で確認します。
+試験サーバーと**同一のイメージ**で実行します。ベンチ用クライアントにはGPUを割り当てず、検証済みtokenizerをローカルmountし、Hugging Faceのoffline設定を使って別のtokenizerやdatasetを取得しないようにします。引数はそのイメージの`vllm bench serve --help=all`で確認し、別に導入されたリリースのhelpは使いません。
 
-各ケースでwarmupを1回分指定し、新しい出力先・コンテナ名を使います。`ignore_eos`は出力長を固定する速度測定用であり、通常会話の設定ではありません。起動ガードを回避するためのコマンドではなく、正常に起動した試験endpointが前提です。
+1ケース分のベンチ引数は次のとおりです。
 
-CLIが終了コード0でも完了要求数0の場合があります。[結果検査器](../tools/assess_benchmark.py)で、完了数・出力token数・有限かつ正の指標を独立に確認します。起動と計測には別の期限を設け、API readyを確認したら自動で計測段階へ切り替えます。
+```sh
+vllm bench serve \
+  --backend vllm --base-url http://127.0.0.1:8891 \
+  --endpoint /v1/completions --model glm-5.3-flash-nvidia \
+  --tokenizer /path/to/verified/snapshot \
+  --dataset-name random --random-input-len 32 --random-output-len 64 \
+  --random-range-ratio 0 --num-prompts 3 --num-warmups 1 \
+  --request-rate inf --max-concurrency 1 --ignore-eos --seed 42 --temperature 0 \
+  --percentile-metrics ttft,tpot,itl,e2el --metric-percentiles 50 \
+  --save-result --save-detailed --result-dir /path/to/private/results \
+  --result-filename short-c1.json
+```
+
+パスは例示です。入力長・出力長・同時数は測定条件の表の値をケースごとに当てはめ、warmupを1回分指定し、新しい出力先・コンテナ名を使います。`ignore_eos`は出力長を固定する速度測定用であり、通常会話の設定ではありません。起動ガードを回避するためのコマンドではなく、正常に起動した試験endpointが前提です。
+
+CLIが終了コード0でも完了要求数0の場合があります。[結果検査器](../tools/assess_benchmark.py)で、完了数・出力token数・有限かつ正の指標を独立に確認します。
+
+```sh
+python tools/assess_benchmark.py /path/to/private/results/short-c1.json --requests 3 --output-tokens 64
+```
+
+起動と計測には別の期限を設け、API readyを確認したら自動で計測段階へ切り替えます。長いロードが計測の時間枠を食い潰さないようにするためです。
 
 ## 記録する指標
 
@@ -171,7 +192,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 
 SSEは3個の非空chunkを受信後に切断し、256tokenの上限前に生成が止まること、実行中／待機要求とKV使用が0になること、正常終了・エラー終了の増分がないこと、後続要求が成功することを全armで確認しました。**この固定vLLMの内部abort経路は、通常の完了統計へ渡る前に要求stateを除去するため、abortカウンタが増えない場合があります。** 最初のbaseline評価器はその増分を必須にして失敗しました。元記録を残し、固定ソースの確認と評価器の検査後、同じ稼働構成で切断試験だけを再実行しました（`full-v28-ep-off-recheck-v29`）。完了済みの速度・品質測定は再利用し、on／復帰も共通の修正基準で評価しています。
 
-試験資源は各rank112 GiB上限・host4 GiBガード。baselineの最低空きは約11.47／12.77 GiB、EP onは約11.61／12.57 GiBでした。OOMはなく、停止後の再起動も完了しましたが、peerの停止は引き続きexit137による強制終了を伴います。本番の停止復旧・長期稼働を検収したとはしません。
+試験資源は各rank 112 GiB上限・host 4 GiBガード。baselineの最低空きは約11.47／12.77 GiB、EP onは約11.61／12.57 GiBでした。OOMはなく、停止後の再起動も完了しましたが、peerの停止は引き続きexit 137による強制終了を伴います。本番の停止復旧・長期稼働を検収したとはしません。
 
 ## TP2／PP2の独立評価（P17）
 
@@ -192,7 +213,7 @@ PPの速度・品質測定後、2回目のprofiler開始時にPyTorch/Kinetoの�
 
 保存できた64入力・1出力traceでは、各rankのNCCLはTP2の92回からPP2の6回（送受信4、broadcast2）へ減りました。これはprefillを含む1回の要求の観測で、PPのdecodeあたり通信回数ではありません。TP2の1／33出力対照差分では、各rank1,743 kernel/token・NCCL92回/token、GEMVのGPU区間合計約46〜47 ms/tokenを観測しました。時間合計は重複を含み、wall latencyへ加算しません。通信削減だけで生成高速化を保証できない結果です。
 
-PPのprofiling開始前までのhead空き最小は約4.27 GiBで、4 GiBガードに近い値でした（ロード・warmupを含む）。障害後はさらに低下しました。通常運用の既定TP2と8 GiBガードは変更せず、実験用PP設定の検収範囲を限定します。
+PPのprofiling開始前までのhead空き最小は約4.27 GiBで、4 GiBガードに近い値でした（ロード・warmupを含む）。障害後はさらに低下しました。既定TP2は維持します。ここでいう8 GiBガードは当時のテンプレート値であり、現在の既定ではありません（[起動設定](startup-configuration.ja.md#配布用の既定設定)）。実験用PP設定の検収範囲は限定します。
 
 ## CPU同期削減の独立評価（P08）
 
@@ -209,7 +230,7 @@ PPのprofiling開始前までのhead空き最小は約4.27 GiBで、4 GiBガー�
 | 8,192 | 1 | 24.6281 | 24.5649 | 24.6000 |
 | 8,192 | 128 | 33.7452 | 33.3316 | 33.5738 |
 
-各armで内容8回答・tool往復2件・SSE切断と後続要求が通過しました。**限定した独立eager用途のopt-inとして受け入れます。** 128出力の改善は両対照比で短文約2.2〜2.5%、2K約1.8〜1.9%、8K約0.7〜1.2%。Prefill単体の差は小さく、大きな短縮とは扱いません。既定は`index_checks="auto"`（eagerでは同期）を維持し、MTP/LPA/fusion併用は別に検収します。
+各armで内容8回答・tool往復2件・SSE切断と後続要求が通過しました。**限定した独立eager用途のopt-inとして受け入れます。** 128出力の改善は両対照比で短文約2.2〜2.5%、2K約1.8〜1.9%、8K約0.7〜1.2%。Prefill単体の差は小さく、大きな短縮とは扱いません。当時は既定`index_checks="auto"`（eagerでは同期）を維持しました。現在のテンプレートは`async`です（[起動設定](startup-configuration.ja.md#配布用の既定設定)）。MTP/LPA/fusion併用は別に検収します。
 
 速度・品質測定後、新しいプロセスでprofilerを一度だけ開始・停止しました。off／async／restoredの1／33出力を1秒のidle間隔で記録し、両rankとも6つのGPU区間を確認。offと復帰のkernel／launch／NCCL件数の一致を確認してから差分を算出しました。
 
@@ -242,11 +263,11 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 別run `integration-ops-v38` では、3条件とも16,320入力＋64出力を完了し、preemptionなし、終了後のscheduler／KV使用0、後続要求成功を確認しました。peak KV使用率は約0.630でした。2K入力のSSEを3つの非空chunk受信後に切断する検査も3条件で通過し、生成は9tokenで止まり、後続要求へ復帰しました。LPA onでは容量試験・切断試験の両方で近似の実作動を確認しています。[FreedomBench再確認と6問の長文付きpilot](freedombench.ja.md#併用構成の再確認と長文付きpilot)は別集計です。
 
-ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit0、peerは明示停止後exit137です。**この直列併用を実測した実験範囲で受け入れます。** 既定設定と通常の8 GiB reserveは変更していません。Graphs・APC・batching/MTP併用・さらに長い文脈・持続負荷・harness・本番復旧の検収を兼ねず、通常運用のqualification receiptは発行しません。
+ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit 0、peerは明示停止後exit 137です。**この直列併用を実測した実験範囲で受け入れます。** 当時のテンプレート既定（8 GiB reserveを含む）はこのrunでは変更していません。現在の既定は[起動設定](startup-configuration.ja.md#配布用の既定設定)を参照してください。Graphs・APC・batching/MTP併用・さらに長い文脈・持続負荷・harness・本番復旧の検収を兼ねず、通常運用のqualification receiptは発行しません。
 
 ## 32Kまでの独立コンテキスト評価（P15）
 
-2026-09-13（Asia/Tokyo）の `context-v40-32k` は、同じV36 image、TP2／eager、1系列、chunk512、FP8 KV各rank1 GiBを固定して完了しました。contextは32,768、MTP／LPA／fusion／非同期検査／Graphs／APC／EP／PPはoff。コンテナ112 GiB上限とhost reserve4 GiBは維持しています。設定fingerprintは `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e` です。
+2026-09-13（Asia/Tokyo）の `context-v40-32k` は、同じV36 image、TP2／eager、1系列、chunk512、FP8 KV各rank1 GiBを固定して完了しました。contextは32,768、MTP／LPA／fusion／非同期検査／Graphs／APC／EP／PPはoff。コンテナ112 GiB上限とhost reserve 4 GiBは維持しています。設定fingerprintは `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e` です。
 
 各入出力条件でwarmup1回を除外し、profilerなしで3反復しました。固定LLM-jp validation文書列を指定token数で切り出しています。
 
@@ -278,7 +299,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 長文の抽出・再参照6要求、長文tool往復、12K入力のSSE切断と後続要求は、3条件とも通過しました。12,763-tokenの資料要求では異なる資料を挟み、APC onの3回の再参照全てで8,704 tokenが命中して正答しました。tool結果を渡した続きでも8,704 tokenを再利用し、期待する値を返しました。新規prefixの要求は全てhit0です。これらを一般的な言語品質の認定とはしません。
 
-コンテナ112 GiB上限、host reserve4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead11.445／11.489／11.495 GiB、peer12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit0、全peerがexit137で停止し、OOMはありません。**今回の長いprefixを繰り返す直列実験用途ではAPCを採用し、既定offを維持します。** 設定上のcontext上限を、APCの32K実要求容量・MTP／fusion／Graphs併用・業務検収へ読み替えません。LPA併用は、[P22の通常状態だけを共有する契約](apc-lpa-design.ja.md)で別に評価します。
+コンテナ112 GiB上限、host reserve 4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead 11.445／11.489／11.495 GiB、peer 12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit 0、全peerがexit 137で停止し、OOMはありません。**今回の長いprefixを繰り返す直列実験用途ではAPCを採用します。** 当時の既定はoffで、現在のテンプレートではonです（[起動設定](startup-configuration.ja.md#配布用の既定設定)）。 設定上のcontext上限を、APCの32K実要求容量・MTP／fusion／Graphs併用・業務検収へ読み替えません。LPA併用は、[P22の通常状態だけを共有する契約](apc-lpa-design.ja.md)で別に評価します。
 
 ## APC優先LPAの損益分岐計測（P22）
 
@@ -410,7 +431,7 @@ FreedomBenchの結果と短文によるLPA迂回の範囲は、[同候補の再�
 
 この時点では、配布用の直列既定を200K・KV各2.5 GiB・保護4 GiB・期限なしに揃えました。長文は各1試行の容量と限定参照の確認であり、数値同一性、すべての200K履歴編集や多系列、一般品質、長時間信頼性の検収ではありません。時間はprefillを含む要求全体で、同一prefixのwarm再利用速度ではありません。
 
-調整過程では、KV4 GiB／保護5 GiBが初期化中に最小空き4.945／4.984 GiBで停止し、KV3 GiB／保護5 GiBは生成開始付近にhead4.962 GiBで停止しました。いずれもOOMではなく保護停止です。TLS誤指定によるsparkDashの失敗と、その後の接続断で無効になったtool-evalも保存し、上の有効結果には混ぜていません。
+調整過程では、KV 4 GiB／保護 5 GiBが初期化中に最小空き4.945／4.984 GiBで停止し、KV 3 GiB／保護 5 GiBは生成開始付近にhead 4.962 GiBで停止しました。いずれもOOMではなく保護停止です。TLS誤指定によるsparkDashの失敗と、その後の接続断で無効になったtool-evalも保存し、上の有効結果には混ぜていません。
 
 ### 256Kでの実入力確認
 

@@ -4,7 +4,7 @@
 
 **BETA（ベータ版）— 限定した参照profileで全モデルTP=2を試験済みです。本番運用・ハーネスの検収は未完了です。**
 
-[English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.md) · [検証範囲](docs/validation.md) · [構成](docs/architecture.md) · [文書一覧](docs/README.ja.md)
+[English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.ja.md) · [検証範囲](docs/validation.ja.md) · [構成](docs/architecture.ja.md) · [文書一覧](docs/README.ja.md)
 
 NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換機2台**で動かすためのコミュニティ製セットアップ・検証ツールです。実測には**MSI EdgeXpert（MS-C931）2台**を使用しています。商用利用できるライセンスを軸に、資産の固定、検査結果の記録、戻せる運用を重視します。
 
@@ -23,7 +23,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換�
 
 配布するのはソース・固定参照・ビルド手順です。重みと完成Dockerイメージは同梱せず、利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAは本体と別の学習済み補助器を使います。[資材の区別と配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。
 
-NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin **W4A16**で実行しており、NVIDIAのW4A4 recipeとは演算精度が異なります。[精度と検証範囲](docs/validation.md)を参照してください。
+NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin **W4A16**で実行しており、NVIDIAのW4A4 recipeとは演算精度が異なります。[精度と検証範囲](docs/validation.ja.md)を参照してください。
 
 ライセンスの早見表。対象ごとに条件が違い、義務と選定理由は[ライセンス整理](docs/licensing.ja.md)、出所は[第三者通知](THIRD_PARTY_NOTICES.md)が正典です。
 
@@ -70,12 +70,14 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
 | ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。公式ZCode DesktopとClaude Codeのクライアント試験は**未完了**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
-| Prefix caching（APC）・APC優先LPA・checkpoint保持・同時実行1 | APCは実測した直列の長文prefix再利用の実験用途で受入、起動テンプレートで有効。APC優先LPAは校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。checkpoint保持は履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)と[契約](docs/launch-safety.ja.md) |
+| Prefix caching（APC）・同時実行1 | 実測した直列の長文prefix再利用の実験用途で受入。起動テンプレートで有効。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
+| APC優先LPA（P22）・同時実行1 | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。LPA自体は配布テンプレートで無効（バッチ用opt-in）。[契約](docs/apc-lpa-design.ja.md) |
+| checkpoint保持・同時実行1 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
 | 200Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。ZCodeのツールで読んだ画像1枚を正しく説明。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 他のMTP先読み数・動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
-fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.md)を区別して利用してください。
+fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.ja.md)を区別して利用してください。
 
 [sparse候補の順序正規化](docs/candidate-order.ja.md)はGLM runtime共通の変更で、新しくビルドした参照imageでは既定で有効です。source更新後は再ビルドが必要で、既存imageやcontainerには自動適用されません。[導入手順](SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に必要作業として明記しています。初期の最適化比較は変更前のimageで測定しています。正規化後の全モデル併用回帰は上記の候補順序文書、従来の200K併用実測は[ベンチマーク](docs/benchmarks.ja.md#リリース候補の測定)を参照してください。現在のコンテキスト・KV既定値は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)を参照してください。導入先で再ビルドしたruntimeも検収が必要です。
 
@@ -122,7 +124,7 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2ランチャーは**検収前**です。起動には実測したノード設定と検証記録が必要ですが、本ベータ版にはTP=2の検収を完了できる手順一式はまだありません。合格記録を手書きで作らず、`service plan`・`service preflight`で確認してください。残る検証は[運用手順](docs/operations.md)に記載しています。
+TP=2ランチャーは**検収前**です。起動には実測したノード設定と検証記録が必要ですが、本ベータ版にはTP=2の検収を完了できる手順一式はまだありません。合格記録を手書きで作らず、`service plan`・`service preflight`で確認してください。ゲート付きの `service` と実験用の `startup` の違いと、残る検証は[運用手順](docs/operations.ja.md#二つのランチャー)に記載しています。
 
 ## ローカルデータと開発
 

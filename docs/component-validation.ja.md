@@ -1,6 +1,6 @@
 # CUDA・indexerの部品検証
 
-[English](component-validation.ja.md)
+[English](component-validation.md)
 
 以下のunpack／indexerの測定は、固定したGB10 2台構成、runtime source `74548eeac4ca5abe9f0036b3ac89f77555a31ec7`、両rankのimage `sha256:32394330800422a71df89c89d399b8bd17d2dbe90806572ea4583f15ad46f09a` を対象とします。後半のGraph fixtureは、以降に記す独自の範囲とsource識別子を持ちます。いずれも実験的な測定であり、本番運用や言語品質の検収ではありません。
 
@@ -50,7 +50,7 @@ GPU部品の検査は、全FP8 byteコードと選定したFP32 scale（符号�
 
 [起動設定](startup-configuration.ja.md)で `validation.component_worker=true` を指定し、LPA/MTPをoff、検証済みimageを使います。head側で `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record` を実行します。driverは全応答、実token数、A/B/Aの再現性、時間サンプル、rankごとの重なりを保存します。対応するprofiler traceと資源ログも残してください。
 
-[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。unpack融合の既定値は、運用者が試験済みprofileを選ぶまでoffのままです。
+[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。この測定時点ではunpack融合の既定はoffでした。現在の値は[起動設定](startup-configuration.ja.md#配布用の既定設定)を参照してください。
 
 ## Decode Graphのfixture独立評価
 
@@ -184,7 +184,7 @@ EP観測器のSHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a5
 
 このfixtureの要求時間は16出力tokenを含み、最初のサンプルにはshape依存のJITが含まれる場合があります。全モデルの性能を示す値ではありません。8,705入力までは、生成tokenが全armで一致しました。16,319では、各armとも最初のtokenが同じ2候補の間で変動し、厳密な同点か0.03125のlogprob差になりました。off／onの組は3／6回、off／復帰は5／6回一致しています。arm内の共有prefix logprob差の最大は約0.0632でした。他の長さでもcache hitなしに確率の変動が見られ、bitwise同値も原因の特定も主張しません。
 
-**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。APCの既定はoffのままで、LPA／APCは下記のP22の契約を別に使います。
+**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。この時点のAPCの既定はoffで、現在はonです（[起動設定](startup-configuration.ja.md#配布用の既定設定)）。LPA／APCは下記のP22の契約を別に使います。
 
 ## APC優先LPAのcache隔離（P22）
 

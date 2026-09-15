@@ -2,7 +2,7 @@
 
 [日本語](performance-investigation.ja.md)
 
-The [performance and quality catalog](optimization-catalog.md) ([日本語](optimization-catalog.ja.md)) owns the initiative list, dated baseline and next-version comparison fields. This document owns the detailed investigation procedures.
+The [performance and quality catalog](optimization-catalog.md) owns the initiative list, dated baseline and next-version comparison fields. This document owns the detailed investigation procedures.
 
 See the [performance and capacity Q&A](optimization-overview.md#performance-and-capacity-qa) for KV budgets, 256K/1M contexts, waiting times and concurrent serving.
 
@@ -39,7 +39,7 @@ Use traces to prioritize kernel work. CUDA events in LPA's layer profiler do not
 
 ## Throughput versus determinism
 
-The first implemented launch-reduction candidate is `cache.fused_unpack`: one Triton kernel replaces intermediate FP8 copies, FP32 conversion, scale copies and multiplication when unpacking gathered MLA cache records. It leaves attention candidates and FP32 attention arithmetic unchanged. The default is off. Exhaustive FP8-code and scale tests are a component gate; fixture state comparisons and full-model unprofiled A/B runs remain separate acceptance gates.
+The first implemented launch-reduction candidate is `cache.fused_unpack`: one Triton kernel replaces intermediate FP8 copies, FP32 conversion, scale copies and multiplication when unpacking gathered MLA cache records. It leaves attention candidates and FP32 attention arithmetic unchanged. Its template default is owned by [startup configuration](startup-configuration.md#distributed-defaults) (on since the serial combination was accepted). Exhaustive FP8-code and scale tests are a component gate; fixture state comparisons and full-model unprofiled A/B runs remain separate acceptance gates.
 
 For an isolated component measurement on the GPU image with current source mounted, run `python -m glm53_setup.validation.benchmark_unpack --output /path/to/new-record`. It checks exact output, excludes warmup, records five timing batches and profiles each path separately. On the tested GB10, 2,176 and 17,408 records each reduced from four kernels to one; observed median component times were approximately 0.045 to 0.011 ms and 0.630 to 0.212 ms respectively. These synthetic component sizes correspond to one and eight full candidate rows; they do not establish model speedup. Keep the full trace/result JSON with the image and source identity.
 

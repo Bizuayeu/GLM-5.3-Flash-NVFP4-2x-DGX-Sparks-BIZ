@@ -28,11 +28,11 @@ temperature0、effort low、clear_thinking=true、上流互換の出力上限8,1
 
 ## 対象と出典
 
-採用する固定版・ライセンス・上流実装へのリンクは [英語版の固定出典](freedombench.md#scope-and-fixed-source) を正典とする。FreedomBenchは中国関連の12分野・英語60問の選択式評価で、著者が設定した正答との一致を測る。一般的な政治的中立性や学習データの由来を証明する試験ではなく、業務文脈の汚染は追加試験で扱う。
+[FreedomBench](https://github.com/Lore-Hex/FreedomBench/tree/cc037ac7b286ba4f910309162367d856cbd25d58) のrevision `cc037ac7b286ba4f910309162367d856cbd25d58`（パッケージ版 `1.0.2`）を使う。その[設問集](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/questions.py)は中国関連の12分野・英語60問の選択式評価で、著者が設定した正答との一致を測る。一般的な政治的中立性や学習データの由来を証明する試験ではなく、業務文脈の汚染は追加試験で扱う。
 
 実行前に各設問の文言・出典・時点を確認し、争点や曖昧さを別記する。公式設問や正答を無断で差し替えない。誤答だけで「特定政府の主張への同調」や検閲の原因を断定しない。公開ランキングのホスト型GLMと手元のNVIDIA版では重み・量子化・テンプレート・配信経路が異なるため、順位や点数を転用しない。
 
-上流はApache-2.0。ローカルアダプターでは回答抽出・promptと選択肢の構築を改変利用し、NOTICEに出所と変更を記録する。設問データは別途取得し、[benchmark lock](../config/freedombench.lock.json)のhashを検証する。
+上流の[ライセンス](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE)はApache-2.0。ローカルアダプターでは回答抽出・promptと選択肢の構築を改変利用し、NOTICEに出所と変更を記録する。設問データは別途取得し、[benchmark lock](../config/freedombench.lock.json)のhashを検証する。
 
 ## 必須試験項目
 
@@ -52,11 +52,11 @@ temperature0、effort low、clear_thinking=true、上流互換の出力上限8,1
 
 Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/startup.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。未検証の構成・独自拡張は、その実測までNOT RUNとして残す。
 
-上流runnerは既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
+固定版の[runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py)は既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
 
 FB-02では原版のsystem promptと選択肢整形を保持する。GLMに必要なtemplate/reasoning設定はローカル実行との差分として記録する。専用クライアントの512出力上限を流用して、推論途中の打ち切りを拒否と誤認しない。上流の出力予算を出発点に入出力合計がcontext内に収まること、timeoutがローカル速度に見合うことを確認する。全試行の応答、`finish_reason`、usage、最終回答と別フィールドのreasoningを残す。再試行方針や予算を変えた結果は別条件とし、初回失敗を消さない。
 
-上流の採点器は回答マーカー・正規表現・fallbackで文字を抽出する。抽出不能は `refused` となり、エラー行は正答率の分母から外れる。上流互換集計を保持しつつ、**正答数／予定全問数・完了数／予定全問数・エラー数**も報告する。IDの重複・欠落を検出し、不完全実行の高い割合を全問合格と呼ばない。最終回答の欠落やlength終了を確認してから、政治的拒否かを判断する。人手で確認した明示的拒否・資料や主張の扱いの誤りは、上流の機械ラベルと別に残す。
+固定版の[採点器](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/classify.py)は回答マーカー・正規表現・fallbackで文字を抽出する。抽出不能は `refused` となり、エラー行は正答率の分母から外れる。上流互換集計を保持しつつ、**正答数／予定全問数・完了数／予定全問数・エラー数**も報告する。IDの重複・欠落を検出し、不完全実行の高い割合を全問合格と呼ばない。最終回答の欠落やlength終了を確認してから、政治的拒否かを判断する。人手で確認した明示的拒否・資料や主張の扱いの誤りは、上流の機械ラベルと別に残す。
 
 ## 判定と成果物
 

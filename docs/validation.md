@@ -71,7 +71,7 @@ Official ZCode and Claude Code CLI are separate, required targets in the [harnes
 
 The [two-host NCCL diagnostic](nccl-validation.md) has passed the tested collective patterns on the fixed base image. Its scope is transport and synthetic data correctness, separate from the reference attention and full model.
 
-The [independent two-active-sequence evaluation](benchmarks.md#independent-active-batching) has limited task, throughput and 16K×2 capacity evidence. Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, batching combinations, MTP depths other than k=1/k=3, graphs and vision remain unvalidated. Prefix caching has [scoped independent evidence](benchmarks.md#independent-full-model-prefix-caching-p19); APC/LPA and MTP combinations follow the separate [P22 contract](apc-lpa-design.md). Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
+The [independent two-active-sequence evaluation](benchmarks.md#independent-active-batching) has limited task, throughput and 16K×2 capacity evidence. Broader full-model numerical/quality evaluation, sustained mixed load, production recovery, batching combinations, MTP depths other than k=1/k=3 and Graphs remain unvalidated; image input has only the scoped evidence in [image input at 200K](vision.md). Prefix caching has [scoped independent evidence](benchmarks.md#independent-full-model-prefix-caching-p19); APC/LPA and MTP combinations follow the separate [P22 contract](apc-lpa-design.md). Do not turn a fixture, API smoke or collective result into an unrestricted `tp2-kernel-validation` receipt.
 
 ## Full-model TP=2 experimental scope
 

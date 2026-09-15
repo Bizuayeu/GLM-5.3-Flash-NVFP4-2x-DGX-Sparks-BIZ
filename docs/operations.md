@@ -4,6 +4,15 @@
 
 **Routine TP=2 deployment is not qualified yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md); the guarded routine launcher remains a candidate implementation.
 
+## Two launchers
+
+The checkout has two launch paths, and evidence from one does not qualify the other.
+
+| Command | Role | Status |
+|---|---|---|
+| `python -m glm53_setup startup …` | Experimental reference launcher and serial client, driven by [one startup TOML](startup-configuration.md); the two-rank [switch and recovery procedure](launch-safety.md#all-rail-checks-and-two-rank-switch) wraps it | Every full-model measurement in this repository ran through it. Experimental: no routine-deployment qualification |
+| `python -m glm53_setup service …` | Guarded routine-deployment candidate with `state/site.json` and the [full-model launch gate](#full-model-launch-gate) | `plan` and `preflight` are for inspection. `start` still selects the lock's base image, whose native GB10 NoPE path is blocked, and requires a qualification receipt that no workflow produces yet; building the reference image does not switch it |
+
 ## Artifact storage and paths
 
 This section owns deployment storage paths. The model ID, revision and base-image digest are fixed by [runtime.lock.json](../config/runtime.lock.json); the repository does not distribute weights. Keep operator-specific hostnames, absolute home paths and credentials outside the public source.

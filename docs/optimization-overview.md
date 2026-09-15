@@ -32,7 +32,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P19 APC | Register only exactly computed state in the shared cache and skip prefill for an identical prefix | Accepted (measured serial long-prefix reuse, experimental) | on (`cache.prefix_caching=true`) | About 79% shorter re-request at 16,320 input tokens; no gain at 2K; the two long cold cases 1.1–1.7% slower | [P19](benchmarks.md#independent-full-model-prefix-caching-p19) |
 | Checkpoint retention (`cache.prefix_cache_retention_interval`) | Keep KDA checkpoints at every scheduler block so more prefix H is restorable after a mid-history edit or branch | Adopted (exact-primed serial mid-edit workload). The measured arm was the native interval 4,352; `dense` uses the same native KDA mask in the measured aligned layout, and its final combined integration is qualified separately | `dense` (omitting the key preserves runtime default 0) | About 27.6% shorter at a 50% edit of a ~16K history, one output token (A/B/A, five runs each). Edit, branch, append, cross-chat revisit and eviction history tests passed | [Retention A/B/A](benchmarks.md#apc-history-retention-baseline) / [contract](launch-safety.md#apc-history-qualification) |
-| P22 APC-first LPA | Approximate only beyond the restored H, and only when the remainder R = N − T − H exceeds threshold B; approximated state stays request-local | Completed (calibration, scoped quality, final combination and held-out). B = 128 is a conservative candidate threshold, not a universal crossover constant | on (APC + LPA; `lpa.break_even_tokens=128`) | LPA faster than both controls in all twelve H = 0 / 4,352 conditions | [Design](apc-lpa-design.md) / [calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22) |
+| P22 APC-first LPA | Approximate only beyond the restored H, and only when the remainder R = N − T − H exceeds threshold B; approximated state stays request-local | Completed (calibration, scoped quality, final combination and held-out). B = 128 is a conservative candidate threshold, not a universal crossover constant | APC on; LPA off in the template (`lpa.break_even_tokens=128` applies when LPA is enabled) | LPA faster than both controls in all twelve H = 0 / 4,352 conditions | [Design](apc-lpa-design.md) / [calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22) |
 
 ### Prefill
 
@@ -86,7 +86,7 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 
 | Workload | Profile | Basis | Caveat |
 |---|---|---|---|
-| Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. Business-use and harness acceptance pending |
+| Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. LPA is a batch opt-in (off in the template) and forfeits shared prefix reuse. Business-use and harness acceptance pending |
 | Prefix-reuse-heavy | APC + LPA (P22, B = 128) + `dense` retention, no MTP | Repeated-input and mid-edit A/B/A | Grow the shared cache with exact priming; cold requests slightly slower |
 | Throughput | Two sequences, no LPA, chunk 512 (1024 if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
 | Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Beta without routine qualification |

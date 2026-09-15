@@ -2,7 +2,7 @@
 
 [English](performance-investigation.md)
 
-施策の一覧、基準日、次版比較の項目は[性能・品質施策台帳](optimization-catalog.ja.md)（[English](optimization-catalog.md)）が所有します。本書は詳細な調査手順を所有します。
+施策の一覧、基準日、次版比較の項目は[性能・品質施策台帳](optimization-catalog.ja.md)が所有します。本書は詳細な調査手順を所有します。
 
 KV容量、256K／1Mコンテキスト、待ち時間、複数同時実行の考え方は[性能と容量のQ&A](optimization-overview.ja.md#性能と容量のqa)を参照してください。
 
@@ -39,7 +39,7 @@ kernel側の作業はtraceに基づいて優先順位を付けます。LPAの層
 
 ## Throughputと決定性
 
-最初に実装したlaunch削減の候補は `cache.fused_unpack` です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定はoffです。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
+最初に実装したlaunch削減の候補は `cache.fused_unpack` です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定値は[起動設定](startup-configuration.ja.md#配布用の既定設定)が正典です（直列併用の受入後はon）。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
 
 部品単体の計測は、現在のソースをマウントしたGPUイメージ内で `python -m glm53_setup.validation.benchmark_unpack --output /path/to/new-record` を実行します。出力の厳密一致を検査し、warmupを除外して5回の計時batchを記録し、各経路を別々にprofileします。試験したGB10では、2,176件と17,408件のいずれもkernelが4回から1回に減り、観測された部品の中央値はそれぞれ約0.045→0.011 ms、0.630→0.212 msでした。この合成の部品サイズは候補行1本分と8本分に相当し、モデル全体の高速化を示すものではありません。trace／結果JSONは、イメージとソースの識別情報とともに保持します。
 

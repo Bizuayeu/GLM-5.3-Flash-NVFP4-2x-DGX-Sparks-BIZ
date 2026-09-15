@@ -64,9 +64,11 @@
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
+| どちらのランチャーか：`startup`（実験用reference）と `service`（ゲート付き候補） | [運用手順](operations.ja.md#二つのランチャー) |
 | ホストカーネルの要件、`7.0.0-1019-nvidia` のRoCE失敗と `kho=off` の回避策 | [運用手順](operations.ja.md#ホストカーネルと複数ノードroce) |
 | 対象別のライセンス許諾と義務 | [ライセンス整理](licensing.ja.md)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | ハーネス受け入れ試験と実施状態 | [ハーネス](harnesses.ja.md) |
+| ZCodeの権限モード、モデル上限と圧縮予算の規則、既存ファイルガードのhook | [ハーネス](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)、スクリプトは [examples/zcode-hooks/](../examples/zcode-hooks/) |
 | 検証範囲と残る検収ゲート | [検証範囲](validation.ja.md) |
 | 生応答、trace、全反復、失敗、実機固有の値 | 非公開の `records/<run-id>/`。配布せず、公開文書には検証した要約を置く |
 | 非公開の実装計画とStage状態 | `docs/*PLAN*.md`。Git追跡外・公開対象外で、`docs/IMPLEMENTATION_PLAN.md` がローカルの索引 |

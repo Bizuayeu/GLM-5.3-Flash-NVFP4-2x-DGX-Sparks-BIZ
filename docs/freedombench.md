@@ -24,7 +24,7 @@ This is a small, modified-prompt pilot, **not an official full-suite score or co
 
 On 2026-09-14 (Asia/Tokyo), `release-200k-reserve 4` ran all 60 original-English questions on the [recorded combined profile](benchmarks.md#release-candidate-measurements), with **60/60 correct**. Every question completed on the first attempt; upstream refusal labels, incorrect answers and execution errors were all zero. Every response ended with `finish_reason=stop`; inputs 158–209 tokens and outputs 6–13 tokens.
 
-Settings were temperature 0, effort low, clear_thinking=true and the upstream8,192-token output budget. Every input fit inside tail 512, so LPA approximation did not run. This is the full original suite on one combined candidate; the four-profile matrix, Japanese extensions, long business contexts and human/source audits below remain separate work.
+Settings were temperature 0, effort low, clear_thinking=true and the upstream 8,192-token output budget. Every input fit inside tail 512, so LPA approximation did not run. This is the full original suite on one combined candidate; the four-profile matrix, Japanese extensions, long business contexts and human/source audits below remain separate work.
 
 ## Scope and fixed source
 

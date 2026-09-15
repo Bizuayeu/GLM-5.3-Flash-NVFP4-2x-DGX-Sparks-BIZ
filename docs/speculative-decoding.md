@@ -32,7 +32,7 @@ Serve the **view path**, with the existing tested TP=2 reference image/settings,
 --speculative-config "$(cat examples/speculative.mtp1.json)"
 ```
 
-The JSON is the [k=1 candidate](../examples/speculative.mtp1.json). For the tested k=3 profile, use [speculative.mtp3.json](../examples/speculative.mtp3.json) instead; it changes only `num_speculative_tokens` to 3. Both select `mtp` and a separate `triton` MoE backend for the draft. Keep the target's Marlin configuration, eager mode, prefix caching disabled, one active sequence and the benchmark's context/KV settings. Mount the cache root read-only, including both original snapshot and view; mounting the view alone breaks its links.
+The JSON is the [k=1 candidate](../examples/speculative.mtp1.json). For the tested k=3 profile, use [speculative.mtp3.json](../examples/speculative.mtp3.json) instead; it changes only `num_speculative_tokens` to 3. Both select `mtp` and a separate `triton` MoE backend for the draft. Keep the target's Marlin configuration, eager mode, one active sequence and the benchmark's context/KV settings, with prefix caching disabled as in that baseline (the distributed template enables APC; see [startup configuration](startup-configuration.md#distributed-defaults)). Mount the cache root read-only, including both original snapshot and view; mounting the view alone breaks its links.
 
 This is an experimental recipe, not a bypass of the routine launcher's qualification gate. To return to the baseline, use the original snapshot and omit the speculative configuration. Preserve the view and evidence.
 

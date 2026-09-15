@@ -29,7 +29,7 @@ LPA changes cached KV and KDA state. A cache produced with approximation must no
 
 P22 implements [APC-first, uncached-suffix LPA](apc-lpa-design.md). The scheduler first restores a jointly usable exact prefix H, then selects the remaining approximation interval from N/H/T and a crossover threshold. Shared publication stops at the first approximation and remains stopped through the exact tail and decode. Requests can explicitly select normal computation to prime common documents. Approximate states remain request-local.
 
-This path requires the matching image marker and startup settings. CPU contracts and four-layer GPU cache-isolation checks have passed; full-model performance, threshold calibration and MTP combinations remain under evaluation. Capture/oracle RPCs are not enabled with APC. Measure combined benefits rather than adding independent gains.
+This path requires the matching image marker and startup settings. CPU contracts, the four-layer GPU cache-isolation checks, full-model calibration, the MTP/fusion/async combination and the held-out evaluation are complete; the [design contract](apc-lpa-design.md) owns that status. Capture/oracle RPCs are not enabled with APC. Measure combined benefits rather than adding independent gains.
 
 ## Reproduce the components
 

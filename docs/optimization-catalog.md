@@ -22,6 +22,8 @@ The observed division of benefit is primarily decode for MTP, long-input prefill
 
 **P05 decision: not adopted.** Candidate width 2176 was unsupported for decode, numerical checks failed, and the prefill-only probe rejected its first shape. Close this backend-selection attempt and move to other initiatives; reopen after relevant upstream support changes. No candidates were truncated to fit it. See the [component probe](component-validation.md#direct-padded-native-attention-probe).
 
+**Template defaults update (2026-09-15):** the distributed startup template now ships `lpa.enabled = false` and `runtime.vision = true` at 204,800 tokens with KV 2.5 GiB per rank. P02/P22 keep their decisions; LPA became a batch opt-in because an approximated request publishes nothing to the shared prefix cache ([LPA operating scope](lpa.md#operating-scope)), and the image profile is recorded in [image input at 200K](vision.md). These are default-value decisions, not changes to the dated status rows below; [startup configuration](startup-configuration.md#distributed-defaults) owns the current values.
+
 ## Performance initiatives
 
 Expected effects are hypotheses. A measured result applies to its documented conditions, not automatically to production, language quality or combined configurations. Preserve IDs across model versions, including unsuccessful candidates.

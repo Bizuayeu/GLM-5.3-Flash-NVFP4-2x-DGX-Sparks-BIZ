@@ -4,12 +4,27 @@
 
 ### Changed
 
+- Documentation refactor for single ownership and freshness, in both languages: recast stale default-value claims in the measurement documents (APC, fused unpack, `index_checks`, the 8 GiB reserve) as dated history that points at the startup configuration; add the `startup`/`service` launcher distinction as one owner section in operations and a document-map row; extend the architecture table to the runtime, cluster, validation, tools and hook modules that exist; split the README prefix-caching status row; fix the stranded `Lifetime` row in the startup defaults table, four Japanese pages whose language switch linked to themselves, Japanese pages that linked English counterparts, and spaces dropped before numbers in benchmark prose; merge the duplicated `Changed` section of this file. Inline the benchmark and NCCL command blocks in the Japanese documents so each language reads on its own. No measured value or run condition changed, and no existing heading was renamed.
+
 - Switch the distributed startup defaults to image input at 200K: `runtime.vision = true`, `max_model_len` 204,800, KV 2.5 GiB per rank, `mm_processor_cache_gb` 0.1 and `reserve_gib` 2.5, with video still rejected. The 256K text-only profile stays documented as the alternative; a 2.5 GiB reserve is not validated for it. Add `docs/vision.md` (bilingual) with the settings, how they were chosen (quantization exclusion, video profiling, head-only processes, the JIT cache incident, the reserve) and the measurements, and update the README, setup runbook, startup configuration, harness, benchmark, optimization and document-map references. The startup defaults table now also states that LPA ships disabled. Existing `state/startup.toml` files are not changed.
 - Rewrite the harness document as the single source for connection design, the acceptance matrix and per-case status: add a status column (API-01–03 PASS, API-04 PARTIAL, official ZCode Desktop NOT RUN / bundled CLI BLOCKED on the missing TUI package, npm distribution smoke as supporting evidence, Claude Code and shared H cases NOT RUN), separate the ZCode distributions, replace the hedged telemetry text with a per-distribution table from a static read of the bundles (npm CLI sends traces only with an OTLP endpoint set; Desktop hardcodes trace and event endpoints and strips inherited switches), align the example port with the startup template, and add a rule to deny harness writes to its own config directory. README and validation now point to the matrix instead of restating status. Record a dated TCP sample for the npm distribution (only the loopback tunnel observed during one headless prompt) as supporting evidence under H-09.
 - Rename the distribution from “GLM-5.3-Flash on 2× DGX Spark Enterprise Setup” to **GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ**. BIZ marks the maintainer and a business-use intent; the word “enterprise” was read as implying support or certification, so prose now says “business use”. Stable identifiers are unchanged: the reference image tag `glm53-enterprise:reference` (baked into existing records) and catalog IDs E01–E03. The Python distribution name becomes `glm53-flash-biz-setup`.
 - Align distributed startup defaults with the serial optimized profile: 256K context, 3 GiB KV per rank, MTP3, LPA cut32/tail512/B128, APC with dense checkpoint retention, fused unpack and asynchronous index checks. Disable the lifetime deadline by default (`run_seconds=0`) while retaining memory supervision with a host memory reserve (lowered to 3 GiB by a later entry below). Preserve omitted/numeric retention settings even when the template explicitly selects dense retention. Image IDs, projector/hash and node details remain installation-specific placeholders; existing operator TOMLs require explicit migration and running supervisors require restart.
 - Point the Triton, TileLang and TorchInductor caches of distributed startup containers into the mounted `state/tp2-runtime-cache` (`TRITON_CACHE_DIR`, `TILELANG_CACHE_DIR`, `TORCHINDUCTOR_CACHE_DIR`). Their defaults (`/root/.triton`, `/root/.tilelang`, `/tmp/torchinductor_root`) lived in the container layer, so every start recompiled about 2,000 entries, some of them while serving; one such compile burst on the head coincided with a memory-reserve stop at the 200K vision profile.
 - Accept a fractional `resources.reserve_gib` (the template writes `3.0`; integer values stay valid) and replace the "measure again" note with what the 2-second supervisor can catch: about 9 seconds from breach to container exit, the measured 0.15 GiB/s slide, no recorded OOM kill with 16 GiB of swap, and driver `NV_ERR_NO_MEMORY` messages that do not mark the floor. A later entry sets the template value to 2.5 with the image profile.
+- Separate per-initiative functional acceptance, performance adoption and defaults; defer final combination qualification until candidates are selected.
+- Make experimental non-eager startup explicitly select uncompiled prefill and single-sequence decode Graphs, with image checks and deferred-combination guards. Full-model qualification remains pending.
+
+- Make LPA canonical across modules, worker class, RPCs, mount path, tests and documentation; require the current image contract without legacy interfaces.
+- Validate startup profiles at load/command boundaries, removing repeated full-schema validation during serve-argument assembly.
+
+- Allow `resources.run_seconds = 0` to disable the run deadline while retaining low-memory protection; this does not add automatic restart or production availability qualification.
+
+- Add prominent modification notices to generated vLLM patch outputs without changing their executable syntax tree.
+- Grouped operator commands, validation tools, runtime adaptations, configuration and Docker assets by responsibility.
+- Centralized the model ID and revision in `config/runtime.lock.json`.
+- Serialized downloads with a process lock and atomic status updates; paused downloads terminate verification waits.
+- Removed local experiment links and host-specific image identities from public entry points.
 
 ### Added
 
@@ -83,22 +98,6 @@
 - A digest-pinned reference-image build command and portable checkout paths.
 - CPU CI and checks for clean-checkout CLI operation and publication boundaries.
 - English/Japanese setup runbooks with prerequisites, ordered gates, acceptance checklists and AI handoff instructions.
-
-### Changed
-
-- Separate per-initiative functional acceptance, performance adoption and defaults; defer final combination qualification until candidates are selected.
-- Make experimental non-eager startup explicitly select uncompiled prefill and single-sequence decode Graphs, with image checks and deferred-combination guards. Full-model qualification remains pending.
-
-- Make LPA canonical across modules, worker class, RPCs, mount path, tests and documentation; require the current image contract without legacy interfaces.
-- Validate startup profiles at load/command boundaries, removing repeated full-schema validation during serve-argument assembly.
-
-- Allow `resources.run_seconds = 0` to disable the run deadline while retaining low-memory protection; this does not add automatic restart or production availability qualification.
-
-- Add prominent modification notices to generated vLLM patch outputs without changing their executable syntax tree.
-- Grouped operator commands, validation tools, runtime adaptations, configuration and Docker assets by responsibility.
-- Centralized the model ID and revision in `config/runtime.lock.json`.
-- Serialized downloads with a process lock and atomic status updates; paused downloads terminate verification waits.
-- Removed local experiment links and host-specific image identities from public entry points.
 
 ### Validation status
 

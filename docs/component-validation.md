@@ -50,7 +50,7 @@ The [indexer components](indexer-reuse.md) are retained for further evaluation. 
 
 Use `validation.component_worker=true` with LPA/MTP off and the verified image in the [startup configuration](startup-configuration.md). On the head, run `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record`. The driver stores all responses, actual token counts, A/B/A repeatability, timing samples and per-rank overlap. Retain the corresponding profiler traces and resource logs.
 
-The [serial LPA/MTP/fused-unpack/async comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) now has limited paired task, timing, capacity and cancellation evidence. Broader business tasks, the full FreedomBench matrix and harness qualification remain separate gates. The default fused-unpack setting remains off until the operator selects a tested profile.
+The [serial LPA/MTP/fused-unpack/async comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) now has limited paired task, timing, capacity and cancellation evidence. Broader business tasks, the full FreedomBench matrix and harness qualification remain separate gates. The template default for fused unpack was off when these measurements were taken; the current value is in [startup configuration](startup-configuration.md#distributed-defaults).
 
 ## Independent decode Graph fixture
 
@@ -135,9 +135,9 @@ The fixture builder accepts `--layers 8`, providing one KDA/KDA/KDA/MLA block pe
 
 ### Eight-layer PP observations
 
-Private runs `pipeline-v23-control-a` and `pipeline-v23-pp2-a` completed 64/2,048/8,192 input tokens, 16 output tokens and three repetitions per length. Both used eager TP=1, chunk512, context16,384, FP8 KV512 MiB per rank, no MTP/LPA/fusion/APC and identical image/fixture bytes. The control retained all eight layers on one GPU; PP2 placed layers0–3 and4–7 on separate GPUs. Observation-source SHA256: `44fcceb70214a951df0e33739fd7a4b11288f517469d083a848e05db9bf671d4`; driver SHA256: `a2d0410e98af0bdd337653911e733f156d8b875926de4e4222accacb7e9f36c2`.
+Private runs `pipeline-v23-control-a` and `pipeline-v23-pp2-a` completed 64/2,048/8,192 input tokens, 16 output tokens and three repetitions per length. Both used eager TP=1, chunk 512, context 16,384, FP8 KV 512 MiB per rank, no MTP/LPA/fusion/APC and identical image/fixture bytes. The control retained all eight layers on one GPU; PP2 placed layers 0–3 and 4–7 on separate GPUs. Observation-source SHA256: `44fcceb70214a951df0e33739fd7a4b11288f517469d083a848e05db9bf671d4`; driver SHA256: `a2d0410e98af0bdd337653911e733f156d8b875926de4e4222accacb7e9f36c2`.
 
-All **198 stage transfers** matched every byte hash, shape and dtype of hidden/residual/post/comb on sender and receiver. All nine generated token sequences matched the PP1 control, and all observed tensors were finite. At64 tokens, layer outputs, active KDA state and chosen-token logprobs also matched exactly.
+All **198 stage transfers** matched every byte hash, shape and dtype of hidden/residual/post/comb on sender and receiver. All nine generated token sequences matched the PP1 control, and all observed tensors were finite. At 64 tokens, layer outputs, active KDA state and chosen-token logprobs also matched exactly.
 
 Longer inputs were not bitwise invariant. Across 1,584 layer observations containing 2,376 active KDA tensor observations, 677 layer rows differed between PP1 and PP2. The first difference was at layer 6 of the first 2K prefill chunk, beyond the transfer boundary. Both PP1 and PP2 also showed internal repeat variation despite repeated token sequences:
 
@@ -153,7 +153,7 @@ Both runs stopped without OOM. Minimum host available RAM was 71.82 GiB for the 
 
 ## Independent expert placement fixture (P21)
 
-The same byte-verified eight-layer model ran TP=2/PP=1 with EP off, on and restored off (`expert-v24-off-a`, `expert-v24-on-a`, `expert-v24-off-b`). Each arm used the same `b9ae526…` image, eager, one sequence, chunk512, context16,384, FP8 KV512 MiB per rank and no MTP/LPA/fusion/APC. Every arm completed three repetitions at 64/2,048/8,192 input tokens with 16 outputs and finite observed tensors. These truncated-model runs do not measure language-task quality.
+The same byte-verified eight-layer model ran TP=2/PP=1 with EP off, on and restored off (`expert-v24-off-a`, `expert-v24-on-a`, `expert-v24-off-b`). Each arm used the same `b9ae526…` image, eager, one sequence, chunk 512, context 16,384, FP8 KV 512 MiB per rank and no MTP/LPA/fusion/APC. Every arm completed three repetitions at 64/2,048/8,192 input tokens with 16 outputs and finite observed tensors. These truncated-model runs do not measure language-task quality.
 
 Actual `RoutedExperts` objects in all five MoE layers confirmed the intended transition. EP off retained 288 tensor-sharded experts per rank; EP on placed 144 complete experts per rank, with disjoint ownership covering all 288. `MarlinExperts` was selected throughout. MoE TP size changed 2→1 and EP size 1→2, while model TP remained 2 and DP/SP remained 1. The fixed runtime's `use_all2all_kernels` was false in this topology; no DeepEP invocation is claimed. Restored off recovered the original ownership. The observer also recorded actual loaded parameter shapes, dtypes and byte counts.
 
@@ -173,7 +173,7 @@ EP observer SHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a515
 
 ## Independent prefix-cache fixture (P19)
 
-`apc-fixture-v41-off/on/restored` used the byte-verified four-layer fixture with the V36 image recorded in [serial integration](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18). All arms used TP1/eager, one sequence, context16,384, chunk512 and FP8 KV512 MiB. MTP, LPA, fused unpack and async index checks were off. APC was the changed setting. All arms completed 13 input lengths, three cold/warm pairs per length, 16 output tokens per request and an interleaved-input check, then exited 0 without OOM. Host RAM minima were 89.20/98.04/100.48 GiB under a 32 GiB container cap and 4 GiB reserve.
+`apc-fixture-v41-off/on/restored` used the byte-verified four-layer fixture with the V36 image recorded in [serial integration](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18). All arms used TP1/eager, one sequence, context 16,384, chunk 512 and FP8 KV 512 MiB. MTP, LPA, fused unpack and async index checks were off. APC was the changed setting. All arms completed 13 input lengths, three cold/warm pairs per length, 16 output tokens per request and an interleaved-input check, then exited 0 without OOM. Host RAM minima were 89.20/98.04/100.48 GiB under a 32 GiB container cap and 4 GiB reserve.
 
 Although the requested block size was 256, the actual common cache block was 8,704 tokens. Warm requests through 8,704 input tokens reported zero cached tokens; 8,705 and 16,319 inputs each reused 8,704 tokens. The shorter no-hit results must not be counted as successful cache reuse or a quality check of that reuse.
 
@@ -184,7 +184,7 @@ Although the requested block size was 256, the actual common cache block was 8,7
 
 These fixture request times include 16 output tokens and may include shape-specific JIT in a first sample; they are not full-model performance claims. Through 8,705 inputs, generated tokens matched across all arms. At 16,319, every arm varied at the first token between the same two candidates: an exact tie or a 0.03125 logprob lead. Off/on pairs matched 3/6 times, while off/restored matched 5/6. Maximum within-arm shared-prefix logprob deltas were about 0.0632. Other lengths also showed probability variation without cache hits; no bitwise equivalence or cause attribution is claimed.
 
-**This fixture demonstrates actual cache reuse and bounded execution.** Its interleaved prompts were only 2K and had no hits, so they do not establish isolation of positively cached requests. The subsequent [full-model A/B/A](benchmarks.md#independent-full-model-prefix-caching-p19) supplies limited real-hit long-document, tool, resource/cancellation and restored-control evidence. Driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`. The default APC setting remains off; LPA/APC uses the separate P22 contract below.
+**This fixture demonstrates actual cache reuse and bounded execution.** Its interleaved prompts were only 2K and had no hits, so they do not establish isolation of positively cached requests. The subsequent [full-model A/B/A](benchmarks.md#independent-full-model-prefix-caching-p19) supplies limited real-hit long-document, tool, resource/cancellation and restored-control evidence. Driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`. The template default for APC was off at the time and is on now ([startup configuration](startup-configuration.md#distributed-defaults)); LPA/APC uses the separate P22 contract below.
 
 ## APC-first LPA cache isolation (P22)
 

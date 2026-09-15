@@ -1,6 +1,6 @@
 # 2台でのNCCL通信検証
 
-[English／実行コマンド](nccl-validation.md) · [QSFP準備](qsfp-network.ja.md) · [検証範囲](validation.ja.md)
+[English](nccl-validation.md) · [QSFP準備](qsfp-network.ja.md) · [検証範囲](validation.ja.md)
 
 [同梱の診断ツール](../tools/nccl_probe.py)は、2 rankで異なる値を持つテンソルを通信し、FP32・BF16のAllReduceを1 KiB／1 MiB／16 MiB／256 MiBで検査します。加えてFP32のAllGather・ReduceScatter・Broadcastも確認します。モデル重みはロードせず、フルモデルの合格証跡は生成しません。
 
@@ -8,11 +8,42 @@
 
 1. 両機で固定IPv4・HCA・RoCEv2 GID・peer宛経路を確認する。Dockerだけでなくホストの転送プロセスも確認し、帯域測定に他の負荷が重ならない時間を選ぶ。他作業を勝手に止めない。
 2. 同じソースと固定ベースイメージを使い、新しいコンテナ名・出力先を用意する。
-3. [英語版の実行例](nccl-validation.md#run-on-both-hosts)のrank・interface・HCA・GIDを各機の実測値へ置き換える。HEAD_IPは両方ともrank 0のアドレス。rank 0の29653番ポートが未使用か確認する。
-4. rank 1、続けてrank 0を起動する。待ち合わせは90秒、試験全体には外部から5分の期限を設ける。超えたら今回の2コンテナだけを停止し、ログを保存する。
+3. 各機のLinux checkoutで、次の例示値をrank・interface・HCA・GIDの実測値へ置き換える（rank 1は自機のinterface／HCA／IPを使う）。`HEAD_IP`は両方ともrank 0のアドレス。rank 0の29653番ポートが未使用か確認する。
+
+   ```sh
+   RANK=0
+   FABRIC_IF='REPLACE_WITH_OBSERVED_INTERFACE'
+   HCA='REPLACE_WITH_OBSERVED_HCA'
+   GID='REPLACE_WITH_OBSERVED_INDEX'
+   HEAD_IP='10.53.0.1'
+   RUN_ID='REPLACE_WITH_UNIQUE_RUN_ID'
+   IMAGE=$(python -c 'from glm53_setup.config import load_lock; print(load_lock()["image"])')
+   mkdir -p "records/$RUN_ID"
+   ```
+
+4. rank 1、続けてrank 0を速やかに起動する。待ち合わせは90秒、試験全体には外部から5分の期限を設ける。超えたら今回の2コンテナだけを両機で停止し、ログを保存する。
+
+   ```sh
+   docker run --name "glm53-nccl-$RUN_ID-rank$RANK" \
+     --gpus all --network host --memory 16g --memory-swap 16g --shm-size 1g \
+     --cap-add IPC_LOCK --ulimit memlock=-1:-1 \
+     --device /dev/infiniband:/dev/infiniband \
+     -e NCCL_NET=IB -e NCCL_IB_DISABLE=0 \
+     -e "NCCL_IB_HCA==$HCA" -e "NCCL_IB_GID_INDEX=$GID" \
+     -e NCCL_IB_ROCE_VERSION_NUM=2 -e NCCL_IB_ADDR_FAMILY=AF_INET \
+     -e NCCL_SOCKET_FAMILY=AF_INET -e "NCCL_SOCKET_IFNAME==$FABRIC_IF" \
+     -e "GLOO_SOCKET_IFNAME=$FABRIC_IF" \
+     -e NCCL_DEBUG=INFO -e NCCL_DEBUG_SUBSYS=INIT,NET,GRAPH \
+     -v "$PWD/tools/nccl_probe.py:/probe.py:ro" \
+     -v "$PWD/records/$RUN_ID:/out" \
+     --entrypoint python3 "$IMAGE" /probe.py \
+     --rank "$RANK" --head "$HEAD_IP" --port 29653 \
+     --output "/out/rank$RANK.json" >"records/$RUN_ID/nccl.log" 2>&1
+   ```
+
 5. 両rankのJSON、transportログ、イメージID、終了状態、同時負荷をまとめて判定する。
 
-Docker引数の`NCCL_IB_HCA==...`と`NCCL_SOCKET_IFNAME==...`は誤記ではありません。環境変数の値を`=名前`として渡し、前方一致ではなく対象deviceへ完全一致させます。[NCCL公式仕様](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html)
+Docker引数の`NCCL_IB_HCA==...`と`NCCL_SOCKET_IFNAME==...`は誤記ではありません。環境変数の値を`=名前`として渡し、前方一致ではなく対象deviceへ完全一致させます。[NCCL公式仕様](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html)を参照してください。分散用ポートは信頼できるfabric内に閉じます。
 
 ## 合格条件と数値の読み方
 

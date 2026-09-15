@@ -2,7 +2,7 @@
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
-This page records the MTP-off baseline and independent batching measurements. See the [MTP k=1 comparison](speculative-decoding.md#measured-k1-results) for the optional speculative profile.
+This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention) and the release-candidate, 200K and 256K real-input checks. MTP k=1/k=3 comparisons are in [speculative decoding](speculative-decoding.md); the current image-input defaults are in [image input at 200K](vision.md).
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -152,7 +152,7 @@ A separate 1024 capacity run, `capacity-v17-chunk1024-16kx2`, completed two requ
 
 ## Task grouping order comparison (P14)
 
-On 2026-09-13 (Asia/Tokyo), the P13 two-sequence, chunk512 profile with optimizations off compared two code, two translation and two summary tasks. The same six tasks repeated three times in mixed, same-task-pair and restored mixed order. All prompts used the same template and padding to reach 512 tokens, verified against the server tokenizer. Each phase used C2, seed42, temperature0, six warmup requests and 128 fixed output tokens. This is a synthetic throughput test using padding and `ignore_eos`; full task-completion quality was not scored.
+On 2026-09-13 (Asia/Tokyo), the P13 two-sequence, chunk 512 profile with optimizations off compared two code, two translation and two summary tasks. The same six tasks repeated three times in mixed, same-task-pair and restored mixed order. All prompts used the same template and padding to reach 512 tokens, verified against the server tokenizer. Each phase used C2, seed 42, temperature 0, six warmup requests and 128 fixed output tokens. This is a synthetic throughput test using padding and `ignore_eos`; full task-completion quality was not scored.
 
 | Metric | Mixed | Grouped | Restored mixed |
 |---|---:|---:|---:|
@@ -168,9 +168,9 @@ Private run: `task-grouping-v20b`. The fixed vLLM CustomDataset preserves JSONL 
 
 ## Independent Expert Parallel evaluation (P21)
 
-On 2026-09-13 (Asia/Tokyo), the full 45-layer model ran EP off→on→off with TP=2, DP=1 and two active sequences. All arms fixed source `ec9b86b`, image `sha256:7cb5f93f879da2c3cbbcadaf51d04d6567d778675033501f16afa645d43820a2`, Marlin W4A16, FP8 KV at 1 GiB per rank, context 16,384 and chunk512. MTP/LPA/fusion/Graphs/APC were off. Actual placement was inspected by RPC before timing; no layer-hash hooks or active profiler ran during benchmarks.
+On 2026-09-13 (Asia/Tokyo), the full 45-layer model ran EP off→on→off with TP=2, DP=1 and two active sequences. All arms fixed source `ec9b86b`, image `sha256:7cb5f93f879da2c3cbbcadaf51d04d6567d778675033501f16afa645d43820a2`, Marlin W4A16, FP8 KV at 1 GiB per rank, context 16,384 and chunk 512. MTP/LPA/fusion/Graphs/APC were off. Actual placement was inspected by RPC before timing; no layer-hash hooks or active profiler ran during benchmarks.
 
-The fixed vLLM random benchmark used seed42, 64 output tokens, one warmup request and **five requests per unit of client concurrency**. All 30 measured requests per arm completed with valid output counts and finite metrics. This differs from P13's repetition count and must not be treated as the same run. Private records: `full-v28-ep-off`, `full-v28-ep-on`, `full-v28-ep-restored`.
+The fixed vLLM random benchmark used seed 42, 64 output tokens, one warmup request and **five requests per unit of client concurrency**. All 30 measured requests per arm completed with valid output counts and finite metrics. This differs from P13's repetition count and must not be treated as the same run. Private records: `full-v28-ep-off`, `full-v28-ep-on`, `full-v28-ep-restored`.
 
 | Input tokens | Concurrent clients | EP off output tokens/s | EP on | Restored off |
 |---:|---:|---:|---:|---:|
@@ -192,11 +192,11 @@ Actual objects in all 42 MoE layers on both ranks verified 288 tensor-sharded ex
 
 SSE checks disconnected after three nonempty chunks and verified early generation stop before the 256-token limit, zero running/waiting requests and KV usage, no normal/error completion increment, and a successful follow-up in every arm. **The pinned vLLM internal-abort path removes request state before normal completion statistics, so its abort counter need not increase.** The initial baseline evaluator incorrectly required that increment and failed. That record was retained; after source inspection and evaluator checks, only cancellation was rerun on the same live configuration (`full-v28-ep-off-recheck-v29`). Completed timing/quality results were reused, and EP on/restored used the same corrected cancellation criterion.
 
-Resource limits were 112 GiB per container and a 4 GiB host reserve. Minimum available RAM was about 11.47/12.77 GiB in the baseline and 11.61/12.57 GiB with EP on. No OOM occurred and subsequent restarts completed, but peer shutdown still required forced termination with exit137. Production recovery and long-running operation remain unqualified.
+Resource limits were 112 GiB per container and a 4 GiB host reserve. Minimum available RAM was about 11.47/12.77 GiB in the baseline and 11.61/12.57 GiB with EP on. No OOM occurred and subsequent restarts completed, but peer shutdown still required forced termination with exit 137. Production recovery and long-running operation remain unqualified.
 
 ## Independent TP2 versus PP2 evaluation (P17)
 
-Matched timing completed for TP2→TP1/PP2→restored TP2 using the same v28 image/checkpoint. Every arm used one active sequence, context16,384, chunk512, FP8 KV at 1 GiB per rank, Marlin W4A16 and eager execution; MTP/LPA/fusion/EP/APC were off. PP split layers 24/21, placing 21 MoE layers on each stage. Profiler support was configured but inactive during timing/quality tests. Workload and repetitions match P21. Private runs: `parallel-v30-tp-control`, `parallel-v30-pp2`, `parallel-v30-tp-restored`.
+Matched timing completed for TP2→TP1/PP2→restored TP2 using the same v28 image/checkpoint. Every arm used one active sequence, context 16,384, chunk 512, FP8 KV at 1 GiB per rank, Marlin W4A16 and eager execution; MTP/LPA/fusion/EP/APC were off. PP split layers 24/21, placing 21 MoE layers on each stage. Profiler support was configured but inactive during timing/quality tests. Workload and repetitions match P21. Private runs: `parallel-v30-tp-control`, `parallel-v30-pp2`, `parallel-v30-tp-restored`.
 
 | Input tokens | Concurrent clients | TP2 output tokens/s | PP2 | Restored TP2 |
 |---:|---:|---:|---:|---:|
@@ -213,11 +213,11 @@ After PP timing/quality completed, the second profiler start segfaulted during P
 
 The saved 64-input/one-output trace observed 92 NCCL events per rank with TP2 and 6 with PP2 (four send/receive, two broadcast). This includes prefill and is not PP decode events per token. TP's paired 1/33-output difference observed 1,743 kernels/token, 92 NCCL events/token and approximately 46–47 ms/token of summed GEMV GPU intervals. Durations can overlap and must not be added to wall latency. Reduced communication did not establish faster generation.
 
-Before profiling, minimum head available memory under PP was about 4.27 GiB, including load/warmup, close to the 4 GiB experiment guard. It fell further after the failure. Keep normal TP2 and the standard 8 GiB reserve unchanged; the PP option remains experimental, with full-model capacity and recovery unqualified.
+Before profiling, minimum head available memory under PP was about 4.27 GiB, including load/warmup, close to the 4 GiB experiment guard. It fell further after the failure. TP2 stays the default; the 8 GiB reserve named here was the template value at the time, not a current default (see [startup configuration](startup-configuration.md#distributed-defaults)). The PP option remains experimental, with full-model capacity and recovery unqualified.
 
 ## Independent CPU synchronization reduction (P08)
 
-The same v28 image ran synchronous→asynchronous→restored synchronous index checks with TP2, one sequence, eager execution, context16,384, chunk512 and FP8 KV at 1 GiB per rank. MTP/LPA/fusion/EP/APC/Graphs were off. Asynchronous execution retains range checking through a device assertion. Inputs came from the retained LLM-jp validation stream, not the test split.
+The same v28 image ran synchronous→asynchronous→restored synchronous index checks with TP2, one sequence, eager execution, context 16,384, chunk 512 and FP8 KV at 1 GiB per rank. MTP/LPA/fusion/EP/APC/Graphs were off. Asynchronous execution retains range checking through a device assertion. Inputs came from the retained LLM-jp validation stream, not the test split.
 
 After warmup, each one-output condition used five measurements and each 128-output condition three. Medians below cover the whole request; 128-output timings include prefill. Private run: `sync-v35-full`.
 
@@ -230,7 +230,7 @@ After warmup, each one-output condition used five measurements and each 128-outp
 | 8,192 | 1 | 24.6281 | 24.5649 | 24.6000 |
 | 8,192 | 128 | 33.7452 | 33.3316 | 33.5738 |
 
-Every arm passed eight task answers, two tool round trips and SSE disconnect/follow-up checks. **Accept as an opt-in within this independent eager scope.** The 128-output improvement over both controls was approximately 2.2–2.5% for short inputs, 1.8–1.9% at 2K and 0.7–1.2% at 8K. Prefill-only differences were small. Keep `index_checks="auto"` as the default (synchronous in eager); The serial MTP/LPA/fusion combination is evaluated separately under P18 below.
+Every arm passed eight task answers, two tool round trips and SSE disconnect/follow-up checks. **Accept as an opt-in within this independent eager scope.** The 128-output improvement over both controls was approximately 2.2–2.5% for short inputs, 1.8–1.9% at 2K and 0.7–1.2% at 8K. Prefill-only differences were small. `index_checks="auto"` (synchronous in eager) was kept as the default at the time; the template now ships `async` ([startup configuration](startup-configuration.md#distributed-defaults)). The serial MTP/LPA/fusion combination is evaluated separately under P18 below.
 
 After timing/quality, a fresh server process used one profiler start/stop. Six off/async/restored 1/33-output requests were separated by one-second idle gaps. Both ranks yielded six distinct GPU windows; off/restored kernel, launch and NCCL counts matched before computing deltas.
 
@@ -246,7 +246,7 @@ Kernel launches increased: this small gain is associated with reduced synchroniz
 
 ## Serial integration of MTP, LPA, fused unpack and async checks (P18)
 
-On 2026-09-13 (Asia/Tokyo), `full-integration-v36` compared LPA off/on/restored while holding MTP k=3, fused unpack and checked asynchronous indices fixed. Both ranks used image `sha256:2e5d0c49bc8f536364931f4599f169ea21108efcb33be65316912d88f240be9f`, source `5f0856d`, TP2, eager, one sequence, context16,384, chunk512 and FP8 KV1 GiB per rank. LPA used cut32/tail512 with the fixed affine projector; Graphs, EP, PP and APC were off. Profile fingerprint: `3c61cd10dd7dcff44f730d78eb78aa0d09e07d159f58b3f090fd2ea6b6ed3422`.
+On 2026-09-13 (Asia/Tokyo), `full-integration-v36` compared LPA off/on/restored while holding MTP k=3, fused unpack and checked asynchronous indices fixed. Both ranks used image `sha256:2e5d0c49bc8f536364931f4599f169ea21108efcb33be65316912d88f240be9f`, source `5f0856d`, TP2, eager, one sequence, context 16,384, chunk 512 and FP8 KV 1 GiB per rank. LPA used cut32/tail512 with the fixed affine projector; Graphs, EP, PP and APC were off. Profile fingerprint: `3c61cd10dd7dcff44f730d78eb78aa0d09e07d159f58b3f090fd2ea6b6ed3422`.
 
 Median request time in seconds, with profiling disabled and a warmup excluded from each condition. One-output cases have five measured repetitions; 128-output cases have three.
 
@@ -259,15 +259,15 @@ Median request time in seconds, with profiling disabled and a warmup excluded fr
 
 LPA added approximately 15.2%/18.9–19.0% improvement to the 2K/8K one-output controls, and 8.7–9.3%/12.2–14.0% to the corresponding 128-output requests. The latter include prefill; they are not decode-only speedups. These are measured combinations, not products of independent gains. MTP was active: the three combined 128-output samples at 2K/8K recorded 146/136 drafts, 438/408 proposed tokens and 236/245 accepted tokens.
 
-The capture/off/oracle-full-MLP/oracle/off ladder produced identical 16-token texts. The 24 fixed tasks scored 22/23/24 under the strict formatting criteria, with no case where both native controls passed and the combined arm failed. The failures contained the correct numerical answer with unwanted explanation/formatting; they remain failures. All three long-context tool round trips passed, and worker reports confirmed the expected historical-query skips at layers35/39/43 only with LPA enabled. This is limited task evidence, not unrestricted equivalence or general quality qualification.
+The capture/off/oracle-full-MLP/oracle/off ladder produced identical 16-token texts. The 24 fixed tasks scored 22/23/24 under the strict formatting criteria, with no case where both native controls passed and the combined arm failed. The failures contained the correct numerical answer with unwanted explanation/formatting; they remain failures. All three long-context tool round trips passed, and worker reports confirmed the expected historical-query skips at layers 35/39/43 only with LPA enabled. This is limited task evidence, not unrestricted equivalence or general quality qualification.
 
 `integration-ops-v38` separately completed 16,320 input plus 64 output tokens in all three arms, with no preemption, empty scheduler/KV afterward and a successful following request. Peak KV usage was approximately 0.630. Every arm also passed a 2K-input SSE disconnect after three nonempty chunks, early generation stop at 9 tokens and a following request. LPA-on worker reports confirmed active approximation during both capacity and cancellation tests. The [FreedomBench recheck and six-question long-prefix pilot](freedombench.md#integration-recheck-and-long-prefix-pilot) are reported separately.
 
-The whole run, including load, used a 112 GiB container cap and a 4 GiB host reserve. Minimum available RAM was 8.278/9.330 GiB on rank0/1. Both containers stopped without OOM; head exited0 and peer137 after explicit stop. **Accept this serial combination for the measured experimental scope.** Default settings and the normal 8 GiB reserve remain unchanged. This does not qualify Graphs, APC, batching/MTP combinations, larger contexts, sustained load, harness integration or production recovery; no routine-deployment receipt is issued.
+The whole run, including load, used a 112 GiB container cap and a 4 GiB host reserve. Minimum available RAM was 8.278/9.330 GiB on rank 0/1. Both containers stopped without OOM; head exited 0 and peer 137 after explicit stop. **Accept this serial combination for the measured experimental scope.** Template defaults, including the 8 GiB reserve of that time, were left unchanged by this run; current defaults are in [startup configuration](startup-configuration.md#distributed-defaults). This does not qualify Graphs, APC, batching/MTP combinations, larger contexts, sustained load, harness integration or production recovery; no routine-deployment receipt is issued.
 
 ## Independent context sweep through 32K (P15)
 
-`context-v40-32k` completed on 2026-09-13 (Asia/Tokyo) using the same V36 image, TP2/eager, one sequence, chunk512 and fixed FP8 KV1 GiB per rank. Context was 32,768; MTP/LPA/fusion/async checks/Graphs/APC/EP/PP were off. The 112 GiB container cap and 4 GiB host reserve remained active. Profile fingerprint: `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e`.
+`context-v40-32k` completed on 2026-09-13 (Asia/Tokyo) using the same V36 image, TP2/eager, one sequence, chunk 512 and fixed FP8 KV 1 GiB per rank. Context was 32,768; MTP/LPA/fusion/async checks/Graphs/APC/EP/PP were off. The 112 GiB container cap and 4 GiB host reserve remained active. Profile fingerprint: `3c03f3bbdb67c8c766b7430456583e4b5df5517c61300bc83bc93a61cd8f3e8e`.
 
 Each input/output condition used one excluded warmup and three measured requests, with profiling disabled. The fixed LLM-jp validation stream was truncated to the stated token lengths.
 
@@ -285,7 +285,7 @@ All 30 measured requests and 10 warmups completed their full output budgets, wit
 
 ## Independent full-model prefix caching (P19)
 
-`apc-full-v43-off/on/restored` completed with the V36 image, TP2/eager, one sequence, context 32,768, chunk512 and fixed FP8 KV1 GiB per rank. MTP/LPA/fusion/async checks/Graphs/EP/PP were off; only APC changed. The three profiles and all compared token arrays were checked for equality after normalizing that one flag. APC-on fingerprint: `f8e3c6ea72dfc1c61afdb2fcd67b1432e2fbcf021dd0613bda0dfb90ab223823`.
+`apc-full-v43-off/on/restored` completed with the V36 image, TP2/eager, one sequence, context 32,768, chunk 512 and fixed FP8 KV 1 GiB per rank. MTP/LPA/fusion/async checks/Graphs/EP/PP were off; only APC changed. The three profiles and all compared token arrays were checked for equality after normalizing that one flag. APC-on fingerprint: `f8e3c6ea72dfc1c61afdb2fcd67b1432e2fbcf021dd0613bda0dfb90ab223823`.
 
 Here, cold means a new prefix with model weights already loaded. Fixed unique leading identifiers produced cache misses; an immediate identical request tested reuse. Each length had one excluded warmup pair and three measured cold/repeat pairs: 18 measured requests per arm, all with one output token. Periodic cache/generation metrics were allowed to settle outside the latency interval.
 
@@ -299,11 +299,11 @@ The near-complete 8,705-token hit leaves only one input token to process; its ap
 
 All three arms passed six long extraction/revisit requests, a long tool round trip and 12K-input SSE disconnect/follow-up. The 12,763-token document requests deliberately interleaved distinct documents; all three APC-on revisits had 8,704 cached tokens and correct answers. The tool-result continuation also reused 8,704 tokens and returned the expected value. All cold-prefix requests had zero hits. These are limited task checks, not general language-quality certification.
 
-Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload; default remains off.** APC 32K request capacity, MTP/fusion/Graphs combinations and broad business-use qualification are not established by the configured context limit. LPA coexistence is evaluated separately under the [P22 exact-cache contract](apc-lpa-design.md).
+Container caps were 112 GiB with 4 GiB host reserves. Whole-run RAM minima for off/on/restored were 11.445/11.489/11.495 GiB on head and 12.726/12.620/12.586 GiB on peer; the first off run also includes the 32K sweep. Every head stopped with exit 0, every peer with exit 137, and none was OOM-killed. **Accept APC for the measured repeated-long-prefix, serial experimental workload.** The template default was off at the time and is on now ([startup configuration](startup-configuration.md#distributed-defaults)). APC 32K request capacity, MTP/fusion/Graphs combinations and broad business-use qualification are not established by the configured context limit. LPA coexistence is evaluated separately under the [P22 exact-cache contract](apc-lpa-design.md).
 
 ## APC-first LPA crossover measurement (P22)
 
-On 2026-09-13 (Asia/Tokyo), `p22-calibration-v51` and `p22-short-calibration-v54` used the same server image `sha256:8cb2babff5524c808d112c3340e7d6f6cbbc84e6f5840a9cad66b1c2bc7dfd26` (source `4b83f11`), profile fingerprint `7e62b6e4de703532c04af9218d3ced7b512db0bd66994f5a4aea717bfd95fd18`. TP2/eager, one sequence, context32,768, chunk512, FP8 KV1 GiB/rank and APC were fixed. LPA used cut32/tail512 and the existing affine projector; MTP, fusion, async checks, Graphs and tracing were off. The calibration threshold was deliberately zero.
+On 2026-09-13 (Asia/Tokyo), `p22-calibration-v51` and `p22-short-calibration-v54` used the same server image `sha256:8cb2babff5524c808d112c3340e7d6f6cbbc84e6f5840a9cad66b1c2bc7dfd26` (source `4b83f11`), profile fingerprint `7e62b6e4de703532c04af9218d3ced7b512db0bd66994f5a4aea717bfd95fd18`. TP2/eager, one sequence, context 32,768, chunk 512, FP8 KV 1 GiB/rank and APC were fixed. LPA used cut32/tail512 and the existing affine projector; MTP, fusion, async checks, Graphs and tracing were off. The calibration threshold was deliberately zero.
 
 Every timed request followed a cache reset; H>0 cases first primed the exact prefix outside timing. The scheduler's actual N/H/R and omitted queries were checked on both ranks. Each row below contains five one-output measurements per arm after one excluded warmup per arm, in repeated ordinary/LPA/restored order. Inputs used the retained LLM-jp validation split. R is `max(0,N-512-H)`; times include the complete one-output API request, not just a GPU event interval.
 
@@ -338,7 +338,7 @@ Each speed arm has three measured 128-output requests after an excluded warmup. 
 
 All scheduled speed requests completed. Draft/accepted-token counters increased during the measurement windows, confirming active MTP; those windows include warmup/priming and are not per-arm acceptance estimates. Strict task scores were 21/24, 24/24 and 23/24. The failures contained correct numerical answers with unwanted explanation or decoration. No task passed both ordinary controls and failed only LPA. All three long tool round trips passed.
 
-The combined run also completed 32,704 input + 64 output tokens in all three arms without preemption (80.596/64.689/80.593 s). A cold approximate request left H=0 for the following ordinary request; only ordinary recomputation made H=9,216 reusable. Disconnecting after three nonempty SSE chunks stopped at 9 generated tokens and a follow-up request completed. Native HTTP400 handling for invalid LPA options and reserved-policy injection passed, as did R=127/128/129 boundary checks. Actual speculative cursor corrections were observed in full-model generation. These are scoped functional/operational results; final held-out retrieval and production qualification are separate.
+The combined run also completed 32,704 input + 64 output tokens in all three arms without preemption (80.596/64.689/80.593 s). A cold approximate request left H=0 for the following ordinary request; only ordinary recomputation made H=9,216 reusable. Disconnecting after three nonempty SSE chunks stopped at 9 generated tokens and a follow-up request completed. Native HTTP 400 handling for invalid LPA options and reserved-policy injection passed, as did R=127/128/129 boundary checks. Actual speculative cursor corrections were observed in full-model generation. These are scoped functional/operational results; final held-out retrieval and production qualification are separate.
 
 ### Repeated-input tradeoff
 
@@ -355,7 +355,7 @@ The combined profile was 20.6%/28.4% slower in these exact-primed, 128-output ca
 
 ## APC history retention baseline
 
-`history-single-v68` extended P19/P22 with first edits and branches at 10/50/90%, appends, alternating conversations, eviction pressure and actual pool/block boundaries. It used fixed image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33`, TP2/eager/one sequence, context32K/chunk512, FP8 KV1 GiB per rank, no MTP/fusion/async checks, and LPA cut32/tail512/B128. The pinned native retention interval was 0. Exact priming preceded each exact/LPA/restored variant; only validation-split corpus data was used.
+`history-single-v68` extended P19/P22 with first edits and branches at 10/50/90%, appends, alternating conversations, eviction pressure and actual pool/block boundaries. It used fixed image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33`, TP2/eager/one sequence, context 32K/chunk512, FP8 KV 1 GiB per rank, no MTP/fusion/async checks, and LPA cut32/tail512/B128. The pinned native retention interval was 0. Exact priming preceded each exact/LPA/restored variant; only validation-split corpus data was used.
 
 All 21 variants and 21 primes returned the requested code, as did five alternating-conversation requests and twelve pressure histories plus the before/after revisit. Actual eviction was observed, and all nine pool/scheduler-boundary cases completed. Independent complete-identifier checking confirmed all 61 scored answers. No stale or mixed code was observed within this matrix. These functional results do not establish bitwise repeatability, concurrency or a long-duration SLA.
 
@@ -373,7 +373,7 @@ The candidate improved this first-midpoint-edit workload by **27.6%** against bo
 
 ### Final combined retention regression
 
-`p22-final-regression-v73` and `history-final-combined-v73` used source `f3167d4`, image `sha256:e12070943ced2ef145a565416a1b50bcfefa7d258593810c89a97650de10b7f6`: TP2/eager/one sequence, 32K/chunk512, KV2 GiB/rank, MTP3, fused unpack, asynchronous index checks, APC, LPA cut32/tail512/B128 and native `dense` checkpoint retention. This image does **not** include the subsequently added [canonical candidate ordering](candidate-order.md).
+`p22-final-regression-v73` and `history-final-combined-v73` used source `f3167d4`, image `sha256:e12070943ced2ef145a565416a1b50bcfefa7d258593810c89a97650de10b7f6`: TP2/eager/one sequence, 32K/chunk512, KV 2 GiB/rank, MTP3, fused unpack, asynchronous index checks, APC, LPA cut32/tail512/B128 and native `dense` checkpoint retention. This image does **not** include the subsequently added [canonical candidate ordering](candidate-order.md).
 
 Strict content-and-format scores were ordinary 20 / LPA 24 / restored 23 out of 24, with no LPA-only regression. Failed ordinary/restored answers contained the correct number with extra explanation; their strict failures remain recorded. All three tool round trips, SSE cancellation followed by another request, and 32,704-input/64-output capacity requests passed. Capacity request times were ordinary 79.281 / LPA 63.719 / restored 78.779 seconds, with zero preemption increase in each arm.
 
@@ -393,7 +393,7 @@ On 2026-09-14 (Asia/Tokyo), `release-200k-reserve 4` measured the combined profi
 
 ### sparkDash
 
-Stock DecodeBench from sparkDash commit `e03b9d624e7135d6e82b4c8fc94ea0ddcf300547` targeted the local GLM over HTTP: concurrency1, 128 output tokens, temperature 0/top_p 1, a 32-token warmup per job, four prompt types and three runs each. All 12 streams succeeded and each generated 128 tokens. Values below are medians over three runs.
+Stock DecodeBench from sparkDash commit `e03b9d624e7135d6e82b4c8fc94ea0ddcf300547` targeted the local GLM over HTTP: concurrency 1, 128 output tokens, temperature 0/top_p 1, a 32-token warmup per job, four prompt types and three runs each. All 12 streams succeeded and each generated 128 tokens. Values below are medians over three runs.
 
 | Prompt | Decode (token/s) | TTFT (ms) |
 |---|---:|---:|
@@ -406,7 +406,7 @@ Decode uses sparkDash's first-to-last-token window and usage counts. Its stock p
 
 ### tool-eval-bench
 
-Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b0c`) ran all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking=true, a 4,096-token output budget, 600-second request timeout and at most eight turns. Overall score: **90/100 (124/138 points)**; 58 pass, 8 partial and 3 fail. All 69 were scored, completion100%, no infrastructure exclusions. Optional Hard Mode was not included.
+Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b0c`) ran all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking=true, a 4,096-token output budget, 600-second request timeout and at most eight turns. Overall score: **90/100 (124/138 points)**; 58 pass, 8 partial and 3 fail. All 69 were scored, completion 100%, no infrastructure exclusions. Optional Hard Mode was not included.
 
 | Failed scenario | Observation |
 |---|---|
@@ -424,18 +424,18 @@ After those three suites, the same profile processed long inputs built by repeat
 
 | Check | Input tokens | Generated tokens | Whole-request time | Result |
 |---|---:|---:|---:|---|
-| Maximum capacity | 204,736 | 64 | 473.047 s | Completed204,800 total tokens; a 64-output, ignore-EOS capacity probe with finite generated-token logprobs |
+| Maximum capacity | 204,736 | 64 | 473.047 s | Completed 204,800 total tokens; a 64-output, ignore-EOS capacity probe with finite generated-token logprobs |
 | Three-position reference | 200,095 | 83 | 454.082 s | All three identifiers at beginning/middle/end correct; stop finish |
 
-Both checks had zero additional preemptions and no running/waiting requests after completion. On both ranks, LPA skipped 204,224/199,583 queries respectively at each of layers35/39/43, proving approximation actually ran. A short arithmetic follow-up also passed; both supervisors and the API remained running. Two-second memory samples covering loading, all suites and final verification reached minima of 5.198/6.287 GiB available. There was no reserve stop or OOM.
+Both checks had zero additional preemptions and no running/waiting requests after completion. On both ranks, LPA skipped 204,224/199,583 queries respectively at each of layers 35/39/43, proving approximation actually ran. A short arithmetic follow-up also passed; both supervisors and the API remained running. Two-second memory samples covering loading, all suites and final verification reached minima of 5.198/6.287 GiB available. There was no reserve stop or OOM.
 
 These results supported the earlier distributed serial defaults of 200K, KV 2.5 GiB per rank, reserve 4 GiB and no deadline. Each long check is one capacity/limited-reference trial; it does not qualify numerical identity, every 200K history-edit pattern, multiple sequences, general quality or long-term reliability. Times include prefill and are whole-request latencies, not warm identical-prefix reuse speeds.
 
-Earlier tuning attempts with KV 4 GiB/reserve 5 GiB stopped during initialization at minimum availability4.945/4.984 GiB; KV 3 GiB/reserve 5 GiB stopped near initial generation at4.962 GiB on the head. These were reserve stops, not OOM. The earlier TLS-mismatched sparkDash jobs and disconnected tool-eval run are preserved as invalid measurements and excluded from the valid results above.
+Earlier tuning attempts with KV 4 GiB/reserve 5 GiB stopped during initialization at minimum availability 4.945/4.984 GiB; KV 3 GiB/reserve 5 GiB stopped near initial generation at 4.962 GiB on the head. These were reserve stops, not OOM. The earlier TLS-mismatched sparkDash jobs and disconnected tool-eval run are preserved as invalid measurements and excluded from the valid results above.
 
 ### Real-input checks at 256K
 
-On 2026-09-14 (Asia/Tokyo), the existing combined image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` was restarted at **262,144 input-plus-output tokens with FP8 KV 3 GiB per rank**. Profile fingerprint: `4bd8232fc2af58e8938c7a4b99f3c13f90126e8da38e2ddf43a5e2100b4931f6`. Only context and KV changed from the 200K run above: TP2/eager/one sequence, chunk512, MTP3, LPA cut32/tail512/B128, APC/dense retention, fused unpack, async index checks, the 4 GiB host reserve and no lifetime deadline were retained.
+On 2026-09-14 (Asia/Tokyo), the existing combined image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` was restarted at **262,144 input-plus-output tokens with FP8 KV 3 GiB per rank**. Profile fingerprint: `4bd8232fc2af58e8938c7a4b99f3c13f90126e8da38e2ddf43a5e2100b4931f6`. Only context and KV changed from the 200K run above: TP2/eager/one sequence, chunk 512, MTP3, LPA cut32/tail512/B128, APC/dense retention, fused unpack, async index checks, the 4 GiB host reserve and no lifetime deadline were retained.
 
 The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp validation corpus and method were reused, resetting prefix cache before each long request; both ranks reported zero cached-prefix tokens. Each case ran once, with a request timeout of 1,800 seconds.
 

@@ -1,8 +1,17 @@
 # 運用手順 — ベータ版
 
-[English](operations.ja.md)
+[English](operations.md)
 
 **通常運用としてのTP=2デプロイは、まだ検収されていません。** 直列のフルモデル参照profileには[実験結果](validation.ja.md#フルモデルtp2の実験範囲)と[初期ベンチ](benchmarks.ja.md)がありますが、ガード付きの通常ランチャーは候補実装のままです。
+
+## 二つのランチャー
+
+checkoutには起動経路が二つあり、一方の証拠は他方の検収になりません。
+
+| コマンド | 役割 | 状態 |
+|---|---|---|
+| `python -m glm53_setup startup …` | [起動設定TOML](startup-configuration.ja.md)で動く実験用referenceランチャーと直列クライアント。両rankの[切替・復旧手順](launch-safety.ja.md#全レール検査と両rankの切替)はこれを包む | 本リポジトリの全モデル実測はすべてこの経路で行った。実験用であり、通常運用の検収ではない |
+| `python -m glm53_setup service …` | `state/site.json` と[フルモデルの起動ゲート](#フルモデルの起動ゲート)を持つ、ガード付きの通常運用候補 | `plan`・`preflight` は確認用。`start` はロックのbase imageを選択したままで、そのnative GB10 NoPE経路には動作阻害があり、まだ生成手順のない検収証跡を要求する。reference imageをビルドしても切り替わらない |
 
 ## 資材の保管場所とパス
 

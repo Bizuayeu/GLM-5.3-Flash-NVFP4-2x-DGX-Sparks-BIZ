@@ -32,7 +32,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P19 APC | 通常計算由来の状態だけを共有cacheに登録し、同一prefixのprefillを省略する | 受入（実測した直列・長文prefix再利用の実験用途） | on（`cache.prefix_caching=true`） | 16,320入力の再要求で約79%短縮。2Kは改善なし、長文2件のcoldは1.1〜1.7%悪化 | [P19](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | checkpoint保持（`cache.prefix_cache_retention_interval`） | KDA checkpointをscheduler blockごとに保持し、途中編集・分岐後に復元できるHを伸ばす | 採用（通常priming済み・直列の途中編集用途）。実測したarmは標準の間隔4,352。`dense`は実測した整列配置で同じ標準KDA maskになるが、最終併用の検収は別 | `dense`（キー省略時のruntime既定は0） | 約16K入力の50%位置編集・1出力で約27.6%短縮（A/B/A各5回）。編集・分岐・追記・別会話再訪・evictionの履歴試験を通過 | [保持A/B/A](benchmarks.ja.md#apcの履歴保持の基準検査)／[契約](launch-safety.ja.md#apcの履歴検証) |
-| P22 APC優先LPA | 復元したHの先を、残余R＝N−T−Hが閾値Bを超えるときだけ近似する。近似状態は要求内に閉じる | 完了（校正・限定品質・最終併用・held-out）。B=128は保守的な候補閾値で、普遍的な損益分岐定数ではない | on（APC＋LPA、`lpa.break_even_tokens=128`） | H=0／4,352の12条件すべてでLPAが両対照より速い | [設計](apc-lpa-design.ja.md)／[校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22) |
+| P22 APC優先LPA | 復元したHの先を、残余R＝N−T−Hが閾値Bを超えるときだけ近似する。近似状態は要求内に閉じる | 完了（校正・限定品質・最終併用・held-out）。B=128は保守的な候補閾値で、普遍的な損益分岐定数ではない | APCはon、LPAはテンプレートでoff（有効化時に `lpa.break_even_tokens=128` を適用） | H=0／4,352の12条件すべてでLPAが両対照より速い | [設計](apc-lpa-design.ja.md)／[校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22) |
 
 ### prefill
 
@@ -86,7 +86,7 @@ flowchart LR
 
 | 用途 | 構成 | 根拠 | 注意 |
 |---|---|---|---|
-| 生成重視・直列 | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | 1系列・eager。業務検収・ハーネスは未了 |
+| 生成重視・直列 | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | 1系列・eager。LPAはバッチ用opt-in（テンプレートではoff）で、共有prefixの再利用を失う。業務検収・ハーネスは未了 |
 | prefix再利用重視 | APC＋LPA（P22、B=128）＋`dense`保持、MTPなし | 同一入力再利用・途中編集のA/B/A | 通常primingで共有cacheを育てる。cold処理は小幅悪化 |
 | throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
 | 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収未了のベータ版 |

@@ -15,10 +15,20 @@ The project is a checkout-local operator toolkit. It does not contain model weig
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/validation/run_lpa.py`, `lpa_corpus.py`, `train_lpa.py` | LPA fixture verification, corpus preparation and projector fitting |
 | `config/` | Model/image pins; no credentials or measured site configuration |
-| `examples/` | Site template containing illustrative values only |
+| `examples/` | Site, startup and MTP speculative templates containing illustrative values only |
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |
-| `tests/`, `tools/` | CPU contracts and publication checks |
+| `glm53_setup/validation/freedombench.py`, `freedom_scoring.py`, `apc_history.py`, `profile_trace.py`, `benchmark_*.py` | FreedomBench runner and scoring, APC history regression, trace event accounting and component benchmarks |
+| `glm53_setup/runtime/candidate_order.py` | Canonical logical candidate order at the shared sparse-MLA boundary ([candidate order](candidate-order.md)) |
+| `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |
+| `glm53_setup/runtime/fused_unpack.py`, `fused_nope*.py`, `graph_policy.py`, `patch_graph_prefill.py` | Fused FP8 unpack kernel, experimental fused NoPE attention prototypes and the decode-Graph policy |
+| `glm53_setup/runtime/indexer_*.py`, `component_worker.py` | CSA2 indexer observation and reuse components, and the exclusive component diagnostics worker ([indexer reuse](indexer-reuse.md)) |
+| `glm53_setup/runtime/pipeline_state.py`, `patch_pipeline*.py` | PP fixture transport and layout patches (P17) |
+| `glm53_setup/cluster.py`, `switch.py`, `launch_assets.py`, `fabric.py` | Two-rank pre-stop checks, owned switch/recovery transaction, read-only launch identities and RoCE rail checks ([launch contracts](launch-safety.md)) |
+| `glm53_setup/model_http.py`, `io.py` | Model-API-scoped HTTP transport that never follows redirects; durable local state helpers |
+| `tests/` | CPU contracts |
+| `tools/` | `check_publication.py` (publication audit), `assess_benchmark.py`, `check_prefix_cache.py`, `nccl_probe.py`, `prepare_mtp_view.py` |
+| `examples/zcode-hooks/` | ZCode existing-file guard hook and its setup ([harnesses](harnesses.md)) |
 | `LICENSES/` | Preserved upstream license texts |
 | `state/`, `records/` | Local mutable state and experiment evidence, excluded from distribution |
 

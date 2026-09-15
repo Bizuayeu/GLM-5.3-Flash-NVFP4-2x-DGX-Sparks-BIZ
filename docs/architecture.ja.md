@@ -1,6 +1,6 @@
 # 構成
 
-[English](architecture.ja.md)
+[English](architecture.md)
 
 本プロジェクトは、checkout内で完結する運用者向けのツールキットです。モデル重みも、遠隔管理されるサービスも含みません。
 
@@ -15,10 +15,20 @@
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/validation/run_lpa.py`、`lpa_corpus.py`、`train_lpa.py` | LPA fixtureの検査、コーパスの準備、projectorの学習 |
 | `config/` | モデル・imageの固定値。認証情報や実測したサイト設定は持たない |
-| `examples/` | 例示値だけを含むサイト設定のテンプレート |
+| `examples/` | 例示値だけを含むサイト設定・起動設定・MTP投機設定のテンプレート |
 | `docker/` | imageの構築。base digestはビルドコマンドがロックから渡す |
 | `requirements/` | ホスト側ツールの固定した依存 |
-| `tests/`、`tools/` | CPU契約と公開監査 |
+| `glm53_setup/validation/freedombench.py`、`freedom_scoring.py`、`apc_history.py`、`profile_trace.py`、`benchmark_*.py` | FreedomBenchの実行と採点、APC履歴の回帰試験、traceのevent集計、部品ベンチ |
+| `glm53_setup/runtime/candidate_order.py` | 共通のsparse-MLA境界での論理候補順序の正規化（[候補順序](candidate-order.ja.md)） |
+| `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
+| `glm53_setup/runtime/fused_unpack.py`、`fused_nope*.py`、`graph_policy.py`、`patch_graph_prefill.py` | FP8 unpack融合kernel、実験的な融合NoPE attentionの試作、decode Graphの方針 |
+| `glm53_setup/runtime/indexer_*.py`、`component_worker.py` | CSA2のindexer観測・再利用部品と、排他的な部品診断worker（[Indexer再利用](indexer-reuse.ja.md)） |
+| `glm53_setup/runtime/pipeline_state.py`、`patch_pipeline*.py` | PP fixtureの転送とlayoutのpatch（P17） |
+| `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 両rankの停止前検査、所有権つきの切替・復旧、読み取り専用の起動識別情報、RoCEレール検査（[起動契約](launch-safety.ja.md)） |
+| `glm53_setup/model_http.py`、`io.py` | モデルAPIに限定しredirectに従わないHTTP transport、ローカル状態の永続化helper |
+| `tests/` | CPU契約 |
+| `tools/` | `check_publication.py`（公開監査）、`assess_benchmark.py`、`check_prefix_cache.py`、`nccl_probe.py`、`prepare_mtp_view.py` |
+| `examples/zcode-hooks/` | ZCodeの既存ファイルガードhookと導入手順（[ハーネス](harnesses.ja.md)） |
 | `LICENSES/` | 上流ライセンス原文の保持 |
 | `state/`、`records/` | ローカルの可変状態と実験の証跡。配布対象外 |
 
