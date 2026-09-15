@@ -21,7 +21,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換�
 | 検証範囲 | MSI EdgeXpertでの結果を掲載。他のDGX Spark互換機も機種名だけで対応済みとはせず、ドライバー・GPU・メモリ・通信を[導入手順](SETUP.ja.md#1-必要情報を集め2台とも現状確認する)で検収する。Windowsは管理・CPU検査用で、推論はLinux実機上で行う |
 | 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。TP=2でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.ja.md#資材の保管場所とパス) |
 
-配布するのはソース・固定参照・ビルド手順です。重みと完成Dockerイメージは同梱せず、利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAは本体と別の学習済み補助器を使います。[資材の区別と配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。
+ソースcheckoutにはコード・固定参照・ビルド手順を含みます。本体checkpointと完成Dockerイメージは利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAの学習済み補助器は独立した[GitHub Release添付物](docs/lpa.ja.md#学習済みprojectorの取得)として提供します。[資材の区別・配布ファイル構成・配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。
 
 NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin **W4A16**で実行しており、NVIDIAのW4A4 recipeとは演算精度が異なります。[精度と検証範囲](docs/validation.ja.md)を参照してください。
 
@@ -31,6 +31,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 |---|---|---|
 | 独自のセットアップコード・文書 | **Apache-2.0** | 本リポジトリ |
 | GLM-5.3-Flash NVFP4 重み | **MIT**（固定NVIDIAモデルカードの表記。上流Z.aiモデルもMIT） | 利用者が取得。同梱しない |
+| LPA cut32補助重み | **Apache-2.0**。学習データの通知は別途保持 | 任意の[Release添付物](docs/lpa.ja.md#学習済みprojectorの取得)。Git追跡外 |
 | 完成Dockerイメージ | 同梱物ごと（CUDA・Torch・NCCL等）。一括して一色とは扱わない | 利用者が固定の公式base imageから構築 |
 | ZCode／Claude Codeハーネス | 各製品の規約 | 別途導入。本リポジトリで再許諾しない |
 

@@ -15,16 +15,32 @@ checkoutには起動経路が二つあり、一方の証拠は他方の検収に
 
 ## 資材の保管場所とパス
 
-本節がデプロイ時の保管パスの正典です。モデルID・revision・base imageのdigestは[runtime.lock.json](../config/runtime.lock.json)で固定し、本リポジトリは重みを配布しません。運用者固有のホスト名、home配下の絶対パス、認証情報は公開ソースの外に置いてください。
+本節がデプロイ時の保管パスの正典です。モデルID・revision・base imageのdigestは[runtime.lock.json](../config/runtime.lock.json)で固定します。本体checkpointは上流から取得し、任意のLPA projectorは独立したGitHub Release添付物として配布します。運用者固有のホスト名、home配下の絶対パス、認証情報は公開ソースの外に置いてください。
 
 | 資材 | 各Linuxホストでの既定の場所 | 役割 |
 |---|---|---|
 | 本体checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | 固定したモデル・config・tokenizerのview。重みファイルは同階層の `blobs/` ディレクトリへリンクし、データ本体はそちらが持つ |
 | MTPメタデータview（配布既定で必要） | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | 既存のtensorデータをリンクし、checkpoint同梱のBF16 MTPに合わせて量子化メタデータを調整する。元のsnapshotを編集せずに[viewを作成](speculative-decoding.ja.md#各linuxホストでの準備)する |
-| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | [起動設定TOML](startup-configuration.ja.md)の `[lpa].projector` で選ぶ非公開ファイル。そのTOMLからの相対パスまたは絶対パス | 別途学習した補助重みで、NVIDIAのsnapshotにもソース配布物にも含まれない。[LPAの手順](lpa.ja.md)で対応するprojectorを入手または学習し、両ホストでhashを確認する。通常の推論とbatchingには不要 |
+| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](startup-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
 | runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheをruntime cacheへ向け、コンパイル済みkernelを再起動後も残す |
+
+LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[projector lock](../config/lpa-projector.lock.json)の写しです。ソースcheckoutのアーカイブに、このディレクトリは含まれません。
+
+```text
+state/lpa/glm53-lpa-cut32-v1/
+├── projector.pt
+├── manifest.json
+├── README.md
+├── README.ja.md
+├── LICENSE
+├── NOTICE
+├── TRAINING_DATA.md
+├── TEACHER_MODEL_CARD.md
+└── LICENSES/
+    └── ZAI-GLM-MIT.txt
+```
 
 実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。両ホストのディスクに完全なcheckpointが必要です。TP=2が分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
 

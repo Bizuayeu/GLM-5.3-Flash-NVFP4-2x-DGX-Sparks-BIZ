@@ -37,7 +37,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 
 The text-only alternative sets `runtime.vision = false`, `max_model_len = 262144` and `kv_cache_memory_bytes = 3221225472`; its [256K checks](benchmarks.md#real-input-checks-at-256k) ran with a 4 GiB reserve, and a 2.5 GiB reserve is not validated for it.
 
-**Supply image IDs, both nodes' connection details, the MTP view, and the LPA projector/hash before launch.** Zero image/projector hashes are placeholders to replace; missing assets never silently disable features. [Operations](operations.md#artifact-storage-and-paths) owns their placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.
+**Supply image IDs, both nodes' connection details and the MTP view before launch. Supply the LPA projector/hash only when enabling LPA.** Zero hashes are placeholders to replace for enabled features; missing assets never silently disable features. The [trained projector download](lpa.md#download-the-trained-projector) avoids retraining; [operations](operations.md#artifact-storage-and-paths) owns asset placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.
 
 The lifetime is fixed at launch. Apply a changed `run_seconds` to running supervisors by restarting through the [two-rank switch procedure](launch-safety.md#all-rail-checks-and-two-rank-switch). Editing the TOML alone does not cancel the existing deadline. Larger contexts require separate capacity checks and real-request validation below.
 

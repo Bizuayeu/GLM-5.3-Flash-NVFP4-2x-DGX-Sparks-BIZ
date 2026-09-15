@@ -37,7 +37,7 @@
 
 テキスト専用の代替は `runtime.vision = false`、`max_model_len = 262144`、`kv_cache_memory_bytes = 3221225472` です。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は保護余裕4 GiBで実施しており、2.5 GiBでは未検証です。
 
-**導入時はimage ID、両機の接続情報、MTP view、LPA projectorとhashを準備してください。** imageとprojectorのゼロ値は差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
+**導入時はimage ID、両機の接続情報、MTP viewを準備してください。LPA projectorとhashはLPAを有効にするときだけ必要です。** 有効な機能のゼロhashは差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。[学習済みprojectorの取得](lpa.ja.md#学習済みprojectorの取得)により再学習を省けます。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
 
 期限は起動時に固定されます。`run_seconds` の変更を稼働中の監視へ反映するには、[両rankの切替手順](launch-safety.ja.md#全レール検査と両rankの切替)で再起動します。設定ファイルの変更だけでは既存の期限は消えません。コンテキストを拡大するときは、以下の容量条件と実要求を別に検証します。
 

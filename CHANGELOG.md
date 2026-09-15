@@ -1,5 +1,11 @@
 # Changelog
 
+## LPA artifact lpa-cut32-v1 — 2026-09-15
+
+- Distribute the measured cut32 auxiliary projector as a separate GitHub Release asset under Apache-2.0, with a pinned manifest, training-data attribution, teacher model card/notices and SHA-256 checksums. Preserve the original tensor bytes and keep weights outside Git.
+- Update both languages of the README, operations package layout, architecture, LPA download/model card, licensing, startup prerequisites and document map. Runtime defaults and qualification status are unchanged; LPA remains a text-only batch opt-in.
+- Fix the CLI smoke test to compare the version with `pyproject.toml` instead of the retired beta literal, and require a successful exit.
+
 ## 1.0.0 — 2026-09-15
 
 ### Changed

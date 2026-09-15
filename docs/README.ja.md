@@ -46,7 +46,7 @@
 | 施策台帳 | 施策ID P01〜P22／E01〜E03、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | 性能調査 | 計測手順：launch・同期、タスクbatch、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | 投機的デコーディング | MTPのメタデータview、k=1・k=3の実測 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
-| LPA | 後段Prefill近似：仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |
+| LPA | 後段Prefill近似：projector取得・モデルカード、仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |
 | APC優先LPAの設計 | prefix cachingとLPAを併用する共有cacheの契約（P22） | [EN](apc-lpa-design.md) | [JA](apc-lpa-design.ja.md) |
 | 候補順序 | 参照imageでのsparse候補の順序正規化 | [EN](candidate-order.md) | [JA](candidate-order.ja.md) |
 | Indexer再利用 | CSA2の候補再利用・限定再採点の部品 | [EN](indexer-reuse.md) | [JA](indexer-reuse.ja.md) |
@@ -64,6 +64,7 @@
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
+| 配布LPA projectorのURL、hash、形式、教師・学習来歴 | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json)。配布ファイル構成は[運用手順](operations.ja.md#資材の保管場所とパス) |
 | どちらのランチャーか：`startup`（実験用reference）と `service`（ゲート付き候補） | [運用手順](operations.ja.md#二つのランチャー) |
 | ホストカーネルの要件、`7.0.0-1019-nvidia` のRoCE失敗と `kho=off` の回避策 | [運用手順](operations.ja.md#ホストカーネルと複数ノードroce) |
 | 対象別のライセンス許諾と義務 | [ライセンス整理](licensing.ja.md)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |

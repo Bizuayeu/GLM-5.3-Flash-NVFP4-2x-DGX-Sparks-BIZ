@@ -15,16 +15,32 @@ The checkout has two launch paths, and evidence from one does not qualify the ot
 
 ## Artifact storage and paths
 
-This section owns deployment storage paths. The model ID, revision and base-image digest are fixed by [runtime.lock.json](../config/runtime.lock.json); the repository does not distribute weights. Keep operator-specific hostnames, absolute home paths and credentials outside the public source.
+This section owns deployment storage paths. The model ID, revision and base-image digest are fixed by [runtime.lock.json](../config/runtime.lock.json). The base checkpoint is acquired upstream; the optional LPA projector is distributed as a separate GitHub Release asset. Keep operator-specific hostnames, absolute home paths and credentials outside the public source.
 
 | Artifact | Default location on each Linux host | Role |
 |---|---|---|
 | Base checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | Fixed model/config/tokenizer view. Weight files link into the sibling `blobs/` directory, which holds their data |
 | MTP metadata view, required by distributed defaults | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | Links existing tensor data and adjusts quantization metadata for the checkpoint's BF16 MTP; [create the view](speculative-decoding.md#prepare-a-view-on-each-linux-host) without editing the original snapshot |
-| LPA projector, required when `lpa.enabled = true` (off in the template) | A private file selected by `[lpa].projector` in the [startup TOML](startup-configuration.md), relative to that TOML or absolute | Separate trained auxiliary weights, not part of the NVIDIA snapshot or source archive. Obtain or train the matching projector using the [LPA procedure](lpa.md); verify its hash on both hosts. Plain inference and batching do not require it |
+| LPA projector, required when `lpa.enabled = true` (off in the template) | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`; selected by `[lpa].projector` relative to the [startup TOML](startup-configuration.md) or absolute | Separate Release asset, outside the NVIDIA snapshot and source archive. [Download and verify](lpa.md#download-the-trained-projector) on both hosts, or train a matching projector. Plain inference and batching do not require it |
 | Docker base/reference images | Docker-managed storage | Pull the fixed base and build the reference image from this source. Source checkout, image and checkpoint are separate artifacts |
 | Local configuration and acquisition state | `<checkout>/state/` | Site startup settings and `download-status.json`; the latter records the actual acquired `snapshot` path |
 | Runtime/JIT cache and evidence | `<checkout>/state/tp2-runtime-cache/`, `<checkout>/records/` | Regenerable runtime data and private execution records; not model weights or distribution inputs. Distributed startup points the Triton, TileLang and TorchInductor caches into the runtime cache so compiled kernels survive restarts |
+
+The LPA asset expands as follows. `manifest.json` is a copy of the [projector lock](../config/lpa-projector.lock.json); source checkout archives do not include this directory.
+
+```text
+state/lpa/glm53-lpa-cut32-v1/
+├── projector.pt
+├── manifest.json
+├── README.md
+├── README.ja.md
+├── LICENSE
+├── NOTICE
+├── TRAINING_DATA.md
+├── TEACHER_MODEL_CARD.md
+└── LICENSES/
+    └── ZAI-GLM-MIT.txt
+```
 
 The experimental startup launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
 

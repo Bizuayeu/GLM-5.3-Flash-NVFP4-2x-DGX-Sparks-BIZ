@@ -31,6 +31,34 @@ P22は[APC優先・未処理部分へのLPA方式](apc-lpa-design.ja.md)を実�
 
 対応imageのmarkerと起動設定が必要になる。CPU契約、4層GPUの共有状態隔離試験、全モデルでの校正、MTP／融合／非同期検査との併用、held-out評価まで完了しており、その状態は[設計契約](apc-lpa-design.ja.md)が正典。APCとのcapture／oracle RPC併用は有効にしていない。改善率は単体結果から足し合わせず、実際の組合せで測る。
 
+## 学習済みprojectorの取得
+
+検証済みcut32 projectorを、**Apache-2.0**の独立した[GitHub Release添付物](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1)として配布します。取得URL、正確な容量・hash、形式、教師モデル、学習来歴の正典は[config/lpa-projector.lock.json](../config/lpa-projector.lock.json)です。NVIDIAの本体checkpointは別途取得します。このprojectorを使うための再学習は不要です。
+
+**両方のLinuxホスト**のcheckoutで実行します。
+
+```sh
+mkdir -p state/lpa
+curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
+curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
+(cd state/lpa && sha256sum --check SHA256SUMS)
+```
+
+アーカイブのchecksumが合格した場合だけ、次へ進みます。
+
+```sh
+tar -xzf state/lpa/glm53-lpa-cut32-v1.tar.gz -C state/lpa
+python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/lpa-projector.lock.json").read_text()); f=p("state/lpa")/m["artifact"]/m["file"]; assert f.stat().st_size == m["bytes"]; assert hashlib.sha256(f.read_bytes()).hexdigest() == m["sha256"]; print("Projector verified:", f)'
+```
+
+`state/startup.toml`の`[lpa].projector`を`"lpa/glm53-lpa-cut32-v1/projector.pt"`にし、lockの`sha256`を`[lpa].projector_sha256`へ転記します。`cut=32`を維持し、tailと損益分岐値はテンプレートの実測設定を使います。対応するLPA imageを指定し、[対応する用途](#使用範囲)でのみ`lpa.enabled=true`にします。LPAの実測範囲はテキスト専用なので、そのprofileは`runtime.vision=false`にしてください。稼働中profileの変更には通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。取得だけではLPAの有効化もサーバー再起動も行いません。
+
+### モデルカードと学習来歴
+
+凍結した教師のAttention入力にridge回帰で合わせた、対角scale・共有低rank基底・層別の残差写像です。cut層は自身の入力を使い、学習した写像は33〜44層を担当します。重みファイルに含むのは学習済みtensorとscalarメタデータで、コーパス本文・教師活性の採取物・認証情報・実機設定は含みません。配布前にメタデータ、tensor形状、有限値、SHA-256を検査し、下記の実測に使用したprojectorとバイト一致を確認しました。
+
+学習元はlockに記載した固定LLM-jp Corpus v3の日本語・英語Wikipediaと、許容ライセンスで絞ったC++です。学習splitのみでfitし、validationで候補を選び、test文書は分離しています。上限付きの標本取得のため、元shard全体のchecksumは未検証です。学習データのライセンス・帰属は[projectorのライセンス](licensing.ja.md#lpa-projector)と分けて保持し、データ本体の再許諾・同梱は行いません。下記の小規模な評価は、一般品質、記憶再現の不存在、他のcheckpoint・精度への適合を証明するものではありません。
+
 ## 部品の再現
 
 GPUコマンドは教師と同じ固定reference image内で実行する。helpとコーパス採取にはTorchは不要。
@@ -72,4 +100,4 @@ LLM-jpの日本語・英語Wikipediaと、許容したライセンス表記のC+
 
 近似が有効な長文参照・長文コード6件と、長文からのtool往復は合格。未使用文書8件の照合値は全件正答したが、1件に説明追加があり初回の厳密形式は7/8だった。その同じ課題の再確認は通常・近似とも4/4合格。SSE、生成中に接続を閉じた後の復帰、cold restart後の長文問い合わせも通過した。通常モデルにも書式揺れがあり、小標本による統計的非劣性保証ではない。
 
-生データ・補助器・実機固有の制御コードは非公開の`records/`に保持する。通常ランチャー／ハーネスの資格ゲートは変更していない。
+生データ・教師活性の採取物・実機固有の制御コードは非公開の`records/`に保持し、選定した補助器だけを上記の方法で別途配布する。通常ランチャー／ハーネスの資格ゲートは変更していない。

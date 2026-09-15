@@ -1,0 +1,52 @@
+{
+  "artifact": "glm53-lpa-cut32-v1",
+  "release_url": "https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1",
+  "download_url": "https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz",
+  "license": "Apache-2.0",
+  "file": "projector.pt",
+  "bytes": 54946953,
+  "sha256": "4631afa3b3ce148abe90889ce6d60054bd299cc101781071b188796a21ad00d1",
+  "format_version": 2,
+  "representation": "diagonal-low-rank",
+  "cut": 32,
+  "layers": 45,
+  "hidden_size": 4096,
+  "rank": 256,
+  "ridge": 0.001,
+  "seed": 42,
+  "teacher_model": "nvidia/GLM-5.3-Flash-NVFP4",
+  "teacher_revision": "423acf37583782c51c142d145aef733d72943d93",
+  "teacher_precision": "NVFP4-Marlin-W4A16",
+  "training": {
+    "corpus_revision": "e928f19330f5271b29f382fe5a01245dec7d57c2",
+    "training_documents": 105,
+    "validation_documents": 16,
+    "training_tokens": 50341,
+    "test_used_for_fitting": false,
+    "full_source_checksum_verified": false,
+    "sources": [
+      {
+        "subset": "ja/ja_wiki",
+        "url": "https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3/-/raw/e928f19330f5271b29f382fe5a01245dec7d57c2/ja/ja_wiki/train_0.jsonl.gz",
+        "license": "CC-BY-SA-3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "attribution": "LLM-jp Corpus v3; Japanese Wikipedia contributors"
+      },
+      {
+        "subset": "en/en_wiki",
+        "url": "https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3/-/raw/e928f19330f5271b29f382fe5a01245dec7d57c2/en/en_wiki/train_0.jsonl.gz",
+        "license": "CC-BY-SA-3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "attribution": "LLM-jp Corpus v3; English Wikipedia contributors"
+      },
+      {
+        "subset": "code/code_stack (C++)",
+        "url": "https://gitlab.llm-jp.nii.ac.jp/datasets/llm-jp-corpus-v3/-/raw/e928f19330f5271b29f382fe5a01245dec7d57c2/code/code_stack/train_300.jsonl.gz",
+        "license": "per-repository metadata",
+        "license_url": "https://huggingface.co/datasets/bigcode/the-stack",
+        "license_filter": ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT"],
+        "attribution": "LLM-jp Corpus v3; The Stack original repository contributors"
+      }
+    ]
+  }
+}

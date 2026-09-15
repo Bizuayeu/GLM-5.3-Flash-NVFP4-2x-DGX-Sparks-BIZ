@@ -39,6 +39,14 @@ The pinned NVIDIA snapshot has no standalone LICENSE file; its README states MIT
 
 When redistributing weights, attach the model card and upstream MIT notice, identify the source/quantization/revision, and account for any additional code or training data you used. Place notices outside the exact Hugging Face snapshot so its official checksum/extra-file check remains reproducible. MIT does not guarantee output ownership, non-infringement or rights to your input data.
 
+## LPA projector
+
+The independently fitted [LPA cut32 auxiliary weights](lpa.md#download-the-trained-projector) are offered under **Apache-2.0**, to the extent of the maintainer's rights. The Release package includes LICENSE, NOTICE, teacher provenance and training-data attribution. This does not relicense NVIDIA's checkpoint or the training dataset.
+
+The [projector lock](../config/lpa-projector.lock.json) records the sampled LLM-jp Corpus v3 subsets: Japanese/English Wikipedia labeled CC-BY-SA-3.0, and C++ filtered by per-repository MIT/Apache/BSD/ISC metadata. LLM-jp provenance does not make every underlying text Apache-2.0. Corpus text and teacher captures are not distributed with the projector.
+
+The Apache offer covers the auxiliary artifact, not third-party expression that might be reproduced by a model. Whether training or an artifact requires permission for such expression is a separate, fact-dependent question: [Creative Commons' guidance](https://creativecommons.org/using-cc-licensed-works-for-ai-training-2/) distinguishes copyright exceptions from uses that trigger its conditions. The license choice is not a legal finding that those conditions can never apply.
+
 ## Images and harnesses
 
 The recommended distribution is **source, pinned references and build instructions**, with users obtaining weights, the official base and harnesses separately. Redistributing a completed image requires checking its actual dependencies, including CUDA redistributables and OS copyleft components. The [CUDA 13.0 SDK agreement](https://docs.nvidia.com/cuda/archive/13.0.0/eula/index.html) is one relevant source, not a substitute for every dependency's terms.

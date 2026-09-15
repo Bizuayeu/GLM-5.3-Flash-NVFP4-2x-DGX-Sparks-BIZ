@@ -2,7 +2,7 @@
 
 [English](architecture.md)
 
-本プロジェクトは、checkout内で完結する運用者向けのツールキットです。モデル重みも、遠隔管理されるサービスも含みません。
+本プロジェクトは、checkout内で完結する運用者向けのツールキットです。ソースアーカイブにはモデル重みも遠隔管理サービスも含みません。任意のLPA重みは独立したRelease添付物で、配布ファイル構成と導入先は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。
 
 | 場所 | 責務 |
 |---|---|
@@ -14,7 +14,7 @@
 | `glm53_setup/runtime/` | sourceを固定したNoPE適合と、候補を保存する参照計算 |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/validation/run_lpa.py`、`lpa_corpus.py`、`train_lpa.py` | LPA fixtureの検査、コーパスの準備、projectorの学習 |
-| `config/` | モデル・imageの固定値。認証情報や実測したサイト設定は持たない |
+| `config/` | モデル・imageの固定値と`lpa-projector.lock.json`（Release URL、checksum、教師・学習来歴）。認証情報や実測したサイト設定は持たない |
 | `examples/` | 例示値だけを含むサイト設定・起動設定・MTP投機設定のテンプレート |
 | `docker/` | imageの構築。base digestはビルドコマンドがロックから渡す |
 | `requirements/` | ホスト側ツールの固定した依存 |

@@ -21,7 +21,7 @@ The stack is **Z.ai's original model â†’ NVIDIA's distributed NVFP4 checkpoint â
 | Tested scope | Published measurements are from MSI EdgeXpert. Other DGX Spark-compatible systems require driver/GPU/memory/fabric checks in the [setup runbook](SETUP.md#1-collect-inputs-and-inspect-both-hosts); a product name alone does not qualify them. Windows supports management/CPU checks; inference runs on the Linux hosts |
 | Storage | Weights live in each Linux host's Hugging Face cache. Reserve approximately 205 GB of disk per host plus images and working space. Each host stores the complete checkpoint even with TP=2; partitioning happens at load time. [Paths and verification](docs/operations.md#artifact-storage-and-paths) |
 
-The distribution contains source, pinned references and build instructions. Weights and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; LPA uses a separately trained auxiliary projector. See [artifact roles and storage](docs/operations.md#artifact-storage-and-paths).
+The source checkout contains code, pinned references and build instructions. The base checkpoint and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; the trained LPA auxiliary projector is available as a separate [GitHub Release asset](docs/lpa.md#download-the-trained-projector). See [artifact roles, package contents and storage](docs/operations.md#artifact-storage-and-paths).
 
 NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe. See [precision and validation scope](docs/validation.md).
 
@@ -31,6 +31,7 @@ Licensing at a glance. Each artifact keeps its own terms; obligations and the ra
 |---|---|---|
 | Original setup code and documents | **Apache-2.0** | This repository |
 | GLM-5.3-Flash NVFP4 weights | **MIT** (stated in the pinned NVIDIA model card; upstream Z.ai model is MIT) | Downloaded by the operator; not bundled |
+| LPA cut32 auxiliary projector | **Apache-2.0**; training-data notices retained separately | Optional [Release asset](docs/lpa.md#download-the-trained-projector); outside Git |
 | Built container image | Per bundled component (CUDA, Torch, NCCL and others); not treated as one blanket license | Built by the operator from the pinned official base image |
 | ZCode / Claude Code harnesses | Each product's own terms | Installed separately; nothing is relicensed here |
 

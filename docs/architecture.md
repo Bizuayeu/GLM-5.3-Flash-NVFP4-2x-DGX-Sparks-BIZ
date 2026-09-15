@@ -2,7 +2,7 @@
 
 [日本語](architecture.ja.md)
 
-The project is a checkout-local operator toolkit. It does not contain model weights or a remotely managed service.
+The project is a checkout-local operator toolkit. Source archives contain no weights or remotely managed service. The optional LPA weights are a separate Release asset; [operations](operations.md#artifact-storage-and-paths) owns the package layout and installation paths.
 
 | Location | Responsibility |
 |---|---|
@@ -14,7 +14,7 @@ The project is a checkout-local operator toolkit. It does not contain model weig
 | `glm53_setup/runtime/` | Source-pinned NoPE adaptation and candidate-preserving reference calculation |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/validation/run_lpa.py`, `lpa_corpus.py`, `train_lpa.py` | LPA fixture verification, corpus preparation and projector fitting |
-| `config/` | Model/image pins; no credentials or measured site configuration |
+| `config/` | Model/image pins and `lpa-projector.lock.json` (Release URL, checksum, teacher and training provenance); no credentials or measured site configuration |
 | `examples/` | Site, startup and MTP speculative templates containing illustrative values only |
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |

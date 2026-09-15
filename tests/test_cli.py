@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -20,7 +21,12 @@ class PublicCliTests(unittest.TestCase):
         )
 
     def test_version_and_help_do_not_require_gpu_packages(self):
-        self.assertIn("0.1.0b1", self.invoke("--version").stdout)
+        version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
+            "version"
+        ]
+        result = self.invoke("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), version)
         for command, option in [
             ("download", "--background"),
             ("verify-download", "--hf"),

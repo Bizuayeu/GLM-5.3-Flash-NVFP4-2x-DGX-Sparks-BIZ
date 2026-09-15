@@ -47,6 +47,14 @@
 
 MITは、生成物の著作権帰属、第三者権利の非侵害、入力データの利用権を保証しません。
 
+## LPA projector
+
+独立してfitした[LPA cut32補助重み](lpa.ja.md#学習済みprojectorの取得)を、保守者が許諾できる権利の範囲で**Apache-2.0**により提供します。ReleaseにはLICENSE、NOTICE、教師モデルの来歴、学習データの帰属表示を添付します。NVIDIAのcheckpointや学習データを再許諾するものではありません。
+
+[projector lock](../config/lpa-projector.lock.json)には、使用したLLM-jp Corpus v3のsubsetを記録しています。日本語・英語WikipediaはCC-BY-SA-3.0表記、C++はリポジトリ別のMIT・Apache・BSD・ISC表記で絞っています。LLM-jp由来であることが、各原文を一律Apache-2.0にするわけではありません。コーパス本文と教師活性の採取物は補助重みに同梱しません。
+
+Apacheで許諾する対象は補助重みであり、モデルが再現する可能性のある第三者の創作的表現まで含めません。学習や成果物にその表現の許諾が必要かは、個別の事実に依存する別の論点です。[Creative Commonsの説明](https://creativecommons.org/using-cc-licensed-works-for-ai-training-2/)も、著作権の例外とライセンス条件が働く利用を区別しています。今回のライセンス選択は、条件が一切適用されないという法的判定ではありません。
+
 ## コンテナとハーネスの扱い
 
 ライセンス管理を単純にする推奨配布形態は、**このソース・固定参照・ビルド手順を配り、利用者が重み・公式ベースイメージ・ハーネスを取得する形**です。完成イメージを顧客やレジストリへ再配布する場合は、CUDA等の再配布可能コンポーネントと適用条件を実イメージで確認します。[CUDA 13.0のSDK契約](https://docs.nvidia.com/cuda/archive/13.0.0/eula/index.html)は確認先の一つであり、全依存物の配布許諾の代わりではありません。LinuxディストリビューションのGPL等の条件も残ります。

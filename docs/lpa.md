@@ -31,6 +31,34 @@ P22 implements [APC-first, uncached-suffix LPA](apc-lpa-design.md). The schedule
 
 This path requires the matching image marker and startup settings. CPU contracts, the four-layer GPU cache-isolation checks, full-model calibration, the MTP/fusion/async combination and the held-out evaluation are complete; the [design contract](apc-lpa-design.md) owns that status. Capture/oracle RPCs are not enabled with APC. Measure combined benefits rather than adding independent gains.
 
+## Download the trained projector
+
+The tested cut32 projector is available as a separate [GitHub Release asset](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1), under **Apache-2.0**. [config/lpa-projector.lock.json](../config/lpa-projector.lock.json) owns the download URL, exact size/hash, format, teacher identity and training provenance. The NVIDIA checkpoint remains a separate download. No retraining is needed to use this projector.
+
+On **each Linux host**, from the checkout:
+
+```sh
+mkdir -p state/lpa
+curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
+curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
+(cd state/lpa && sha256sum --check SHA256SUMS)
+```
+
+Continue only if the archive checksum passes:
+
+```sh
+tar -xzf state/lpa/glm53-lpa-cut32-v1.tar.gz -C state/lpa
+python -c 'import hashlib,json,pathlib; p=pathlib.Path; m=json.loads(p("config/lpa-projector.lock.json").read_text()); f=p("state/lpa")/m["artifact"]/m["file"]; assert f.stat().st_size == m["bytes"]; assert hashlib.sha256(f.read_bytes()).hexdigest() == m["sha256"]; print("Projector verified:", f)'
+```
+
+For `state/startup.toml`, set `[lpa].projector = "lpa/glm53-lpa-cut32-v1/projector.pt"` and copy `sha256` from the lock into `[lpa].projector_sha256`. Keep `cut=32`; the template supplies the measured tail and crossover settings. Enable `lpa.enabled=true` only for the [supported workload](#operating-scope), with a matching LPA image. LPA's measured scope is text-only; use `runtime.vision=false` for that profile. Changing a running profile requires the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch). Downloading the asset does not enable LPA or restart a server.
+
+### Model card and training provenance
+
+This is a diagonal scale plus shared low-rank basis and per-layer residual maps, fitted by ridge regression to the frozen teacher's attention inputs. The cut layer uses its own input; learned maps cover layers 33–44. The artifact contains fitted tensors and scalar metadata, without corpus text, teacher activation captures, credentials or site settings. Serialized metadata, tensor shapes, finite values and SHA-256 were checked before distribution; the bytes match the projector used in the measurements below.
+
+Training uses the pinned LLM-jp Corpus v3 Japanese/English Wikipedia and filtered C++ subsets listed in the lock. Fit uses only the training split; validation selects the candidate and test documents are held out. Source sampling was bounded rather than a full-shard download, so full source-shard checksums were not verified. Dataset licenses and attribution are preserved separately from the [projector license](licensing.md#lpa-projector). The dataset is not relicensed or bundled. The small evaluation below does not establish general quality, absence of memorization or suitability for other checkpoints/precisions.
+
 ## Reproduce the components
 
 Use the same fixed reference image as the teacher for GPU commands; CLI help and corpus sampling do not require Torch.
@@ -72,4 +100,4 @@ These are one-output-token requests, five measurements per condition with warmup
 
 All six active long-context/long-code functional cases and the long-context tool round-trip passed. Eight untouched documents yielded all eight lookup values correctly; one response added an explanation, so initial strict-format success was 7/8. Both paths passed four repeats of that affected case. Streaming, recovery after closing an active stream, and a cold restart followed by a long-context query passed. The baseline also exhibited format variability; the small sample is not a statistical non-inferiority guarantee.
 
-Raw data, projector files and site-specific controllers remain private under `records/`. The ordinary deployment/harness qualification gate is unchanged.
+Raw data, teacher captures and site-specific controllers remain private under `records/`. The selected projector is distributed separately as described above. The ordinary deployment/harness qualification gate is unchanged.
