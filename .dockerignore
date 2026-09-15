@@ -7,7 +7,7 @@
 !config/runtime.lock.json
 !config/freedombench.lock.json
 !examples/
-!examples/startup.example.toml
+!examples/server.example.toml
 !pyproject.toml
 !LICENSE
 !NOTICE
