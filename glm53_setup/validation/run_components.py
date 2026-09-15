@@ -6,10 +6,10 @@ import json
 import statistics
 import time
 import urllib.error
+from functools import partial
 from pathlib import Path
 
 from glm53_setup import model_http, startup, startup_config
-from glm53_setup.config import ROOT
 from glm53_setup.io import write_json
 from glm53_setup.validation.indexer_overlap import compare_candidates
 
@@ -38,10 +38,7 @@ def main(argv=None):
     def post(path, body):
         return startup.post(profile, path, body)
 
-    def rpc(method, **kwargs):
-        return post(
-            "/collective_rpc", {"method": method, "kwargs": kwargs, "timeout": 600}
-        )["results"]
+    rpc = partial(startup.collective_rpc, profile)
 
     def complete(ids, count):
         began = time.perf_counter()
@@ -91,16 +88,10 @@ def main(argv=None):
                 time.sleep(5)
         else:
             raise TimeoutError("Model readiness deadline exceeded")
-        current = startup.read_json(ROOT / "state/startup-rank0.json")
-        info = startup.inspect_owned(
-            current["name"], startup_config.fingerprint(profile)
-        )
+        current, info = startup.running_head(profile)
         report["image"] = info["Image"]
         report["container"] = current["name"]
-        import fcntl
-
-        with (ROOT / "state/startup-request.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with startup.request_lock():
             text_bytes = args.corpus.read_bytes()
             report["corpus_sha256"] = hashlib.sha256(text_bytes).hexdigest()
             documents = [

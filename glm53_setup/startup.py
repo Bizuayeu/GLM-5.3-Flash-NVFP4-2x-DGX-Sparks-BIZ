@@ -1,6 +1,7 @@
 """Run a serial TP=2 reference experiment with a configurable lifetime."""
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -13,13 +14,10 @@ from pathlib import Path
 from . import model_http, service
 from . import startup_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
-from .io import write_json
+from .io import read_json, write_json
+from .service import available_gib
 
 LABEL = "glm53.experiment.startup"
-
-
-def read_json(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def projector_path(profile, config_path):
@@ -95,19 +93,50 @@ def command(profile, config_path, rank, name, cache=None):
     ]
 
 
-def available_gib():
-    rows = dict(
-        line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
-    )
-    return int(rows["MemAvailable"].split()[0]) / 1024**2
-
-
 def inspect_owned(name, fingerprint=None):
     info = json.loads(service.run("docker", "inspect", name))[0]
     owner = (info["Config"].get("Labels") or {}).get(LABEL)
     if not owner or (fingerprint and owner != fingerprint):
         raise ValueError("Container does not belong to this startup profile")
     return info
+
+
+def image_capability_checks(profile, image):
+    """Each enabled feature must find its API marker baked into the image env."""
+    runtime, validation = profile["runtime"], profile["validation"]
+    required = [
+        (
+            "pipeline_support",
+            "GLM53_PIPELINE_API=1",
+            runtime["pipeline_parallel_size"] == 2,
+        ),
+        (
+            "expert_parallel_support",
+            "GLM53_EXPERT_PARALLEL_API=1",
+            runtime["expert_parallel"] or validation["expert_worker"],
+        ),
+        ("component_worker", "GLM53_COMPONENT_API=1", validation["component_worker"]),
+        (
+            "fused_unpack_support",
+            "GLM53_FUSED_UNPACK_SUPPORTED=1",
+            profile["cache"]["fused_unpack"],
+        ),
+        (
+            "decode_graph_support",
+            "GLM53_DECODE_GRAPH_API=1",
+            not runtime["enforce_eager"],
+        ),
+        (
+            "async_index_check_support",
+            "GLM53_ASYNC_INDEX_CHECK_API=1",
+            settings.asynchronous_index_checks(profile),
+        ),
+        ("lpa_worker", "GLM53_LPA_API=2", profile["lpa"]["enabled"]),
+        ("apc_lpa_support", "GLM53_APC_LPA_API=1", settings.apc_lpa_enabled(profile)),
+        ("reference_attention", "GLM53_REFERENCE_ATTENTION=1", True),
+    ]
+    env = image["Config"].get("Env") or []
+    return {key: marker in env for key, marker, enabled in required if enabled}
 
 
 def preflight(profile, config_path, rank, *, check_memory=True):
@@ -143,39 +172,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         service.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
-    if profile["runtime"]["pipeline_parallel_size"] == 2:
-        checks["pipeline_support"] = "GLM53_PIPELINE_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    if profile["runtime"]["expert_parallel"] or profile["validation"]["expert_worker"]:
-        checks["expert_parallel_support"] = "GLM53_EXPERT_PARALLEL_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    if profile["validation"]["component_worker"]:
-        checks["component_worker"] = "GLM53_COMPONENT_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    if profile["cache"]["fused_unpack"]:
-        checks["fused_unpack_support"] = "GLM53_FUSED_UNPACK_SUPPORTED=1" in (
-            image["Config"].get("Env") or []
-        )
-    if not profile["runtime"]["enforce_eager"]:
-        checks["decode_graph_support"] = "GLM53_DECODE_GRAPH_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    if settings.asynchronous_index_checks(profile):
-        checks["async_index_check_support"] = "GLM53_ASYNC_INDEX_CHECK_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    if profile["lpa"]["enabled"]:
-        checks["lpa_worker"] = "GLM53_LPA_API=2" in (image["Config"].get("Env") or [])
-    if settings.apc_lpa_enabled(profile):
-        checks["apc_lpa_support"] = "GLM53_APC_LPA_API=1" in (
-            image["Config"].get("Env") or []
-        )
-    checks["reference_attention"] = (
-        "GLM53_REFERENCE_ATTENTION=1" in image["Config"]["Env"]
-    )
+    checks.update(image_capability_checks(profile, image))
     if check_memory:
         checks["startup_memory"] = (
             available_gib() >= profile["resources"]["minimum_available_gib"]
@@ -244,6 +241,22 @@ def supervise(profile, name, record):
             )
 
 
+@contextlib.contextmanager
+def request_lock():
+    """Hold the host lock that serializes direct clients of the running head."""
+    import fcntl
+
+    with (ROOT / "state/startup-request.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+
+
+def running_head(profile):
+    """Return rank 0's recorded state and container info owned by this profile."""
+    state = read_json(ROOT / "state/startup-rank0.json")
+    return state, inspect_owned(state["name"], settings.fingerprint(profile))
+
+
 def post(profile, path, body):
     return model_http.post_json(
         f"http://127.0.0.1:{profile['api']['port']}",
@@ -251,6 +264,11 @@ def post(profile, path, body):
         body,
         timeout=profile["generation"]["timeout_seconds"],
     )
+
+
+def collective_rpc(profile, method, **kwargs):
+    body = {"method": method, "kwargs": kwargs, "timeout": 600}
+    return post(profile, "/collective_rpc", body)["results"]
 
 
 def ask(profile, request, sender=post):
@@ -422,10 +440,7 @@ def main(argv=None):
             inspect_owned(current["name"], settings.fingerprint(profile))
             if bool(args.prompt) == bool(args.request):
                 parser.error("Supply one --prompt or --request JSON")
-            import fcntl
-
-            with (ROOT / "state/startup-request.lock").open("a") as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with request_lock():
                 body = (
                     read_json(args.request)
                     if args.request

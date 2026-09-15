@@ -379,6 +379,31 @@ class StartupConfigTests(unittest.TestCase):
                 )
             self.assertEqual(sender.call_count, 4)
 
+    def test_image_capability_markers_follow_enabled_features(self):
+        # A missing or empty image env fails every required marker closed.
+        for image_config in ({}, {"Env": None}):
+            checks = startup.image_capability_checks(
+                self.profile, {"Config": image_config}
+            )
+            self.assertEqual(checks, {"reference_attention": False})
+        self.profile["lpa"]["enabled"] = True
+        self.profile["cache"]["prefix_caching"] = True
+        self.profile["cache"]["fused_unpack"] = True
+        env = ["GLM53_REFERENCE_ATTENTION=1", "GLM53_LPA_API=2", "GLM53_APC_LPA_API=1"]
+        checks = startup.image_capability_checks(self.profile, {"Config": {"Env": env}})
+        self.assertEqual(
+            checks,
+            {
+                "fused_unpack_support": False,
+                "lpa_worker": True,
+                "apc_lpa_support": True,
+                "reference_attention": True,
+            },
+        )
+        # Disabled features are not checked, so their markers may be absent.
+        self.assertNotIn("pipeline_support", checks)
+        self.assertNotIn("decode_graph_support", checks)
+
     def test_profile_mismatch_cannot_control_unrelated_container(self):
         info = {"Config": {"Labels": {startup.LABEL: "old"}}}
         with patch.object(startup.service, "run", return_value=json.dumps([info])):

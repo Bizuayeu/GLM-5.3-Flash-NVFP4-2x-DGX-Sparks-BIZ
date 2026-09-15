@@ -7,10 +7,10 @@ import json
 import math
 import re
 import time
+from functools import partial
 from pathlib import Path
 
 from .. import model_http, startup, startup_config
-from ..config import ROOT
 from ..io import write_json
 
 
@@ -235,10 +235,7 @@ def main(argv=None):
     def post(path, body):
         return startup.post(profile, path, body)
 
-    def rpc(method):
-        return post(
-            "/collective_rpc", {"method": method, "kwargs": {}, "timeout": 600}
-        )["results"]
+    rpc = partial(startup.collective_rpc, profile)
 
     def metrics():
         with model_http.open_response(
@@ -316,14 +313,8 @@ def main(argv=None):
 
     save()
     try:
-        import fcntl
-
-        with (ROOT / "state/startup-request.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            state = startup.read_json(ROOT / "state/startup-rank0.json")
-            info = startup.inspect_owned(
-                state["name"], startup_config.fingerprint(profile)
-            )
+        with startup.request_lock():
+            state, info = startup.running_head(profile)
             if not info["State"]["Running"]:
                 raise ValueError("The configured dedicated server is not running")
             report.update(

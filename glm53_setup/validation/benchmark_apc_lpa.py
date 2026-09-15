@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from .. import startup, startup_config
-from ..config import ROOT
+from ..io import write_json
 
 
 def main(argv=None):
@@ -61,9 +61,7 @@ def main(argv=None):
     }
 
     def save():
-        (args.output / "result.json").write_text(
-            json.dumps(report, indent=2), encoding="utf-8"
-        )
+        write_json(args.output / "result.json", report)
 
     def post(path, body):
         return startup.post(profile, path, body)
@@ -127,14 +125,8 @@ def main(argv=None):
 
     save()
     try:
-        import fcntl
-
-        with (ROOT / "state/startup-request.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            state = startup.read_json(ROOT / "state/startup-rank0.json")
-            info = startup.inspect_owned(
-                state["name"], startup_config.fingerprint(profile)
-            )
+        with startup.request_lock():
+            state, info = startup.running_head(profile)
             if not info["State"]["Running"]:
                 raise ValueError("The dedicated calibration server is not running")
             report.update(

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import ROOT, load_lock
+from .io import write_json
 
 PROBE = """
 import json, importlib.metadata as m, platform
@@ -35,9 +36,7 @@ def run(record: Path):
     status = {"started_at": datetime.now(timezone.utc).isoformat(), "image": image}
 
     def save():
-        (record / "prepare-status.json").write_text(
-            json.dumps(status, indent=2) + "\n", encoding="utf-8"
-        )
+        write_json(record / "prepare-status.json", status)
 
     try:
         status["status"] = "pulling"
@@ -87,9 +86,7 @@ def run(record: Path):
         )
         result.check_returncode()
         payload = json.loads(result.stdout.strip().splitlines()[-1])
-        (record / "runtime-probe.json").write_text(
-            json.dumps(payload, indent=2) + "\n", encoding="utf-8"
-        )
+        write_json(record / "runtime-probe.json", payload)
         if (
             payload["capability"] != [12, 1]
             or payload["gpu_mismatches"]

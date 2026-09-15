@@ -107,8 +107,7 @@ def main(argv=None):
     profile = startup_config.load(args.config)
     lock, questions = load_questions(args.benchmark_dir)
     selected = questions[: args.limit] if args.limit else questions
-    current = startup.read_json(ROOT / "state/startup-rank0.json")
-    info = startup.inspect_owned(current["name"], startup_config.fingerprint(profile))
+    current, info = startup.running_head(profile)
     if not info["State"]["Running"]:
         parser.error("The configured local server is not running")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -135,10 +134,7 @@ def main(argv=None):
         )
         write_json(args.output / "result.json", report)
 
-    import fcntl
-
-    with (ROOT / "state/startup-request.lock").open("a") as request_lock:
-        fcntl.flock(request_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with startup.request_lock():
         save()
         for question in selected:
             row = {"id": question["id"], "attempts": []}

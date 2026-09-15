@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import fabric
 from .config import ROOT, load_lock
+from .io import write_json
 
 
 def validate_site(site):
@@ -168,6 +169,13 @@ def run(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout
 
 
+def available_gib():
+    rows = dict(
+        line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
+    )
+    return int(rows["MemAvailable"].split()[0]) / 1024**2
+
+
 def fabric_checks(site):
     validate_site(site)
     return fabric.checks(site, run)
@@ -182,20 +190,17 @@ def preflight(site, lock, snapshot):
     checks["kernel_validation"] = receipt_path.exists() and valid_kernel_receipt(
         json.loads(receipt_path.read_text()), lock
     )
-    meminfo = dict(
-        line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
-    )
-    available_gib = int(meminfo["MemAvailable"].split()[0]) / 1024**2
+    available = available_gib()
     # 87.743 GiB payload/rank + 8 GiB KV candidate + 8 GiB OS reserve + a few GiB
     # of runtime allowance, which `resources.reserve_gib` now sets; this floor is
     # unchanged by that setting and measured peak remains a separate gate.
-    checks["startup_memory"] = available_gib >= 108
+    checks["startup_memory"] = available >= 108
     existing = run("docker", "ps", "-a", "--format", "{{.Names}}").splitlines()
     checks["rank_container_absent"] = f"glm53-nvidia-rank{site['rank']}" not in existing
     return {
         "checks": checks,
         "passed": all(checks.values()),
-        "available_gib": available_gib,
+        "available_gib": available,
     }
 
 
@@ -240,13 +245,13 @@ def main(argv=None):
         / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-preflight")
     )
     record.mkdir(parents=True)
-    (record / "preflight.json").write_text(json.dumps(result, indent=2) + "\n")
+    write_json(record / "preflight.json", result)
     print(json.dumps(result, indent=2))
     if not result["passed"]:
         raise SystemExit(2)
     if args.action == "start":
         (ROOT / "state/runtime-cache").mkdir(parents=True, exist_ok=True)
-        (record / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+        write_json(record / "command.json", command)
         print(run(*command))
 
 

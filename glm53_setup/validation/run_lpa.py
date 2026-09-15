@@ -9,6 +9,8 @@ import sysconfig
 import time
 from pathlib import Path
 
+from ..io import write_json
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -73,7 +75,7 @@ def main(argv=None):
     }
 
     def save():
-        (args.output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+        write_json(args.output / "result.json", report)
 
     save()
     from vllm import LLM, SamplingParams

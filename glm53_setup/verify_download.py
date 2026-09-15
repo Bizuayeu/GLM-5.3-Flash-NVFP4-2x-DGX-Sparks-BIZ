@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import MODEL, REVISION, STATE
+from .io import write_json
 
 
 def main(argv=None):
@@ -20,19 +21,15 @@ def main(argv=None):
     status_file = args.output / "checksum-status.json"
 
     def save(status, **extra):
-        status_file.write_text(
-            json.dumps(
-                {
-                    "status": status,
-                    "model": MODEL,
-                    "revision": REVISION,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                    **extra,
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
+        write_json(
+            status_file,
+            {
+                "status": status,
+                "model": MODEL,
+                "revision": REVISION,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                **extra,
+            },
         )
 
     save("waiting_for_download")

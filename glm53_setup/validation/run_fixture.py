@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from ..io import write_json
 from .summarize_fixture import assess_outputs
 
 
@@ -100,9 +101,7 @@ def main(argv=None):
     }
 
     def save():
-        (args.output / "result.json").write_text(
-            json.dumps(report, indent=2) + "\n", encoding="utf-8"
-        )
+        write_json(args.output / "result.json", report)
 
     save()
     from vllm import LLM, SamplingParams

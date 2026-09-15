@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from ..config import REVISION, TEACHER_PRECISION
+from ..io import write_json
 
 
 def main(argv=None):
@@ -51,7 +52,7 @@ def main(argv=None):
     }
 
     def save():
-        (args.output / "result.json").write_text(json.dumps(report, indent=2))
+        write_json(args.output / "result.json", report)
 
     save()
     try:
