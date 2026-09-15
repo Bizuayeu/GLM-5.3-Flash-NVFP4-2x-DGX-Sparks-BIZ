@@ -65,11 +65,11 @@ python tools/check_publication.py
 ソースアーカイブを新しいcheckoutへ展開したときは、`server preflight`や`cluster switch`の前に、Git除外の実行時ディレクトリを各ホストの永続領域へ接続します。ソースアーカイブには意図的に含まれません。新しい対がreadyになるまで旧checkoutと記録を保持します。
 
 ```sh
-ln -s /srv/glm53/state /srv/glm53/source/state
-ln -s /srv/glm53/records /srv/glm53/source/records
+ln -sT /srv/glm53/state /srv/glm53/source/state
+ln -sT /srv/glm53/records /srv/glm53/source/records
 ```
 
-各ホストの実際の絶対パスを使い、`readlink -f`で両方のリンク先を確認してください。認証情報や生の記録をソースアーカイブへコピーしません。切替で使う`state/server.toml`は、リモートcheckoutがこのリンク越しに解決する同じパスである必要があります。
+各ホストの実際の絶対パスを使います。`-T` を付けると、既存ディレクトリの中に `state/state` を作らず失敗で止まります。`readlink -f /srv/glm53/source/state` は `/srv/glm53/state` を表示するはずで、`state/state` で終わるパスが出たら入れ子になっています。認証情報や生の記録をソースアーカイブへコピーしません。切替で使う`state/server.toml`は、リモートcheckoutがこのリンク越しに解決する同じパスである必要があります。
 
 **通過条件:** 両機のソース・ロック一致、CPUテスト合格。
 

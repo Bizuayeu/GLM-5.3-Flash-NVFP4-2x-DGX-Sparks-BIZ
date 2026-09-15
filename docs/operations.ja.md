@@ -26,12 +26,12 @@ LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[p
 ソースアーカイブには`state/`と`records/`も意図的に含めません。serverランチャーを使う前に、新しいcheckoutから各ホストの永続領域へsymlinkを作成します。
 
 ```sh
-ln -s /srv/glm53/state /srv/glm53/source/state
-ln -s /srv/glm53/records /srv/glm53/source/records
+ln -sT /srv/glm53/state /srv/glm53/source/state
+ln -sT /srv/glm53/records /srv/glm53/source/records
 readlink -f /srv/glm53/source/state /srv/glm53/source/records
 ```
 
-絶対パスを使い、復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
+絶対パスを使います。`-T` を付けると既存ディレクトリの中に `state/state` を作らず失敗で止まり、`readlink -f` は `/srv/glm53/state` と `/srv/glm53/records` を表示するはずです。`state/state` や `records/records` で終わるパスが出たら入れ子です。復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
 
 ```text
 state/lpa/glm53-lpa-cut32-v1/

@@ -26,12 +26,12 @@ The LPA asset expands as follows. `manifest.json` is a copy of the [projector lo
 A source archive also omits `state/` and `records/` by design. A host deployment must create symlinks from the new checkout to its persistent runtime directories before using the server launcher:
 
 ```sh
-ln -s /srv/glm53/state /srv/glm53/source/state
-ln -s /srv/glm53/records /srv/glm53/source/records
+ln -sT /srv/glm53/state /srv/glm53/source/state
+ln -sT /srv/glm53/records /srv/glm53/source/records
 readlink -f /srv/glm53/source/state /srv/glm53/source/records
 ```
 
-Use absolute host paths, retain the old checkout for recovery, and never place credentials or raw records in the source archive.
+Use absolute host paths; `-T` makes `ln` fail instead of nesting `state/state` inside an existing directory, and `readlink -f` must print `/srv/glm53/state` and `/srv/glm53/records`, not paths ending in `state/state` or `records/records`. Retain the old checkout for recovery, and never place credentials or raw records in the source archive.
 
 ```text
 state/lpa/glm53-lpa-cut32-v1/
