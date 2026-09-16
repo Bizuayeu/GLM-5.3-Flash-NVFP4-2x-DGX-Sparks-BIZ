@@ -138,7 +138,7 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 ## Next candidates
 
 - P06 Graphs: lift LPA's eager constraint and qualify on the full model; gate on per-position acceptance not being pinned at 1.00 (vllm#53030 signature)
-- P24 Per-request prefix-cache no-store: filed in the [catalog](optimization-catalog.md#performance-initiatives) after one 42,026-token lane evicted an 80,024-token conversation's entire cached prefix
+- P24 Per-request prefix-cache no-store: filed in the [catalog](optimization-catalog.md#performance-initiatives) after four individually harmless 15,025-token lanes evicted an 80,024-token conversation's entire cached prefix
 - P23 FP8 weight-only for the BF16 projections (`self_attn*`, `shared_experts*`, `lm_head`): candidate filed in the [catalog](optimization-catalog.md#performance-initiatives), quality-gated, not started
 - Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started
 - P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 256K and broader long-context coverage, multiple sequences with LPA
