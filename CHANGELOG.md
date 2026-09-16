@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 — 2026-09-17
+
+Everything here follows from running 1.2.0 on the reference pair for the first time; `docs/MIA_ADOPTION_2_PLAN.md` Stage 6 owns the run.
+
+- **Long warmup rung converges on its target.** The first live ladder built 82,006 tokens for a 65,536 target: a line costs more once its index grows a digit, so a 256-line sample under-counts. The builder now rescales against the measured count.
+- **Host daemon hygiene** in operations, from a half-dead pair: the peer rank stopped at 2.49 GiB against a 2.5 GiB reserve, but the cause was a Bluetooth profile-registration loop on that host that had grown `polkitd` to 3.40 GiB over six days. How to compare the two hosts, how to read the D-Bus connection serial, why a `MemoryMax` drop-in also needs `Restart=on-failure`, and that a half-dead pair still answers `/health` with 200.
+- **Measured, now documented.** During an 82,018-token prefill the two token counters froze for 202.8 s while the four progress signals together never froze for more than 8.3 s, which is the case for keeping KV usage in the set. Prefix caching works in whole blocks: a repeated N-token prompt restores `(floor(N / block) - 1) x block` and nothing below two blocks, measured as 0 / 9,216 / 23,040 tokens at 3,625 / 14,025 / 28,025 on the 4,608-token block.
+- **P24 filed**: per-request prefix-cache no-store. An 80,024-token conversation, warm at 73,728 cached tokens and 14.9 s per turn, lost its entire cached prefix to a single 42,026-token lane and spent 184.0 s on the next turn; lanes of 9,025 and 18,025 tokens left it intact. Candidate only; it needs a runtime overlay and an image rebuild.
+
 ## 1.2.0 — 2026-09-16
 
 ### Added
