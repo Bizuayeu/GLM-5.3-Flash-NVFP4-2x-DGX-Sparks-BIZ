@@ -66,6 +66,12 @@ Expected effects are hypotheses. A measured result applies to its documented con
 
 P12 is a measurement axis, P13 a scheduler setting, and P14 a workload-order experiment: do not count one gain three times. MTP can already verify multiple speculative rows within one sequence; GEMM-like work does not necessarily require `max_num_seqs > 1`.
 
+**Additional initiative (2026-09-17):**
+
+| Initiative | Work | Expected effect / metric | Current status / procedure |
+|---|---|---|---|
+| P24 Per-request prefix-cache no-store | Let a request opt out of *writing* the GPU prefix cache while still reading it, so a one-off batch or evaluation lane cannot displace an interactive conversation. Needs a runtime overlay in the existing house style (a typed sampling field plus guards at the two request-driven store sites), an image rebuild and a launcher knob; no new dependency | Retained hit ratio and turn latency of a long conversation while other lanes run; the flagged lane must keep its own reads | **Candidate, measured need, not started.** Measured on the image profile at 2.5 GiB KV: an 80,024-token conversation warm at 73,728 cached tokens and 14.9 s per turn lost its entire cached prefix to a single 42,026-token lane, and the next turn cost 184.0 s. The pool is 70 blocks and one 204,800-token request costs 61, so the owner alone nearly fills it and any sizeable lane evicts it. Informed by Mia PR #95 (AGPL-3.0, no code adopted), whose receipts needed sixteen ~54K lanes to produce the same loss on a larger pool. Until it exists, the operational rule is not to interleave a long batch lane with a long interactive conversation on this profile |
+
 ## Business-use quality and adoption gates
 
 Evaluate performance together with source-faithful answers, correct tools and manageable licensing. The objective is neither to steer the model toward a particular ideology nor to remove all appropriate safety refusals.

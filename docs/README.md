@@ -43,7 +43,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Document | Role | EN | JA |
 |---|---|---|---|
 | Optimization overview | Where each measure acts, adopted stack, profiles by workload | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
-| Optimization catalog | Initiative IDs P01–P23 / E01–E03, decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
+| Optimization catalog | Initiative IDs P01–P24 / E01–E03, decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | Performance investigation | Measurement procedures: launches and synchronization, task grouping, EP, TP versus PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | Speculative decoding | MTP metadata view, k=1 and k=3 measurements | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | Late-prefill approximation: projector download/model card, enabling it in the server profile, mechanism, scope, reproduction, evidence | [EN](lpa.md) | [JA](lpa.ja.md) |

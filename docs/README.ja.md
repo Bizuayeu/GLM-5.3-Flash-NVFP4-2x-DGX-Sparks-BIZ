@@ -43,7 +43,7 @@
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
 | 推論最適化の全体像 | 各施策が効く段階、採用した構成、用途別の構成 | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
-| 施策台帳 | 施策ID P01〜P23／E01〜E03、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
+| 施策台帳 | 施策ID P01〜P24／E01〜E03、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | 性能調査 | 計測手順：launch・同期、タスクbatch、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | 投機的デコーディング | MTPのメタデータview、k=1・k=3の実測 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | 後段Prefill近似：projector取得・モデルカード、起動profileでの有効化、仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |

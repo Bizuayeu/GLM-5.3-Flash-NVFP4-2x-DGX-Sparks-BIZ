@@ -138,6 +138,7 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 ## 次の候補
 
 - P06 Graphs：LPAのeager制約を解く検証と全モデル受入。位置別採択率が1.00に張り付いていない（vllm#53030の兆候でない）ことを門にする
+- P24 要求単位のprefix cache無登録：42,026 tokenのレーン1本が80,024 tokenの会話の復元分を全て消したため、[台帳](optimization-catalog.ja.md#性能施策一覧)へ起票
 - P23 BF16のまま残る射影（`self_attn*`・`shared_experts*`・`lm_head`）のFP8 weight-only：[台帳](optimization-catalog.ja.md#性能施策一覧)に候補として起票、品質が門、未着手
 - Euryale：本リポジトリ外の投機draft研究（非公開・独立プロジェクト）。標準MTP k=3との同条件比較で品質・性能・メモリ・復旧のゲートを通した場合に限り、既定の投機経路を置き換える候補。全モデルの教師採取・学習は未着手
 - P09 FP8／BF16 KVのA/B、P20 indexer workspace、256Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA
