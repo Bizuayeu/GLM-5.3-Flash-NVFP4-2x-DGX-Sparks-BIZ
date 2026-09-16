@@ -55,6 +55,22 @@ class WarmupTests(unittest.TestCase):
         text, tokens = warmup.long_prompt(1000, 1200, fake_count)
         self.assertGreaterEqual(tokens, 990)
         self.assertLessEqual(tokens, 1200)
+
+    def test_long_prompt_converges_when_a_line_costs_more_as_it_grows(self):
+        # Mimics the real tokenizer: "warmup line 12345." costs more than
+        # "warmup line 7." A single short sample under-counts, so the builder
+        # must rescale against the measured count.
+        def digit_cost(text):
+            return sum(3 + len(line.split()[-1]) for line in text.splitlines())
+
+        for target in (1000, 20000, 65536):
+            _, tokens = warmup.long_prompt(target, 200000, digit_cost)
+            self.assertLessEqual(abs(tokens - target), target * 0.05, target)
+        # The limit still wins: asking for exactly the limit must not exceed it.
+        _, tokens = warmup.long_prompt(5000, 5000, digit_cost)
+        self.assertLessEqual(tokens, 5000)
+        with self.assertRaises(ValueError):
+            warmup.long_prompt(9000, 5000, digit_cost)
         # A tokenizer that counts more than the sample predicted is trimmed.
         text, tokens = warmup.long_prompt(
             1000, 1000, lambda t: fake_count(t) + (200 if len(t) > 4000 else 0)

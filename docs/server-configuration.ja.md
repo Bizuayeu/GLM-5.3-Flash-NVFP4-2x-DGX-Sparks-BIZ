@@ -112,7 +112,7 @@ run_seconds = 0
 
 **最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。
 
-起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。
+起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
 
 このランチャーの`cache.kv_cache_memory_bytes`は、**各rankで要求間共有する固定KV poolのバイト予算**です。1 GiBを指定したまま同時数を1→2にしても、各rankのKV予算は1 GiBのままです。要求1本あたり1 GiBでも、2台の予算を自由に合算した一つのpoolでもありません。バイト指定時は`gpu_memory_utilization`によるKV容量の自動推定を使わないため、この比率をRAM全体の保護上限として扱いません。[vLLMの設定仕様](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 

@@ -56,15 +56,28 @@ def long_prompt(target_tokens, limit_tokens, count_tokens, sample_lines=256):
     """
     if target_tokens < 1 or target_tokens > limit_tokens:
         raise ValueError("Long rung must be positive and fit the context")
+
+    def build(lines):
+        text = "".join(LONG_LINE.format(index=i) for i in range(lines))
+        return text, count_tokens(text)
+
     sample = "".join(LONG_LINE.format(index=i) for i in range(sample_lines))
-    per_line = count_tokens(sample) / sample_lines
-    lines = max(1, math.ceil(target_tokens / per_line))
-    text = "".join(LONG_LINE.format(index=i) for i in range(lines))
-    tokens = count_tokens(text)
+    lines = max(1, math.ceil(target_tokens * sample_lines / count_tokens(sample)))
+    text, tokens = build(lines)
+    # A line costs more once its index grows a digit, so a short sample
+    # under-counts: measured 82,006 tokens for a 65,536 target on the reference
+    # tokenizer. Rescale against the real count instead of trusting the sample.
+    for _ in range(4):
+        if not tokens or abs(tokens - target_tokens) <= target_tokens // 50:
+            break
+        scaled = max(1, int(lines * target_tokens / tokens))
+        if scaled == lines:
+            break
+        lines = scaled
+        text, tokens = build(lines)
     while tokens > limit_tokens and lines > 1:
         lines = max(1, math.floor(lines * limit_tokens / tokens) - 1)
-        text = "".join(LONG_LINE.format(index=i) for i in range(lines))
-        tokens = count_tokens(text)
+        text, tokens = build(lines)
     return text, tokens
 
 
