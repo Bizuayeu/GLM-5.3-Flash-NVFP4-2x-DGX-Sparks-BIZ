@@ -1,5 +1,7 @@
 import copy
+import hashlib
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import mock_open, patch
@@ -625,6 +627,120 @@ class ServerConfigTests(unittest.TestCase):
         self.assertEqual(args[args.index("--memory") + 1], "112g")
         self.assertNotIn("--rm", args)
         self.assertNotIn("--privileged", args)
+
+    def derived(self, root, real=False):
+        overlay = root / "kda-quant.py"
+        overlay.write_text("x = 1  # kda-quant-overlay\n", encoding="utf-8")
+        # The hosts are Linux; validation takes POSIX paths, the checks read a real file.
+        return {
+            "path": "/srv/weights-g",
+            "requant_target": "g",
+            "overlays": [
+                {
+                    "target": "kda.py",
+                    "source": str(overlay) if real else "/srv/kda-quant.py",
+                    "sha256": hashlib.sha256(overlay.read_bytes()).hexdigest(),
+                    "base_sha256": "a" * 64,
+                    "marker": "kda-quant-overlay",
+                }
+            ],
+        }
+
+    def test_derived_checkpoint_is_optional_and_strictly_shaped(self):
+        before = config.fingerprint(self.profile)
+        config.validate(self.profile)
+        with tempfile.TemporaryDirectory() as tmp:
+            good = self.derived(Path(tmp).resolve())
+            self.profile["runtime"]["derived_checkpoint"] = good
+            config.validate(self.profile)
+            self.assertNotEqual(config.fingerprint(self.profile), before)
+            for key, bad in (
+                ("path", "relative/dir"),
+                ("path", 3),
+                ("requant_target", ""),
+                ("overlays", []),
+                ("overlays", [{**good["overlays"][0], "target": "../kda.py"}]),
+                ("overlays", [{**good["overlays"][0], "sha256": "xyz"}]),
+                ("overlays", [{**good["overlays"][0], "extra": 1}]),
+                ("overlays", [good["overlays"][0], good["overlays"][0]]),
+            ):
+                profile = copy.deepcopy(self.profile)
+                profile["runtime"]["derived_checkpoint"][key] = bad
+                with self.assertRaises(ValueError, msg=(key, bad)):
+                    config.validate(profile)
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["derived_checkpoint"]["unknown"] = 1
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+        self.profile["runtime"].pop("derived_checkpoint")
+        self.assertEqual(config.fingerprint(self.profile), before)
+
+    def test_command_serves_a_derived_checkpoint_with_its_overlays(self):
+        self.profile["mtp"]["enabled"] = True
+        with tempfile.TemporaryDirectory() as tmp:
+            derived = self.derived(Path(tmp).resolve())
+            self.profile["runtime"]["derived_checkpoint"] = derived
+            args = server.command(
+                self.profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
+            )
+        self.assertIn(derived["path"] + ":/derived:ro", args)
+        self.assertIn("/derived", args)
+        self.assertIn(
+            derived["overlays"][0]["source"]
+            + ":"
+            + server.VLLM_MODEL_DIR
+            + "/kda.py:ro",
+            args,
+        )
+        self.assertFalse([a for a in args if "glm53-mtp-compatible" in a])
+
+    def test_derived_checks_fail_closed_on_every_mismatch(self):
+        metadata = {
+            "quantization_config": {
+                "quant_algo": "MIXED_PRECISION",
+                "producer": {"requant_target": "g"},
+                "quantized_layers": {
+                    "model.language_model.layers.0.self_attn.o_proj": {}
+                },
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            derived = self.derived(Path(tmp).resolve(), real=True)
+            self.profile["runtime"]["derived_checkpoint"] = derived
+            self.profile["mtp"]["enabled"] = True
+
+            def checks(metadata=metadata, base="a" * 64):
+                with patch.object(
+                    server.host, "run", return_value=base + "  /x/kda.py\n"
+                ) as run:
+                    result = server.derived_checks(self.profile, metadata)
+                self.assertIn("--network", run.call_args.args)
+                return result
+
+            self.assertEqual(
+                checks(),
+                {
+                    "derived_checkpoint": True,
+                    "derived_mtp_draft_unquantized": True,
+                    "derived_overlays": True,
+                },
+            )
+            self.assertIs(checks(base="b" * 64)["derived_overlays"], False)
+            wrong = copy.deepcopy(metadata)
+            wrong["quantization_config"]["producer"]["requant_target"] = "h"
+            self.assertIs(checks(wrong)["derived_checkpoint"], False)
+            wrong = copy.deepcopy(metadata)
+            wrong["quantization_config"]["quant_algo"] = "NVFP4"
+            self.assertIs(checks(wrong)["derived_checkpoint"], False)
+            wrong = copy.deepcopy(metadata)
+            wrong["quantization_config"]["quantized_layers"][
+                f"model.language_model.layers.{server.MODEL_LAYERS}.mlp.experts"
+            ] = {}
+            self.assertIs(checks(wrong)["derived_mtp_draft_unquantized"], False)
+            Path(derived["overlays"][0]["source"]).write_text("x = 2\n")
+            self.assertIs(checks()["derived_overlays"], False)
+        self.profile["runtime"].pop("derived_checkpoint")
+        self.assertEqual(server.derived_checks(self.profile, metadata), {})
 
     def test_request_resets_lpa_after_generation_failure(self):
         self.profile["lpa"]["enabled"] = True

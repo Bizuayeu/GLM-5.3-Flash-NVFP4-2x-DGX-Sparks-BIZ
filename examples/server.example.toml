@@ -8,6 +8,10 @@
 schema_version = 1
 
 [runtime]
+# Optional A/B of a locally requantized checkpoint; absent by default (docs/server-configuration.md).
+# 手元で再量子化したcheckpointのA/B用。既定では書かない。
+# [runtime.derived_checkpoint] goes after this table: path, requant_target and
+# overlays = [{target, source, sha256, base_sha256, marker}, ...]
 # Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
 # cuda_allocator_conf = "expandable_segments:True"
 nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses (64 on the reference pair)

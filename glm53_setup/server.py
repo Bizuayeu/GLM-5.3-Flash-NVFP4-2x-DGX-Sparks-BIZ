@@ -18,6 +18,8 @@ from .host import available_gib
 from .io import read_json, write_json
 
 LABEL = "glm53.experiment.startup"
+# Where the pinned image keeps the GLM model sources that overlays replace.
+VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia"
 
 
 def projector_path(profile, config_path):
@@ -25,6 +27,11 @@ def projector_path(profile, config_path):
 
 
 def model_path(profile, cache):
+    derived = profile["runtime"].get("derived_checkpoint")
+    if derived:
+        # Undeclared modules resolve unquantized under MIXED_PRECISION, so the
+        # BF16 draft layer needs no metadata view.
+        return Path(derived["path"])
     lock = load_lock()
     if profile["mtp"]["enabled"]:
         return cache / profile["mtp"]["view"] / lock["revision"]
@@ -76,6 +83,12 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
     ]
+    derived = profile["runtime"].get("derived_checkpoint")
+    if derived:
+        args += ["-v", f"{derived['path']}:/derived:ro"]
+        for overlay in derived["overlays"]:
+            target = f"{VLLM_MODEL_DIR}/{overlay['target']}"
+            args += ["-v", f"{overlay['source']}:{target}:ro"]
     if profile["lpa"]["enabled"]:
         target = "/lpa/projector.pt"
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
@@ -88,7 +101,9 @@ def command(profile, config_path, rank, name, cache=None):
         "vllm",
         settings.selected_image(profile),
         *settings.serve_args(
-            profile, rank, "/hf/" + model.relative_to(cache).as_posix()
+            profile,
+            rank,
+            "/derived" if derived else "/hf/" + model.relative_to(cache).as_posix(),
         ),
     ]
 
@@ -139,6 +154,47 @@ def image_capability_checks(profile, image):
     return {key: marker in env for key, marker, enabled in required if enabled}
 
 
+def derived_checks(profile, metadata):
+    """Fail closed unless the checkpoint and each overlay are the declared ones."""
+    derived = profile["runtime"].get("derived_checkpoint")
+    if not derived:
+        return {}
+    quantization = metadata.get("quantization_config") or {}
+    image = settings.selected_image(profile)
+
+    def overlay_matches(overlay):
+        source = Path(overlay["source"])
+        if not source.is_file():
+            return False
+        content = source.read_bytes()
+        base = host.run(
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "sha256sum",
+            image,
+            f"{VLLM_MODEL_DIR}/{overlay['target']}",
+        )
+        return (
+            hashlib.sha256(content).hexdigest() == overlay["sha256"]
+            and overlay["marker"].encode() in content
+            and base.split()[:1] == [overlay["base_sha256"]]
+        )
+
+    draft = f".layers.{MODEL_LAYERS}."
+    return {
+        "derived_checkpoint": quantization.get("quant_algo") == "MIXED_PRECISION"
+        and (quantization.get("producer") or {}).get("requant_target")
+        == derived["requant_target"],
+        "derived_mtp_draft_unquantized": not profile["mtp"]["enabled"]
+        or not any(draft in key for key in quantization.get("quantized_layers", {})),
+        "derived_overlays": all(map(overlay_matches, derived["overlays"])),
+    }
+
+
 def preflight(profile, config_path, rank, *, check_memory=True):
     cache = Path.home() / ".cache/huggingface"
     lock = load_lock()
@@ -156,7 +212,8 @@ def preflight(profile, config_path, rank, *, check_memory=True):
     checks["full_model"] = metadata["text_config"][
         "num_hidden_layers"
     ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
-    if profile["mtp"]["enabled"]:
+    checks.update(derived_checks(profile, metadata))
+    if profile["mtp"]["enabled"] and "derived_checkpoint" not in profile["runtime"]:
         view = metadata.get("_local_mtp_metadata", {})
         checks["mtp_view"] = (
             view.get("source_revision") == lock["revision"]

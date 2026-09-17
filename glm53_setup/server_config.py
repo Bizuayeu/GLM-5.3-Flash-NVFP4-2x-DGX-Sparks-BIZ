@@ -29,7 +29,12 @@ def validate(profile):
     def check(value, expected, path):
         if isinstance(expected, dict):
             optional = {
-                "server.runtime": {"cuda_allocator_conf", "vision", "nccl_channels"},
+                "server.runtime": {
+                    "cuda_allocator_conf",
+                    "vision",
+                    "nccl_channels",
+                    "derived_checkpoint",
+                },
                 "server.cache": {
                     "prefix_cache_retention_interval",
                     "mm_processor_cache_gb",
@@ -78,6 +83,8 @@ def validate(profile):
         channels = profile["runtime"]["nccl_channels"]
         if type(channels) is not int or channels < 1:
             raise ValueError("runtime.nccl_channels must be a positive integer")
+    if "derived_checkpoint" in profile["runtime"]:
+        validate_derived(profile["runtime"]["derived_checkpoint"])
     if "mm_processor_cache_gb" in profile["cache"]:
         size = profile["cache"]["mm_processor_cache_gb"]
         if type(size) not in (int, float) or not math.isfinite(size) or size < 0:
@@ -223,6 +230,51 @@ def validate(profile):
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile["api"][key]):
             raise ValueError(f"Invalid api.{key}")
+
+
+def validate_derived(derived):
+    """A locally requantized checkpoint and the source overlays it needs to boot."""
+    name = "runtime.derived_checkpoint"
+    if not isinstance(derived, dict) or derived.keys() != {
+        "path",
+        "requant_target",
+        "overlays",
+    }:
+        raise ValueError(f"Unknown/missing settings in {name}")
+
+    def absolute(value):
+        return isinstance(value, str) and PurePosixPath(value).is_absolute()
+
+    target = derived["requant_target"]
+    if not absolute(derived["path"]) or not isinstance(target, str) or not target:
+        raise ValueError(f"{name} needs an absolute path and a requant_target")
+    overlays = derived["overlays"]
+    if not isinstance(overlays, list) or not overlays:
+        raise ValueError(f"{name}.overlays must list at least one file")
+    for overlay in overlays:
+        if not isinstance(overlay, dict) or overlay.keys() != {
+            "target",
+            "source",
+            "sha256",
+            "base_sha256",
+            "marker",
+        }:
+            raise ValueError(f"Unknown/missing settings in {name}.overlays")
+        if (
+            not isinstance(overlay["target"], str)
+            or not re.fullmatch(r"[a-z_]+\.py", overlay["target"])
+            or not absolute(overlay["source"])
+            or not isinstance(overlay["marker"], str)
+            or not overlay["marker"]
+            or any(
+                not isinstance(overlay[key], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", overlay[key])
+                for key in ("sha256", "base_sha256")
+            )
+        ):
+            raise ValueError(f"Invalid entry in {name}.overlays")
+    if len({overlay["target"] for overlay in overlays}) != len(overlays):
+        raise ValueError(f"{name}.overlays names a target twice")
 
 
 def site(profile, rank):
