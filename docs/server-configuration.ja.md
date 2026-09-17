@@ -26,7 +26,7 @@
 
 | 項目 | 既定値 |
 |---|---|
-| 実行 | TP=2、eager、1系列、204,800 token、chunk512 |
+| 実行 | TP=2、eager、1系列、204,800 token、chunk 2048（[実測](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17)） |
 | 入力 | テキスト・ツール呼び出し・画像（`runtime.vision = true`）。動画は拒否 |
 | キャッシュ | FP8、各rank 2.5 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
@@ -75,7 +75,7 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server plan --rank 1
 ```
 
-各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・空きメモリを確認できます。worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。
+各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・他のコンテナがGPUを使っていないこと・空きメモリを確認できます（[各検査の範囲](operations.ja.md#フルモデルの起動検査)）。worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。
 
 ```sh
 python -m glm53_setup server start --rank 1
@@ -92,10 +92,11 @@ python -m glm53_setup server ask --request request.json
 python -m glm53_setup server status --rank 0
 python -m glm53_setup server capacity
 python -m glm53_setup server warmup
+python -m glm53_setup server mojibake
 python -m glm53_setup server stop --rank 0
 ```
 
-`capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。
+`capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。
 
@@ -113,7 +114,7 @@ run_seconds = 0
 
 ## KV容量とRAMの条件
 
-**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。
+**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。受け入れた2系列の範囲は1要求2,112 tokenまでです。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、ライセンスなし、コードは採用しない）。
 
 起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
 
@@ -121,7 +122,7 @@ run_seconds = 0
 
 実行中に必要なcacheは、保持中の各要求の入力＋生成済みtokenに従ってpool内のblockを消費します。最大長を同時に保証したい場合は、出力予算も含む最大条件で検証します。GLMは疎MLA・IndexPool・系列ごとのKDA状態を併用するため、一般的なdense attentionの単純なbytes/token式をそのまま使わず、**固定runtimeのcache spec・block整列・各groupの容量と状態slot数**で見積もります。MTP等の追加状態も別途含めます。
 
-各ノードで、重み＋KV/cache状態＋activation・indexer等の一時領域＋MTP/Graph等の追加領域＋CPU/OS・他負荷＋運用余裕が、利用可能な統合RAMに収まる必要があります。KV poolを固定しても、context・chunk・同時数に依存する別の割当が増えることはあります。コンテナ上限と`reserve_gib`は保護手段であり、容量適合や無停止の保証ではありません。以前の 256K テキスト専用 profile は実測 121 GiB のホストでこの保護に接していました。available は 4.5 GiB 前後で推移し、保護余裕 4 では監視停止（`stop-reason: memory-reserve`）が 2 回発生し（2 回目は 16,859 token の近似要求の最中）、その後 3 へ下げました。現在の画像入力構成では、配信中の head の空きは約 4.0〜4.2 GiB で（[実測](vision.ja.md#メモリ最終構成)）、テンプレートは 2.5 です。値は小数でも指定できます。変える前に、この保護が捉えられる範囲を見積もってください。監視は `MemAvailable` を 2 秒ごとに読み、実測では割り込んだ標本からコンテナ終了まで約 9 秒かかりました。実行中のコンパイルで測った 0.15 GiB/秒の下降なら、reserve から約 1.6 GiB 下まで沈み得ます。参照ホストではカーネル・コンテナとも OOM kill の記録はなく、ホスト側のページは 16 GiB の swap が受けるため、reserve を割った先の危険はワーカー内の GPU 確保の失敗です。その場合は監視停止ではなく、エンジンが突然終了します。ドライバの `NV_ERR_NO_MEMORY` カーネルメッセージは空き 4 GiB 以上、主にロード中に出るもので、底の目印にはなりません。
+各ノードで、重み＋KV/cache状態＋activation・indexer等の一時領域＋MTP/Graph等の追加領域＋CPU/OS・他負荷＋運用余裕が、利用可能な統合RAMに収まる必要があります。KV poolを固定しても、context・chunk・同時数に依存する別の割当が増えることはあります。コンテナ上限と`reserve_gib`は保護手段であり、容量適合や無停止の保証ではありません。以前の 256K テキスト専用 profile は実測 121 GiB のホストでこの保護に接していました。available は 4.5 GiB 前後で推移し、保護余裕 4 では監視停止（`stop-reason: memory-reserve`）が 2 回発生し（2 回目は 16,859 token の近似要求の最中）、その後 3 へ下げました。画像入力構成の配信中の head の空きは、NCCL の 64 チャネルでは約 4.0〜4.2 GiB（[実測](vision.ja.md#メモリ最終構成)）、8 チャネルでは [1.3.1 の 200K 実入力](benchmarks.ja.md#131での200k実入力)で 6.97 GiB 以上、chunk 2048 で 6.40 GiB 以上でした。テンプレートは 2.5 です。値は小数でも指定できます。変える前に、この保護が捉えられる範囲を見積もってください。監視は `MemAvailable` を 2 秒ごとに読み、実測では割り込んだ標本からコンテナ終了まで約 9 秒かかりました。実行中のコンパイルで測った 0.15 GiB/秒の下降なら、reserve から約 1.6 GiB 下まで沈み得ます。参照ホストではカーネル・コンテナとも OOM kill の記録はなく、ホスト側のページは 16 GiB の swap が受けるため、reserve を割った先の危険はワーカー内の GPU 確保の失敗です。その場合は監視停止ではなく、エンジンが突然終了します。ドライバの `NV_ERR_NO_MEMORY` カーネルメッセージは空き 4 GiB 以上、主にロード中に出るもので、底の目印にはなりません。
 
 KVが不足すれば起動が拒否される場合があり、実行時は待ちやpreemption・再計算により性能が落ちることがあります。固定KV poolが勝手に必要量まで拡張されるわけではありません。KV以外の割当やRAM予算が不足すればOOMやガード停止も起こり得ます。[vLLMのpreemption説明](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
@@ -137,7 +138,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 
 `runtime.enforce_eager=true` が既定です。`false` は実験用のdecode Graph経路を明示的に選び、`CompilationMode.NONE`・`FULL_DECODE_ONLY`・capture size `[1]` を渡します。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。単体検証の範囲は同時1シーケンス・LPA/MTP/APCなしで、融合は独立設定です。これは全モデルの受入完了を意味しません。併用と複数系列は後段の検収まで起動設定で拒否します。
 
-Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。eagerの検査方式も `runtime.index_checks` に従い、配布既定はasyncです。
+Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて検収する場合は、kごとにcacheを分けるか、kを変えたときに消してください。上のopt-inは何もcompileせず、MTPとの併用も拒否します。eagerの検査方式も `runtime.index_checks` に従い、配布既定はasyncです。
 
 `validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。
 

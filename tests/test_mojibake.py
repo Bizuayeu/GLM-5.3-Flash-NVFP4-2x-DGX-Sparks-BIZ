@@ -73,6 +73,15 @@ class MojibakeTests(unittest.TestCase):
         self.assertEqual(row["verdict"], "pass")
         self.assertIs(row["truncated"], True)
 
+    def test_malformed_response_is_inconclusive_and_run_never_raises(self):
+        no_finish = {"choices": [{"message": {"content": JAPANESE}}]}
+        for result in [{"choices": []}, no_finish]:
+            record = mojibake.run(lambda request, result=result: result, repeats=1)
+            self.assertEqual(
+                [row["verdict"] for row in record["runs"]], ["inconclusive"] * 2
+            )
+            self.assertEqual(record["verdict"], "inconclusive")
+
     def test_run_repeats_each_language_at_temperature_zero_and_aggregates(self):
         requests = []
 

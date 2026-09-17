@@ -82,6 +82,45 @@ Graphのtraceでは、hostのGraph launchが31回、eagerでは0回でした。�
 
 続くprefillのみの試験（`native-prefill-v16`、driver SHA256 `171b013c59cd5ffb3acc45143236b5ff541c740e33a2ab4cafc3f35f80ad903b`）では、65 query行と呼び出し側で0埋めした出力を用い、末尾だけを有効候補とする条件と空行を想定しました。ライブラリは最初の構成——`GLM_NSA`、32 head、top-k 128、page size 64——を拒否し、一致検査のケースが完了する前にOOMなしでexit 1しました。2176候補のprefillケースと時間測定の段階には到達しておらず、あらゆるprefill shapeが未対応であることを示すものではありません。prefillのみの差し替えは未検収で、servingは変更していません。
 
+**行の種類別の再検討（2026-09-17）。** source `adf8ca9` の `benchmark_native_attention --by-row-kind`（driver SHA256 `4baea4aa9161658cac09db71ee849de7175b2b0b7b3be0ad744c68ca96320b8a`）で、配信と同じimage `f6fc154c…`・FlashInfer 0.6.18を使い、GB10 1台（他の負荷なし）で幅2048——SM120 v32／GLM decodeが受ける最大の幅——の試験をやり直しました。誤差は行の種類ごとに分けています。空行は、そのままkernelへ渡す場合と、slot 0を指させて出力を後から0にする場合の2通りです。後者の扱いはMiaの `Dockerfile`（AGPL-3.0、コードは採用しない）とdrowzeysのWALLS #4/#5/#7（Apache-2.0、コードは採用しない）にあります。
+
+| head | query行 | 全候補の行 | 17候補の行 | 空行（そのまま） | 空行（slot 0＋0化） | 許容範囲 |
+|---:|---|---:|---:|---:|---:|---:|
+| 32 | 3（decode kernel） | 0.0078 | 0.0625 | 3.03125 | 0 | 0.031 |
+| 32 | 65（prefill orchestrator） | 0.0083 | 0.0389 | 3.03125 | 0 | 0.027 |
+| 64 | 3 | 0.0078 | 0.0547 | 3.03125 | 0 | 0.029 |
+| 64 | 65 | 0.0088 | 0.0566 | 3.03125 | 0 | 0.030 |
+
+v15の差は空行から来ており、同じ値がそのまま再現しました。空行を0にすればこの差は消えます。全候補の行は許容範囲内ですが、17候補の行（3行では先頭、65行では末尾に詰めた配置）は、空行の扱いによらず許容範囲の1.3〜2倍の差が残ります。幅2048の65行は受理され、v16のtop-k 128とは結果が異なりました。2,048候補がすべて有効な場合、kernelは許容範囲内で、P04の計時条件で1/8/65/512行が0.085/0.092/0.413/2.439 ms、参照は0.187/1.105/8.831/68.837 msでした。
+
+kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）は、合成データでのみ測りました。乱数のpacked FP8 cacheとquery、64行×32 head、poolの順位は参照計算のattention質量から作っています。出力の最大変化は、質量が最小のpoolを落とすと0.022、無作為なら0.039、最大のpoolなら0.151で、参照出力の最大絶対値は0.326、許容範囲は0.016でした。合成データのattentionはほぼ一様（1 poolの質量は約1/512）なので、実際のindexerでの影響はこの数字からは言えません。実際の順位とattentionは採っていません。
+
+**再検討後の判断:** 空行を0にすればv15の失敗は消えますが、候補の少ない行は許容範囲を超えたままで、kernelに収めるには候補を落とす必要があるため、直接の差し替えは不採用のままです。2,047候補を使うには、モデル全体の品質の証拠（FreedomBench、tool評価、長文のneedle）と別の判断が要ります。
+
+## SM90 FA2 MLA wrapperの試験
+
+2026-09-17（Asia/Tokyo）、source `adf8ca9` の `benchmark_sm90_attention`（driver SHA256 `c94af60c1ac31ac1b3184edb749f7c34496a4895a0e6d05f4c6e7ecec4a0c260`）で、FlashInferの `BatchMLAPagedAttentionWrapper` を、固定vLLMの `FLASHINFER_MLA_SPARSE_SM90` backendと同じ形で呼びました。NoPE（`head_dim_kpe=0`）、page size 1で各query行の候補をKV pageとし、行ごとの正確な長さと `causal=False` を渡しています。固定vLLMがこのbackendを選ぶのはcompute capability 9だけで、そこでは `fa3` を使います。試験ではGB10（capability 12.1）で `fa2` を使いました。上の再検討と同じホスト・imageで、モデルの重みは使わず、servingは変えていません。着想はsfxnzの `docker/Dockerfile.sm121-v8`（MIT、コードは採用しない）とtonyd2wildのPR #17・Issue #20（ライセンスなし、コードは採用しない）で、どちらもこのbackendを `fa2` でcapability 12へ広げています。
+
+最初の `plan()` はNoPE用のmoduleをJITでビルドし、8.0秒かかりました。imageのJIT cacheにあるのは `head_dim_kpe=64` の版だけです。**FlashInfer 0.6.18ではGB10でFP8 KVは使えません。** `plan()` が `FP8 kv_data_type for MLA requires an SM90 (Hopper) device, got SM121.` を返します。そのため試験では、参照計算と同じpacked cacheを展開したBF16 KVを使いました。BF16のMLA cacheは1 tokenあたりMLA層ごとに1,024 byteで、`fp8_ds_mla` は656 byteです。
+
+数値の検査は、P04と同じBF16 epsilon 2つ分の許容範囲ですべて合格しました。
+
+- 幅17/63/64/65/2048/2051/2176、連続とsliceのquery：最大差0.00024〜0.0039（許容範囲0.047）。幅の上限はありませんでした。
+- 空行（幅0を含む）：厳密に0。
+- 2,051候補中のtail候補が1つだけの行：kernelの差0.0、tailを除くと参照出力が15.6変わる。
+- 2,176候補の64・128・256行：有限、最大差0.00049。FlashInfer 0.6.17で報告されたNaNは出ませんでした。
+
+計時はP04と同じ条件（32 head、有効な2,176候補、10回呼び出しを同期して5バッチの中央値）です。backendはstepごとに1回planし、層ごとに1回runします。
+
+| query行 | 参照 (ms) | FA2 run (ms) | FA2 plan (ms) | 参照／FA2の1回あたりkernel数 |
+|---:|---:|---:|---:|---:|
+| 1 | 0.205 | 0.032 | 0.028 | 27 / 1 |
+| 8 | 1.193 | 0.073 | 0.036 | 25 / 1 |
+| 65 | 9.082 | 0.569 | 0.041 | 195 / 1 |
+| 512 | 70.604 | 3.508 | 0.085 | 1,348 / 1 |
+
+**判断:** このkernelはGB10で部品として数値的に使え、512行では参照計算の約20倍速い。ただし、servingのbackendを切り替える証拠ではありません。切り替えるとKVはBF16になり、1 GiBあたりのtoken数が減ります。またpacked cacheの機能はSM120経路を前提に作られています。P03のunpack融合は `fp8_ds_mla` を展開し、P19のprefix cachingとP22のLPAは4,608 tokenの配置と参照計算のhookに依存し、[候補順序の正規化](candidate-order.ja.md)はSM120のGLM経路にしか入っていません。それぞれの再検収と、モデル全体の品質・容量の検査を、別の判断として行う必要があります。
+
 ## NoPE attentionの融合とquery batching（P04）
 
 2026-09-13（Asia/Tokyo）、GB10上で2件の独立した部品実験を行いました。image `e18f7ae…`、32 head、latent幅512、queryあたり2,176候補、packedなFP8 cacheと任意のFP32 scaleを使います。どちらもservingのbackendを変更しません。同期のindex範囲検査は有効のままで、参照実装ではGraphsとunpack融合をoffにしています。各測定は、warmup 3回の後、10回呼び出しのbatchを5回行った中央値で、batchごとに同期しています。profilingは別に実施しました。

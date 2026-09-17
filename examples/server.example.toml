@@ -43,7 +43,7 @@ max_model_len = 204800 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
-max_num_batched_tokens = 512
+max_num_batched_tokens = 2048
 chunked_prefill = true
 
 [profiling]
@@ -120,8 +120,8 @@ warmup = true # cluster switch runs `server warmup` on rank 0 after readiness; o
 warmup_long_tokens = 0 # Long-prefill rung in prompt tokens; 0 = no long rung. Must leave room for max_tokens.
 # A new prompt shape can still compile kernels while serving (docs/vision.md); the
 # 200K request compiled one TileLang shape. Set this to the longest prompt you will
-# serve and pay its prefill once per start (about 500 s at 200K measured).
-# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（200K で約 500 秒の実測）。
+# serve and pay its prefill once per start (200K measured 380 s at chunk 2048).
+# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（200K・chunk 2048 で 380 秒の実測）。
 
 [resources]
 # Existing experimental memory budgets; larger workloads need new measurement.
@@ -132,7 +132,7 @@ reserve_gib = 2.5 # GiB of MemAvailable; fractions allowed / 小数可
 run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metrics signal moves this long; 0 = off
-# Same value as generation.timeout_seconds; the longest measured request (200K, 506 s) fits.
+# Same value as generation.timeout_seconds; measured 200K (380 s at chunk 2048) and 256K (582 s at 512) fit.
 # KV usage counts as progress, so a long prefill is not a stall. /health stays 200 while the engine is wedged.
 # rank 0 だけ。要求が running なのに /metrics の信号（生成・prompt token 計数、KV 使用率、running 数）がこの秒数動かなければ停止。
 # KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。

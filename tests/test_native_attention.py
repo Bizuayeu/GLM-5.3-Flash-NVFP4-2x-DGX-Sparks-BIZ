@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from glm53_setup.validation import benchmark_native_attention as native
@@ -16,6 +17,17 @@ class NativeAttentionRevisitTests(unittest.TestCase):
         self.assertEqual(errors, {"full": 0.001, "partial": 0.002, "empty": 3.03125})
         with self.assertRaises(ValueError):
             native.row_kind_errors([0.1], ["full", "empty"])
+
+    def test_a_nan_row_error_is_kept_for_its_kind(self):
+        nan = float("nan")
+        errors = native.row_kind_errors(
+            [0.001, 0.002, 0.5, nan, 0.4], ["full", "partial"] + ["empty"] * 3
+        )
+        self.assertEqual((errors["full"], errors["partial"]), (0.001, 0.002))
+        self.assertTrue(math.isnan(errors["empty"]))
+        self.assertTrue(
+            math.isnan(native.row_kind_errors([nan, 0.3], ["full"] * 2)["full"])
+        )
 
     def test_reduction_drops_only_the_lowest_ranked_pool_and_keeps_the_tail(self):
         ranking = list(range(511, -1, -1))  # pool 0 ranks last

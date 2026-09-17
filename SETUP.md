@@ -18,7 +18,7 @@ This is the ordered runbook for a human or an AI operator. Exact pins live in [t
 | Storage | About 205 GB for the pinned checkpoint on each host, plus space for Docker images, build layers, runtime caches, logs and optional fixtures. Measure free space on the actual cache and Docker filesystems. Reserve transfer-archive space if using archives. |
 | Software / access | Python 3.11+, venv/pip, Git, Docker with NVIDIA GPU access; access to Hugging Face and the pinned image registry during acquisition. Image build and GPU tests run on Linux ARM64. |
 | Local choices | Checkout path, management aliases, rank assignment, cache location, unused fabric subnet/ports, logging location and a bounded test window. |
-| Existing workloads | Identify other inference servers, downloads and memory consumers. Do not stop an unrelated job based only on a process name. Resolve resource ownership before loading GLM. |
+| Existing workloads | Identify other inference servers, downloads and memory consumers. Do not stop an unrelated job based only on a process name. Resolve resource ownership before loading GLM; `server preflight` refuses to start while another container requests the GPU. |
 
 NVIDIA documents Ethernet-mode QSFP ports up to 200 Gb/s per port and recommends cables capable of at least that rate. Follow its [network guide](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html) and your compatible-system vendor's instructions. This runbook does not require a switch for a direct two-host link or claim dual-cable bandwidth aggregation.
 
@@ -81,7 +81,7 @@ The source is [NVIDIA's GLM-5.3-Flash-NVFP4 repository](https://huggingface.co/n
 
 On the chosen download host, follow [README asset preparation](README.md#prepare-assets). Record the manifest, snapshot, download status and successful checksum result. A “complete” download state checks presence and sizes; checksum verification is a separate required step.
 
-Transfer the complete model cache (`blobs` plus `snapshots`, preserving links) to the other host after the link is ready; follow [cache transfer and verification](docs/operations.md#acquire-and-verify-once). Save source/destination paths and transfer result. Do not use delete-sync or overwrite another model's cache. Verify both copies against the same pinned revision. Checksum verification may require online metadata even though inference is offline.
+Transfer the complete model cache (`blobs` plus `snapshots`, preserving links) to the other host after the link is ready; follow [cache transfer and verification](docs/operations.md#acquire-and-verify-once). Save source/destination paths and transfer result. Do not use delete-sync or overwrite another model's cache. Verify both copies against the same pinned revision. Checksum verification may require online metadata even though inference is offline. Verify before loading the model: hashing fills the page cache that shares memory with the GPU ([why](docs/operations.md#acquire-and-verify-once)).
 
 If a download is intentionally paused, preserve partial files and leave it paused until authorized to resume. Do not run a downloader and a cache transfer against the same destination concurrently. A cable delay does not justify duplicating a large Internet download.
 
@@ -122,7 +122,7 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server preflight --rank 0
 ```
 
-Both require a matching download state, the built reference image on that host and a filled-in server TOML; the [launch checks](docs/operations.md#full-model-launch-checks) list what preflight covers. Do not change the lock's base digest into the reference tag: it anchors image preparation and source patching.
+Both require a matching download state, the built reference image on that host and a filled-in server TOML; the [launch checks](docs/operations.md#full-model-launch-checks) list what preflight covers, including the refusal to start beside another GPU container. Do not change the lock's base digest into the reference tag: it anchors image preparation and source patching.
 
 Never relax a failing check, reuse the one-GPU fixture as two-rank evidence, truncate attention candidates, or silently substitute precision.
 

@@ -76,6 +76,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 | Checkpoint retention, one active sequence | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and its final combined integration is qualified separately; [contracts](docs/launch-safety.md) |
 | Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the server template; [overview](docs/optimization-overview.md) |
 | Image input at 200K (vision), one active sequence | One synthetic image answered correctly, text/tool regressions passed, video rejected; one image read through a ZCode tool call described correctly; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
+| Long Japanese and Korean output, one active sequence | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
 | Other MTP depths, video input, full application quality, production reliability and maximum performance | **Not validated** |
 
 The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
@@ -125,7 +126,7 @@ The fixed model revision, base-image digest and local reference tag are in [conf
 
 Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
-The TP=2 reference profile is **measured but not accepted for routine use**. `server preflight` checks assets, fabric, image identity and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for the acceptance items that remain open.
+The TP=2 reference profile is **measured but not accepted for routine use**. `server preflight` checks assets, fabric, image identity, exclusive use of the GPU and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for the acceptance items that remain open.
 
 ## Local data and contribution
 

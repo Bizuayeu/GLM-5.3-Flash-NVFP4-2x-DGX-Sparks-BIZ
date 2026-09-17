@@ -163,13 +163,26 @@ def memory_sample():
                 Path("/proc/buddyinfo").read_text(), mmap.PAGESIZE, 2 * 1024**2
             ),
         }
-    except (OSError, ValueError) as error:
+    except Exception as error:  # noqa: BLE001 - any unreadable sample is recorded, never raised
         return {"memory_sample_error": type(error).__name__}
 
 
 def running_containers():
-    ids = run("docker", "ps", "-q").split()
-    return json.loads(run("docker", "inspect", *ids)) if ids else []
+    """Inspections of running containers; one that exits or is removed meanwhile is dropped.
+
+    A container still listed after its inspection failed raises, so the guard fails closed.
+    """
+    inspections = []
+    for container in run("docker", "ps", "-q").split():
+        try:
+            info = json.loads(run("docker", "inspect", container))[0]
+        except subprocess.CalledProcessError:
+            if container in run("docker", "ps", "-q").split():
+                raise
+            continue
+        if info["State"]["Running"]:
+            inspections.append(info)
+    return inspections
 
 
 def foreign_gpu_containers(inspections, label):
@@ -182,7 +195,7 @@ def foreign_gpu_containers(inspections, label):
         info["Name"].lstrip("/")
         for info in inspections
         if info["HostConfig"].get("DeviceRequests")
-        and label not in (info["Config"].get("Labels") or {})
+        and not (info["Config"].get("Labels") or {}).get(label)
     )
 
 

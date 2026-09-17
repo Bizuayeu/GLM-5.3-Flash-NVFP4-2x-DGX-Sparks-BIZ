@@ -82,6 +82,45 @@ The direct path **did not pass**. At 32 heads, tested widths 63/64/65/2048 had n
 
 A subsequent prefill-only probe (`native-prefill-v16`, driver SHA256 `171b013c59cd5ffb3acc45143236b5ff541c740e33a2ab4cafc3f35f80ad903b`) used 65 query rows and caller-zeroed output, with intended suffix-only valid candidates and empty rows. The library rejected the first configuration: `GLM_NSA`, 32 heads, top-k 128, page size 64. It exited 1 without OOM before any parity case completed. The 2176-candidate prefill case and timing stages were not reached; this does not prove every prefill shape unsupported. Prefill-only substitution remains unqualified, with no serving changes.
 
+**Revisit by row kind (2026-09-17).** `benchmark_native_attention --by-row-kind` at source `adf8ca9` (driver SHA256 `4baea4aa9161658cac09db71ee849de7175b2b0b7b3be0ad744c68ca96320b8a`) reran the probe on an idle GB10 with the serving image `f6fc154c…`, FlashInfer 0.6.18 and width 2048, the widest SM120 v32/GLM decode shape. Errors are split by row kind, and empty rows were either passed to the kernel as they are or pointed at slot 0 with their output zeroed afterwards. That handling is described in Mia's `Dockerfile` (AGPL-3.0, no code adopted) and drowzeys WALLS #4/#5/#7 (Apache-2.0, no code adopted).
+
+| Heads | Query rows | Rows with every candidate | Rows with 17 candidates | Empty rows passed as they are | Empty rows at slot 0, zeroed | Bound |
+|---:|---|---:|---:|---:|---:|---:|
+| 32 | 3 (decode kernel) | 0.0078 | 0.0625 | 3.03125 | 0 | 0.031 |
+| 32 | 65 (prefill orchestrator) | 0.0083 | 0.0389 | 3.03125 | 0 | 0.027 |
+| 64 | 3 | 0.0078 | 0.0547 | 3.03125 | 0 | 0.029 |
+| 64 | 65 | 0.0088 | 0.0566 | 3.03125 | 0 | 0.030 |
+
+The v15 difference came from the empty rows and reproduced exactly; zeroing them removes it. Rows holding every candidate stay within the bound, but rows holding 17 candidates (packed first for three rows and last for 65) exceed it by 1.3–2× under either empty-row handling. The 65-row shape at width 2048 was accepted, unlike the top-k 128 shape of v16. With all 2,048 candidates valid the kernel stayed within the bound and took 0.085/0.092/0.413/2.439 ms for 1/8/65/512 rows, against 0.187/1.105/8.831/68.837 ms for the reference under the P04 timing conditions.
+
+Dropping one pool to fit the kernel (2,051 to 2,047 candidates) was measured on synthetic data only: a random packed FP8 cache and queries, 64 rows × 32 heads, pools ranked by their reference attention mass. The largest output change was 0.022 when the lowest-mass pool was dropped, 0.039 for a random pool and 0.151 for the highest-mass pool, against a largest reference output of 0.326 and a bound of 0.016. Synthetic attention is nearly uniform (a pool carries about 1/512 of the mass), so these numbers do not predict the effect under a real indexer; real ranks and attention were not captured.
+
+**Decision after the revisit:** zeroing empty rows removes the v15 failure, but rows with few candidates still exceed the bound and fitting the kernel drops candidates, so the direct substitution stays unadopted. Using 2,047 candidates would need whole-model quality evidence (FreedomBench, tool evaluation, long needle retrieval) and a separate decision.
+
+## SM90 FA2 MLA wrapper probe
+
+On 2026-09-17 (Asia/Tokyo), `benchmark_sm90_attention` at source `adf8ca9` (driver SHA256 `c94af60c1ac31ac1b3184edb749f7c34496a4895a0e6d05f4c6e7ecec4a0c260`) called FlashInfer's `BatchMLAPagedAttentionWrapper` the way the pinned vLLM's `FLASHINFER_MLA_SPARSE_SM90` backend does: NoPE (`head_dim_kpe=0`), page size one with each query row's candidates as its KV pages, exact per-row lengths and `causal=False`. The pinned vLLM selects that backend only on compute capability 9, where it uses `fa3`; the probe used `fa2` on GB10 (capability 12.1). It ran on the same host and image as the revisit above, without model weights and without changing serving. Informed by sfxnz's `docker/Dockerfile.sm121-v8` (MIT, no code adopted) and tonyd2wild PR #17 and Issue #20 (no license, no code adopted), which extend that backend to capability 12 with `fa2`.
+
+The first `plan()` built the NoPE module by JIT in 8.0 s; the image's JIT cache holds only the `head_dim_kpe=64` variants. **FP8 KV is unavailable on GB10 with FlashInfer 0.6.18:** `plan()` raises `FP8 kv_data_type for MLA requires an SM90 (Hopper) device, got SM121.` The probe therefore used BF16 KV decoded from the same packed cache as the reference. A BF16 MLA cache takes 1,024 bytes per token per MLA layer, against 656 for `fp8_ds_mla`.
+
+The numerical checks passed the same two-BF16-epsilon bound as P04:
+
+- Widths 17/63/64/65/2048/2051/2176 with contiguous and sliced queries: maximum differences 0.00024–0.0039 (bound 0.047). No width limit applied.
+- Empty rows, including width 0: exactly zero.
+- A sole tail candidate among 2,051: kernel difference 0.0, and omitting the tail changes the reference output by 15.6.
+- 64, 128 and 256 rows of 2,176 candidates: finite, maximum difference 0.00049. The NaN reported for FlashInfer 0.6.17 did not appear.
+
+Timing used the P04 conditions: 32 heads, 2,176 valid candidates, the median of five synchronized batches of ten calls. The backend plans once per step and runs once per layer.
+
+| Query rows | Reference (ms) | FA2 run (ms) | FA2 plan (ms) | Reference / FA2 kernels per call |
+|---:|---:|---:|---:|---:|
+| 1 | 0.205 | 0.032 | 0.028 | 27 / 1 |
+| 8 | 1.193 | 0.073 | 0.036 | 25 / 1 |
+| 65 | 9.082 | 0.569 | 0.041 | 195 / 1 |
+| 512 | 70.604 | 3.508 | 0.085 | 1,348 / 1 |
+
+**Decision:** the kernel is numerically usable as a component on GB10 and about 20× faster than the reference at 512 rows. This is not evidence for switching the serving backend. A switch would store BF16 KV, which holds fewer tokens per GiB, and the packed-cache features were built for the SM120 path: P03 fused unpack decodes `fp8_ds_mla`, P19 prefix caching and P22 LPA rely on the 4,608-token layout and the reference hook, and [canonical candidate order](candidate-order.md) patches only the SM120 GLM path. Each would need requalification, with full-model quality and capacity checks, in a separate decision.
+
 ## NoPE attention fusion and query batching (P04)
 
 On 2026-09-13 (Asia/Tokyo), two independent GB10 component experiments used image `e18f7ae…`, 32 heads, latent width 512, 2,176 candidate entries per query and packed FP8 cache with arbitrary FP32 scales. Neither changes the serving backend. Synchronous index-range checks remained enabled; Graphs and unpack fusion were off in the reference. Each timing is the median of five batches of ten calls after three warmups, synchronized around each batch. Profiling was separate.

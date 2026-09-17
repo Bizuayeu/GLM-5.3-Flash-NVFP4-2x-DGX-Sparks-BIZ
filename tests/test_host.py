@@ -1,4 +1,5 @@
 import json
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -104,33 +105,60 @@ class HostContractTests(unittest.TestCase):
             container("searxng", None),
             container("other-cdi", cdi, {}),
             container("other-gpus", gpus),
+            # An empty value is not ownership: inspect_owned rejects it too.
+            container("empty-owner", gpus, {"owner": ""}),
         ]
         self.assertEqual(
             host.foreign_gpu_containers(inspections, "owner"),
-            ["other-cdi", "other-gpus"],
+            ["empty-owner", "other-cdi", "other-gpus"],
         )
 
     def test_running_container_inspection_skips_inspect_when_none_run(self):
         with patch.object(host, "run", return_value="\n") as run:
             self.assertEqual(host.running_containers(), [])
             run.assert_called_once_with("docker", "ps", "-q")
-        with patch.object(
-            host, "run", side_effect=["a1\nb2\n", json.dumps([{"Id": "a1"}])]
-        ) as run:
-            self.assertEqual(host.running_containers(), [{"Id": "a1"}])
-            run.assert_called_with("docker", "inspect", "a1", "b2")
+
+    def test_running_containers_drop_ones_that_exit_or_vanish_meanwhile(self):
+        def inspected(container, running=True):
+            return json.dumps([{"Id": container, "State": {"Running": running}}])
+
+        gone = subprocess.CalledProcessError(1, ["docker", "inspect", "b2"])
+        readings = [
+            "a1\nb2\nc3\n",
+            inspected("a1"),
+            gone,
+            "a1\nc3\n",
+            inspected("c3", running=False),
+        ]
+        with patch.object(host, "run", side_effect=readings) as run:
+            self.assertEqual(
+                host.running_containers(), [{"Id": "a1", "State": {"Running": True}}]
+            )
+            run.assert_any_call("docker", "inspect", "b2")
+
+    def test_running_containers_fail_closed_when_a_listed_one_cannot_be_read(self):
+        broken = subprocess.CalledProcessError(1, ["docker", "inspect", "a1"])
+        with patch.object(host, "run", side_effect=["a1\n", broken, "a1\n"]):
+            with self.assertRaises(subprocess.CalledProcessError):
+                host.running_containers()
 
     def test_memory_sample_records_unreadable_observation_instead_of_raising(self):
         meminfo = "MemFree: 1048576 kB\n"
         buddyinfo = "Node 0, zone Normal 0 0 0 0 0 0 0 0 0 3\n"
-        with patch.object(host.Path, "read_text", side_effect=[meminfo, buddyinfo]):
+        with (
+            patch.object(host.mmap, "PAGESIZE", 4096),
+            patch.object(host.Path, "read_text", side_effect=[meminfo, buddyinfo]),
+        ):
             sample = host.memory_sample()
         self.assertEqual(sample["mem_free_gib"], 1.0)
         self.assertEqual(sample["free_2mib_gib"], 3 * 2 * 1024**2 / 1024**3)
-        with patch.object(host.Path, "read_text", side_effect=[meminfo, ""]):
-            self.assertEqual(
-                host.memory_sample(), {"memory_sample_error": "ValueError"}
-            )
+        for readings, error in [
+            ([meminfo, ""], "ValueError"),
+            (["MemFree:\n", buddyinfo], "IndexError"),
+            (OSError("gone"), "OSError"),
+        ]:
+            with patch.object(host.Path, "read_text", side_effect=readings):
+                self.assertEqual(host.memory_sample(), {"memory_sample_error": error})
 
     def test_snapshot_requires_matching_complete_state(self):
         state = {

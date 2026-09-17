@@ -20,7 +20,7 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 
 **P13の追加観測：** 1→2→1系列の独立比較で、短文／2K入力・64出力tokenの同時2要求についてthroughput改善と限定タスクの一致を確認しました。別の容量試験では16,320入力＋64出力を2要求同時に完了しました。**性能・品質・容量の検収範囲は分け、設定上限を変えてもKVが自動増額されるとは扱いません。** [実測と容量条件](benchmarks.ja.md#標準batchingの独立評価)を併記します。
 
-**P05の判断：不採用。** 候補幅2176のdecode非対応、数値検査未達、prefill限定試験の形状拒否を踏まえ、今回のbackend選定は終了します。候補を削って合わせる変更は行っていません。再評価は上流の対応変更時とし、他施策へ進みます。[部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験)。
+**P05の判断：不採用。** 候補幅2176のdecode非対応、数値検査未達、prefill限定試験の形状拒否を踏まえ、今回のbackend選定は終了します。候補を削って合わせる変更は行っていません。再評価は上流の対応変更時とし、他施策へ進みます。[部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験)。**2026-09-17に再開：** Spark 2台の他レシピとの比較を受け、行の種類別の再検討でもSM120経路は不採用のまま、SM90 FA2 wrapperは部品として合格しました。servingの切り替えは別の判断です（P05の行）。
 
 **テンプレート既定の更新（2026-09-15）：** 配布用の起動テンプレートは `lpa.enabled = false` と `runtime.vision = true`（204,800 token、KV各rank 2.5 GiB）を既定にしました。P02／P22の採否は変えていません。近似した要求は共有prefix cacheに何も登録しないため、LPAはバッチ用のopt-inになり（[LPAの使用範囲](lpa.ja.md#使用範囲)）、画像入力構成は[200Kでの画像入力](vision.ja.md)に記録しています。これらは既定値の判断であり、下記の基準日付きの状態欄を変えるものではありません。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です。
 
@@ -34,15 +34,15 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 | P02 LPA | 後段のattention入力を予測し、過去tokenのMLPと不要queryを省略。末尾は通常計算、生成時は全層実行 | 長文prefill・TTFT短縮。decode高速化は狙わず、近似された状態による品質差を測る | **実測あり・実験用。** 長文課題の限定検証。一般品質・結合構成は別ゲート。[LPA](lpa.ja.md) |
 | P03 CUDA fusion：KV復元 | FP8 MLA cacheのコピー・FP32変換・scale乗算をTritonで融合 | KV復元のlaunch・中間tensor削減、主にprefill短縮 | **部品一致・全モデルA/B/A実測あり。** 8Kの約17%短縮は出力1tokenの対照。短文decodeはほぼ不変、起動テンプレートで有効。[CUDA実測](component-validation.ja.md) |
 | P04 NoPE attention本体のカーネル化・融合 | Pythonのqueryループと多段演算を、候補集合・scale・因果maskを保って置換 | prefill／decodeのattention処理時間とlaunch数を削減 | **今回のquery chunk拡大・FP32融合案は不採用。** launchと一時メモリ削減だけでは高速化せず、serving未接続。別戦略の根拠が得られたら再評価。[部品実測](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
-| P05 SM121 attention backend選定 | FlashInfer/TRT系・Triton等の候補について、固定GLMのNoPE／sparse MLA形状・cache契約への対応を先に検査し、同一負荷でA/B | 安定した起動・warmup、対応kernelでの実効性能。意図しないfallbackを検出 | **不採用。** 数値条件未達・必要候補幅の非対応。上流対応変更時に再評価。[部品実測](component-validation.ja.md#padding付きnative-attentionの直接試験) |
-| P06 CUDA Graphs | hostへ戻る判定・動的処理・buffer寿命を整理し、対応shapeでcapture/replay | CPUのstep/launch overhead低減、特に定常decode改善 | **全モデル未検収。** LPAのeager制約を解く検証が必要。単体capture成功とサーバー全体対応は別。[性能調査](performance-investigation.ja.md#kernel-launchと同期) |
+| P05 SM121 attention backend選定 | FlashInfer/TRT系・Triton等の候補について、固定GLMのNoPE／sparse MLA形状・cache契約への対応を先に検査し、同一負荷でA/B | 安定した起動・warmup、対応kernelでの実効性能。意図しないfallbackを検出 | **SM120の直接差し替えは不採用。SM90 FA2 wrapperは部品として数値的に使える。** 空行を0にすればv15の差は消えるが、候補の少ない行は許容範囲を超えたままで、kernelの幅は2,048が上限。SM90 FA2 wrapperはGB10で全候補幅の数値検査にすべて合格し、512行で参照計算の約20倍速いが、KVはBF16だけ（FlashInfer 0.6.18はSM90以外でFP8のMLA KVを拒否）。servingの切り替えは、P03・P19・P22・候補順序・KV容量を再検収する別の判断。[直接試験と再検討](component-validation.ja.md#padding付きnative-attentionの直接試験)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験) |
+| P06 CUDA Graphs | hostへ戻る判定・動的処理・buffer寿命を整理し、対応shapeでcapture/replay | CPUのstep/launch overhead低減、特に定常decode改善 | **全モデル未検収。** LPAのeager制約を解く検証が必要。単体capture成功とサーバー全体対応は別。Spark 2台TP=2の他レシピの報告は+2〜5%（sfxnz PR #1、MIT）と変化なし（tonyd2wild PR #16、ライセンスなし）。コードは採用しない。[性能調査](performance-investigation.ja.md#kernel-launchと同期) |
 | P07 launch・同期の計測 | 両rankのkernel／CUDA launch API／NCCL／host syncを別集計。prefill対照との差分でtokenあたりの数を推定 | 律速を特定し、削減前後を再現可能にする | **実測済み。** P03でlaunchは減ったがNCCL回数は不変。イベント時間の和を壁時計時間としない。[CUDA実測](component-validation.ja.md) |
 | P08 sync／copy／変換の追加削減 | P07で残る転送・dtype変換・host往復を特定。反復する重み変換を観測した場合だけload時の並べ替えも比較 | 余剰レイテンシ・UMAメモリ交通・一時bufferの削減 | **非同期index検査を独立opt-inとして受入。** 128出力で小幅改善、同期・copy各22回/token削減。GPU kernelは11回増加。配布既定async、直列併用はP18で実測。[実測](benchmarks.ja.md#cpu同期削減の独立評価p08) |
 | P09 FP8 KVの独立評価 | 重み精度を固定し、対応backendのFP8／BF16 KVを比較。量子化scale、pool容量、読み出し精度を検査 | cache容量削減による長文・同時数拡大。速度の方向と品質は実測で決める | **FP8経路は使用済み、dtype間A/Bは未了。** 現行起動系はFP8固定。BF16比較にはcache形式・runtime対応が必要。[起動設定](server-configuration.ja.md) |
-| P10 UMA・メモリ運用 | KV pin、memory utilization、host空き、コンテナ上限、swap・cache状態を再現条件として固定 | OOM・swap由来の遅延を抑え、測定再現性と収容限界を把握 | **ガード・設定あり、系統的最適化は未了。** `drop_caches`は必要なcold-load比較に限定し、定常推論の高速化手段と混同しない。[起動設定](server-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md) |
-| P11 Prefill chunk × Kpool／indexer | chunk予算を変え、pool・tail・cache境界とその前後で通常／分割処理を比較 | 長文prefillと混合負荷のITLを改善し、状態・候補の取り扱いを維持 | **128は不採用、1024はthroughput候補。** 2K全体出力改善と最長ITL悪化を併記。既定512、1024の16K×2容量は確認済み。[実測](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
+| P10 UMA・メモリ運用 | KV pin、memory utilization、host空き、コンテナ上限、swap・cache状態を再現条件として固定 | OOM・swap由来の遅延を抑え、測定再現性と収容限界を把握 | **ガード・設定あり、系統的最適化は未了。** `drop_caches`は必要なcold-load比較に限定し、定常推論の高速化手段と混同しない。監視記録にはMemAvailableと並べてMemFreeと2 MiB以上の連続空きを残す（1.4.0）。`vm.swappiness` 0と60の比較は200K profileで効果が見えず、ホストは60のまま。[起動設定](server-configuration.ja.md)／[基準ベンチ](benchmarks.ja.md)／[swap](operations.ja.md#監視停滞検知warmup) |
+| P11 Prefill chunk × Kpool／indexer | chunk予算を変え、pool・tail・cache境界とその前後で通常／分割処理を比較 | 長文prefillと混合負荷のITLを改善し、状態・候補の取り扱いを維持 | **1.4.0から既定2048、128は不採用。** 同時1系列の200K画像profileで、1024と2048は39Kのprefillを14%・18%上げ、200Kの合言葉要求を410.8秒から361.3秒（2048）に縮めた。代わりにpeerの余白が最大0.7 GiB減る。2系列の1024では2Kの最長停止が1.56秒から2.79秒に延びていた。2048超は未測。[2系列のP11](benchmarks.ja.md#prefill-chunk-の独立評価p11)／[200K profile](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17) |
 | P12 同時ストリーム計測 | client×1／×2／×4とserverのactive seq数を別記し、TTFT・queue・個別ITL・aggregateを同じ表にする | 単発と並列のtradeoff、待ち行列、長文投入による停止を検出 | **待ち行列と実batchを区別して測定済み。** P13でactive2と複数decode行を確認。[実測](benchmarks.ja.md#標準batchingの独立評価) |
-| P13 標準batching | LPAなしのseqs=2→4で実batch重複を確認。逐語決定性とタスク品質を分けて検収 | aggregate throughput向上と、個別レイテンシ・メモリの増減把握 | **限定throughput用途の2系列を受入。** 内容・tool確認と16K×2容量確認は別記。既定1系列、4系列・併用は未検収。[実測](benchmarks.ja.md#標準batchingの独立評価) |
+| P13 標準batching | LPAなしのseqs=2→4で実batch重複を確認。逐語決定性とタスク品質を分けて検収 | aggregate throughput向上と、個別レイテンシ・メモリの増減把握 | **限定throughput用途の2系列を受入。** 内容・tool確認と16K×2容量確認は別記。既定1系列、4系列・併用は未検収。他レシピでは25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されている（tonyd2wild #14、ライセンスなし、コードは採用しない）。ここで受け入れた範囲の外。[実測](benchmarks.ja.md#標準batchingの独立評価) |
 | P14 同種タスクbatching | コード／翻訳／要約の同種groupと混在groupを、長さ・同時数・投入量を揃えて比較 | expert重複や投機採択が変わり、aggregateが改善する可能性 | **今回の用途では不採用。** 小規模な投入順比較の改善は約0.7〜0.9%。expert経路・課題完遂品質は未検収。標準batchingを維持。[実測](benchmarks.ja.md#同種タスクの投入順比較p14) |
 | P15 コンテキスト長sweep | 入力長とKV予算を独立に変える。8K→32K→128K→262,144は検討する測定点であり、事前に容量と対応を確認 | TTFT・decode・memoryが悪化する地点と運用可能範囲を可視化 | **KV各rank1 GiB固定で、1系列の32Kまでの容量・時間を実測。** 測定30要求をpreemptionなしで完了。長文課題品質と併用は別。[256Kの併用確認](benchmarks.ja.md#256kでの実入力確認)は異なるKV予算で実施。[sweep実測](benchmarks.ja.md#32kまでの独立コンテキスト評価p15) |
 | P16 CSA2：候補Reuse／Reindex | 層間候補の再利用・限定再採点・shared poolを比較。各層のKVと必須cache更新は保持 | indexerの削減可能な計算を減らす仮説。候補coverageと全体時間で判断 | **部品検証・観測済み、serving適用は保留。** 今回はop時間割合が小さく、8K相当のshared-pool部品も遅い。大きい文脈で全コスト・coverage・品質が成立した場合のみ再評価。[CSA2詳細](indexer-reuse.ja.md)／[実測](component-validation.ja.md#indexerの観測) |
@@ -109,7 +109,7 @@ P06では、Graph用のメモリ保持、起動時capture時間、対応shapeと
 | 実効設定 | profile fingerprint、TP/PP、active seq、chunk、KV dtype/容量、context、MTP/LPA/fusion/graph/APCの実効状態 |
 | 負荷 | corpus/課題/設問hashとsplit、要求ID、実入力・出力token、effort/sampling、投入順序・同時数・実batch重複、他負荷 |
 | 時間 | cold起動、warmup、TTFT、prefill対照、個別TPOT/ITL・queue/E2E、aggregate。反復数と分布を保存し、少数試験の中央値をSLAとしない |
-| 内訳と資源 | rank別kernel/launch/NCCL/sync/copy、MTP採択・step数、host空き最小・container peak・swap・温度。重複区間を加算しない |
+| 内訳と資源 | rank別kernel/launch/NCCL/sync/copy、MTPの平均採択長・step数、host空き最小（MemFreeと2 MiB以上の連続空きを併記）・container peak・swap・温度。重複区間を加算しない |
 | 品質と完全性 | 予定／完了／欠落／エラー、拒否、打切り、内容・tool・資料忠実性、数値・状態診断、復帰対照。未検収項目も明記 |
 | 再現と出典 | A/B/Aの全試行、profiler offの実時間、raw run ID、参照文書commit、公開要約へのリンク、復旧設定 |
 

@@ -18,7 +18,7 @@ flowchart LR
     D --> O[output]
     S[parallelism / throughput<br/>P13 two sequences accepted, P21 EP rejected, P17 PP rejected] -.- P
     S -.- D
-    B[attention backend / indexer<br/>P04 P05 rejected, P16 held, canonical candidate order] -.- P
+    B[attention backend / indexer<br/>P04 rejected, P05 SM120 rejected / SM90 FA2 usable as a component, P16 held, canonical candidate order] -.- P
     B -.- D
 ```
 
@@ -40,7 +40,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P02 LPA | Skip historical MLP rows from layer 32 onward (zero-based cut); the last 512 tokens stay exact; generation runs all layers | Measured (experimental path; general quality is a separate gate) | off by default; batch opt-in (`lpa.enabled=true`) because an approximated request publishes no shared prefix | About 21.6% shorter at 8,192 input, one output token (standalone). Six long-document checks and a tool round trip passed | [LPA](lpa.md) |
 | P03 fused unpack | One Triton kernel for FP8 MLA cache unpacking (copy, FP32 conversion, scale multiply) | Measured (component parity and full-model A/B/A; used within the accepted P18 combined scope) | on (`cache.fused_unpack=true`) | About 17% shorter at 8K in the one-output control; short-input decode unchanged | [Component validation](component-validation.md) |
-| P11 prefill chunk | Scheduler token budget compared at 128 / 512 / 1024 | Default 512 retained; 1024 throughput candidate; 128 rejected | 512 (`context.max_num_batched_tokens`) | 1024 improves 2K aggregate output by about 4.6% (one client) / 5.7% (two clients) but lengthens the longest stall | [P11](benchmarks.md#independent-prefill-chunk-evaluation-p11) |
+| P11 prefill chunk | Scheduler token budget compared at 128 / 512 / 1024 (two sequences) and 512 / 1024 / 2048 (200K profile, one sequence) | Default 2048 from 1.4.0; 128 rejected | 2048 (`context.max_num_batched_tokens`) | 2048 raises 39K prefill by 18% and cuts the 200K passphrase request from 410.8 to 361.3 s; with two sequences a longer chunk lengthens the longest stall | [P11](benchmarks.md#independent-prefill-chunk-evaluation-p11) / [200K](benchmarks.md#chunk-budget-on-the-200k-image-profile-2026-09-17) |
 
 ### Decode
 
@@ -64,7 +64,7 @@ flowchart LR
 | Measure | Mechanism | Decision | Default | Owner |
 |---|---|---|---|---|
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
-| P05 SM121 backend selection | Fit candidate widths to existing kernels | Rejected (width 2176 unsupported, numerical criteria unmet) | — (reference attention retained) | [Probe](component-validation.md#direct-padded-native-attention-probe) |
+| P05 SM121 backend selection | Fit candidate widths to existing kernels | SM120 direct substitution rejected (width capped at 2,048; rows with few candidates miss the bound). SM90 FA2 wrapper numerically usable as a component, about 20× the reference at 512 rows, BF16 KV only | — (reference attention retained) | [SM120 probe](component-validation.md#direct-padded-native-attention-probe) / [SM90 FA2](component-validation.md#sm90-fa2-mla-wrapper-probe) |
 | P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Held (components retained, no serving integration) | — (not integrated) | [CSA2](indexer-reuse.md) |
 | Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [256K checks](benchmarks.md#real-input-checks-at-256k) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
 
@@ -88,7 +88,7 @@ Enabling everything is not always fastest. When the same input is reused, the MT
 |---|---|---|---|
 | Generation-heavy, serial | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | One sequence, eager. LPA is a batch opt-in (off in the template) and forfeits shared prefix reuse. Business-use and harness acceptance pending |
 | Prefix-reuse-heavy | APC + LPA (P22, B = 128) + `dense` retention, no MTP | Repeated-input and mid-edit A/B/A | Grow the shared cache with exact priming; cold requests slightly slower |
-| Throughput | Two sequences, no LPA, chunk 512 (1024 if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
+| Throughput | Two sequences, no LPA, chunk 512 (1024 or more if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
 | Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Routine qualification not yet complete |
 
 All are selected in the [server TOML](server-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
@@ -138,6 +138,7 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 ## Next candidates
 
 - P06 Graphs: lift LPA's eager constraint and qualify on the full model; gate on per-position acceptance not being pinned at 1.00 (vllm#53030 signature)
+- P05 SM90 FA2 serving path: the component passed at full candidate width; a switch needs BF16 KV capacity planning and requalification of P03, P19, P22 and candidate order
 - P24 Per-request prefix-cache no-store: filed in the [catalog](optimization-catalog.md#performance-initiatives) after four individually harmless 15,025-token lanes evicted an 80,024-token conversation's entire cached prefix
 - P23 FP8 weight-only for the BF16 projections (`self_attn*`, `shared_experts*`, `lm_head`): candidate filed in the [catalog](optimization-catalog.md#performance-initiatives), quality-gated, not started
 - Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started

@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 import statistics
 import time
@@ -33,7 +34,9 @@ def row_kind_errors(errors, kinds):
         raise ValueError("One row kind is required per row error")
     result = {}
     for error, kind in zip(errors, kinds):
-        result[kind] = max(result.get(kind, 0.0), error)
+        current = result.get(kind, error)
+        # max() would drop a NaN; a non-finite row must stay visible.
+        result[kind] = error if math.isnan(error) or error > current else current
     return result
 
 
@@ -377,12 +380,10 @@ def revisit(args):
                             ),
                             empty_row_zero=bool((actual[2:] == 0).all()),
                         )
-                        worst = max(
-                            case["max_abs_error_by_kind"][kind]
+                        # A NaN or inf error fails the comparison; empty rows do not count.
+                        case["filled_rows_within_bound"] = all(
+                            case["max_abs_error_by_kind"][kind] <= case["tolerance"]
                             for kind in ("full", "partial")
-                        )
-                        case["filled_rows_within_bound"] = (
-                            case["finite"] and worst <= case["tolerance"]
                         )
                     except Exception as error:  # noqa: BLE001 - a rejected shape is evidence
                         case["error"] = repr(error)

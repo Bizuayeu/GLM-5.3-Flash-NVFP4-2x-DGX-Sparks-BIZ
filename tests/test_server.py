@@ -404,12 +404,15 @@ class ServerConfigTests(unittest.TestCase):
         profile = self.profile
         model = server.model_path(profile, cache)
         image_id = config.selected_image(profile)
+        gpu = {"DeviceRequests": [{"Capabilities": [["gpu"]]}]}
+        owned = {
+            "Name": "/glm53-startup-r0-old",
+            "Config": {"Labels": {server.LABEL: "old-fingerprint"}},
+            "HostConfig": gpu,
+        }
         foreign = [
-            {
-                "Name": "/other-gpu",
-                "Config": {"Labels": {}},
-                "HostConfig": {"DeviceRequests": [{"Capabilities": [["gpu"]]}]},
-            }
+            owned,
+            {"Name": "/other-gpu", "Config": {"Labels": {}}, "HostConfig": gpu},
         ]
 
         def run(*args):
@@ -417,6 +420,22 @@ class ServerConfigTests(unittest.TestCase):
                 env = ["GLM53_REFERENCE_ATTENTION=1"]
                 return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
             raise AssertionError(args)
+
+        with (
+            patch.object(server, "read_json") as read_json,
+            patch.object(server.host, "snapshot_from_state", return_value=model),
+            patch.object(server.host, "fabric_checks", return_value={}),
+            patch.object(server.host, "run", side_effect=run),
+            patch.object(server.host, "running_containers", return_value=[owned]),
+        ):
+            read_json.return_value = {
+                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
+            }
+            result = server.preflight(
+                profile, ROOT / "state/server.toml", 0, check_memory=False
+            )
+        self.assertIs(result["checks"]["exclusive_gpu"], True)
+        self.assertEqual(result["foreign_gpu_containers"], [])
 
         for check_memory in (True, False):
             with self.subTest(check_memory=check_memory):

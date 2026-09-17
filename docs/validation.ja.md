@@ -79,6 +79,8 @@ reference imageは、2台のGB10ホストで45層の言語層すべてを、Marl
 
 フルモデルは、served IDの基礎確認、英語・日本語の最終回答、OpenAIのSSE、無害な自動ツールの呼出し・引数・戻り、AnthropicのMessages／count_tokensのスモーク検査に合格しました。reasoning effortを低くしたチャットの受け入れ試験も、これらの最終回答・ツールの基準を満たしました。再実行では推論文が異なりました。これは診断として残すものであり、自由記述の逐語一致を要求するものではありません。未対応のthinking offを指定した要求ではparserと本文が混ざったため、受け入れ済みの構成ではありません。[ハーネスの設定](harnesses.ja.md)を参照してください。
 
+**多バイト文字の出力。** gate射影とup射影のglobal scaleが食い違うModelOpt NVFP4 checkpointでは、多バイト文字が化けると報告されています（[vLLM #54150](https://github.com/vllm-project/vllm/issues/54150)）。固定したNVIDIAのcheckpointは該当しません。フルモデルのどのログにも `w1_weight_scale_2 must match` の警告は出ておらず、4層fixtureのlayer 3ではexpert 288個すべてでgateとupのscaleが一致しています。それでも rank 0 の `server mojibake` で監視します。日本語と韓国語で400文字以上の回答をtemperature 0で3回ずつ求め、回答とreasoningの両方でU+FFFD・孤立サロゲート・改行とタブ以外の制御文字を数えます。短い回答、別の言語の回答、空の回答、形の壊れた応答、失敗した要求は判定不能とし、合格にはしません。回答の全文は `records/<stamp>-mojibake-r0/result.json` に残ります。配布用1.3.1のprofile（2026-09-17）では6回すべて合格しました：852〜1,024文字、対象言語の文字が93〜95%、該当文字なし、すべて `stop` で終了。reasoningはprofileのlow effortで空だったため、reasoningの文字列は検査できていません。
+
 [vLLM公式の合成ベンチマーク](benchmarks.ja.md)は、計画した計測要求をすべて完了しました。試験containerはその後停止しました。これらの結果は、アプリケーション全体の品質を示すものでも、本番デプロイを認定するものでもありません。
 
 その後、[MTP k=1の候補](speculative-decoding.ja.md)は、小規模なロードfixture、同条件のフルモデルベンチ5ケースすべて、同じ11項目の基礎API検査に合格しました。別のメタデータviewは、元のcheckpointを保ったまま、そのBF16 MTP層を全体のNVFP4から除外します。手順書には、draftの受理率、追加メモリ、負荷に依存する改善、未解決の分散停止の制約を記載しています。実際のZCode・Claude Codeの受け入れは、引き続き別扱いです。

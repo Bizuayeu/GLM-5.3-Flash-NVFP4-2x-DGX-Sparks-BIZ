@@ -32,7 +32,7 @@ python tools/prepare_mtp_view.py \
 --speculative-config "$(cat examples/speculative.mtp1.json)"
 ```
 
-[設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。検証したk=3を使う場合は、`num_speculative_tokens`だけを3にした[speculative.mtp3.json](../examples/speculative.mtp3.json)へ置き換えます。本体のMarlin、eager、APCなし、同時実行1、比較対象のcontext/KV設定を維持します。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
+[設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。検証したk=3を使う場合は、`num_speculative_tokens`だけを3にした[speculative.mtp3.json](../examples/speculative.mtp3.json)へ置き換えます。本体のMarlin、eager、同時実行1、比較対象のcontext/KV設定を維持し、基準と同じくAPCは無効にします（配布テンプレートはAPC有効。[起動設定](server-configuration.ja.md#配布用の既定設定)を参照）。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
 
 通常運用としての受け入れではありません。元へ戻す場合は原snapshotを指定し、投機設定を外します。viewと試験記録は保持します。
 
@@ -42,12 +42,13 @@ python tools/prepare_mtp_view.py \
 - メモリを実測し、ホストの余裕を保つ。重みの算術では約6.92 GiB/rank追加だが、複製・一時領域・KVは別途必要。
 - 基準と同じ公式ベンチを実行し、終了コードに加えて要求完了数・出力token数も独立検査する。warmupとclient同時数を明示する。
 - case前後の`/metrics`原文を保存する。受理率は採用draft token増分／draft token増分、bonus込み平均受理長は`1 + 採用token増分 / draft回数増分`。この区間はwarmupや初期probeを含み得るため、測定要求のみの時間統計とは区別する。[vLLMの定義](https://docs.vllm.ai/en/v0.24.0/api/vllm/v1/spec_decode/metrics/)
+- 深さの比較は受理率ではなく平均受理長で行う。kを深くすると、1 stepあたりのtokenが増えても受理率は下がる。他レシピではk=5とk=7の優劣を受理率で逆に判断していた（tonyd2wild PR #12、ライセンスなし、コードは採用しない）。
 - 最終回答、ツール、SSE、EOS・長さ上限、状態を確認する。greedy token/logprob差は診断として残し、推論文の逐語一致を要求しない。
 - decodeだけでなく初動と全体throughputを見る。長い入力・短い出力では速くならない場合がある。kの増加はk=1合格後の別試験にする。
 
 ## k=1の実測結果
 
-2026-09-12（Asia/Tokyo）、全モデルでbaselineと同じ5条件・21測定要求・1,344出力tokenが完了し、要求エラーはありませんでした。全要求が指定どおり64 tokenを出力しました。イメージ、本体演算、通信、負荷条件は[MTPなしの基準](benchmarks.ja.md)と合わせています。別の実行同士の初期比較であり、A/B/Aを繰り返した統計評価ではありません。client同時数2でもserverは`max_num_seqs=1`で待ち行列を作ります。
+2026-09-12（Asia/Tokyo）、全モデルでbaselineと同じ5条件・21測定要求・1,344出力tokenが完了し、要求エラーはありませんでした。全要求が指定どおり64 tokenを出力しました。イメージ、本体演算、通信、負荷条件は[MTPなしの基準](benchmarks.ja.md#全モデルの初期結果)と合わせています。別の実行同士の初期比較であり、A/B/Aを繰り返した統計評価ではありません。client同時数2でもserverは`max_num_seqs=1`で待ち行列を作ります。
 
 | 入力token | client同時数 | MTPのTTFT中央値（秒） | decode off → k=1（token/s） | 全体出力 off → k=1（token/s） | draft受理率 |
 |---:|---:|---:|---:|---:|---:|

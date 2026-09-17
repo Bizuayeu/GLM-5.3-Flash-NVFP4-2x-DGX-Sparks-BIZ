@@ -18,7 +18,7 @@ flowchart LR
     D --> O[出力]
     S[並列・throughput<br/>P13 2系列 受入・P21 EP 不採用・P17 PP 不採用] -.- P
     S -.- D
-    B[attention backend・indexer<br/>P04 P05 不採用・P16 保留・候補順序の正規化] -.- P
+    B[attention backend・indexer<br/>P04 不採用・P05 SM120は不採用／SM90 FA2は部品として可・P16 保留・候補順序の正規化] -.- P
     B -.- D
 ```
 
@@ -40,7 +40,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P02 LPA | cut=32（0始まり）以降の層で過去tokenのMLPを省き、末尾512 tokenは通常計算。生成時は全層 | 実測あり（実験用。一般品質は別ゲート） | 既定off。バッチ用opt-in（`lpa.enabled=true`）——近似要求は共有prefixを公開しないため | 8,192入力・1出力で約21.6%短縮（単独）。長文照合6件・tool往復は合格 | [LPA](lpa.ja.md) |
 | P03 unpack融合 | FP8 MLA cacheの復元（コピー・FP32変換・scale乗算）をTriton 1 kernelに | 実測あり（部品一致・全モデルA/B/A。受入済みのP18併用の範囲で使用） | on（`cache.fused_unpack=true`） | 8Kの1出力対照で約17%短縮。短文decodeはほぼ不変 | [部品実測](component-validation.ja.md) |
-| P11 prefill chunk | schedulerのtoken予算を128／512／1024で比較 | 既定512を維持。1024はthroughput候補、128は不採用 | 512（`context.max_num_batched_tokens`） | 1024は2Kの全体出力を約4.6%（1クライアント）／5.7%（2クライアント）改善するが最長停止が延びる | [P11](benchmarks.ja.md#prefill-chunk-の独立評価p11) |
+| P11 prefill chunk | schedulerのtoken予算を128／512／1024（2系列）と512／1024／2048（200K profile、1系列）で比較 | 1.4.0から既定2048、128は不採用 | 2048（`context.max_num_batched_tokens`） | 2048は39Kのprefillを18%上げ、200Kの合言葉要求を410.8秒から361.3秒に縮める。2系列ではchunkが長いほど最長停止が延びる | [P11](benchmarks.ja.md#prefill-chunk-の独立評価p11)／[200K](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17) |
 
 ### decode
 
@@ -64,7 +64,7 @@ flowchart LR
 | 施策 | 仕組み | 採否 | 既定 | 正典 |
 |---|---|---|---|---|
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
-| P05 SM121 backend選定 | 既存kernelへの候補幅適合 | 不採用（候補幅2176非対応・数値未達） | —（参照attentionを維持） | [部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験) |
+| P05 SM121 backend選定 | 既存kernelへの候補幅適合 | SM120の直接差し替えは不採用（幅の上限2,048、候補の少ない行が許容範囲外）。SM90 FA2 wrapperは部品として数値的に使え、512行で参照の約20倍速い。KVはBF16のみ | —（参照attentionを維持） | [SM120の試験](component-validation.ja.md#padding付きnative-attentionの直接試験)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験) |
 | P16 CSA2 | 層間の候補再利用・限定再採点 | 保留（部品保持、serving適用なし） | —（未統合） | [CSA2](indexer-reuse.ja.md) |
 | 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。上記の初期比較は変更前。正規化後の全モデル併用回帰と[256Kの実測](benchmarks.ja.md#256kでの実入力確認)は別に記録。再ビルドしたruntimeにも検収が要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
 
@@ -88,7 +88,7 @@ flowchart LR
 |---|---|---|---|
 | 生成重視・直列 | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | 1系列・eager。LPAはバッチ用opt-in（テンプレートではoff）で、共有prefixの再利用を失う。業務検収・ハーネスは未了 |
 | prefix再利用重視 | APC＋LPA（P22、B=128）＋`dense`保持、MTPなし | 同一入力再利用・途中編集のA/B/A | 通常primingで共有cacheを育てる。cold処理は小幅悪化 |
-| throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
+| throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024以上） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
 | 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収は未了 |
 
 いずれも[起動設定TOML](server-configuration.ja.md)の`[mtp]`・`[lpa]`・`[cache]`・`[context]`・`[runtime]`で切り替え、対応imageのmarkerが必要です。
@@ -138,6 +138,7 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 ## 次の候補
 
 - P06 Graphs：LPAのeager制約を解く検証と全モデル受入。位置別採択率が1.00に張り付いていない（vllm#53030の兆候でない）ことを門にする
+- P05 SM90 FA2のserving経路：部品は全候補幅で合格。切り替えにはBF16 KVの容量設計と、P03・P19・P22・候補順序の再検収が要る
 - P24 要求単位のprefix cache無登録：単体では無害な15,025 tokenのレーン4本が80,024 tokenの会話の復元分を全て消したため、[台帳](optimization-catalog.ja.md#性能施策一覧)へ起票
 - P23 BF16のまま残る射影（`self_attn*`・`shared_experts*`・`lm_head`）のFP8 weight-only：[台帳](optimization-catalog.ja.md#性能施策一覧)に候補として起票、品質が門、未着手
 - Euryale：本リポジトリ外の投機draft研究（非公開・独立プロジェクト）。標準MTP k=3との同条件比較で品質・性能・メモリ・復旧のゲートを通した場合に限り、既定の投機経路を置き換える候補。全モデルの教師採取・学習は未着手

@@ -76,6 +76,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | checkpoint保持・同時実行1 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
 | 200Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。ZCodeのツールで読んだ画像1枚を正しく説明。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
+| 日本語・韓国語の長い出力、同時1系列 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 他のMTP先読み数・動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.ja.md)を区別して利用してください。
@@ -125,7 +126,7 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2の参照profileは**実測済みだが通常運用としては未受け入れ**です。`server preflight` は起動前に各ホストで資材・fabric・image・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れまでに残る項目は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
+TP=2の参照profileは**実測済みだが通常運用としては未受け入れ**です。`server preflight` は起動前に各ホストで資材・fabric・image・GPUの専有・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れまでに残る項目は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
 
 ## ローカルデータと開発
 

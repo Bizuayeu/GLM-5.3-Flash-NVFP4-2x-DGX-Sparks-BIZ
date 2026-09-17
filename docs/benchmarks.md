@@ -41,7 +41,7 @@ vllm bench serve \
 
 Paths are illustrative. Apply the matrix values per case; use fresh result paths and container names. `ignore_eos` holds output length fixed for throughput measurement and is not the normal conversational setting. This command assumes a working test endpoint and does not bypass the deployment's startup validation gate.
 
-Check the result independently; a zero CLI exit code can accompany zero successful requests:
+Check the result independently with the [result checker](../tools/assess_benchmark.py); a zero CLI exit code can accompany zero successful requests:
 
 ```sh
 python tools/assess_benchmark.py /path/to/private/results/short-c1.json --requests 3 --output-tokens 64
@@ -149,6 +149,20 @@ Latency for 2K inputs and two concurrent clients:
 **Decision:** reject 128 for this workload: its shorter maximum pause comes with worse prefill and throughput. Chunk 1024 improves 2K aggregate throughput over both 512 controls by approximately 4.6% with one client and 5.7% with two. Single-client TTFT improves from about 6.1 to 5.6 seconds. However, the longest two-client pause grows from about 1.56 to 2.79 seconds. Retain **1024 as a throughput candidate where that pause is acceptable**, and keep the default at 512. Better p95 does not imply fewer noticeable interruptions. These small samples establish neither an SLA nor steady-state long-context performance.
 
 A separate 1024 capacity run, `capacity-v17-chunk1024-16kx2`, completed two requests each using 16,320 input plus 64 output tokens. Maximum active requests was two, peak KV utilization about 58.1%, additional preemptions zero, post-run KV utilization zero, and a follow-up request completed. KV remained fixed at 1 GiB per rank. Long-document quality and combinations with LPA/MTP/fusion/Graphs/APC remain separate gates.
+
+### Chunk budget on the 200K image profile (2026-09-17)
+
+The 1.3.1 distributed profile (200K, image input, KV 2.5 GiB per rank, MTP k=3, APC, fused unpack, one sequence, 8 NCCL channels, MTU 1500) ran on source `adf8ca9` and image `f6fc154c…` with only `max_num_batched_tokens` changed between starts; the head's monitoring dashboard was stopped. Prefill is a fresh prompt of about 39K tokens after a prefix-cache reset, decode a fixed prompt with 512 generated tokens, three runs each. Minimum free memory comes from each rank's two-second supervisor samples. Informed by Mia's 300K record, where 1024 to 2048 gave +1.4% on a different runtime (AGPL-3.0, no code adopted).
+
+| Chunk | Prefill tok/s (median, range) | Decode tok/s (median, range) | Head lowest free, startup / measurement (GiB) | Peer lowest free (GiB) | Long warmup rung, 65,566 tokens |
+|---:|---|---|---|---|---:|
+| 512 | 476.9 (469.2–478.6) | 31.4 (22.4–33.9) | 7.09 / 7.30 | 9.45 / 9.54 | 139.3 s |
+| 1024 | 545.2 (545.0–546.9) | 27.4 (23.7–28.7) | 6.71 / 6.73 | 9.39 / 9.43 | 121.6 s |
+| 2048 | 563.0 (561.9–563.7) | 28.0 (21.5–28.4) | 6.63 / 6.71 | 8.70 / 8.77 | 123.4 s |
+
+At 2048 the 199,652-token passphrase request of [200K real input on 1.3.1](#200k-real-input-on-131) took 361.3 s against 410.8 s at 512, answered correctly and stopped normally. The lowest free memory during that request was 6.88 GiB on the head and 9.16 GiB on the peer, against 7.12 and 9.44 at 512. Decode differences stay within run-to-run variation. No kernel compiled while serving at any size, although 1024 and 2048 are the first budgets above 655 tokens and use the indexer's split path. Loading at 2048 logged 28 `NV_ERR_NO_MEMORY` retries on the peer, all during weight loading, against none at 1024; startup and every request completed. The 512 prefill is about 3% below the 492.0 tok/s measured for 1.3.1 with the dashboard running; restarts separate the runs and the cause is not isolated.
+
+**Decision:** the distribution default becomes 2048 in 1.4.0. With the default single sequence a longer chunk delays no other request; with two sequences expect longer pauses, as the 1024 row above showed. Sizes above 2048 were not measured; Mia's notes put the indexer shared-memory limit near 4096.
 
 ## Task grouping order comparison (P14)
 
@@ -487,3 +501,51 @@ Lowest available memory during each request, from two-second supervisor samples 
 | Three-position 200,095 | 6.97 GiB | 9.45 GiB |
 
 On 2026-09-15 the passphrase request left the head at 3.31 GiB during tokenization and 3.34 GiB during prefill, and the peer at 5.46 GiB. The window here excludes the tokenization call that precedes each request. These are single runs per case; they do not qualify every 200K history-edit pattern, multiple sequences or long-term reliability. The 256K text-only alternative was not rerun because it exceeds this profile's 204,800-token limit.
+
+## Measurements on 1.4.0
+
+On 2026-09-17 (Asia/Tokyo) the [1.3.1 measurements](#measurements-on-131) were repeated with the 1.4.0 chunk budget, `max_num_batched_tokens = 2048`; nothing else in the profile changed (fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`). The pair ran source `adf8ca9`, which lacks only the 1.4.0 version string, the template change and the later review fixes. It had been started with `vm.swappiness=0` for the [swappiness comparison](operations.md#supervision-stall-detection-and-warmup) and was set back to 60 without a restart; no swap was in use. The monitoring dashboard ran on the head, as for 1.3.1. No other client used the model, every case finished without additional preemption and `/health` stayed 200.
+
+### sparkDash on 1.4.0
+
+The same protocol as for 1.3.1; all 12 streams succeeded.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | 1.3.1 decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 36.51 | 36.60 / 36.51 / 36.13 | 350.56 | 36.67 / 368.12 |
+| prose | 25.67 | 27.43 / 25.67 / 25.64 | 370.17 | 25.71 / 268.88 |
+| code | 29.31 | 29.19 / 29.31 / 29.57 | 567.74 | 30.19 / 566.16 |
+| json | 26.29 | 26.97 / 26.29 / 25.74 | 443.51 | 26.48 / 441.06 |
+
+The four prompts are shorter than one chunk, so the budget does not apply to them, and the results match 1.3.1 within run-to-run variation. Prose TTFT fell on two values in both versions (1.3.1: 268.84 / 360.43 / 268.88 ms; 1.4.0: 370.35 / 359.06 / 370.17 ms), so its median moved while the runs overlap.
+
+### 200K real input on 1.4.0
+
+| Check | Input tokens | 1.4.0 (chunk 2048) | 1.3.1 (chunk 512) |
+|---|---:|---|---|
+| One passphrase at the midpoint | 199,652 | **361.4 s**, correct, stop | 410.8 s |
+| Maximum capacity, 64 forced output tokens | 204,736 | **380.0 s**, 204,800 total, finite logprobs | 470.3 s |
+| Three-position reference | 200,095 | Correct in 1 of 3 runs (below) | 435.1 s, correct |
+
+The passphrase request took 12% less time and the capacity request 19% less. A separate start at 2048 during the [chunk-budget comparison](#chunk-budget-on-the-200k-image-profile-2026-09-17) also answered the passphrase correctly, in 361.3 s.
+
+**The three-position reference is ambiguous to the model, at both chunk sizes.** In every failed run the model found the records, read each value as the article text that follows its `REGISTRY` line and began copying it, until the 512-token limit cut the answer off. The 256K check on 2026-09-14 had written the same reading into its reasoning before answering correctly. The request was repeated on the same stack, unchanged, with the prefix cache reset before each run:
+
+| Chunk | Preceding request | Runs | Correct |
+|---:|---|---|---:|
+| 2048 | The capacity request | 379.0 s length; 378.4 s length | 0 of 2 |
+| 2048 | About 5 minutes idle | 364.7 s stop | 1 of 1 |
+| 512 | The capacity request (after a restart at 512) | 451.1 s length; 439.1 s stop | 1 of 2 |
+
+Greedy decoding at temperature 0 did not reproduce between runs of the same request: the reasoning took 463, 44 and 156 tokens at 2048, and 512 and 28 tokens at 512. With this few runs, neither the chunk size nor the preceding request can be shown to change the rate. The earlier single passes at 512 (1.3.1, the release candidate, 256K) were one run each. The capacity request itself took 470.4 and 470.2 s at 512, matching 1.3.1.
+
+Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
+
+| Case | Head | Peer | 1.3.1 head / peer |
+|---|---:|---:|---|
+| sparkDash | 6.60 GiB | 9.00 GiB | 7.24 / 9.47 GiB |
+| Passphrase 199,652 | 6.51 GiB | 8.93 GiB | 7.12 / 9.44 GiB |
+| Capacity 204,736 + 64 | 6.40 GiB | 8.95 GiB | 6.99 / 9.30 GiB |
+| Three-position 200,095 | 6.40 GiB | 8.95 GiB | 6.97 / 9.45 GiB |
+
+Free memory in blocks of 2 MiB or more stayed between 0.44 and 0.48 GiB on both ranks. The head's lowest reading sits 0.6 GiB below 1.3.1, in line with the chunk-budget comparison; different starts also differ by a few hundred MiB. No `NV_ERR_NO_MEMORY` message appeared during the runs.

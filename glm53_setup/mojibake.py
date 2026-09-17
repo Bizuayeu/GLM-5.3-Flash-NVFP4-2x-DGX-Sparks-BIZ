@@ -86,10 +86,10 @@ def run(ask, repeats=3):
                 "temperature": 0,
             }
             try:
-                result = ask(request)
-            except Exception as error:  # noqa: BLE001 - a failed request is recorded, not a pass
-                result = error
-            rows.append(judge(language, result))
+                row = judge(language, ask(request))
+            except Exception as error:  # noqa: BLE001 - a failed or malformed answer is recorded, not a pass
+                row = judge(language, error)
+            rows.append(row)
     verdicts = {row["verdict"] for row in rows}
     verdict = (
         "fail"
