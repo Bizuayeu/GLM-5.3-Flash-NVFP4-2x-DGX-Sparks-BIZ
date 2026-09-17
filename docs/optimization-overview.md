@@ -95,7 +95,7 @@ All are selected in the [server TOML](server-configuration.md) under `[mtp]`, `[
 
 ## Performance and capacity Q&A
 
-These answers explain how to assess extensions of the current configuration. The 256K text-only profile's limit is 262,144 input-plus-output tokens (the distributed image profile uses 204,800); 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
+These answers explain how to assess extensions of the current configuration. The 256K text-only profile's limit is 262,144 input-plus-output tokens (the distributed image profile uses the same limit since 1.5.0); 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
 
 ### Q. With 3 GiB of KV cache per rank, can the configuration consistently accommodate a 256K context?
 

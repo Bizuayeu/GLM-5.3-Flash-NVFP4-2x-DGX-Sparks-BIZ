@@ -2,9 +2,9 @@
 # Copy to state/server.toml. Paths are relative to THIS FILE, or absolute.
 # state/server.toml にコピー。相対パスはこのファイルの位置が基準。
 # Model/revision stay pinned by config/runtime.lock.json.
-# Serial optimized defaults with image input at 200K (docs/vision.md).
+# Serial optimized defaults with image input at 256K (docs/vision.md).
 # Supply image IDs, MTP view, LPA projector/hash and nodes.
-# 直列最適化・200K・画像入力を既定化（docs/vision.ja.md）。image ID・MTP view・LPA補助器/hash・機体情報を準備する。
+# 直列最適化・256K・画像入力を既定化（docs/vision.ja.md）。image ID・MTP view・LPA補助器/hash・機体情報を準備する。
 schema_version = 1
 
 [runtime]
@@ -39,7 +39,7 @@ vision = true # Loads the vision tower for IMAGE input; omitted = false (text/to
 # Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
 
 [context]
-max_model_len = 204800 # Input + generated tokens / 入出力合計の上限
+max_model_len = 262144 # Input + generated tokens / 入出力合計の上限
 max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
@@ -64,7 +64,7 @@ mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM
 # Head-only image preprocessing cache (API and engine processes each hold one).
 # runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
-kv_cache_memory_bytes = 2684354560 # 2.5 GiB per rank / 各ランク
+kv_cache_memory_bytes = 3221225472 # 3 GiB per rank / 各ランク
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
 # 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
@@ -120,19 +120,19 @@ warmup = true # cluster switch runs `server warmup` on rank 0 after readiness; o
 warmup_long_tokens = 0 # Long-prefill rung in prompt tokens; 0 = no long rung. Must leave room for max_tokens.
 # A new prompt shape can still compile kernels while serving (docs/vision.md); the
 # 200K request compiled one TileLang shape. Set this to the longest prompt you will
-# serve and pay its prefill once per start (200K measured 380 s at chunk 2048).
-# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（200K・chunk 2048 で 380 秒の実測）。
+# serve and pay its prefill once per start (262,144 tokens measured about 490 s at chunk 2048).
+# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（256K・chunk 2048 で約 490 秒の実測）。
 
 [resources]
 # Existing experimental memory budgets; larger workloads need new measurement.
 # 実験時の予算を継承。規模を増やす場合は再計測。
 container_memory_gib = 112
 minimum_available_gib = 108
-reserve_gib = 2.5 # GiB of MemAvailable; fractions allowed / 小数可
+reserve_gib = 3.0 # GiB of MemAvailable; fractions allowed / 小数可
 run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metrics signal moves this long; 0 = off
-# Same value as generation.timeout_seconds; measured 200K (380 s at chunk 2048) and 256K (582 s at 512) fit.
+# Same value as generation.timeout_seconds; the longest measured request (256K, 493 s at chunk 2048) fits.
 # KV usage counts as progress, so a long prefill is not a stall. /health stays 200 while the engine is wedged.
 # rank 0 だけ。要求が running なのに /metrics の信号（生成・prompt token 計数、KV 使用率、running 数）がこの秒数動かなければ停止。
 # KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。

@@ -80,7 +80,7 @@ projector_sha256 = "<config/lpa-projector.lock.json の sha256>"
 
 - **image**：`lpa.enabled = true`にすると、ランチャーは`reference_image`ではなく`runtime.lpa_image`を選びます。preflightはそのimageに`GLM53_LPA_API=2` markerを要求し、`cache.prefix_caching`が有効なまま（テンプレート既定。[APC優先経路](server-configuration.ja.md#コマンド)を選ぶ）なら`GLM53_APC_LPA_API=1`も要求します。[現行イメージの契約](server-configuration.ja.md#現行イメージの契約)に沿って現行ソースからビルドしたimageは両方を持ちます。`docker image inspect <id>`で確認し、両ホストで同じIDを使います。
 - **projector**：preflightは`[lpa].projector`が指すファイルのSHA-256を再計算し、`projector_sha256`と一致しなければ拒否します。`cut = 32`・`tail`・`break_even_tokens`はテンプレートの値のままにします。これがこのprojectorの実測設定です。
-- **テキスト専用**：`runtime.vision = false`を[テキスト専用256Kの代替](server-configuration.ja.md#配布用の既定設定)（context 262,144・各rank KV 3 GiB・reserve 3 GiB）と組で使います。画像既定の`vision`だけを切った構成は実測したprofileではなく、テキスト専用でのreserve 2.5 GiBは未検証です。
+- **テキスト専用**：`runtime.vision = false`を[テキスト専用256Kの代替](server-configuration.ja.md#配布用の既定設定)（context 262,144・各rank KV 3 GiB）と組で使います。1.5.0からは、画像入力の既定から`vision`だけを切ったものがこの代替です。256K確認は保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048はテキスト専用では未検証です。
 - **検査してから切替**：各ホストで`python -m glm53_setup server preflight --config state/server.toml --rank N`を実行し、`projector_sha256`・`lpa_worker`・`image_id`の合格を確認します。上記のどの編集もprofile fingerprintを変えるため、稼働中の対では通常の[両rank切替](launch-safety.ja.md#全レール検査と両rankの切替)が必要です。稼働中サーバーと一致しないprofileは`server ask`が拒否します。
 - **要求ごとの例外**：LPA有効中でも、要求に`"vllm_xargs": {"glm53_lpa_mode": "off"}`を付ければ通常計算して共有prefix cacheを育てられます。[起動設定](server-configuration.ja.md#コマンド)を参照。
 

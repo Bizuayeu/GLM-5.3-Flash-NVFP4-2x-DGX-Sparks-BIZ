@@ -22,7 +22,7 @@ Mia更新を参考にした認証クライアント・allocator・全HCA検査�
 
 **P05の判断：不採用。** 候補幅2176のdecode非対応、数値検査未達、prefill限定試験の形状拒否を踏まえ、今回のbackend選定は終了します。候補を削って合わせる変更は行っていません。再評価は上流の対応変更時とし、他施策へ進みます。[部品検査](component-validation.ja.md#padding付きnative-attentionの直接試験)。**2026-09-17に再開：** Spark 2台の他レシピとの比較を受け、行の種類別の再検討でもSM120経路は不採用のまま、SM90 FA2 wrapperは部品として合格しました。servingの切り替えは別の判断です（P05の行）。
 
-**テンプレート既定の更新（2026-09-15）：** 配布用の起動テンプレートは `lpa.enabled = false` と `runtime.vision = true`（204,800 token、KV各rank 2.5 GiB）を既定にしました。P02／P22の採否は変えていません。近似した要求は共有prefix cacheに何も登録しないため、LPAはバッチ用のopt-inになり（[LPAの使用範囲](lpa.ja.md#使用範囲)）、画像入力構成は[200Kでの画像入力](vision.ja.md)に記録しています。これらは既定値の判断であり、下記の基準日付きの状態欄を変えるものではありません。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です。
+**テンプレート既定の更新（2026-09-15）：** 配布用の起動テンプレートは `lpa.enabled = false` と `runtime.vision = true` を既定にしました（1.4.0までは204,800 token・KV各rank 2.5 GiB、1.5.0からは262,144 token・3 GiB）。P02／P22の採否は変えていません。近似した要求は共有prefix cacheに何も登録しないため、LPAはバッチ用のopt-inになり（[LPAの使用範囲](lpa.ja.md#使用範囲)）、画像入力構成は[画像入力](vision.ja.md)に記録しています。これらは既定値の判断であり、下記の基準日付きの状態欄を変えるものではありません。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です。
 
 ## 性能施策一覧
 

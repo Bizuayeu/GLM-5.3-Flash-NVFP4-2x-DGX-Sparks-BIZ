@@ -33,7 +33,7 @@
 | 検証範囲 | 証拠と本番認定の区別、GPU 1台のfixture、残る検収ゲート | [EN](validation.md) | [JA](validation.ja.md) |
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | ベンチマーク | TP=2ベンチの方法と全モデルのベンチ実行（P08、P11、P13〜P15、P17〜P19、P21、P22、保持） | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
-| 画像入力 | 200KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
+| 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | 政治的文脈の評価：必須試験と予備実測 | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | ハーネス | ZCode／Claude Codeの接続方針と受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |

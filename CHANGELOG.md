@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0 — 2026-09-18
+
+### Changed
+
+- **The template serves image input at 256K**: `context.max_model_len = 262144` (was 204800), `cache.kv_cache_memory_bytes = 3221225472` (3 GiB per rank, was 2.5) and `resources.reserve_gib = 3.0` (was 2.5). Eight NCCL channels in 1.3.1 had left the head at 6.40 GiB or more during 200K requests, so 0.5 GiB more KV was expected to leave about 5.9 GiB against the reserve plus the supervisor's 1.6 GiB overshoot. Measured on the reference pair: 5.89 GiB during startup and 5.82 GiB during a 255,950-token request on the head, 8.44 GiB on the peer. The pool holds 301,645 tokens (84 blocks, 73 per full-length request, 1.15×). A 262,080 + 64 request took 488.6 s and the longest 256K request 492.5 s, within the 600 s timeout; prefill ran at 569.8 tok/s, and the image, tool and video checks passed. At 200K on the new profile speed matched 1.4.0 with 0.5–0.7 GiB less free memory on each rank. Profiles without the change keep 200K and their fingerprint. A 300K profile with 4 GiB KV was estimated first and not run: the same arithmetic left 0.3 GiB of margin and a full-length request near 570 s. The text-only alternative stays, now at the same length and KV.
+
+### Documentation
+
+- Benchmarks: measurements on 1.5.0 (startup pool and memory, prefill and decode, 256K passphrase, capacity and three-position requests, and sparkDash and the 200K requests repeated against 1.4.0). The three-position reference answered correctly in 2 of 3 runs at 256K and failed again at 200K after the capacity request, the same misreading as on 1.4.0.
+- Server configuration: how the KV pool counted blocks in both measured image-profile configurations (28 blocks per GiB, ceil(L / 4608) + 16 per full-length request), which predicted the 256K pool before the switch; the text-only alternative is described as the default without the vision tower and its 3 GiB reserve as unvalidated.
+- Image input: the 256K settings, why they were chosen and the checks on the new profile. README, operations, harnesses, LPA and the optimization catalog and overview follow the 256K defaults.
+- Harnesses: the stream idle timeout paragraph gave the tested configuration as both 60000 and 700000 ms; it is 700000.
+
 ## 1.4.0 — 2026-09-17
 
 ### Added

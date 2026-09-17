@@ -29,9 +29,9 @@ class ServerConfigTests(unittest.TestCase):
             env = config.environment(profile, rank)
             spec = json.loads(args[args.index("--speculative-config") + 1])
             self.assertEqual(spec["num_speculative_tokens"], 3)
-            self.assertEqual(args[args.index("--max-model-len") + 1], "204800")
+            self.assertEqual(args[args.index("--max-model-len") + 1], "262144")
             self.assertEqual(
-                args[args.index("--kv-cache-memory-bytes") + 1], "2684354560"
+                args[args.index("--kv-cache-memory-bytes") + 1], "3221225472"
             )
             self.assertIn("--enable-prefix-caching", args)
             # The distributed profile accepts images; video stays rejected.
@@ -49,7 +49,7 @@ class ServerConfigTests(unittest.TestCase):
             self.assertNotIn("GLM53_APC_LPA_CONFIG", env)
             self.assertNotIn("--worker-extension-cls", args)
         self.assertEqual(profile["resources"]["run_seconds"], 0)
-        self.assertEqual(profile["resources"]["reserve_gib"], 2.5)
+        self.assertEqual(profile["resources"]["reserve_gib"], 3.0)
 
     def test_reserve_accepts_fractional_gib(self):
         self.profile["resources"]["reserve_gib"] = 2.5

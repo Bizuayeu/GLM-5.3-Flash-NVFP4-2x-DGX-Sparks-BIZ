@@ -53,7 +53,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 ## What has been verified
 
-**Distributed defaults select the serial optimized profile with image input at 200K (204,800 tokens), KV 2.5 GiB per rank, reserve 2.5 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input at 200K](docs/vision.md) records the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
+**Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input](docs/vision.md) and [measurements on 1.5.0](docs/benchmarks.md#measurements-on-150) record the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
 
 [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
 
@@ -75,7 +75,7 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 | APC-first LPA (P22), one active sequence | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; LPA itself ships disabled as a batch opt-in; [contract](docs/apc-lpa-design.md) |
 | Checkpoint retention, one active sequence | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and its final combined integration is qualified separately; [contracts](docs/launch-safety.md) |
 | Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the server template; [overview](docs/optimization-overview.md) |
-| Image input at 200K (vision), one active sequence | One synthetic image answered correctly, text/tool regressions passed, video rejected; one image read through a ZCode tool call described correctly; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
+| Image input (vision) at 200K and 256K, one active sequence | One synthetic image answered correctly at both lengths, text/tool regressions passed, video rejected; one image read through a ZCode tool call described correctly; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
 | Long Japanese and Korean output, one active sequence | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
 | Other MTP depths, video input, full application quality, production reliability and maximum performance | **Not validated** |
 

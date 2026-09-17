@@ -1,8 +1,8 @@
-# 200Kでの画像入力（Vision）
+# 画像入力（Vision）
 
 [English](vision.md) · [起動設定](server-configuration.ja.md) · [文書一覧](README.ja.md)
 
-配布構成は、入出力合計204,800 tokenで**テキスト・ツール呼び出し・画像**を受け付けます。**動画入力は無効で、送ると拒否します。** この文書は、その構成に至った経緯、参照ホスト（MSI EdgeXpert MS-C931、各約121 GiB利用可能）での2026-09-15の実測、未検収の事項をまとめます。TP=2・同時実行1での限定した証拠であり、本番やハーネスの検収ではありません。
+配布構成は、入出力合計262,144 token（256K）で**テキスト・ツール呼び出し・画像**を受け付けます。**動画入力は無効で、送ると拒否します。** この文書は、2026-09-15に204,800 tokenで画像入力構成に至った経緯と2026-09-17に256Kへ広げた経緯、参照ホスト（MSI EdgeXpert MS-C931、各約121 GiB利用可能）での実測、未検収の事項をまとめます。TP=2・同時実行1での限定した証拠であり、本番やハーネスの検収ではありません。
 
 ## 設定
 
@@ -11,12 +11,12 @@
 | キー | 値 | 効果 |
 |---|---|---|
 | `runtime.vision` | `true` | 両rankから `--language-model-only` を外して視覚塔を読み込み、`--limit-mm-per-prompt '{"video": 0}'` を付ける |
-| `context.max_model_len` | 204800 | テキスト専用構成の262,144から縮小 |
-| `cache.kv_cache_memory_bytes` | 2684354560（各rank 2.5 GiB） | 3 GiBから縮小。起動行の235,016 tokenは `max_model_len` の1.15倍、つまりpoolの最大同時実行数をtoken単位で表した値で、会話を何token保持できるかではない（[`server capacity`](server-configuration.ja.md#kv容量とramの条件)） |
+| `context.max_model_len` | 262144 | 最初の画像入力構成から1.4.0までは204,800。1.5.0でテキスト専用と同じ長さに戻した |
+| `cache.kv_cache_memory_bytes` | 3221225472（各rank 3 GiB） | 1.4.0までは2.5 GiB。起動行の301,645 tokenは `max_model_len` の1.15倍、つまりpoolの最大同時実行数をtoken単位で表した値で、会話を何token保持できるかではない（[`server capacity`](server-configuration.ja.md#kv容量とramの条件)） |
 | `cache.mm_processor_cache_gb` | 0.1 | vLLM既定の4 GiBではなく `--mm-processor-cache-gb 0.1` |
-| `resources.reserve_gib` | 2.5 | 3から変更。保護の見積もりは[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件) |
+| `resources.reserve_gib` | 3.0 | 1.4.0までは2.5。保護の見積もりは[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件) |
 
-クライアントは画像入力を宣言し、動画は宣言しません。ZCodeではモデルの `limit.context` を204800、`modalities.input` を `["text", "image"]` にします（[ZCodeのモデル上限](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)）。256Kテキスト専用の代替は、`runtime.vision = false`、`max_model_len = 262144`、各rank 3 GiBのKVです。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は保護余裕4 GiBで実施しており、2.5 GiBでは未検証です。
+クライアントは画像入力を宣言し、動画は宣言しません。ZCodeではモデルの `limit.context` を262144、`modalities.input` を `["text", "image"]` にします（[ZCodeのモデル上限](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)）。テキスト専用の代替は[起動設定](server-configuration.ja.md#配布用の既定設定)にあります。
 
 ## 設定を選んだ経緯
 
@@ -27,6 +27,7 @@
 5. **headはpeerより荷物が多く、リバランスできない。** APIサーバとエンジンコアはrank 0だけで動きます。無負荷時のPss（共有ページを按分したメモリ量）はAPIサーバ2,165 MiB、エンジンコア999 MiBで、rank 1のheadlessプロセスは1,056 MiBでした。ほぼすべてがプロセス専有の匿名メモリです。TPにはrank間でGPUメモリを寄せる設定がなく、vLLMは全rankのKVブロック数を最小のrankに揃え、`vllm serve` ではAPIサーバとエンジンコアを一つのプロセスにできず、headを別ホストへ移しても荷物が移るだけです。
 6. **JITキャッシュをディスクに残すようにした。** Triton・TileLang・TorchInductorはキャッシュをコンテナ層に書いていたため、起動のたびに約2,000件を作り直し、一部は配信中にコンパイルしていました。下記の200K確認の直後に回帰確認を行ったところ、TritonとTileLangのコンパイル中にheadの空きが約26秒で4.11から2.88 GiBへ落ち、メモリ監視がrank 0を停止しました。ランチャーは現在 `TRITON_CACHE_DIR`・`TILELANG_CACHE_DIR`・`TORCHINDUCTOR_CACHE_DIR` をマウント済みのruntime cacheへ向けます（[保管場所](operations.ja.md#資材の保管場所とパス)）。変更前後の起動（各1回）で、起動中のheadの空きの最小は3.34 GiBから4.18 GiBに上がりました。
 7. **保護余裕を3から2.5 GiBにした。** 参照ホストではカーネル・コンテナのOOM killの記録はなく、保護を割った先の危険はワーカー内のGPU確保の失敗です。監視は2秒ごとに空きを読み、コンテナの停止に約9秒かかるため、保護余裕は床ではなく一時的な下降1回分の余白です。
+8. **1.5.0でコンテキストを262,144 token、KVを各rank 3 GiB、保護余裕を3 GiBに戻した。** その後、headの底を上げる変化が二つありました。NCCLを8チャネルにして（1.3.1）約2.8 GiBが戻り、2026-09-16のpeerの監視停止はモデルではなくホストのデーモンが原因と分かりました（[運用](operations.ja.md#監視停滞検知warmup)）。200K・chunk 2048での要求中のheadの空きの最小は6.40 GiBだったので、KVを0.5 GiB増やしても約5.9 GiBが残り、進める条件（保護＋1.6 GiB＝4.6 GiB）を満たす見込みでした。起動中の実測は5.89 GiBです。先に検討した300K・KV 4 GiBは、同じ見積もりで余白が0.3 GiBしかなく、容量いっぱいの要求が600秒の時間制限に迫るため見送りました。
 
 ## 実測
 
@@ -63,6 +64,10 @@
 - 200Kの `/tokenize` は1回0.22〜0.31秒で、目に見える山は出ませんでした（標本1点）。
 - 最初の画像要求では、配信中にTritonのカーネルを6件コンパイルし、キャッシュに保存されました。このときのrank 0の落ち込みは0.1 GiB未満です。
 - APIサーバの匿名メモリは使うほど増えます（今回の確認で+164 MiB）。2.3 GiBのうちrank 1のheadlessプロセスを上回る約1.26 GiBの内訳は、heap +126 MiB、glibcのmallocアリーナ +255 MiB、その他の領域 +138 MiB、そして持ち主を特定できていない約624 MiBの匿名領域1本です。
+
+### 256K構成（1.5.0、2026-09-17）
+
+切替後、256K構成でも同じ確認が合格しました。合成画像に正答、画像なしの同じ質問では番号を当てない、同じ長さのテキスト、同じ画像の再送、短い計算、tool呼び出しとその結果を使った回答、動画はHTTP 400で拒否。両rankとも `--max-model-len 262144`・`--kv-cache-memory-bytes 3221225472` で動いており、warmup ladderの画像段は1.24秒でした。256Kの長文要求とその間のメモリは[1.5.0での測定](benchmarks.ja.md#150での測定)にあり、headの空きの最小は5.82 GiBでした。
 
 ## 限界と未解決の事項
 

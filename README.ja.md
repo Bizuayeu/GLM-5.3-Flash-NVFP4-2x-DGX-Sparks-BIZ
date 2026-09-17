@@ -53,7 +53,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 ## 確認した範囲
 
-**配布既定は、画像入力を受ける200K（204,800 token）・KV各2.5 GiB・保護2.5 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[200Kでの画像入力](docs/vision.ja.md)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
+**配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[画像入力](docs/vision.ja.md)と[1.5.0での測定](docs/benchmarks.ja.md#150での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
 [起動設定の一括管理](docs/server-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、ランチャーと専用クライアントから使えます。
 
@@ -75,7 +75,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 | APC優先LPA（P22）・同時実行1 | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。LPA自体は配布テンプレートで無効（バッチ用opt-in）。[契約](docs/apc-lpa-design.ja.md) |
 | checkpoint保持・同時実行1 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
-| 200Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。ZCodeのツールで読んだ画像1枚を正しく説明。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
+| 200K・256Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。ZCodeのツールで読んだ画像1枚を正しく説明。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 日本語・韓国語の長い出力、同時1系列 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 他のMTP先読み数・動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 

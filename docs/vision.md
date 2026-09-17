@@ -1,8 +1,8 @@
-# Image input (vision) at 200K
+# Image input (vision)
 
 [日本語](vision.ja.md) · [Server configuration](server-configuration.md) · [Document map](README.md)
 
-The distributed profile accepts **text, tool calls and images** at 204,800 input-plus-output tokens. **Video input is disabled and rejected.** This page records how that profile was reached, what was measured on the reference hosts (MSI EdgeXpert MS-C931, about 121 GiB usable memory each) on 2026-09-15, and what remains unqualified. It is scoped evidence for one active sequence on TP=2, not production or harness qualification.
+The distributed profile accepts **text, tool calls and images** at 262,144 input-plus-output tokens (256K). **Video input is disabled and rejected.** This page records how the image profile was reached at 204,800 tokens on 2026-09-15 and extended to 256K on 2026-09-17, what was measured on the reference hosts (MSI EdgeXpert MS-C931, about 121 GiB usable memory each), and what remains unqualified. It is scoped evidence for one active sequence on TP=2, not production or harness qualification.
 
 ## Settings
 
@@ -11,12 +11,12 @@ The distributed profile accepts **text, tool calls and images** at 204,800 input
 | Key | Value | Effect |
 |---|---|---|
 | `runtime.vision` | `true` | Removes `--language-model-only` on both ranks, so the vision tower loads; adds `--limit-mm-per-prompt '{"video": 0}'` |
-| `context.max_model_len` | 204800 | Down from 262,144 in the text-only profile |
-| `cache.kv_cache_memory_bytes` | 2684354560 (2.5 GiB per rank) | Down from 3 GiB. The boot line reported 235,016 tokens, which is 1.15× `max_model_len`: the pool's maximum concurrency in token units, not a cached-conversation capacity ([`server capacity`](server-configuration.md#kv-capacity-and-ram-requirements)) |
+| `context.max_model_len` | 262144 | 204,800 from the first image profile through 1.4.0; 1.5.0 returns to the text-only length |
+| `cache.kv_cache_memory_bytes` | 3221225472 (3 GiB per rank) | 2.5 GiB through 1.4.0. The boot line reports 301,645 tokens, which is 1.15× `max_model_len`: the pool's maximum concurrency in token units, not a cached-conversation capacity ([`server capacity`](server-configuration.md#kv-capacity-and-ram-requirements)) |
 | `cache.mm_processor_cache_gb` | 0.1 | `--mm-processor-cache-gb 0.1` instead of vLLM's 4 GiB |
-| `resources.reserve_gib` | 2.5 | Down from 3; see the guard arithmetic in [KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements) |
+| `resources.reserve_gib` | 3.0 | 2.5 through 1.4.0; see the guard arithmetic in [KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements) |
 
-A client must declare image input and must not declare video. For ZCode, set the model's `limit.context` to 204800 and `modalities.input` to `["text", "image"]` ([ZCode model limits](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard)). The 256K text-only alternative is `runtime.vision = false` with `max_model_len = 262144` and 3 GiB KV per rank; its [256K checks](benchmarks.md#real-input-checks-at-256k) ran with a 4 GiB reserve, and a 2.5 GiB reserve is not validated for it.
+A client must declare image input and must not declare video. For ZCode, set the model's `limit.context` to 262144 and `modalities.input` to `["text", "image"]` ([ZCode model limits](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard)). The text-only alternative is described in [server configuration](server-configuration.md#distributed-defaults).
 
 ## How the settings were chosen
 
@@ -27,6 +27,7 @@ A client must declare image input and must not declare video. For ZCode, set the
 5. **The head carries more than the peer, and that cannot be rebalanced.** Rank 0 alone runs the API server and the engine core. Measured proportional set size (Pss) at idle was 2,165 MiB for the API server and 999 MiB for the engine core, against 1,056 MiB for rank 1's headless process; nearly all of it is private anonymous memory. Tensor parallelism has no setting that shifts GPU memory between ranks, vLLM aligns every rank's KV blocks to the smallest rank, the API server and engine core cannot share one process under `vllm serve`, and moving the head to the other host only moves the load.
 6. **JIT caches are kept on disk.** Triton, TileLang and TorchInductor wrote their caches inside the container layer, so every start recompiled about 2,000 entries and some compiled while serving. During a regression run right after the 200K check below, the head fell from 4.11 to 2.88 GiB available in about 26 seconds while Triton and TileLang compiled, and the memory supervisor stopped rank 0. The launcher now points `TRITON_CACHE_DIR`, `TILELANG_CACHE_DIR` and `TORCHINDUCTOR_CACHE_DIR` into the mounted runtime cache ([storage paths](operations.md#artifact-storage-and-paths)). The head's lowest available memory during startup rose from 3.34 GiB to 4.18 GiB between the runs before and after the change (one start each).
 7. **The reserve moved from 3 to 2.5 GiB.** No kernel or container OOM kill was recorded on the reference hosts; the risk below the reserve is a GPU allocation failing inside a worker. The supervisor samples every 2 seconds and needs about 9 seconds to stop a container, so the reserve is a margin for one transient, not a floor.
+8. **In 1.5.0 the context returned to 262,144 tokens, KV to 3 GiB per rank and the reserve to 3 GiB.** Two changes had raised the head's floor since then: eight NCCL channels (1.3.1) returned about 2.8 GiB, and the peer's supervised stop on 2026-09-16 was traced to a host daemon, not the model ([operations](operations.md#supervision-stall-detection-and-warmup)). At 200K with chunk 2048 the head's lowest available memory during requests was 6.40 GiB, so 0.5 GiB more KV was expected to leave about 5.9 GiB against a proceed condition of the reserve plus 1.6 GiB (4.6 GiB); startup measured 5.89 GiB. A 300K profile with 4 GiB KV was considered first and set aside: the same estimate left 0.3 GiB of margin, and a full-length request would have run close to the 600-second timeout.
 
 ## Measurements
 
@@ -63,6 +64,10 @@ One request built to 199,652 prompt tokens, with a passphrase in the middle, ret
 - One 200K `/tokenize` call took 0.22–0.31 seconds and caused no visible peak (one sample).
 - The first image request compiled six Triton kernels while serving; the caches kept them. The resulting dip on rank 0 was below 0.1 GiB.
 - The API server's anonymous memory grows with use (+164 MiB over these checks). Of its 2.3 GiB, about 1.26 GiB exceeds rank 1's headless process: the heap (+126 MiB), glibc malloc arenas (+255 MiB), other mappings (+138 MiB) and one anonymous mapping of about 624 MiB whose owner was not identified.
+
+### 256K profile (1.5.0, 2026-09-17)
+
+After the switch the same checks passed on the 256K profile: the synthetic image correct, the same question without the image not guessed, text of the same length, the same image again, short arithmetic, a tool call answered from its result, and video rejected with HTTP 400. Both ranks ran with `--max-model-len 262144` and `--kv-cache-memory-bytes 3221225472`, and the warmup ladder's image rung took 1.24 s. The 256K long-context requests and the memory during them are in [measurements on 1.5.0](benchmarks.md#measurements-on-150); the head's lowest available memory there was 5.82 GiB.
 
 ## Limits and open items
 

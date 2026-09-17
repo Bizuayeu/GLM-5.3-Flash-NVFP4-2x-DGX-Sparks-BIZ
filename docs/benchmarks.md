@@ -549,3 +549,69 @@ Lowest available memory during each request, from two-second supervisor samples 
 | Three-position 200,095 | 6.40 GiB | 8.95 GiB | 6.97 / 9.45 GiB |
 
 Free memory in blocks of 2 MiB or more stayed between 0.44 and 0.48 GiB on both ranks. The head's lowest reading sits 0.6 GiB below 1.3.1, in line with the chunk-budget comparison; different starts also differ by a few hundred MiB. No `NV_ERR_NO_MEMORY` message appeared during the runs.
+
+## Measurements on 1.5.0
+
+On 2026-09-17 and 18 (Asia/Tokyo) the 1.5.0 defaults were measured: image input at 262,144 tokens, FP8 KV 3 GiB per rank and a 3 GiB reserve, with everything else as in 1.4.0, including chunk 2048 and eight NCCL channels (fingerprint `8a63dc2f3f8aa9349bb1496e9e48f4768ffdd02824c96bfe1176aa5a8170a091`). The pair ran the 1.4.0 source `f593f38`; 1.5.0 changes only the template, tests and documents. The monitoring dashboard was stopped for the startup, prefill/decode, image and 256K checks, and ran for sparkDash and the 200K repeat, which use it. No other client used the model, no case added a preemption and `/health` stayed 200.
+
+### Startup at 256K
+
+The boot line reported 301,645 tokens, 1.15× `max_model_len`: 84 blocks, of which a full-length request takes 73. Both figures match the prediction made before the switch from the 204,800-token pool ([server configuration](server-configuration.md#kv-capacity-and-ram-requirements)). The warmup ladder passed, its 65,566-token rung in 116.2 s. The lowest available memory from launch through the ladder was 5.89 GiB on the head and 8.47 GiB on the peer, against a proceed condition of 4.6 GiB (the reserve plus the supervisor's 1.6 GiB overshoot). Each host logged one `NV_ERR_NO_MEMORY` retry during loading.
+
+### Prefill and decode
+
+The fixed prompts of the [chunk-budget comparison](#chunk-budget-on-the-200k-image-profile-2026-09-17), with the dashboard stopped in both:
+
+| Profile | Prefill, 38,962 tokens (tok/s) | Decode, 512 tokens (tok/s) |
+|---|---|---|
+| 1.5.0, 256K, KV 3 GiB | 569.8 (569.7–570.8) | 26.86 (19.41–29.77) |
+| 1.4.0, 200K, KV 2.5 GiB | 563.0 (561.9–563.7) | 28.00 (21.52–28.35) |
+
+The differences fall within the variation between starts. The image checks of [image input](vision.md#256k-profile-150-2026-09-17) passed on the same start.
+
+### 256K real input
+
+The requests reuse the [256K checks of 2026-09-14](#real-input-checks-at-256k) and the passphrase ledger, each after a prefix-cache reset:
+
+| Check | Input tokens | 1.5.0 (chunk 2048) | 2026-09-14 text-only (chunk 512, LPA on) |
+|---|---:|---|---|
+| One passphrase at the midpoint | 255,950 | **462.8 s**, correct, stop | — |
+| Maximum capacity, 64 forced output tokens | 262,080 | **488.6 s** and 488.5 s, 262,144 total, finite logprobs | 582.0 s |
+| Three-position reference, after the capacity request | 261,595 | 480.4 s correct, stop; 492.5 s length, incorrect | 566.0 s, correct |
+| Three-position reference, after 300 s idle | 261,595 | 481.0 s correct, stop | — |
+
+The longest request, 492.5 s, fits the 600-second `generation.timeout_seconds`. The three-position failure is the same misreading as [on 1.4.0](#200k-real-input-on-140): the reasoning took each value to be the article that follows it and used all 512 tokens. The two correct runs wrote the same reading into their reasoning and still answered with the identifiers. Chunk, channel count, LPA and image input all differ from 2026-09-14, so no single change accounts for the shorter times.
+
+| Request | Head | Peer |
+|---|---:|---:|
+| Passphrase 255,950 | 5.82 GiB | 8.44 GiB |
+| Capacity 262,080 + 64 | 6.03 / 6.07 GiB | 8.54 / 8.53 GiB |
+| Three-position 261,595 | 6.00 / 6.08 / 6.06 GiB | 8.52 / 8.54 / 8.52 GiB |
+
+Lowest available memory during each request, as in the earlier tables. No `NV_ERR_NO_MEMORY` retry appeared during these requests.
+
+### sparkDash and 200K on 1.5.0
+
+The [1.4.0 runs](#measurements-on-140) were repeated unchanged on the 1.5.0 profile; all 12 sparkDash streams succeeded.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | 1.4.0 decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 36.24 | 36.35 / 36.24 / 36.19 | 355.61 | 36.51 / 350.56 |
+| prose | 26.68 | 23.11 / 26.71 / 26.68 | 369.03 | 25.67 / 370.17 |
+| code | 31.67 | 30.05 / 31.67 / 31.72 | 570.67 | 29.31 / 567.74 |
+| json | 26.25 | 26.21 / 26.27 / 26.25 | 444.05 | 26.29 / 443.51 |
+
+| Check | Input tokens | 1.5.0 | 1.4.0 |
+|---|---:|---|---|
+| One passphrase at the midpoint | 199,652 | **361.4 s**, correct, stop | 361.4 s, correct |
+| Maximum capacity, 64 forced output tokens | 204,736 | **384.6 s**, 204,800 total, finite logprobs | 380.0 s |
+| Three-position reference, after the capacity request | 200,095 | 380.8 s length, incorrect | 379.0 s length, incorrect |
+
+| Case | Head | Peer | 1.4.0 head / peer |
+|---|---:|---:|---|
+| sparkDash | 5.92 GiB | 8.40 GiB | 6.60 / 9.00 GiB |
+| Passphrase 199,652 | 5.83 GiB | 8.39 GiB | 6.51 / 8.93 GiB |
+| Capacity 204,736 + 64 | 5.84 GiB | 8.37 GiB | 6.40 / 8.95 GiB |
+| Three-position 200,095 | 5.85 GiB | 8.37 GiB | 6.40 / 8.95 GiB |
+
+Speed matches 1.4.0 within run-to-run variation. Both ranks keep 0.5–0.7 GiB less free memory, about the added KV. With this run the three-position reference at chunk 2048 has answered correctly in none of three runs that directly followed a 200K capacity request and in one of two at 256K, while the runs after an idle wait, one at each length, were both correct; that is too few runs to say the preceding request matters. These are single runs per case and do not qualify multiple sequences, every history-edit pattern or long-term reliability.

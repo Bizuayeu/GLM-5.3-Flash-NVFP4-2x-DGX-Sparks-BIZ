@@ -23,6 +23,8 @@ METRICS = (
 class CapacityTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/server.example.toml")
+        # LOGS and the layouts below were captured on the 204,800-token profile.
+        self.profile["context"]["max_model_len"] = 204800
 
     def test_stock_line_is_decomposed_and_named_for_what_it_is(self):
         report = capacity.summarize(self.profile, LOGS, METRICS)

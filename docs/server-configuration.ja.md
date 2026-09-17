@@ -22,23 +22,23 @@
 
 ## 配布用の既定設定
 
-配布用TOMLは、[200Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/server.toml` は自動更新されません。
+配布用TOMLは、[256Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/server.toml` は自動更新されません。
 
 | 項目 | 既定値 |
 |---|---|
-| 実行 | TP=2、eager、1系列、204,800 token、chunk 2048（[実測](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17)） |
+| 実行 | TP=2、eager、1系列、262,144 token、chunk 2048（[実測](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17)） |
 | 入力 | テキスト・ツール呼び出し・画像（`runtime.vision = true`）。動画は拒否 |
-| キャッシュ | FP8、各rank 2.5 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
+| キャッシュ | FP8、各rank 3 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
-| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕2.5 GiB |
+| 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 | 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
 | warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に短文・tool・画像の段を流す。長文段は指定するまで無し |
 
-テキスト専用の代替は `runtime.vision = false`、`max_model_len = 262144`、`kv_cache_memory_bytes = 3221225472` です。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は保護余裕4 GiBで実施しており、2.5 GiBでは未検証です。
+テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
 
 **導入時はimage ID、両機の接続情報、MTP viewを準備してください。LPA projectorとhashはLPAを有効にするときだけ必要です。** 有効な機能のゼロhashは差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。[学習済みprojectorの取得](lpa.ja.md#学習済みprojectorの取得)により再学習を省けます。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
 
@@ -116,13 +116,13 @@ run_seconds = 0
 
 **最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。受け入れた2系列の範囲は1要求2,112 tokenまでです。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、ライセンスなし、コードは採用しない）。
 
-起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
+起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
 
 このランチャーの`cache.kv_cache_memory_bytes`は、**各rankで要求間共有する固定KV poolのバイト予算**です。1 GiBを指定したまま同時数を1→2にしても、各rankのKV予算は1 GiBのままです。要求1本あたり1 GiBでも、2台の予算を自由に合算した一つのpoolでもありません。バイト指定時は`gpu_memory_utilization`によるKV容量の自動推定を使わないため、この比率をRAM全体の保護上限として扱いません。[vLLMの設定仕様](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 
 実行中に必要なcacheは、保持中の各要求の入力＋生成済みtokenに従ってpool内のblockを消費します。最大長を同時に保証したい場合は、出力予算も含む最大条件で検証します。GLMは疎MLA・IndexPool・系列ごとのKDA状態を併用するため、一般的なdense attentionの単純なbytes/token式をそのまま使わず、**固定runtimeのcache spec・block整列・各groupの容量と状態slot数**で見積もります。MTP等の追加状態も別途含めます。
 
-各ノードで、重み＋KV/cache状態＋activation・indexer等の一時領域＋MTP/Graph等の追加領域＋CPU/OS・他負荷＋運用余裕が、利用可能な統合RAMに収まる必要があります。KV poolを固定しても、context・chunk・同時数に依存する別の割当が増えることはあります。コンテナ上限と`reserve_gib`は保護手段であり、容量適合や無停止の保証ではありません。以前の 256K テキスト専用 profile は実測 121 GiB のホストでこの保護に接していました。available は 4.5 GiB 前後で推移し、保護余裕 4 では監視停止（`stop-reason: memory-reserve`）が 2 回発生し（2 回目は 16,859 token の近似要求の最中）、その後 3 へ下げました。画像入力構成の配信中の head の空きは、NCCL の 64 チャネルでは約 4.0〜4.2 GiB（[実測](vision.ja.md#メモリ最終構成)）、8 チャネルでは [1.3.1 の 200K 実入力](benchmarks.ja.md#131での200k実入力)で 6.97 GiB 以上、chunk 2048 で 6.40 GiB 以上でした。テンプレートは 2.5 です。値は小数でも指定できます。変える前に、この保護が捉えられる範囲を見積もってください。監視は `MemAvailable` を 2 秒ごとに読み、実測では割り込んだ標本からコンテナ終了まで約 9 秒かかりました。実行中のコンパイルで測った 0.15 GiB/秒の下降なら、reserve から約 1.6 GiB 下まで沈み得ます。参照ホストではカーネル・コンテナとも OOM kill の記録はなく、ホスト側のページは 16 GiB の swap が受けるため、reserve を割った先の危険はワーカー内の GPU 確保の失敗です。その場合は監視停止ではなく、エンジンが突然終了します。ドライバの `NV_ERR_NO_MEMORY` カーネルメッセージは空き 4 GiB 以上、主にロード中に出るもので、底の目印にはなりません。
+各ノードで、重み＋KV/cache状態＋activation・indexer等の一時領域＋MTP/Graph等の追加領域＋CPU/OS・他負荷＋運用余裕が、利用可能な統合RAMに収まる必要があります。KV poolを固定しても、context・chunk・同時数に依存する別の割当が増えることはあります。コンテナ上限と`reserve_gib`は保護手段であり、容量適合や無停止の保証ではありません。以前の 256K テキスト専用 profile は実測 121 GiB のホストでこの保護に接していました。available は 4.5 GiB 前後で推移し、保護余裕 4 では監視停止（`stop-reason: memory-reserve`）が 2 回発生し（2 回目は 16,859 token の近似要求の最中）、その後 3 へ下げました。画像入力構成の配信中の head の空きは、NCCL の 64 チャネルでは約 4.0〜4.2 GiB（[実測](vision.ja.md#メモリ最終構成)）、8 チャネルでは [1.3.1 の 200K 実入力](benchmarks.ja.md#131での200k実入力)で 6.97 GiB 以上、chunk 2048 で 6.40 GiB 以上でした。256K・KV 3 GiB では 5.82 GiB 以上で（[1.5.0 での測定](benchmarks.ja.md#150での測定)）、テンプレートは 3 です。値は小数でも指定できます。変える前に、この保護が捉えられる範囲を見積もってください。監視は `MemAvailable` を 2 秒ごとに読み、実測では割り込んだ標本からコンテナ終了まで約 9 秒かかりました。実行中のコンパイルで測った 0.15 GiB/秒の下降なら、reserve から約 1.6 GiB 下まで沈み得ます。参照ホストではカーネル・コンテナとも OOM kill の記録はなく、ホスト側のページは 16 GiB の swap が受けるため、reserve を割った先の危険はワーカー内の GPU 確保の失敗です。その場合は監視停止ではなく、エンジンが突然終了します。ドライバの `NV_ERR_NO_MEMORY` カーネルメッセージは空き 4 GiB 以上、主にロード中に出るもので、底の目印にはなりません。
 
 KVが不足すれば起動が拒否される場合があり、実行時は待ちやpreemption・再計算により性能が落ちることがあります。固定KV poolが勝手に必要量まで拡張されるわけではありません。KV以外の割当やRAM予算が不足すればOOMやガード停止も起こり得ます。[vLLMのpreemption説明](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
