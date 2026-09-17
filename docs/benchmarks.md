@@ -2,7 +2,7 @@
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
-This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention) and the release-candidate, 200K and 256K real-input checks. MTP k=1/k=3 comparisons are in [speculative decoding](speculative-decoding.md); the current image-input defaults are in [image input at 200K](vision.md).
+This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention) the release-candidate, 200K and 256K real-input checks, and the same sparkDash and 200K checks repeated on 1.3.1. MTP k=1/k=3 comparisons are in [speculative decoding](speculative-decoding.md); the current image-input defaults are in [image input at 200K](vision.md).
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -447,3 +447,43 @@ The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp valid
 Neither request increased preemption. A short arithmetic request passed afterward; both ranks and the API remained running, with no OOM or memory-guard stop. Two-second supervision from launch through these checks recorded minimum available RAM of **4.162 / 5.183 GiB** (head/peer).
 
 These scoped checks supported the then-distributed **256K / 3 GiB-per-rank** defaults, now the text-only alternative; the current defaults with image input are recorded in [image input at 200K](vision.md). They do not rerun or transfer the earlier 200K speed, tool-eval or FreedomBench scores to this profile, or qualify general long-context quality, every history-edit pattern, multiple sequences, actual harness behavior or long-term reliability. The test timeout is separate from client defaults; long cold requests need enough client waiting time.
+
+## Measurements on 1.3.1
+
+On 2026-09-17 (Asia/Tokyo) the distributed profile was measured on 1.3.1: image input at 204,800 tokens, FP8 KV 2.5 GiB per rank, reserve 2.5 GiB, MTP k=3, APC with dense retention, fused unpack, async index checks, **LPA off, 8 NCCL channels and MTU 1500** (profile fingerprint `fc4e35ff2e5280b0f5de2a8164f1d07b85ca657ce48742af011803d83a77840f`, image and pinned vLLM as above). The monitoring dashboard ran on the head because the decode benchmark uses it. No other client used the model; every case finished without additional preemption and `/health` stayed 200.
+
+### sparkDash on 1.3.1
+
+The [release-candidate protocol](#sparkdash) was repeated unchanged: stock DecodeBench, concurrency 1, 128 output tokens, TLS off, four prompt types, three runs each. All 12 streams succeeded.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | Release candidate decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 36.67 | 36.88 / 34.76 / 36.67 | 368.12 | 33.92 / 382.93 |
+| prose | 25.71 | 28.16 / 25.69 / 25.71 | 268.88 | 23.32 / 407.78 |
+| code | 30.19 | 30.17 / 30.19 / 30.98 | 566.16 | 29.28 / 691.94 |
+| json | 26.48 | 26.48 / 27.10 / 25.38 | 441.06 | 24.03 / 493.94 |
+
+The release candidate ran with LPA on, a 4 GiB reserve and NCCL's 64 channels, so the columns differ in more than the version. With 128 tokens and MTP acceptance varying from run to run, decode differences of this size are within the spread of a single setting (a fixed 512-token decode varied about ±15% on 1.3.1); the shorter TTFT is the steadier difference.
+
+### 200K real input on 1.3.1
+
+The same inputs as the earlier checks were sent after a prefix-cache reset: the one-passphrase ledger used for [image input at 200K](vision.md), and the [release candidate's](#real-input-checks-at-200k) capacity and three-position requests built from the same pinned corpus. Times are whole requests including prefill.
+
+| Check | Input tokens | 1.3.1 | Earlier |
+|---|---:|---|---|
+| One passphrase at the midpoint | 199,652 | **410.8 s**, correct, stop | 506.1 s on 2026-09-15 (LPA off, 64 channels) |
+| Maximum capacity, 64 forced output tokens | 204,736 | **470.3 s**, 204,800 total, finite logprobs | 473.0 s (release candidate, LPA on) |
+| Three-position reference | 200,095 | **435.1 s**, all three identifiers correct, stop | 454.1 s (release candidate, LPA on) |
+
+The same passphrase request took 19% less time than on 2026-09-15. Between the two runs the version, the channel count and the kernel-cache location changed (on 2026-09-15 kernels still compiled while serving), so no single change accounts for it. With LPA off, 1.3.1 matched or beat the release candidate's LPA-on times; LPA was not rerun on 1.3.1, so this does not measure what LPA contributes now.
+
+Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
+
+| Case | Head | Peer |
+|---|---:|---:|
+| sparkDash | 7.24 GiB | 9.47 GiB |
+| Passphrase 199,652 | 7.12 GiB | 9.44 GiB |
+| Capacity 204,736 + 64 | 6.99 GiB | 9.30 GiB |
+| Three-position 200,095 | 6.97 GiB | 9.45 GiB |
+
+On 2026-09-15 the passphrase request left the head at 3.31 GiB during tokenization and 3.34 GiB during prefill, and the peer at 5.46 GiB. The window here excludes the tokenization call that precedes each request. These are single runs per case; they do not qualify every 200K history-edit pattern, multiple sequences or long-term reliability. The 256K text-only alternative was not rerun because it exceeds this profile's 204,800-token limit.

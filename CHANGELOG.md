@@ -4,6 +4,7 @@
 
 ### Documentation
 
+- Benchmarks: the release candidate's sparkDash and 200K checks repeated on 1.3.1 (LPA off, 8 NCCL channels, MTU 1500). Decode medians 36.67 / 25.71 / 30.19 / 26.48 token/s for structured / prose / code / json, TTFT shorter for all four. The 199,652-token passphrase request took 410.8 s against 506.1 s on 2026-09-15, capacity 204,736 + 64 took 470.3 s and the three-position reference 435.1 s, all correct, with the head never below 6.97 GiB free. Several changes lie between the runs, so no single one is credited.
 - NCCL validation and QSFP network: the MTU 1500 full-model runs had the head's monitoring dashboard running (65 MiB, about 2% CPU) while the MTU 9000 runs did not. 1.3.1 said every run had it stopped. The 2.3–2.6% prefill gain from MTU 9000 is therefore an upper bound. The channel-count comparison at each MTU is unaffected, and so is the memory cost, which the dashboard can only understate.
 
 ## 1.3.1 — 2026-09-17
