@@ -154,7 +154,7 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 | H-05 | 両方 | 読み取り→編集→検査の複数ツール往復で引数・結果・順序を維持する。追加エージェントなしの初期条件で実施 | npm CLI PASS（同run）：読み取り・テスト・編集・diff・commit・書き込み・削除・設定読み・curl・bgジョブ起動と停止の約15往復で引数・結果・順序を維持。Desktop／Claude CodeはNOT RUN |
 | H-06 | 両方 | 生成・ツール待ちを中断してから新規要求を送信できる。無限再試行・残留ジョブ・サーバー停止がない | npm CLI PARTIAL（同run）：bgジョブを停止し残留プロセスなし、停止後もサーバーは200応答。生成中の割り込みと無限再試行の確認は未試験。Desktop／Claude CodeはNOT RUN |
 | H-07 | 両方 | クライアント再起動後に試験会話を再開し、同じローカル接続先と承認設定を維持する | npm CLI PASS（同run）：クライアント再起動後に同一セッションIDで再開し、接続先・モデル上限・権限モード・hookが再起動前と一致。Desktop／Claude CodeはNOT RUN |
-| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | npm CLI PARTIAL（同run）：`limit.context` 204800はサーバーの `/v1/models` の `max_model_len` と一致、`limit.output` は32000。上限付近の挙動と圧縮は未試験。Desktop／Claude CodeはNOT RUN |
+| H-08 | 両方 | 実サーバーのcontext上限付近を試す。必要な圧縮または明示的エラーで処理し、履歴を黙って失わない。200k／1M対応を仮定しない | npm CLI PARTIAL（同run）：`limit.context` は当時の200K profileの204800で、サーバーの `/v1/models` の `max_model_len` と一致、`limit.output` は32000。上限付近の挙動と圧縮は未試験。Desktop／Claude CodeはNOT RUN |
 | H-09 | 両方 | 実要求の接続先を確認し、ローカルendpoint停止時にクラウド推論へfallbackしない。その他の通信も記録し「完全オフライン」と混同しない | npm CLI PARTIAL（同run）：モデル経路はloopbackトンネルでfallback設定なし。停止時fallbackは未試験。同runの付随通信はユーザー依頼の `curl` 2件（`api.fxtwitter.com`、`pbs.twimg.com`）。クライアントのtelemetryは未採取（上記2026-09-14のTCP採取を参照）。Desktop／Claude CodeはNOT RUN |
 | H-10 | 両方 | 同じ試験repo・課題で一連の読解、修正、テスト、最終説明を完遂。APIログと成果物、正確性、遅延を保存する | npm CLI PARTIAL（同run）：読解・修正・テスト・報告の課題を完遂し、成果物と正確性はrun logとGit履歴に保存。APIログと遅延計測は未取得。Desktop／Claude CodeはNOT RUN |
 | H-11 | 両方 | 対応するreasoning設定がローカルserviceへ届き、非対応のオフ引数が送られず、推論文が最終contentへ漏れない。effortの変換に非対応なら明記する | npm CLI PARTIAL（同run）：オフ引数は設定・送信ともになし、最終回答への推論文の漏れなし。リクエスト中の `reasoning_effort` は未採取。Desktop／Claude CodeはNOT RUN |
