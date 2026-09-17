@@ -4,6 +4,7 @@
 
 ### Documentation
 
+- Optimization catalog: P23 (requantizing the BF16 attention projections to W4A16 NVFP4) closed as not adopted after one full-model A/B/A: 4.0 GiB less per rank, decode inside the unmodified spread because the MTP acceptance length fell from 2.9 to 2.37, NLL about 5% higher on the mathematics text.
 - README: a table of the other public GLM-5.3-Flash recipes for DGX Spark pairs, with their links, licenses and what this repository took from each. That table now owns those facts: the inline citations in the component validation, operations, optimization catalog, server configuration and speculative decoding documents keep the name and pull request and no longer restate a license, and `tools/check_publication.py` rejects a recipe link or a restated license under `docs/`.
 - README: a headline table of the measurements on the current defaults (prefill, decode, 200K and 256K requests, the unstable three-position reference and the lowest available memory). `docs/benchmarks.md` still owns the numbers.
 
