@@ -235,8 +235,9 @@ def run(tokenize, complete, texts=None, top_k=TOP_K, repeats=2):
     ``tokenize(text)`` returns the prompt token ids; ``complete(token_ids, top_k)``
     returns the completions response. The first raw response is kept so the
     record shows the server's actual ``prompt_logprobs`` shape. Repeats of the
-    same text inside one run measure the instrument: identical rows are
-    expected, and any difference is reported as ``self_agreement``.
+    same text inside one run measure how far the server moves by itself; the
+    difference is reported as ``self_agreement`` and is the yardstick for any
+    comparison with another run.
     """
     texts = TEXTS if texts is None else texts
     rows, raw_first, self_checks = [], None, []
@@ -268,7 +269,8 @@ def run(tokenize, complete, texts=None, top_k=TOP_K, repeats=2):
         "self_agreement": self_checks,
         "errors": len(errors),
         "first_raw_response": raw_first,
-        "passed": not errors
-        and bool(self_checks)
-        and all(check["argmax_agreement"] == 1.0 for check in self_checks),
+        # Every request answered in the checked shape. Repeats are not required
+        # to be identical: a served full model moved its argmax on a few percent
+        # of positions between identical requests, a fixture on none.
+        "passed": not errors and bool(self_checks),
     }

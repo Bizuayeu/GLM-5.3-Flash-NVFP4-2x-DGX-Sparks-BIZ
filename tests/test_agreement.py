@@ -148,6 +148,26 @@ class RunTests(unittest.TestCase):
         self.assertEqual(record["first_raw_response"], response(GOOD))
         self.assertAlmostEqual(record["texts"][0]["top1"], 1 / 3)
 
+    def test_repeats_that_differ_are_data_not_a_failure(self):
+        # A served full model does not repeat itself exactly; the run still passes
+        # and the difference stays in self_agreement for the reader.
+        answers = [copy.deepcopy(GOOD), copy.deepcopy(GOOD)]
+        second = answers[1][1]
+        top, other = sorted(second, key=lambda t: -second[t]["logprob"])[:2]
+        second[top]["logprob"], second[other]["logprob"] = (
+            second[other]["logprob"],
+            second[top]["logprob"],
+        )
+        replies = iter(answers)
+        record = agreement.run(
+            lambda text: list(TOKENS),
+            lambda ids, k: response(next(replies)),
+            texts={"a": "alpha"},
+            repeats=2,
+        )
+        self.assertLess(record["self_agreement"][0]["argmax_agreement"], 1.0)
+        self.assertIs(record["passed"], True)
+
     def test_a_failed_request_is_recorded_and_the_run_does_not_pass(self):
         tokenize, complete, _ = self.senders(fail_on=2)
         record = agreement.run(tokenize, complete, texts={"a": "alpha"}, repeats=2)
