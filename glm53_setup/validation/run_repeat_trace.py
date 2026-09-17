@@ -44,6 +44,26 @@ def summarize(rows):
     }
 
 
+def canonical_order(sorted_ids, expert_ids, padded):
+    """Order the written slots by (expert, token id) without a host synchronisation.
+
+    ``sorted_ids`` and ``expert_ids`` are worst-case buffers; only the first
+    ``padded`` slots (a device scalar) are written. The align kernel emits experts in
+    ascending order, which is what keeps every token inside its expert's blocks here.
+    Padding slots hold the number of real entries, which never exceeds the buffer
+    length, so they sort last inside their expert without reaching the next one. Unwritten slots get the largest
+    key, so the stable sort leaves them where they were, behind everything written.
+    """
+    import torch
+
+    block = sorted_ids.numel() // expert_ids.numel()
+    owner = expert_ids.to(torch.int64).repeat_interleave(block)
+    slots = torch.arange(sorted_ids.numel(), device=sorted_ids.device)
+    key = owner * (sorted_ids.numel() + 1) + sorted_ids.to(torch.int64)
+    key = torch.where(slots < padded, key, torch.iinfo(torch.int64).max)
+    return sorted_ids[torch.argsort(key, stable=True)]
+
+
 class RepeatTraceWorker:
     def repeat_trace_start(self, compare):
         import torch
@@ -115,6 +135,20 @@ class RepeatTraceWorker:
 
         marlin_moe.fused_marlin_moe = zeroed
         return {"rank": self.rank, "patched": "fused_marlin_moe"}
+
+    def repeat_trace_canonical_only(self):
+        """The order fix alone, as a runtime patch would apply it: no log, no sync."""
+        from vllm.model_executor.layers.fused_moe.experts import marlin_moe
+
+        original = marlin_moe.moe_align_block_size
+
+        def ordered(*args, **kwargs):
+            result = original(*args, **kwargs)
+            result[0].copy_(canonical_order(result[0], result[1], result[2]))
+            return result
+
+        marlin_moe.moe_align_block_size = ordered
+        return {"rank": self.rank, "patched": "moe_align_block_size, order only"}
 
     def repeat_trace_watch_align(self, canonicalize=False):
         """Diagnostic: fingerprint what moe_align_block_size hands the Marlin kernel.
@@ -199,6 +233,16 @@ def main(argv=None):
         help="diagnostic: compare the expert token ordering between passes",
     )
     parser.add_argument(
+        "--verify-canonical",
+        action="store_true",
+        help="record one plain pass, install the order fix, compare the next passes",
+    )
+    parser.add_argument(
+        "--timing",
+        action="store_true",
+        help="no hooks: time prefill and decode, with --canonical-align as the variable",
+    )
+    parser.add_argument(
         "--canonical-align",
         action="store_true",
         help="diagnostic: fix the token order inside each expert before the kernel",
@@ -255,6 +299,35 @@ def main(argv=None):
     )
     if args.zero_moe_buffers:
         report["zero_moe_buffers"] = llm.collective_rpc("repeat_trace_zero_moe_buffers")
+    if args.timing:
+        import statistics
+        import time
+
+        if args.canonical_align:
+            report["patch"] = llm.collective_rpc("repeat_trace_canonical_only")
+        tokenizer = llm.get_tokenizer()
+        base = tokenizer.encode(next(iter(TEXTS.values())), add_special_tokens=False)
+        cases = {
+            "prefill_2048": ((base * 20)[:2048], 1),
+            "decode_128": (base[:64], 128),
+        }
+        report["timing"] = {}
+        for name, (token_ids, new_tokens) in cases.items():
+            params = SamplingParams(
+                temperature=0, max_tokens=new_tokens, ignore_eos=True, seed=42
+            )
+            seconds = []
+            for _ in range(7):
+                began = time.perf_counter()
+                llm.generate([{"prompt_token_ids": token_ids}], params, use_tqdm=False)
+                seconds.append(time.perf_counter() - began)
+            report["timing"][name] = {
+                "seconds": [round(v, 4) for v in seconds],
+                "median_after_two_warmups": round(statistics.median(seconds[2:]), 4),
+            }
+        report.update(status="complete", canonical_align=args.canonical_align)
+        write_json(args.output / "result.json", report)
+        return
     if args.watch_align or args.canonical_align:
         args.watch_align = True
         report["watch_align"] = llm.collective_rpc(
@@ -280,8 +353,11 @@ def main(argv=None):
                 )
             finally:
                 traced = llm.collective_rpc("repeat_trace_finish")[0]
+            if args.verify_canonical and not repeat and "patch" not in report:
+                report["patch"] = llm.collective_rpc("repeat_trace_canonical_only")
             if repeat:
                 case["repeats"].append(summarize(traced["rows"]))
+                case["repeats"][-1]["last_module"] = traced["rows"][-1]
             else:
                 case["calls_recorded"] = traced["calls"]
             if args.watch_align:

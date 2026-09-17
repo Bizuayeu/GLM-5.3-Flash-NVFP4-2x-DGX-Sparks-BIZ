@@ -1,6 +1,11 @@
+import importlib.util
 import unittest
 
-from glm53_setup.validation.run_repeat_trace import HOOKED, summarize
+from glm53_setup.validation.run_repeat_trace import (
+    HOOKED,
+    canonical_order,
+    summarize,
+)
 
 
 def row(order, module, max_abs, shape_changed=False):
@@ -60,6 +65,22 @@ class RepeatTraceTests(unittest.TestCase):
         self.assertIsNone(summarize([row(1, "layers.0", 0.0)])["first_difference"])
         changed = summarize([row(1, "layers.0", 0.0, shape_changed=True)])
         self.assertEqual(changed["first_difference"]["module"], "layers.0")
+
+
+@unittest.skipUnless(importlib.util.find_spec("torch"), "torch required")
+class CanonicalOrderTests(unittest.TestCase):
+    def test_orders_inside_each_expert_and_leaves_the_unwritten_tail(self):
+        import torch
+
+        # Blocks of four, experts ascending as the align kernel emits them: expert 2
+        # fills one block, expert 5 two. 10 is padding (the number of real entries, as
+        # the kernel writes it), the last block is unwritten.
+        sorted_ids = torch.tensor([9, 3, 10, 4, 8, 1, 6, 5, 2, 10, 10, 0, 7, 7, 7, 7])
+        expert_ids = torch.tensor([2, 5, 5, 0])
+        result = canonical_order(sorted_ids, expert_ids, torch.tensor(12))
+        self.assertEqual(
+            result.tolist(), [3, 4, 9, 10, 0, 1, 2, 5, 6, 8, 10, 10, 7, 7, 7, 7]
+        )
 
 
 if __name__ == "__main__":
