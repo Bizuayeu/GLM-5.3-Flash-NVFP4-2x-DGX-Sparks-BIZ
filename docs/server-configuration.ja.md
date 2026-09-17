@@ -31,7 +31,7 @@
 | キャッシュ | FP8、各rank 2.5 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
-| NCCL | `nccl_channels` 未指定：NCCLに任せる（参照機では64チャネルを観測） |
+| NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕2.5 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
@@ -58,7 +58,7 @@
 
 `resources.stall_seconds`（任意、未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（任意、未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。いずれもprofileのfingerprintを変えるため、次の切替から有効になります。
 
-`runtime.nccl_channels`（任意、未指定はNCCLに任せる）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7が両rankとも64本のcollectiveチャネルを選び、2026-09-11のfabric検証と2026-09-17に稼働中のpairで同じでした。このキーが無くてもrank間の値は揃っています。キーの目的は、reserveの数GiB上で動くheadに、チャネルを減らすとメモリが戻るかを測ることです。メモリと速度への影響は未測定で、実測が値を決めるまでテンプレートは設定しません。Mia PR #200を参考にしました。そのTP=2ランチャーも既定は空欄です。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。
+`runtime.nccl_channels`（任意、未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。各rankのエンジンはcommunicatorを2本開き、MTU 1500で8本にすると、実モデルの最小空きメモリが64本に比べてheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（1%速い）。decodeは設定の差より計測ごとのぶれの方が大きい値でした。数値は[チャネル数の測定](nccl-validation.ja.md#チャネル数)にあります。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択とfingerprintをそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
 

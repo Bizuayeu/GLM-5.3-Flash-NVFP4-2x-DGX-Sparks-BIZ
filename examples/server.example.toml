@@ -10,10 +10,9 @@ schema_version = 1
 [runtime]
 # Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
 # cuda_allocator_conf = "expandable_segments:True"
-# Optional NCCL channel count, set as both NCCL_MIN_NCHANNELS and NCCL_MAX_NCHANNELS on both ranks.
-# Omit to let NCCL choose (64 on the reference pair). No measured value is the default yet.
-# nccl_channels = N
-# NCCLチャネル数（両rankでMIN=MAX）。未指定はNCCL任せ（参照機では64）。実測で決めた既定値はまだ無い。
+nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses (64 on the reference pair)
+# 8 returned about 3 GiB per rank against 64 with no prefill loss (docs/nccl-validation.md#channel-count).
+# 両rankのNCCLチャネル数（MIN=MAX）。未指定はNCCL任せ（参照機では64）。8で各rank約3 GiB戻り、prefillは落ちない。
 # 起動元の環境変数を使う場合は server freeze で一度解決し、同じ --launch を両rankへ。
 # Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
 # 両ノードで確認したイメージID。LPA有効時のみ lpa_image を選択。

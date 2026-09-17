@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 — 2026-09-17
+
+### Changed
+
+- **The template sets `runtime.nccl_channels = 8`.** On the reference pair NCCL alone opens 64 channels, and each engine opens two communicators. At 8 the full model's lowest free memory rose by 2.8 GiB on the head and 3.0 GiB on the peer at MTU 1500, and prefill was 1% faster. A two-rank AllReduce sweep over 64/32/16/8/4 channels at both MTUs put 8 at the memory and 4 MiB (prefill-chunk) optimum. Profiles without the key keep NCCL's choice and their fingerprint. Numbers are in the new [channel-count section](docs/nccl-validation.md#channel-count).
+
+### Documentation
+
+- **MTU:** 9000 bought 2.3–2.6% prefill for 1.1–1.7 GiB less free memory per host (NIC receive buffers; an idle host showed the same 1.4 GiB), so the reference pair stays at 1500 (QSFP network, NCCL validation).
+- **Warmup ladder:** its ten kernels are reported on every start, and they are loads, not compiles. The pinned Triton calls its post-compile hook on a kernel's first use in a process even when the binary comes from the on-disk cache, and the jit monitor warns from that hook. Across five starts the runtime cache gained no file. Operations and image input no longer say that the ladder turns empty once the cache is warm.
+
 ## 1.3.0 — 2026-09-17
 
 ### Added

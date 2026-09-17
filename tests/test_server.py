@@ -204,20 +204,20 @@ class ServerConfigTests(unittest.TestCase):
         )
 
     def test_nccl_channels_is_optional_and_pins_both_bounds(self):
-        # Omitted: NCCL chooses (64 on the reference pair) and the template's
-        # fingerprint stays that of the running pairs.
+        # The template pins 8, measured against NCCL's own 64 on the reference pair.
         distributed = config.load(ROOT / "examples/server.example.toml")
-        self.assertNotIn("nccl_channels", distributed["runtime"])
+        self.assertEqual(distributed["runtime"]["nccl_channels"], 8)
+        for rank in (0, 1):
+            env = config.environment(distributed, rank)
+            self.assertEqual(env["NCCL_MIN_NCHANNELS"], "8")
+            self.assertEqual(env["NCCL_MAX_NCHANNELS"], "8")
+        # Omitted: NCCL chooses, so profiles written before 1.3.1 keep their fingerprint.
+        self.profile["runtime"].pop("nccl_channels")
+        config.validate(self.profile)
         for rank in (0, 1):
             env = config.environment(self.profile, rank)
             self.assertNotIn("NCCL_MIN_NCHANNELS", env)
             self.assertNotIn("NCCL_MAX_NCHANNELS", env)
-        self.profile["runtime"]["nccl_channels"] = 8
-        config.validate(self.profile)
-        for rank in (0, 1):
-            env = config.environment(self.profile, rank)
-            self.assertEqual(env["NCCL_MIN_NCHANNELS"], "8")
-            self.assertEqual(env["NCCL_MAX_NCHANNELS"], "8")
         for bad in (0, -1, 1.5, "8", True, None):
             profile = copy.deepcopy(self.profile)
             profile["runtime"]["nccl_channels"] = bad
