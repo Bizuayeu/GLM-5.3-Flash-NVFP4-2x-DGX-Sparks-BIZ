@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import capacity, host, model_http, mojibake, warmup
+from . import agreement, capacity, host, model_http, mojibake, warmup
 from . import server_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .host import available_gib
@@ -409,6 +409,59 @@ def mojibake_running(profile):
     return result
 
 
+def agreement_senders(profile, sender=post):
+    """Tokenize and completions senders for the running rank 0.
+
+    The text is tokenized once, then sent back as token ids, so the scored
+    positions are exactly the tokens the server saw. LPA's native mode
+    rewrites prefill outside the shared cache, so the reading is only taken
+    with LPA off or in its APC-first form (the same guard as ``ask``).
+    """
+    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
+        raise ValueError(
+            "agreement requires LPA off or APC-first; native LPA rewrites prefill"
+        )
+    model = profile["api"]["served_model_name"]
+
+    def tokenize(text):
+        return sender(profile, "/tokenize", {"model": model, "prompt": text})["tokens"]
+
+    def complete(token_ids, top_k):
+        return sender(
+            profile,
+            "/v1/completions",
+            {
+                "model": model,
+                "prompt": token_ids,
+                "max_tokens": 1,
+                "temperature": 0,
+                "seed": profile["runtime"]["seed"],
+                "prompt_logprobs": top_k,
+            },
+        )
+
+    return tokenize, complete
+
+
+def agreement_running(profile, reference=None):
+    """Teacher-forced reading on the running rank 0; compared with a saved run."""
+    state, info = running_head(profile)
+    if not info["State"]["Running"]:
+        raise ValueError("agreement requires the running rank 0")
+    tokenize, complete = agreement_senders(profile)
+    with request_lock():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        record = ROOT / "records" / (stamp + "-agreement-r0")
+        record.mkdir(parents=True)
+        result = agreement.run(tokenize, complete)
+    if reference is not None:
+        result["reference"] = str(reference)
+        result["comparison"] = agreement.compare_records(read_json(reference), result)
+    result["record"] = str(record)
+    write_json(record / "result.json", result)
+    return result
+
+
 def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
     if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
@@ -482,7 +535,13 @@ def main(argv=None):
             "capacity",
             "warmup",
             "mojibake",
+            "agreement",
         ],
+    )
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        help="Saved agreement result.json to compare this run against",
     )
     parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
     parser.add_argument("--rank", type=int, choices=[0, 1], default=0)
@@ -553,12 +612,19 @@ def main(argv=None):
         return
     if os.name != "posix":
         parser.error("Run this action on the Linux model host; plan works on Windows")
-    if args.action in ("capacity", "warmup", "mojibake"):
+    if args.action in ("capacity", "warmup", "mojibake", "agreement"):
         if args.rank != 0:
             parser.error(f"{args.action} requires rank 0")
-        if args.action in ("warmup", "mojibake"):
+        if args.action in ("warmup", "mojibake", "agreement"):
             if args.action == "warmup":
                 result = warmup_running(profile)
+            elif args.action == "agreement":
+                result = agreement_running(profile, args.reference)
+                # Per-position rows stay in the record; the terminal gets the rates.
+                for row in result["texts"]:
+                    for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
+                        row.pop(key, None)
+                result.pop("first_raw_response", None)
             else:
                 result = mojibake_running(profile)
                 # The answers stay in the record; the terminal gets the verdicts.

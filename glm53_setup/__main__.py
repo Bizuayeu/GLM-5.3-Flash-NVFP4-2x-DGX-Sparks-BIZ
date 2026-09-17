@@ -29,6 +29,9 @@ COMMANDS = {
     "freedombench": "validation.freedombench",
     "profile-assess": "validation.profile_trace",
     "indexer-overlap": "validation.indexer_overlap",
+    "quant-error": "validation.quant_error",
+    "agreement-fixture": "validation.run_agreement_fixture",
+    "agreement-compare": "validation.compare_agreement",
 }
 
 

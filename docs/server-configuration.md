@@ -93,8 +93,11 @@ python -m glm53_setup server status --rank 0
 python -m glm53_setup server capacity
 python -m glm53_setup server warmup
 python -m glm53_setup server mojibake
+python -m glm53_setup server agreement
 python -m glm53_setup server stop --rank 0
 ```
+
+`agreement` sends four self-authored texts (Japanese, English, code, mathematics) through `/v1/completions` with `prompt_logprobs` under the request lock, twice each, and writes the rank and log-probability of every actual next token to `records/<stamp>-agreement-r0/result.json`; with `--reference <result.json>` it adds the argmax agreement, top-5 overlap and log-probability drift against that earlier run. It has CPU tests only and has not yet been run against a served model.
 
 `capacity` reads the running head's boot log and `/metrics` and prints the KV pool as it is: the stock `GPU KV cache size` line decomposed into `num_gpu_blocks`, blocks per maximum-length request and the group block widths, with the note that the stock figure is `max_concurrency × max_model_len`. A cached-conversation estimate (blocks and conversations at 16K, 64K and `max_model_len`, dense retention, block-aligned hits, nothing running) is printed only for a profile that loads the LPA worker extension, whose `apc_cache_layout` RPC names each group's spec kind; otherwise, or when a group kind is not modelled, that figure is withheld rather than guessed. `warmup` runs the request ladder under the request lock and writes `records/<stamp>-warmup-r0/result.json`; it exits nonzero when a rung failed. `mojibake` asks the running head for long Japanese and Korean answers under the same lock, counts broken characters in the answers and the reasoning, writes `records/<stamp>-mojibake-r0/result.json` and exits nonzero unless every answer passed ([what it checks](validation.md#full-model-tp2-experimental-scope)).
 

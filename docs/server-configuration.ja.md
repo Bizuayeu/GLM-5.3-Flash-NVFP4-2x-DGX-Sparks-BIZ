@@ -93,8 +93,11 @@ python -m glm53_setup server status --rank 0
 python -m glm53_setup server capacity
 python -m glm53_setup server warmup
 python -m glm53_setup server mojibake
+python -m glm53_setup server agreement
 python -m glm53_setup server stop --rank 0
 ```
+
+`agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。CPUテストだけを通しており、稼働中のモデルにはまだ流していません。
 
 `capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
 

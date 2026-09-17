@@ -9,6 +9,8 @@
 
 ### Added
 
+- **`server agreement`.** Teacher-forced agreement with a saved reference run: four self-authored texts through `prompt_logprobs`, the rank and log-probability of each actual next token, and with `--reference` the argmax agreement, top-5 overlap and drift against an earlier record. CPU tests only; not yet run against a served model.
+- **Requantization checks on the four-layer fixture**: `quant-error` (per-tensor weight-space error of NVFP4 tensors against their BF16 originals, byte identity of everything else), `agreement-fixture` (top-5 rows, full-vocabulary log-probabilities and layer-3 candidate sets) and `agreement-compare` (full-vocabulary KL, argmax agreement, candidate-set Jaccard). [Validation](docs/validation.md) records how far the unmodified fixture moves between two starts, the yardstick for any such comparison.
 - **Releases follow tags.** Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes that version's Changelog section as the GitHub Release through `tools/release_notes.py`. Tags 1.2.0 to 1.5.0 had been pushed without a Release; those were created by hand, and 1.2.1, which had a Changelog section but no tag, was tagged at its release commit.
 
 ### Changed
