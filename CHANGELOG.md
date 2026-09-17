@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- NCCL validation and QSFP network: the MTU 1500 full-model runs had the head's monitoring dashboard running (65 MiB, about 2% CPU) while the MTU 9000 runs did not. 1.3.1 said every run had it stopped. The 2.3–2.6% prefill gain from MTU 9000 is therefore an upper bound. The channel-count comparison at each MTU is unaffected, and so is the memory cost, which the dashboard can only understate.
+
 ## 1.3.1 — 2026-09-17
 
 ### Changed

@@ -119,7 +119,7 @@ Measure both MTUs before changing them. If both are 1500, test nonfragmented IPv
 ping -I "$FABRIC_IF" -M do -s 1472 -c 4 -W 2 "$FABRIC_PEER"
 ```
 
-Do not reuse that size for a different MTU without checking. Raising MTU to 9000 is a separate change after confirming support along the path and arranging a change window. On the reference pair it bought 2–3% prefill for 1.1–1.7 GiB less free memory per host, so the pair stays at 1500 ([measurements](nccl-validation.md#channel-count)). Ping does not measure line speed or RDMA throughput.
+Do not reuse that size for a different MTU without checking. Raising MTU to 9000 is a separate change after confirming support along the path and arranging a change window. On the reference pair it bought at most 2–3% prefill for 1.1–1.7 GiB less free memory per host, so the pair stays at 1500 ([measurements](nccl-validation.md#channel-count)). Ping does not measure line speed or RDMA throughput.
 
 ## 6. Record RoCE mapping
 

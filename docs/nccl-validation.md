@@ -73,7 +73,7 @@ On its own, NCCL 2.30.7 opens 64 channels on this pair (identical on 2026-09-11 
 
 Decode-sized messages do not change, because NCCL already uses fewer channels for small messages. The memory does not depend on MTU. These timings are not comparable with the probe run above, which measured FP32 while another job contended for the host.
 
-**Full model.** The same profile was started with only the channel count or the MTU changed. All runs followed one reboot, with 01's monitoring dashboard stopped. Prefill is the median of three fresh 38,961-token prompts. The lowest free memory is read from each rank's supervisor samples during startup, warmup and the measurement.
+**Full model.** The same profile was started with only the channel count or the MTU changed. All runs followed one reboot. The monitoring dashboard on the head was stopped for the MTU 9000 runs and left running for the MTU 1500 runs (65 MiB and about 2% CPU on the head, plus metric commands on the peer), so the two MTUs differ in that load as well; the two channel counts at one MTU do not. Prefill is the median of three fresh 38,961-token prompts. The lowest free memory is read from each rank's supervisor samples during startup, warmup and the measurement.
 
 | MTU | Channels | Prefill tok/s | Head lowest free | Peer lowest free |
 |---:|---:|---:|---:|---:|
@@ -85,4 +85,4 @@ Decode-sized messages do not change, because NCCL already uses fewer channels fo
 
 Each engine opens two communicators, so 8 channels return about 3 GiB per rank; prefill is within 1% either way. Decode varied more between runs of one setting (about ±15%) than between settings.
 
-**MTU.** 9000 (RoCE active MTU 4096) raised prefill by 2.3–2.6% and lowered free memory by 1.1–1.7 GiB per host. An idle host without the model showed the same 1.4 GiB, which fits larger NIC receive buffers (four interfaces × 20 queues × 1,024 descriptors). The reference pair stays at MTU 1500. A prefill figure taken before the reboot (446 tok/s at MTU 1500) was lower from host state, not MTU, and is left out of the table.
+**MTU.** 9000 (RoCE active MTU 4096) raised prefill by at most 2.3–2.6%, an upper bound because only the MTU 1500 runs carried the dashboard, and lowered free memory by 1.1–1.7 GiB per host. An idle host without the model showed the same 1.4 GiB, which fits larger NIC receive buffers (four interfaces × 20 queues × 1,024 descriptors). The reference pair stays at MTU 1500. A prefill figure taken before the reboot (446 tok/s at MTU 1500) was lower from host state, not MTU, and is left out of the table.
