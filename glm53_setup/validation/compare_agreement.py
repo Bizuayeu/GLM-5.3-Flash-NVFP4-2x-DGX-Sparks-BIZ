@@ -51,7 +51,19 @@ def candidate_shift(reference_rows, candidate_rows):
         raise ValueError("Candidate captures cover different queries")
     scores = [compare_candidates(left[k], right[k])["jaccard"] for k in sorted(left)]
     worst = min(range(len(scores)), key=scores.__getitem__)
+    layers = {}
+    for (layer, _), score in zip(sorted(left), scores):
+        layers.setdefault(str(layer), []).append(score)
     return {
+        "by_layer": {
+            layer: {
+                "queries": len(values),
+                "identical_sets": sum(v == 1.0 for v in values) / len(values),
+                "jaccard_mean": sum(values) / len(values),
+                "jaccard_min": min(values),
+            }
+            for layer, values in layers.items()
+        },
         "queries": len(scores),
         "identical_sets": sum(score == 1.0 for score in scores) / len(scores),
         "jaccard_mean": sum(scores) / len(scores),

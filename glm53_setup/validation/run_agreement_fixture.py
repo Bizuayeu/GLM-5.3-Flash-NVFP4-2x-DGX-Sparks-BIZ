@@ -126,14 +126,15 @@ def main(argv=None):
     if (
         not status.get("all_tensor_bytes_verified")
         or not config.get("_test_fixture_only")
-        or config["text_config"]["num_hidden_layers"] != 4
+        or config["text_config"]["num_hidden_layers"] not in (4, 8)
     ):
-        raise ValueError("Verified four-layer fixture required")
+        raise ValueError("Verified four- or eight-layer fixture required")
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "status": "loading",
-        "scope": "four-layer component reading; not language quality of the full model",
+        "scope": "truncated-model component reading; not language quality of the full model",
+        "layers": config["text_config"]["num_hidden_layers"],
         "full_model_inference_validated": False,
         "fixture_status": status,
         "quantization_producer": (config.get("quantization_config") or {}).get(

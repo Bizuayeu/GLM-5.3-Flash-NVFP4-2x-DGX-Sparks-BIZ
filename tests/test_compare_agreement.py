@@ -45,6 +45,14 @@ class CandidateShiftTests(unittest.TestCase):
         self.assertEqual(result["jaccard_min"], 3 / 5)
         self.assertEqual(result["jaccard_min_query"], [3, 20])
 
+    def test_layers_are_reported_apart(self):
+        reference = [capture(10, [0, 1], layer=3), capture(10, [0, 1], layer=7)]
+        candidate = [capture(10, [0, 1], layer=3), capture(10, [0, 2], layer=7)]
+        result = candidate_shift(reference, candidate)
+        self.assertEqual(result["by_layer"]["3"]["jaccard_mean"], 1.0)
+        self.assertEqual(result["by_layer"]["7"]["jaccard_mean"], 1 / 3)
+        self.assertEqual(result["jaccard_min_query"], [7, 10])
+
     def test_rejects_captures_of_different_queries(self):
         with self.assertRaises(ValueError):
             candidate_shift([capture(10, [0])], [capture(11, [0])])
