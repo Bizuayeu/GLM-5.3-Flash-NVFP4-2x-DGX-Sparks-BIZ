@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-09-17
+
+### Added
+
+- **`runtime.nccl_channels`** (optional; absent = NCCL chooses). Sets `NCCL_MIN_NCHANNELS` and `NCCL_MAX_NCHANNELS` to the same value on both ranks. NCCL 2.30.7 chooses 64 channels on both ranks of the reference pair, recorded identically on 2026-09-11 and 2026-09-17, so this is not a consistency fix: it lets a measurement test whether fewer channels return memory to a head that runs a few GiB above its reserve. The template sets no value until one is measured, so running pairs keep their profile fingerprint; a value takes effect at the next switch. Informed by Mia PR #200 (the knob only; its TP=2 launcher leaves the value empty as well).
+
+### Documentation
+
+- Operations: an idle half-dead pair is stopped by neither supervisor, a host lockup takes its own supervisor with it, and a lost-peer stop reason remains a design note. From Mia issue #193, which reports the mirror image of the 2026-09-16 half-dead pair.
+
 ## 1.2.1 — 2026-09-17
 
 Everything here follows from running 1.2.0 on the reference pair for the first time; `docs/MIA_ADOPTION_2_PLAN.md` Stage 6 owns the run.

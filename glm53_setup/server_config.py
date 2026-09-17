@@ -29,7 +29,7 @@ def validate(profile):
     def check(value, expected, path):
         if isinstance(expected, dict):
             optional = {
-                "server.runtime": {"cuda_allocator_conf", "vision"},
+                "server.runtime": {"cuda_allocator_conf", "vision", "nccl_channels"},
                 "server.cache": {
                     "prefix_cache_retention_interval",
                     "mm_processor_cache_gb",
@@ -74,6 +74,10 @@ def validate(profile):
             )
     if type(profile["runtime"].get("vision", False)) is not bool:
         raise ValueError("runtime.vision must be true or false")
+    if "nccl_channels" in profile["runtime"]:
+        channels = profile["runtime"]["nccl_channels"]
+        if type(channels) is not int or channels < 1:
+            raise ValueError("runtime.nccl_channels must be a positive integer")
     if "mm_processor_cache_gb" in profile["cache"]:
         size = profile["cache"]["mm_processor_cache_gb"]
         if type(size) not in (int, float) or not math.isfinite(size) or size < 0:
@@ -260,6 +264,11 @@ def environment(profile, rank):
     )
     if "cuda_allocator_conf" in profile["runtime"]:
         result["PYTORCH_CUDA_ALLOC_CONF"] = profile["runtime"]["cuda_allocator_conf"]
+    if "nccl_channels" in profile["runtime"]:
+        # Pin both bounds so the two ranks cannot settle on different counts.
+        channels = str(profile["runtime"]["nccl_channels"])
+        result["NCCL_MIN_NCHANNELS"] = channels
+        result["NCCL_MAX_NCHANNELS"] = channels
     if (
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]

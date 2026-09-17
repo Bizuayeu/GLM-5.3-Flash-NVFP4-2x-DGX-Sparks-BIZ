@@ -31,6 +31,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Cache | FP8, 2.5 GiB per rank, APC on, `dense` checkpoint retention, fused unpack on, image preprocessing cache 0.1 GiB |
 | Speculation/approximation | MTP k=3; LPA off (cut32/tail512/B128 with unused MLA queries skipped when enabled) |
 | Checks/parallelism | Async index checks, EP off, no PP split |
+| NCCL | `nccl_channels` unset: NCCL chooses (64 channels observed on the reference pair) |
 | Generation | temperature=0, max_tokens=4096, reasoning_effort=low, clear_thinking=true |
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 2.5 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
@@ -56,6 +57,8 @@ See [launch contracts and operational validation](launch-safety.md) for authenti
 `api.dev_endpoints` (optional, false when absent) sets `VLLM_SERVER_DEV_MODE=1` on both ranks, which mounts vLLM's dev routes on the loopback API: `/reset_prefix_cache`, `/reset_mm_cache`, `/collective_rpc`, `/sleep`, `/wake_up` and `/server_info`. LPA, component and expert profiles already run in that mode; the key exists so that a distributed profile (LPA off) can reset the prefix cache without a restart for benchmarks and for the warmup ladder's cleanup. The routes have no authentication ([launch contracts](launch-safety.md#model-api-clients)); leave it off on a kit with other local users.
 
 `resources.stall_seconds` (optional, 0 = off when absent; template 600) and `generation.warmup` / `generation.warmup_long_tokens` (optional, false / 0 when absent) are described under [supervision, stall detection and warmup](operations.md#supervision-stall-detection-and-warmup). Changing any of them changes the profile fingerprint, so they take effect at the next switch.
+
+`runtime.nccl_channels` (optional; absent = NCCL chooses) sets `NCCL_MIN_NCHANNELS` and `NCCL_MAX_NCHANNELS` to the same positive integer on both ranks. On the reference pair NCCL 2.30.7 chooses 64 collective channels on both ranks, identically in the 2026-09-11 fabric validation and in the pair running on 2026-09-17, so the ranks already agree without it. The key exists to measure whether fewer channels return memory to a head that runs a few GiB above its reserve; the effect on memory and speed is unmeasured, and the template leaves it unset until a measurement decides a value. Informed by Mia PR #200, whose TP=2 launcher also leaves it empty by default. Changing it changes the profile fingerprint, so it takes effect at the next switch.
 
 `runtime.pipeline_parallel_size=1` retains TP=2. Setting it to 2 selects TP=1/PP=2 on the same two nodes and requires `GLM53_PIPELINE_API=1`. `pipeline_split_layer` sets the first stage's layer count; the default candidate 24 produces stages 24/21, each with 21 MoE layers in this pinned model. It is not a memory-fit guarantee. Both stages must contain MLA, so this checkpoint accepts boundaries 4–43. Initial scope is one sequence, eager and no EP/MTP/LPA/fusion/APC. The [small-fixture observations](component-validation.md#eight-layer-pp-observations) do not qualify full-model speed, long-context numerical equivalence or production use. Include both keys explicitly when updating a TOML.
 

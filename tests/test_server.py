@@ -203,6 +203,27 @@ class ServerConfigTests(unittest.TestCase):
             config.serve_args(self.profile, 0, "/hf/model"),
         )
 
+    def test_nccl_channels_is_optional_and_pins_both_bounds(self):
+        # Omitted: NCCL chooses (64 on the reference pair) and the template's
+        # fingerprint stays that of the running pairs.
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertNotIn("nccl_channels", distributed["runtime"])
+        for rank in (0, 1):
+            env = config.environment(self.profile, rank)
+            self.assertNotIn("NCCL_MIN_NCHANNELS", env)
+            self.assertNotIn("NCCL_MAX_NCHANNELS", env)
+        self.profile["runtime"]["nccl_channels"] = 8
+        config.validate(self.profile)
+        for rank in (0, 1):
+            env = config.environment(self.profile, rank)
+            self.assertEqual(env["NCCL_MIN_NCHANNELS"], "8")
+            self.assertEqual(env["NCCL_MAX_NCHANNELS"], "8")
+        for bad in (0, -1, 1.5, "8", True, None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["nccl_channels"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)
         config.validate(self.profile)
