@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import capacity, host, model_http, warmup
+from . import capacity, host, model_http, mojibake, warmup
 from . import server_config as settings
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .host import available_gib
@@ -173,6 +173,10 @@ def preflight(profile, config_path, rank, *, check_memory=True):
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
     checks.update(image_capability_checks(profile, image))
+    # Any pair of this launcher carries LABEL, including the old pair that is
+    # still running while cluster switch prepares the new profile.
+    foreign = host.foreign_gpu_containers(host.running_containers(), LABEL)
+    checks["exclusive_gpu"] = not foreign
     if check_memory:
         checks["startup_memory"] = (
             available_gib() >= profile["resources"]["minimum_available_gib"]
@@ -181,6 +185,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
     return {
         "scope": "experimental-reference",
         "checks": checks,
+        "foreign_gpu_containers": foreign,
         "passed": all(checks.values()),
     }
 
@@ -254,6 +259,7 @@ def supervise(profile, name, record, rank):
                     break
                 available = available_gib()
                 entry = {"epoch": time.time(), "available_gib": available}
+                entry.update(host.memory_sample())
                 reason = None
                 if available < profile["resources"]["reserve_gib"]:
                     reason = {"reason": "memory-reserve"}
@@ -388,6 +394,21 @@ def warmup_running(profile):
     return result
 
 
+def mojibake_running(profile):
+    """Japanese/Korean broken-character check on the running rank 0; recorded."""
+    state, info = running_head(profile)
+    if not info["State"]["Running"]:
+        raise ValueError("mojibake requires the running rank 0")
+    with request_lock():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        record = ROOT / "records" / (stamp + "-mojibake-r0")
+        record.mkdir(parents=True)
+        result = mojibake.run(lambda request: ask(profile, request))
+    result["record"] = str(record)
+    write_json(record / "result.json", result)
+    return result
+
+
 def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
     if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
@@ -460,6 +481,7 @@ def main(argv=None):
             "ask",
             "capacity",
             "warmup",
+            "mojibake",
         ],
     )
     parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
@@ -531,11 +553,18 @@ def main(argv=None):
         return
     if os.name != "posix":
         parser.error("Run this action on the Linux model host; plan works on Windows")
-    if args.action in ("capacity", "warmup"):
+    if args.action in ("capacity", "warmup", "mojibake"):
         if args.rank != 0:
             parser.error(f"{args.action} requires rank 0")
-        if args.action == "warmup":
-            result = warmup_running(profile)
+        if args.action in ("warmup", "mojibake"):
+            if args.action == "warmup":
+                result = warmup_running(profile)
+            else:
+                result = mojibake_running(profile)
+                # The answers stay in the record; the terminal gets the verdicts.
+                for row in result["runs"]:
+                    row.pop("content", None)
+                    row.pop("reasoning", None)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             if not result["passed"]:
                 raise SystemExit(1)

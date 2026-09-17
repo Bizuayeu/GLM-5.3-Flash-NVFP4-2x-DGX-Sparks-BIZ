@@ -17,7 +17,8 @@ def sha(path):
 def inspect(profile, config_path, rank):
     checks = server.preflight(profile, config_path, rank, check_memory=False)
     if not checks["passed"]:
-        raise ValueError("Static launch checks failed: " + json.dumps(checks["checks"]))
+        detail = {key: checks[key] for key in ("checks", "foreign_gpu_containers")}
+        raise ValueError("Static launch checks failed: " + json.dumps(detail))
     model = server.model_path(profile, Path.home() / ".cache/huggingface")
     if not all(
         (model / name).is_file() for name in ("tokenizer.json", "tokenizer_config.json")

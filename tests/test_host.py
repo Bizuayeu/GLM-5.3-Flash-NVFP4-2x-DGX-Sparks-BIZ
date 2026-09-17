@@ -1,5 +1,7 @@
+import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from glm53_setup import host
 
@@ -59,6 +61,76 @@ class HostContractTests(unittest.TestCase):
         ]:
             with self.subTest(values=values), self.assertRaises(ValueError):
                 host.validate_site({**self.site, **values})
+
+    def test_free_blocks_count_only_orders_of_two_mib_and_above(self):
+        # Recorded on the reference head (4 KiB pages, orders 0-13) while serving.
+        text = (
+            "Node 0, zone      DMA      1      2      2      2      3      3"
+            "      2      3     16      9      4      2      4     11 \n"
+            "Node 0, zone   Normal   2613   1163   1355    778    666    769"
+            "    956    217     34      1      4      2      0      0 \n"
+        )
+        # Order >= 9: DMA 466 MiB plus Normal 34 MiB.
+        self.assertEqual(host.free_blocks_gib(text, 4096, 2 * 1024**2), 500 / 1024)
+        # 64 KiB pages reach 2 MiB at order 5.
+        line = "Node 0, zone   Normal   7 7 7 7 7 1 2\n"
+        self.assertEqual(
+            host.free_blocks_gib(line, 64 * 1024, 2 * 1024**2), (2 + 2 * 4) / 1024
+        )
+        for bad in ("", "Node 0, zone Normal\n", "Node 0, zone Normal 1 x 3\n"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                host.free_blocks_gib(bad, 4096, 2 * 1024**2)
+
+    def test_meminfo_reads_named_field_in_gib(self):
+        text = "MemTotal:  127600792 kB\nMemFree:    1129420 kB\n"
+        self.assertEqual(host.meminfo_gib(text, "MemFree"), 1129420 / 1024**2)
+        with self.assertRaises(ValueError):
+            host.meminfo_gib(text, "MemAvailable")
+
+    def test_foreign_gpu_containers_skip_owned_and_gpu_free_containers(self):
+        def container(name, requests, labels=None):
+            return {
+                "Name": "/" + name,
+                "Config": {"Labels": labels},
+                "HostConfig": {"DeviceRequests": requests},
+            }
+
+        gpus = [{"Driver": "", "Count": -1, "Capabilities": [["gpu"]]}]
+        cdi = [{"Driver": "cdi", "DeviceIDs": ["nvidia.com/gpu=all"]}]
+        inspections = [
+            # A pair of any fingerprint is this launcher's own, e.g. the old
+            # pair still running while cluster switch checks the new profile.
+            container("glm53-startup-r0-old", gpus, {"owner": "old-fingerprint"}),
+            container("searxng", None),
+            container("other-cdi", cdi, {}),
+            container("other-gpus", gpus),
+        ]
+        self.assertEqual(
+            host.foreign_gpu_containers(inspections, "owner"),
+            ["other-cdi", "other-gpus"],
+        )
+
+    def test_running_container_inspection_skips_inspect_when_none_run(self):
+        with patch.object(host, "run", return_value="\n") as run:
+            self.assertEqual(host.running_containers(), [])
+            run.assert_called_once_with("docker", "ps", "-q")
+        with patch.object(
+            host, "run", side_effect=["a1\nb2\n", json.dumps([{"Id": "a1"}])]
+        ) as run:
+            self.assertEqual(host.running_containers(), [{"Id": "a1"}])
+            run.assert_called_with("docker", "inspect", "a1", "b2")
+
+    def test_memory_sample_records_unreadable_observation_instead_of_raising(self):
+        meminfo = "MemFree: 1048576 kB\n"
+        buddyinfo = "Node 0, zone Normal 0 0 0 0 0 0 0 0 0 3\n"
+        with patch.object(host.Path, "read_text", side_effect=[meminfo, buddyinfo]):
+            sample = host.memory_sample()
+        self.assertEqual(sample["mem_free_gib"], 1.0)
+        self.assertEqual(sample["free_2mib_gib"], 3 * 2 * 1024**2 / 1024**3)
+        with patch.object(host.Path, "read_text", side_effect=[meminfo, ""]):
+            self.assertEqual(
+                host.memory_sample(), {"memory_sample_error": "ValueError"}
+            )
 
     def test_snapshot_requires_matching_complete_state(self):
         state = {

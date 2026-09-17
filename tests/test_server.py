@@ -366,6 +366,85 @@ class ServerConfigTests(unittest.TestCase):
                     stop.assert_called_once_with("docker", "stop", "owned")
                     self.assertEqual(sleep.call_count, sleeps)
 
+    def test_memory_observations_are_recorded_but_only_reserve_stops(self):
+        self.profile["resources"]["run_seconds"] = 0
+        self.profile["resources"]["stall_seconds"] = 0
+        reserve = self.profile["resources"]["reserve_gib"]
+        opened = mock_open()
+        with (
+            patch("pathlib.Path.open", opened),
+            patch.object(
+                server, "inspect_owned", return_value={"State": {"Running": True}}
+            ),
+            patch.object(server, "available_gib", side_effect=[100, reserve - 1]),
+            patch.object(
+                server.host,
+                "memory_sample",
+                return_value={"mem_free_gib": 0.01, "free_2mib_gib": 0.0},
+            ),
+            patch.object(server.time, "sleep") as sleep,
+            patch.object(server, "write_json") as write,
+            patch.object(server.host, "run"),
+            patch.object(server.subprocess, "run"),
+        ):
+            server.supervise(self.profile, "owned", Path("record"), 0)
+        lines = [json.loads(call.args[0]) for call in opened().write.call_args_list]
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            self.assertEqual(line["mem_free_gib"], 0.01)
+            self.assertEqual(line["free_2mib_gib"], 0.0)
+        # A tiny MemFree alone never stops the rank; MemAvailable still does.
+        self.assertEqual(sleep.call_count, 1)
+        write.assert_any_call(
+            Path("record/stop-reason.json"), {"reason": "memory-reserve"}
+        )
+
+    def test_preflight_refuses_foreign_gpu_containers_with_or_without_memory(self):
+        cache = Path.home() / ".cache/huggingface"
+        profile = self.profile
+        model = server.model_path(profile, cache)
+        image_id = config.selected_image(profile)
+        foreign = [
+            {
+                "Name": "/other-gpu",
+                "Config": {"Labels": {}},
+                "HostConfig": {"DeviceRequests": [{"Capabilities": [["gpu"]]}]},
+            }
+        ]
+
+        def run(*args):
+            if args[:3] == ("docker", "image", "inspect"):
+                env = ["GLM53_REFERENCE_ATTENTION=1"]
+                return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
+            raise AssertionError(args)
+
+        for check_memory in (True, False):
+            with self.subTest(check_memory=check_memory):
+                with (
+                    patch.object(server, "read_json") as read_json,
+                    patch.object(
+                        server.host, "snapshot_from_state", return_value=model
+                    ),
+                    patch.object(server.host, "fabric_checks", return_value={}),
+                    patch.object(server.host, "run", side_effect=run),
+                    patch.object(
+                        server.host, "running_containers", return_value=foreign
+                    ),
+                    patch.object(server, "available_gib", return_value=100),
+                ):
+                    read_json.return_value = {
+                        "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
+                    }
+                    result = server.preflight(
+                        profile,
+                        ROOT / "state/server.toml",
+                        0,
+                        check_memory=check_memory,
+                    )
+                self.assertIs(result["checks"]["exclusive_gpu"], False)
+                self.assertEqual(result["foreign_gpu_containers"], ["other-gpu"])
+                self.assertIs(result["passed"], False)
+
     def _supervise(self, samples, monotonic, rank=0, stall=600):
         self.profile["resources"]["run_seconds"] = 0
         self.profile["resources"]["stall_seconds"] = stall
