@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..io import write_json
+from ..runtime.moe_token_order import canonical_expert_order as canonical_order
 
 # Decoder layers and the parts below them; deeper leaves add calls, not information.
 HOOKED = re.compile(
@@ -42,26 +43,6 @@ def summarize(rows):
         "first_difference": differing[0] if differing else None,
         "modules_differing": modules,
     }
-
-
-def canonical_order(sorted_ids, expert_ids, padded):
-    """Order the written slots by (expert, token id) without a host synchronisation.
-
-    ``sorted_ids`` and ``expert_ids`` are worst-case buffers; only the first
-    ``padded`` slots (a device scalar) are written. The align kernel emits experts in
-    ascending order, which is what keeps every token inside its expert's blocks here.
-    Padding slots hold the number of real entries, which never exceeds the buffer
-    length, so they sort last inside their expert without reaching the next one. Unwritten slots get the largest
-    key, so the stable sort leaves them where they were, behind everything written.
-    """
-    import torch
-
-    block = sorted_ids.numel() // expert_ids.numel()
-    owner = expert_ids.to(torch.int64).repeat_interleave(block)
-    slots = torch.arange(sorted_ids.numel(), device=sorted_ids.device)
-    key = owner * (sorted_ids.numel() + 1) + sorted_ids.to(torch.int64)
-    key = torch.where(slots < padded, key, torch.iinfo(torch.int64).max)
-    return sorted_ids[torch.argsort(key, stable=True)]
 
 
 class RepeatTraceWorker:

@@ -34,6 +34,7 @@ def validate(profile):
                     "vision",
                     "nccl_channels",
                     "derived_checkpoint",
+                    "canonical_moe_order",
                 },
                 "server.cache": {
                     "prefix_cache_retention_interval",
@@ -85,6 +86,8 @@ def validate(profile):
             raise ValueError("runtime.nccl_channels must be a positive integer")
     if "derived_checkpoint" in profile["runtime"]:
         validate_derived(profile["runtime"]["derived_checkpoint"])
+    if type(profile["runtime"].get("canonical_moe_order", True)) is not bool:
+        raise ValueError("runtime.canonical_moe_order must be true or false")
     if "mm_processor_cache_gb" in profile["cache"]:
         size = profile["cache"]["mm_processor_cache_gb"]
         if type(size) not in (int, float) or not math.isfinite(size) or size < 0:
@@ -321,6 +324,11 @@ def environment(profile, rank):
         channels = str(profile["runtime"]["nccl_channels"])
         result["NCCL_MIN_NCHANNELS"] = channels
         result["NCCL_MAX_NCHANNELS"] = channels
+    if "canonical_moe_order" in profile["runtime"]:
+        # Absent: the image decides (on where the patch is installed).
+        result["GLM53_CANONICAL_MOE_ORDER"] = str(
+            int(profile["runtime"]["canonical_moe_order"])
+        )
     if (
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]

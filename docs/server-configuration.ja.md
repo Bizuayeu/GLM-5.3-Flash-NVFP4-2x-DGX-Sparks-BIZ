@@ -32,6 +32,7 @@
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
+| MoEのtoken順 | `canonical_moe_order = true`：expert内のtoken順を一つに固定し、同一要求の反復を一致させる。この版から作った参照imageが要る |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
@@ -59,6 +60,8 @@
 `resources.stall_seconds`（任意、未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（任意、未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。いずれもprofileのfingerprintを変えるため、次の切替から有効になります。
 
 `runtime.nccl_channels`（任意、未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。各rankのエンジンはcommunicatorを2本開き、MTU 1500で8本にすると、実モデルの最小空きメモリが64本に比べてheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（1%速い）。decodeは設定の差より計測ごとのぶれの方が大きい値でした。数値は[チャネル数の測定](nccl-validation.ja.md#チャネル数)にあります。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択とfingerprintをそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。
+
+`runtime.canonical_moe_order`（任意。テンプレートは `true`。未指定はimageの既定に従い、この版から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（[測定](validation.ja.md#フルモデルtp2の実験範囲)、上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。このとき `server preflight` はimageに `GLM53_MOE_ORDER_API=1` を要求するので、古いimageには指定できません。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。8層fixtureでは全反復がbit一致になり、prefillは変わらず、decodeは約1%遅くなりました。全モデルでは未計測です。既定で有効にしているのは、今後graphや再量子化のA/Bを読む物差しとして、再現できる基準が要るためです。
 
 `runtime.derived_checkpoint`（任意のtable、既定では無し。持たないprofileのfingerprintは変わらない）は、固定checkpointを手元で再量子化した複製をA/B用に配信します。`path`（両hostの絶対ディレクトリ。`/derived` に読み取り専用でmount）、`requant_target`（そのディレクトリの `quantization_config.producer.requant_target` と照合）、`overlays`（`{target, source, sha256, base_sha256, marker}` の列。`source` は絶対パスのファイルで、image内のGLMモデルディレクトリの `target` に重ねてmount）を取ります。`server preflight` は、checkpointが `MIXED_PRECISION` とそのtargetを宣言していること、MTP draft層に量子化宣言が無いこと、各overlayが指定のSHA-256でmarkerを含むこと、image内の `target` が `base_sha256` であることを確かめ、どれか一つでも違えば失敗します。別のimage向けに作ったoverlayはmountできません。derived checkpointではMTPのメタデータviewを使いません。`MIXED_PRECISION` では宣言の無いmodule（BF16のdraft層を含む）が無量子化で読まれるためです。テンプレートにこのtableはありません。参照機では[施策台帳](optimization-catalog.ja.md)のP23の比較で一度使いました。
 
@@ -99,7 +102,7 @@ python -m glm53_setup server agreement
 python -m glm53_setup server stop --rank 0
 ```
 
-`agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。配信中の全モデルは、同じ要求を繰り返しても完全には同じ結果になりません。参照機では同じ文を2回流したときのargmax一致が約96%で、log確率が8 nat動いた位置もありました（4層fixtureの反復はbit一致です）。fixtureでは、出どころは呼ぶたびに変わるexpert内のtokenの並び順でした（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。runtimeのpatchは入れていません。そのため記録は、全要求が検査した形で返れば合格とし、この差は物差しとして `self_agreement` に残します。文ごとの平均負log確率は実行間の動きがずっと小さく（0.003〜0.05）、こちらが安定した読みです。
+`agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。配信中の全モデルは、同じ要求を繰り返しても完全には同じ結果になりません。参照機では同じ文を2回流したときのargmax一致が約96%で、log確率が8 nat動いた位置もありました（4層fixtureの反復はbit一致です）。fixtureでは、出どころは呼ぶたびに変わるexpert内のtokenの並び順でした（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。この版から作ったimageでは `runtime.canonical_moe_order` がこれを固定します。そのため記録は、全要求が検査した形で返れば合格とし、この差は物差しとして `self_agreement` に残します。文ごとの平均負log確率は実行間の動きがずっと小さく（0.003〜0.05）、こちらが安定した読みです。
 
 `capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
 

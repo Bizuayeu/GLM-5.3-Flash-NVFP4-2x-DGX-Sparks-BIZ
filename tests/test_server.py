@@ -18,6 +18,7 @@ class ServerConfigTests(unittest.TestCase):
         # Independent feature tests start from an explicit all-off baseline.
         self.profile["runtime"]["index_checks"] = "auto"
         self.profile["runtime"]["vision"] = False
+        self.profile["runtime"]["canonical_moe_order"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -223,6 +224,47 @@ class ServerConfigTests(unittest.TestCase):
         for bad in (0, -1, 1.5, "8", True, None):
             profile = copy.deepcopy(self.profile)
             profile["runtime"]["nccl_channels"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
+    def test_canonical_moe_order_is_on_in_the_template_and_optional(self):
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertIs(distributed["runtime"]["canonical_moe_order"], True)
+        self.assertEqual(
+            config.environment(distributed, 0)["GLM53_CANONICAL_MOE_ORDER"], "1"
+        )
+        image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertIs(
+            server.image_capability_checks(distributed, image)["moe_order_support"],
+            False,
+        )
+        image["Config"]["Env"].append("GLM53_MOE_ORDER_API=1")
+        self.assertIs(
+            server.image_capability_checks(distributed, image)["moe_order_support"],
+            True,
+        )
+        # Off is an explicit comparison arm and needs no support from the image.
+        self.profile["runtime"]["canonical_moe_order"] = False
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 1)["GLM53_CANONICAL_MOE_ORDER"], "0"
+        )
+        self.assertNotIn(
+            "moe_order_support",
+            server.image_capability_checks(
+                self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+            ),
+        )
+        # Omitted: the image decides, so profiles written before this key keep
+        # their fingerprint and an older image is not refused.
+        self.profile["runtime"].pop("canonical_moe_order")
+        config.validate(self.profile)
+        self.assertNotIn(
+            "GLM53_CANONICAL_MOE_ORDER", config.environment(self.profile, 0)
+        )
+        for bad in (1, 0, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["canonical_moe_order"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
 

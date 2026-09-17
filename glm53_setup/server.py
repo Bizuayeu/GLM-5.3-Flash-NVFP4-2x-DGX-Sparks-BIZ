@@ -149,6 +149,11 @@ def image_capability_checks(profile, image):
         ("lpa_worker", "GLM53_LPA_API=2", profile["lpa"]["enabled"]),
         ("apc_lpa_support", "GLM53_APC_LPA_API=1", settings.apc_lpa_enabled(profile)),
         ("reference_attention", "GLM53_REFERENCE_ATTENTION=1", True),
+        (
+            "moe_order_support",
+            "GLM53_MOE_ORDER_API=1",
+            runtime.get("canonical_moe_order", False),
+        ),
     ]
     env = image["Config"].get("Env") or []
     return {key: marker in env for key, marker, enabled in required if enabled}
