@@ -114,7 +114,7 @@ run_seconds = 0
 
 ## KV容量とRAMの条件
 
-**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。受け入れた2系列の範囲は1要求2,112 tokenまでです。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、ライセンスなし、コードは採用しない）。
+**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。受け入れた2系列の範囲は1要求2,112 tokenまでです。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、コードは採用しない）。
 
 起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
 

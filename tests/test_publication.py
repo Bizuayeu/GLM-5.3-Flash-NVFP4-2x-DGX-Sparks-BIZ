@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_publication import audit, headline_problems
+from tools.check_publication import audit, headline_problems, recipe_problems
 
 
 class PublicationTests(unittest.TestCase):
@@ -71,3 +71,38 @@ class HeadlineTests(unittest.TestCase):
             headline_problems("README.md", "### Headline measurements (1.0.0)\n", ""),
             ["no versioned measurements beside README.md"],
         )
+
+
+class RecipeCitationTests(unittest.TestCase):
+    README = (
+        "### Other recipes\n\n| Recipe | License |\n|---|---|\n"
+        "| [Mia](https://github.com/MiaAI-Lab/GLM-Sparks) | AGPL-3.0 |\n"
+        "| [sfxnz](https://github.com/sfxnz/GLM-vLLM) | MIT |\n"
+    )
+
+    def test_license_beside_a_citation_is_a_second_copy(self):
+        issues = recipe_problems(
+            self.README,
+            {"docs/a.md": "Informed by Mia PR #1 (AGPL-3.0, no code adopted).\n"},
+        )
+        self.assertEqual(issues, ["recipe license restated outside README: docs/a.md"])
+        self.assertEqual(
+            recipe_problems(
+                self.README,
+                {"docs/a.ja.md": "sfxnz PR #1（MIT、コードは採用しない）\n"},
+            ),
+            ["recipe license restated outside README: docs/a.ja.md"],
+        )
+
+    def test_recipe_links_live_in_the_readme_table_only(self):
+        issues = recipe_problems(
+            self.README, {"docs/a.md": "See https://github.com/sfxnz/GLM-vLLM/pull/1\n"}
+        )
+        self.assertEqual(issues, ["recipe link outside README: docs/a.md"])
+
+    def test_plain_citations_and_unrelated_licenses_pass(self):
+        docs = {
+            "docs/a.md": "Informed by Mia PR #1 (no code adopted); no new AGPL "
+            "dependency. vLLM is Apache-2.0 (pinned, unchanged).\n"
+        }
+        self.assertEqual(recipe_problems(self.README, docs), [])

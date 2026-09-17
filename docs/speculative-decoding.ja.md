@@ -42,7 +42,7 @@ python tools/prepare_mtp_view.py \
 - メモリを実測し、ホストの余裕を保つ。重みの算術では約6.92 GiB/rank追加だが、複製・一時領域・KVは別途必要。
 - 基準と同じ公式ベンチを実行し、終了コードに加えて要求完了数・出力token数も独立検査する。warmupとclient同時数を明示する。
 - case前後の`/metrics`原文を保存する。受理率は採用draft token増分／draft token増分、bonus込み平均受理長は`1 + 採用token増分 / draft回数増分`。この区間はwarmupや初期probeを含み得るため、測定要求のみの時間統計とは区別する。[vLLMの定義](https://docs.vllm.ai/en/v0.24.0/api/vllm/v1/spec_decode/metrics/)
-- 深さの比較は受理率ではなく平均受理長で行う。kを深くすると、1 stepあたりのtokenが増えても受理率は下がる。他レシピではk=5とk=7の優劣を受理率で逆に判断していた（tonyd2wild PR #12、ライセンスなし、コードは採用しない）。
+- 深さの比較は受理率ではなく平均受理長で行う。kを深くすると、1 stepあたりのtokenが増えても受理率は下がる。他レシピではk=5とk=7の優劣を受理率で逆に判断していた（tonyd2wild PR #12、コードは採用しない）。
 - 最終回答、ツール、SSE、EOS・長さ上限、状態を確認する。greedy token/logprob差は診断として残し、推論文の逐語一致を要求しない。
 - decodeだけでなく初動と全体throughputを見る。長い入力・短い出力では速くならない場合がある。kの増加はk=1合格後の別試験にする。
 

@@ -4,6 +4,7 @@
 
 ### Documentation
 
+- README: a table of the other public GLM-5.3-Flash recipes for DGX Spark pairs, with their links, licenses and what this repository took from each. That table now owns those facts: the inline citations in the component validation, operations, optimization catalog, server configuration and speculative decoding documents keep the name and pull request and no longer restate a license, and `tools/check_publication.py` rejects a recipe link or a restated license under `docs/`.
 - README: a headline table of the measurements on the current defaults (prefill, decode, 200K and 256K requests, the unstable three-position reference and the lowest available memory). `docs/benchmarks.md` still owns the numbers.
 
 ### Added

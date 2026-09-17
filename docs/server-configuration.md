@@ -114,7 +114,7 @@ This enables a run without a scheduled stop, not a 24/7 availability guarantee. 
 
 ## KV capacity and RAM requirements
 
-**Retaining B requests simultaneously at their maximum total length C requires capacity for B×C tokens.** `max_model_len` bounds input plus generated tokens per request; `max_num_seqs` limits concurrency. Setting both does not reserve or qualify that worst-case capacity. The accepted two-sequence scope covers up to 2,112 tokens per request; another two-Spark recipe reports two concurrent 25–100K requests falling to about 4 tok/s combined (tonyd2wild #14, no license, no code adopted).
+**Retaining B requests simultaneously at their maximum total length C requires capacity for B×C tokens.** `max_model_len` bounds input plus generated tokens per request; `max_num_seqs` limits concurrency. Setting both does not reserve or qualify that worst-case capacity. The accepted two-sequence scope covers up to 2,112 tokens per request; another two-Spark recipe reports two concurrent 25–100K requests falling to about 4 tok/s combined (tonyd2wild #14, no code adopted).
 
 This launcher's `cache.kv_cache_memory_bytes` sets a **fixed KV-pool byte budget shared by requests on each rank**. With a 1 GiB setting, changing concurrency from one to two leaves 1 GiB per rank. It is neither 1 GiB per request nor one freely combined pool across both nodes. Explicit bytes override utilization-based KV sizing; `gpu_memory_utilization` is not a total-RAM safety cap in this mode. [vLLM configuration](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 

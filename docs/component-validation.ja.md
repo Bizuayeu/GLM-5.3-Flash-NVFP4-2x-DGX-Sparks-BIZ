@@ -82,7 +82,7 @@ Graphのtraceでは、hostのGraph launchが31回、eagerでは0回でした。�
 
 続くprefillのみの試験（`native-prefill-v16`、driver SHA256 `171b013c59cd5ffb3acc45143236b5ff541c740e33a2ab4cafc3f35f80ad903b`）では、65 query行と呼び出し側で0埋めした出力を用い、末尾だけを有効候補とする条件と空行を想定しました。ライブラリは最初の構成——`GLM_NSA`、32 head、top-k 128、page size 64——を拒否し、一致検査のケースが完了する前にOOMなしでexit 1しました。2176候補のprefillケースと時間測定の段階には到達しておらず、あらゆるprefill shapeが未対応であることを示すものではありません。prefillのみの差し替えは未検収で、servingは変更していません。
 
-**行の種類別の再検討（2026-09-17）。** source `adf8ca9` の `benchmark_native_attention --by-row-kind`（driver SHA256 `4baea4aa9161658cac09db71ee849de7175b2b0b7b3be0ad744c68ca96320b8a`）で、配信と同じimage `f6fc154c…`・FlashInfer 0.6.18を使い、GB10 1台（他の負荷なし）で幅2048——SM120 v32／GLM decodeが受ける最大の幅——の試験をやり直しました。誤差は行の種類ごとに分けています。空行は、そのままkernelへ渡す場合と、slot 0を指させて出力を後から0にする場合の2通りです。後者の扱いはMiaの `Dockerfile`（AGPL-3.0、コードは採用しない）とdrowzeysのWALLS #4/#5/#7（Apache-2.0、コードは採用しない）にあります。
+**行の種類別の再検討（2026-09-17）。** source `adf8ca9` の `benchmark_native_attention --by-row-kind`（driver SHA256 `4baea4aa9161658cac09db71ee849de7175b2b0b7b3be0ad744c68ca96320b8a`）で、配信と同じimage `f6fc154c…`・FlashInfer 0.6.18を使い、GB10 1台（他の負荷なし）で幅2048——SM120 v32／GLM decodeが受ける最大の幅——の試験をやり直しました。誤差は行の種類ごとに分けています。空行は、そのままkernelへ渡す場合と、slot 0を指させて出力を後から0にする場合の2通りです。後者の扱いはMiaの `Dockerfile`（コードは採用しない）とdrowzeysのWALLS #4/#5/#7（コードは採用しない）にあります。
 
 | head | query行 | 全候補の行 | 17候補の行 | 空行（そのまま） | 空行（slot 0＋0化） | 許容範囲 |
 |---:|---|---:|---:|---:|---:|---:|
@@ -99,7 +99,7 @@ kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）�
 
 ## SM90 FA2 MLA wrapperの試験
 
-2026-09-17（Asia/Tokyo）、source `adf8ca9` の `benchmark_sm90_attention`（driver SHA256 `c94af60c1ac31ac1b3184edb749f7c34496a4895a0e6d05f4c6e7ecec4a0c260`）で、FlashInferの `BatchMLAPagedAttentionWrapper` を、固定vLLMの `FLASHINFER_MLA_SPARSE_SM90` backendと同じ形で呼びました。NoPE（`head_dim_kpe=0`）、page size 1で各query行の候補をKV pageとし、行ごとの正確な長さと `causal=False` を渡しています。固定vLLMがこのbackendを選ぶのはcompute capability 9だけで、そこでは `fa3` を使います。試験ではGB10（capability 12.1）で `fa2` を使いました。上の再検討と同じホスト・imageで、モデルの重みは使わず、servingは変えていません。着想はsfxnzの `docker/Dockerfile.sm121-v8`（MIT、コードは採用しない）とtonyd2wildのPR #17・Issue #20（ライセンスなし、コードは採用しない）で、どちらもこのbackendを `fa2` でcapability 12へ広げています。
+2026-09-17（Asia/Tokyo）、source `adf8ca9` の `benchmark_sm90_attention`（driver SHA256 `c94af60c1ac31ac1b3184edb749f7c34496a4895a0e6d05f4c6e7ecec4a0c260`）で、FlashInferの `BatchMLAPagedAttentionWrapper` を、固定vLLMの `FLASHINFER_MLA_SPARSE_SM90` backendと同じ形で呼びました。NoPE（`head_dim_kpe=0`）、page size 1で各query行の候補をKV pageとし、行ごとの正確な長さと `causal=False` を渡しています。固定vLLMがこのbackendを選ぶのはcompute capability 9だけで、そこでは `fa3` を使います。試験ではGB10（capability 12.1）で `fa2` を使いました。上の再検討と同じホスト・imageで、モデルの重みは使わず、servingは変えていません。着想はsfxnzの `docker/Dockerfile.sm121-v8`（コードは採用しない）とtonyd2wildのPR #17・Issue #20（コードは採用しない）で、どちらもこのbackendを `fa2` でcapability 12へ広げています。
 
 最初の `plan()` はNoPE用のmoduleをJITでビルドし、8.0秒かかりました。imageのJIT cacheにあるのは `head_dim_kpe=64` の版だけです。**FlashInfer 0.6.18ではGB10でFP8 KVは使えません。** `plan()` が `FP8 kv_data_type for MLA requires an SM90 (Hopper) device, got SM121.` を返します。そのため試験では、参照計算と同じpacked cacheを展開したBF16 KVを使いました。BF16のMLA cacheは1 tokenあたりMLA層ごとに1,024 byteで、`fp8_ds_mla` は656 byteです。
 

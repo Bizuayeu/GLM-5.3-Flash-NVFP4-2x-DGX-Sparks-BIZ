@@ -72,6 +72,7 @@ Every document has one role; other documents link to it instead of repeating its
 | ZCode permission-mode facts, model limit and compaction budget rules, and the existing-file guard hook | [Harnesses](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard), script in [examples/zcode-hooks/](../examples/zcode-hooks/) |
 | Validation scope and remaining qualification gates | [Validation](validation.md) |
 | Raw responses, traces, all repetitions, failures, host-specific values | Private `records/<run-id>/`, never distributed; public documents carry reviewed summaries |
+| Other public recipes for this model: links, licenses and what was taken from each | [README](../README.md#other-glm-53-flash-recipes-for-dgx-spark-pairs); other documents cite by name and pull request, without links or licenses (`tools/check_publication.py` enforces this) |
 | Private implementation plans and their stage status | `docs/plans/`, untracked and excluded from publication; `docs/plans/IMPLEMENTATION_PLAN.md` indexes them locally |
 | Site configuration and acquisition state | `state/`, untracked |
 

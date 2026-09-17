@@ -102,6 +102,19 @@ The fixture keeps the original widths, experts and selected tensor bytes, but is
 
 **Euryale** is a separate, unpublished research project that proposes several draft tokens from a frozen model's intermediate representations with a light auxiliary proposer, taking GLM-5.3-Flash on two GB10 hosts as its first target. It is not part of this distribution and, beyond the canonical candidate ordering described above, changes nothing in this repository's checkpoint, runtime or defaults. Its speed, quality and memory advantage over the checkpoint's standard MTP is unproven: a four-layer fixture has been checked at effective draft widths 5–12, while full-model teacher capture, proposer training and same-condition comparison have not started. The canonical candidate ordering above is a shared runtime change that came out of that work. Euryale would replace MTP k=3 as the default speculation path only after a same-condition comparison passes its quality, performance, memory and recovery gates, judged with the [catalog's separation](docs/optimization-catalog.md#functional-acceptance-and-defaults) of functional acceptance, performance adoption, defaults and combined-mode acceptance; until then MTP k=3 remains the measured candidate.
 
+### Other GLM-5.3-Flash recipes for DGX Spark pairs
+
+Several public recipes serve the same model on the same class of hardware with different engines, quantization and trade-offs. They are worth comparing before choosing one. This table owns their links, their licenses as read on 2026-09-18 and what this repository took from each; other documents cite them by name and pull request only. Code that was adapted carries its notice in [third-party notices](THIRD_PARTY_NOTICES.md).
+
+| Recipe | License | What this repository took from it |
+|---|---|---|
+| [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster), preserving the kingjones30 recipe | Apache-2.0 / MIT | **Code adapted:** the NoPE zero-padding patch structure and recipe |
+| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node) and the [Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0 (code), MIT (weights) | Under evaluation, nothing adopted yet: requantizing the BF16 attention projections to W4A16 NVFP4 with two quant-config overlays, the P23 candidate of the [optimization catalog](docs/optimization-catalog.md) |
+| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | No code. Mechanisms and measurements: warmup ladder, stall detection, KV capacity readout, the NCCL channel setting, launch-safety requirements, field runbooks |
+| [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | No code. The SM90 attention path and the foreign-container launch guard as reference points |
+| [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | No code. Its zero-RoPE shim and reduced `index_topk` as a comparison for the attention probes |
+| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results |
+
 ## Prerequisites
 
 - Python 3.11+ for checkout-local tools. CPU checks run on Windows and Linux.

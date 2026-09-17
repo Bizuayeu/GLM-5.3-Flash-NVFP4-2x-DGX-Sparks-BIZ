@@ -82,6 +82,39 @@ def headline_problems(name, readme, benchmarks):
     return []
 
 
+# Other recipes: README's table owns their links and licences; documents cite by name.
+RECIPE_LINK = re.compile(r"https://(?:github\.com|huggingface\.co)/([\w.-]+/[\w.-]+)")
+RESTATED_LICENSE = re.compile(
+    r"[(（](?:AGPL-3\.0|MIT|Apache-2\.0|no license|ライセンスなし)[,;、]"
+    r"|[,、] ?(?:MIT|no license|ライセンスなし)[)）]"
+)
+
+
+def recipe_problems(readme, documents):
+    """Recipes come from README's table rows; other documents hold no copy.
+
+    A link to some other repository of the same author is evidence, not a copy.
+    """
+    recipes = {
+        recipe
+        for line in readme.splitlines()
+        if line.startswith("| [")
+        for recipe in RECIPE_LINK.findall(line)
+    }
+    owners = sorted({recipe.split("/")[0] for recipe in recipes})
+    cited = re.compile("|".join(map(re.escape, owners + ["Mia PR"])))
+    problems = []
+    for name, text in sorted(documents.items()):
+        if recipes & set(RECIPE_LINK.findall(text)):
+            problems.append(f"recipe link outside README: {name}")
+        if owners and any(
+            cited.search(line) and RESTATED_LICENSE.search(line)
+            for line in text.splitlines()
+        ):
+            problems.append(f"recipe license restated outside README: {name}")
+    return problems
+
+
 def public_files(root, export_tree=False):
     if export_tree:
         return {
@@ -186,6 +219,15 @@ def main():
                 (root / name).read_text(encoding="utf-8"),
                 (root / benchmarks).read_text(encoding="utf-8"),
             )
+    if "README.md" in files:
+        problems += recipe_problems(
+            (root / "README.md").read_text(encoding="utf-8"),
+            {
+                name: (root / name).read_text(encoding="utf-8")
+                for name in files
+                if name.startswith("docs/") and name.endswith(".md")
+            },
+        )
     if "pyproject.toml" in files:
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
             "project"
