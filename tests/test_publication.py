@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_publication import audit
+from tools.check_publication import audit, headline_problems
 
 
 class PublicationTests(unittest.TestCase):
@@ -43,3 +43,31 @@ class PublicationTests(unittest.TestCase):
                 "private/generated path: model.safetensors",
                 audit(root, {"model.safetensors"}),
             )
+
+
+class HeadlineTests(unittest.TestCase):
+    BENCHMARKS = "## Measurements on 1.4.0\n\n## Measurements on 1.10.0\n"
+
+    def test_readme_headline_must_name_the_latest_measured_version(self):
+        self.assertEqual(
+            headline_problems(
+                "README.md", "### Headline measurements (1.10.0)\n", self.BENCHMARKS
+            ),
+            [],
+        )
+        self.assertEqual(
+            headline_problems(
+                "README.ja.md", "### 主要な測定値（1.4.0）\n", "## 1.10.0での測定\n"
+            ),
+            ["stale headline measurements: README.ja.md has 1.4.0, latest is 1.10.0"],
+        )
+
+    def test_missing_headline_or_measurements_are_reported(self):
+        self.assertEqual(
+            headline_problems("README.md", "# Title\n", self.BENCHMARKS),
+            ["missing headline measurements: README.md"],
+        )
+        self.assertEqual(
+            headline_problems("README.md", "### Headline measurements (1.0.0)\n", ""),
+            ["no versioned measurements beside README.md"],
+        )

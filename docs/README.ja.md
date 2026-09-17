@@ -72,7 +72,7 @@
 | ZCodeの権限モード、モデル上限と圧縮予算の規則、既存ファイルガードのhook | [ハーネス](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)、スクリプトは [examples/zcode-hooks/](../examples/zcode-hooks/) |
 | 検証範囲と残る検収ゲート | [検証範囲](validation.ja.md) |
 | 生応答、trace、全反復、失敗、実機固有の値 | 非公開の `records/<run-id>/`。配布せず、公開文書には検証した要約を置く |
-| 非公開の実装計画とStage状態 | `docs/*PLAN*.md`。Git追跡外・公開対象外で、`docs/IMPLEMENTATION_PLAN.md` がローカルの索引 |
+| 非公開の実装計画とStage状態 | `docs/plans/`。Git追跡外・公開対象外で、`docs/plans/IMPLEMENTATION_PLAN.md` がローカルの索引 |
 | サイト設定と取得状態 | `state/`。Git追跡外 |
 
 ## 約束事

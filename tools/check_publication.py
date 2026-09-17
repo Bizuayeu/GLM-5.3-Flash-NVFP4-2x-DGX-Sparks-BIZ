@@ -49,6 +49,37 @@ SENSITIVE = [
     re.compile(r"(?i)[a-z]:[/\\]Users[/\\][a-z0-9_.-]+"),
     re.compile(r"/home/" + r"[a-z0-9_.-]+/"),
 ]
+# README headline table and the benchmark document that owns its numbers.
+VERSION = r"(\d+\.\d+\.\d+)"
+HEADLINES = {
+    "README.md": (
+        "docs/benchmarks.md",
+        rf"(?m)^#+ Headline measurements \({VERSION}\)",
+        rf"(?m)^## Measurements on {VERSION}$",
+    ),
+    "README.ja.md": (
+        "docs/benchmarks.ja.md",
+        rf"(?m)^#+ 主要な測定値（{VERSION}）",
+        rf"(?m)^## {VERSION}での測定$",
+    ),
+}
+
+
+def headline_problems(name, readme, benchmarks):
+    """The README headline must carry the newest version the benchmarks measured."""
+    _, headline, measured = HEADLINES[name]
+    versions = re.findall(measured, benchmarks)
+    if not versions:
+        return [f"no versioned measurements beside {name}"]
+    latest = max(versions, key=lambda v: tuple(map(int, v.split("."))))
+    shown = re.search(headline, readme)
+    if shown is None:
+        return [f"missing headline measurements: {name}"]
+    if shown[1] != latest:
+        return [
+            f"stale headline measurements: {name} has {shown[1]}, latest is {latest}"
+        ]
+    return []
 
 
 def public_files(root, export_tree=False):
@@ -148,6 +179,13 @@ def main():
             r"[^\s]+@sha256:[0-9a-f]{64}", lock["image"]
         ) or not re.fullmatch(r"[0-9a-f]{40}", lock["revision"]):
             problems.append("runtime artifacts must be digest/revision pinned")
+    for name, (benchmarks, *_) in HEADLINES.items():
+        if name in files and benchmarks in files:
+            problems += headline_problems(
+                name,
+                (root / name).read_text(encoding="utf-8"),
+                (root / benchmarks).read_text(encoding="utf-8"),
+            )
     if "pyproject.toml" in files:
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
             "project"

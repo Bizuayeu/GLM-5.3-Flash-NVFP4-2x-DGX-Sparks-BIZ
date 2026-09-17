@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- README: a headline table of the measurements on the current defaults (prefill, decode, 200K and 256K requests, the unstable three-position reference and the lowest available memory). `docs/benchmarks.md` still owns the numbers.
+
+### Changed
+
+- `tools/check_publication.py` fails when the version in the README headline table, in either language, is not the newest `Measurements on X.Y.Z` section of the benchmark document.
+- Private plans live under `docs/plans/`, which is now the ignored path; the audit had been counting them as public files.
+
 ## 1.5.0 — 2026-09-18
 
 ### Changed

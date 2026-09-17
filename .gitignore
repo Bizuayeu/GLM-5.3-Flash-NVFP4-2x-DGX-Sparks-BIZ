@@ -38,7 +38,7 @@ dist/
 build/
 *.egg-info/
 # Private implementation diary; publish reviewed summaries under docs instead.
-/docs/*PLAN*.md
+/docs/plans/
 # Editor, OS and extra artifact formats
 .vscode/
 .idea/
