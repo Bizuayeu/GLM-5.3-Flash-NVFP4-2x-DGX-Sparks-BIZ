@@ -201,8 +201,12 @@ def preflight(profile, config_path, rank, *, check_memory=True):
     source = host.snapshot_from_state(
         read_json(ROOT / "state/download-status.json"), lock
     )
+    # The pinned snapshot must be on the host whatever is served from it.
+    pinned = dict(profile["runtime"])
+    pinned.pop("derived_checkpoint", None)
     expected = model_path(
-        {**profile, "mtp": {**profile["mtp"], "enabled": False}}, cache
+        {**profile, "runtime": pinned, "mtp": {**profile["mtp"], "enabled": False}},
+        cache,
     )
     if source.resolve() != expected.resolve():
         raise ValueError("Download state must identify the pinned HF cache snapshot")

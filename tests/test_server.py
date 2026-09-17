@@ -742,6 +742,53 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"].pop("derived_checkpoint")
         self.assertEqual(server.derived_checks(self.profile, metadata), {})
 
+    def test_preflight_runs_the_derived_checks_beside_the_pinned_snapshot(self):
+        cache = Path.home() / ".cache/huggingface"
+        self.profile["mtp"]["enabled"] = True
+        snapshot = server.model_path(
+            {**self.profile, "mtp": {**self.profile["mtp"], "enabled": False}}, cache
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            self.profile["runtime"]["derived_checkpoint"] = self.derived(
+                Path(tmp).resolve(), real=True
+            )
+            image_id = config.selected_image(self.profile)
+
+            def run(*args):
+                if args[:3] == ("docker", "image", "inspect"):
+                    env = ["GLM53_REFERENCE_ATTENTION=1"]
+                    return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
+                if args[:2] == ("docker", "run"):
+                    return "a" * 64 + "  kda.py\n"
+                raise AssertionError(args)
+
+            with (
+                patch.object(server, "read_json") as read_json,
+                patch.object(server.host, "snapshot_from_state", return_value=snapshot),
+                patch.object(server.host, "fabric_checks", return_value={}),
+                patch.object(server.host, "run", side_effect=run),
+                patch.object(server.host, "running_containers", return_value=[]),
+            ):
+                read_json.return_value = {
+                    "text_config": {"num_hidden_layers": server.MODEL_LAYERS},
+                    "quantization_config": {
+                        "quant_algo": "MIXED_PRECISION",
+                        "producer": {"requant_target": "g"},
+                        "quantized_layers": {},
+                    },
+                }
+                result = server.preflight(
+                    self.profile, ROOT / "state/server.toml", 0, check_memory=False
+                )
+        for key in (
+            "derived_checkpoint",
+            "derived_mtp_draft_unquantized",
+            "derived_overlays",
+            "full_model",
+        ):
+            self.assertIs(result["checks"][key], True, key)
+        self.assertNotIn("mtp_view", result["checks"])
+
     def test_request_resets_lpa_after_generation_failure(self):
         self.profile["lpa"]["enabled"] = True
         calls = []
