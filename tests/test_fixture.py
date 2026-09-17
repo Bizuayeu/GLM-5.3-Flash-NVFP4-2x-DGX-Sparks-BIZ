@@ -1,7 +1,11 @@
 import copy
 import unittest
 
-from glm53_setup.validation.make_fixture import fixture_config, keep_tensor
+from glm53_setup.validation.make_fixture import (
+    fixture_config,
+    fixture_name,
+    keep_tensor,
+)
 
 
 class FixtureTests(unittest.TestCase):
@@ -91,3 +95,56 @@ class FixtureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MtpFixtureTests(unittest.TestCase):
+    SOURCE = {
+        "model_type": "glm5_next",
+        "quantization_config": {"quant_algo": "NVFP4", "ignore": ["lm_head"]},
+        "text_config": {
+            "num_hidden_layers": 45,
+            "num_nextn_predict_layers": 1,
+            "layer_types": (["linear_attention"] * 3 + ["deepseek_sparse_attention"])
+            * 11
+            + ["linear_attention", "deepseek_sparse_attention"],
+            "mlp_layer_types": ["dense"] * 3 + ["sparse"] * 43,
+            "indexer_types": ["full"] * 46,
+            "linear_attn_config": {"kda_layers": [0, 1, 2, 4], "full_attn_layers": [3]},
+        },
+    }
+
+    def test_draft_layer_follows_the_kept_layers_and_stays_unquantized(self):
+        before = copy.deepcopy(self.SOURCE)
+        result = fixture_config(self.SOURCE, with_mtp=True)
+        text = result["text_config"]
+        self.assertEqual(self.SOURCE, before)
+        self.assertEqual(text["num_hidden_layers"], 4)
+        self.assertEqual(text["num_nextn_predict_layers"], 1)
+        self.assertEqual(text["layer_types"][4], "deepseek_sparse_attention")
+        self.assertEqual(text["mlp_layer_types"], ["dense"] * 3 + ["sparse"] * 2)
+        self.assertEqual(len(text["indexer_types"]), 5)
+        self.assertIn("*.layers.4.*", result["quantization_config"]["ignore"])
+        self.assertEqual(
+            result["_fixture_source"]["mtp_layer"], {"source": 45, "as": 4}
+        )
+
+    def test_draft_tensors_are_renamed_and_nothing_else_is_added(self):
+        name = "model.language_model.layers.45.enorm.weight"
+        self.assertEqual(
+            fixture_name(name, mtp_source=45),
+            "model.language_model.layers.4.enorm.weight",
+        )
+        self.assertIsNone(fixture_name(name))
+        self.assertIsNone(
+            fixture_name("model.language_model.layers.44.x", mtp_source=45)
+        )
+        self.assertEqual(
+            fixture_name("model.language_model.layers.3.x", mtp_source=45),
+            "model.language_model.layers.3.x",
+        )
+        self.assertEqual(fixture_name("lm_head.weight"), "lm_head.weight")
+
+    def test_without_the_option_the_fixture_is_unchanged(self):
+        text = fixture_config(self.SOURCE)["text_config"]
+        self.assertEqual(text["num_nextn_predict_layers"], 0)
+        self.assertEqual(len(text["layer_types"]), 4)

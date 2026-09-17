@@ -20,7 +20,17 @@ def keep_tensor(name, layers=4):
     return name.startswith(("model.language_model.", "lm_head."))
 
 
-def fixture_config(source, layers=4):
+def fixture_name(name, layers=4, mtp_source=None):
+    """Name in the fixture, or None when dropped; the draft layer moves to ``layers``."""
+    if keep_tensor(name, layers):
+        return name
+    prefix = f"model.language_model.layers.{mtp_source}."
+    if mtp_source is not None and name.startswith(prefix):
+        return f"model.language_model.layers.{layers}." + name[len(prefix) :]
+    return None
+
+
+def fixture_config(source, layers=4, with_mtp=False):
     if type(layers) is not int or layers not in (4, 8):
         raise ValueError("Fixture layers must be 4 or 8")
     config = copy.deepcopy(source)
@@ -36,10 +46,19 @@ def fixture_config(source, layers=4):
         "revision": REVISION,
         "layers": list(range(layers)),
     }
+    mtp_source = text.get("num_hidden_layers")
+    if with_mtp and text["num_nextn_predict_layers"] != 1:
+        raise ValueError("Expected one declared MTP layer")
     text["num_hidden_layers"] = layers
-    text["num_nextn_predict_layers"] = 0
+    text["num_nextn_predict_layers"] = int(with_mtp)
     for key in ["layer_types", "mlp_layer_types", "indexer_types"]:
-        text[key] = text[key][:layers]
+        # The draft layer keeps its own per-layer entry directly after the kept ones.
+        draft = text[key][mtp_source : mtp_source + 1] if with_mtp else []
+        text[key] = text[key][:layers] + draft
+    if with_mtp:
+        # Same exclusion tools/prepare_mtp_view.py adds for the BF16 draft layer.
+        config["quantization_config"]["ignore"].append(f"*.layers.{layers}.*")
+        config["_fixture_source"]["mtp_layer"] = {"source": mtp_source, "as": layers}
     for key in ["kda_layers", "full_attn_layers"]:
         text["linear_attn_config"][key] = [
             i for i in text["linear_attn_config"][key] if i < layers
@@ -59,6 +78,11 @@ def main(argv=None):
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--layers", type=int, choices=(4, 8), default=4)
+    parser.add_argument(
+        "--with-mtp",
+        action="store_true",
+        help="keep the BF16 draft layer, renumbered to follow the kept layers",
+    )
     args = parser.parse_args(argv)
     if args.source.name != REVISION:
         raise ValueError("Use the pinned original snapshot")
@@ -67,13 +91,16 @@ def main(argv=None):
     from safetensors import safe_open
     from safetensors.torch import save_file
 
-    config = fixture_config(
-        json.loads((args.source / "config.json").read_text()), args.layers
+    source_config = json.loads((args.source / "config.json").read_text())
+    config = fixture_config(source_config, args.layers, args.with_mtp)
+    mtp_source = (
+        source_config["text_config"]["num_hidden_layers"] if args.with_mtp else None
     )
     index = json.loads((args.source / "model.safetensors.index.json").read_text())[
         "weight_map"
     ]
-    selected = {k: v for k, v in index.items() if keep_tensor(k, args.layers)}
+    renamed = {k: fixture_name(k, args.layers, mtp_source) for k in index}
+    selected = {k: v for k, v in index.items() if renamed[k] is not None}
     args.output.mkdir(parents=True)
     for filename in [
         "tokenizer.json",
@@ -88,6 +115,12 @@ def main(argv=None):
     (args.output / "config.json").write_text(
         json.dumps(config, indent=2), encoding="utf-8"
     )
+    legacy = args.output / "hf_quant_config.json"
+    if args.with_mtp and legacy.exists():
+        # vLLM reads the ModelOpt exclusions from this file as well.
+        content = json.loads(legacy.read_text(encoding="utf-8"))
+        content["quantization"]["exclude_modules"].append(f"*.layers.{args.layers}.*")
+        legacy.write_text(json.dumps(content, indent=2), encoding="utf-8")
     buffer, manifest, weight_map = {}, {}, {}
     buffer_bytes, total_bytes, shard_number = 0, 0, 0
 
@@ -119,13 +152,17 @@ def main(argv=None):
         with safe_open(
             args.source / source_shard, framework="pt", device="cpu"
         ) as reader:
-            for key in sorted(k for k, f in selected.items() if f == source_shard):
-                tensor = reader.get_tensor(key).contiguous()
+            for source_key in sorted(
+                k for k, f in selected.items() if f == source_shard
+            ):
+                tensor = reader.get_tensor(source_key).contiguous()
+                key = renamed[source_key]
                 size = tensor.numel() * tensor.element_size()
                 # Bound packing memory; an individual embedding tensor may exceed 512 MiB.
                 if buffer and buffer_bytes + size > 512 * 1024**2:
                     flush()
                 manifest[key] = {
+                    "source_name": source_key,
                     "source_shard": source_shard,
                     "shape": list(tensor.shape),
                     "dtype": str(tensor.dtype),
@@ -136,7 +173,7 @@ def main(argv=None):
                 buffer_bytes += size
                 total_bytes += size
     flush()
-    if weight_map.keys() != selected.keys():
+    if weight_map.keys() != {renamed[k] for k in selected}:
         raise RuntimeError("Fixture tensor coverage is incomplete")
     (args.output / "model.safetensors.index.json").write_text(
         json.dumps(
@@ -155,6 +192,7 @@ def main(argv=None):
             {
                 "status": "complete",
                 "layers": args.layers,
+                "mtp_layer": args.with_mtp,
                 "tensor_count": len(manifest),
                 "total_bytes": total_bytes,
                 "all_tensor_bytes_verified": True,
