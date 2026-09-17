@@ -80,4 +80,5 @@ Every document has one role; other documents link to it instead of repeating its
 - Change history lives in the [changelog](../CHANGELOG.md) and Git; documents do not accumulate "what changed" notes.
 - A measured number appears once, in its owner document, with image, source and workload conditions. Other pages link to it.
 - The release version is owned by `pyproject.toml` and each version is described in the [Changelog](../CHANGELOG.md); `python tools/check_publication.py` requires a plain semantic version there and rejects links to `records/`, plan files or paths outside the repository.
+- Pushing a `vX.Y.Z` tag publishes the GitHub Release: `.github/workflows/release.yml` takes that version's section from the Changelog (`python tools/release_notes.py X.Y.Z`) and refuses a tag that disagrees with `pyproject.toml` or has no section.
 - Related research outside this repository, such as the Euryale draft-proposer project, is described in the README without links, because it is not part of this distribution; other documents mention it only in passing.

@@ -6,6 +6,10 @@
 
 - README: a headline table of the measurements on the current defaults (prefill, decode, 200K and 256K requests, the unstable three-position reference and the lowest available memory). `docs/benchmarks.md` still owns the numbers.
 
+### Added
+
+- **Releases follow tags.** Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes that version's Changelog section as the GitHub Release through `tools/release_notes.py`. Tags 1.2.0 to 1.5.0 had been pushed without a Release; those were created by hand, and 1.2.1, which had a Changelog section but no tag, was tagged at its release commit.
+
 ### Changed
 
 - `tools/check_publication.py` fails when the version in the README headline table, in either language, is not the newest `Measurements on X.Y.Z` section of the benchmark document.

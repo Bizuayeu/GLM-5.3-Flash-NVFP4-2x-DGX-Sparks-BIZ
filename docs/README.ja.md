@@ -80,4 +80,5 @@
 - 変更履歴は[Changelog](../CHANGELOG.md)とGitに置き、各文書に「何を直したか」を溜めない。
 - 実測値は正典の文書に一度だけ、image・source・負荷条件とともに書く。他の文書はリンクで参照する。
 - 版数は `pyproject.toml` が所有し、版ごとの内容は[Changelog](../CHANGELOG.md)に書く。`python tools/check_publication.py` は素のsemantic versionを必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
+- `vX.Y.Z` のタグをpushするとGitHub Releaseが公開される。`.github/workflows/release.yml` がChangelogのその版の節（`python tools/release_notes.py X.Y.Z`）を本文にし、`pyproject.toml` と食い違うタグや節の無い版は拒否する。
 - 本リポジトリ外の関連研究（Euryaleの投機draft研究など）は配布物に含まれないため、READMEでリンクなしに説明する。他の文書では言及に留める。
