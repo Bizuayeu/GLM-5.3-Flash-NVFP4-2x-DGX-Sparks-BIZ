@@ -29,7 +29,7 @@ INSERT = (
     "\n"
     "    if moe_order_enabled() and expert_map is None:\n"
     "        sorted_token_ids = canonical_expert_order(\n"
-    "            sorted_token_ids, expert_ids, num_tokens_post_padded\n"
+    "            sorted_token_ids, expert_ids, num_tokens_post_padded, block_size_m\n"
     "        )\n"
     "\n"
     "    assert activation is not None\n"

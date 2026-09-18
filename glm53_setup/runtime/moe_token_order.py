@@ -17,11 +17,13 @@ def moe_order_enabled():
     return value == "1"
 
 
-def canonical_expert_order(sorted_ids, expert_ids, padded):
+def canonical_expert_order(sorted_ids, expert_ids, padded, block_size):
     """Order the written slots by (expert, token id) without a host synchronisation.
 
-    ``sorted_ids`` and ``expert_ids`` are worst-case buffers; only the first
-    ``padded`` slots (a device scalar) are written. The align kernel emits experts in
+    ``sorted_ids`` and ``expert_ids`` are worst-case buffers whose lengths need not
+    match (the served model allocates more expert blocks than fit in the slots), so
+    the block size comes from the caller; only the first ``padded`` slots (a device
+    scalar) are written. The align kernel emits experts in
     ascending order, which is what keeps every token inside its expert's blocks here.
     Padding slots hold the number of real entries, which never exceeds the buffer
     length, so they sort last inside their expert without reaching the next one.
@@ -30,8 +32,9 @@ def canonical_expert_order(sorted_ids, expert_ids, padded):
     """
     import torch
 
-    block = sorted_ids.numel() // expert_ids.numel()
-    owner = expert_ids.to(torch.int64).repeat_interleave(block)
+    owner = expert_ids.to(torch.int64).repeat_interleave(block_size)[
+        : sorted_ids.numel()
+    ]
     slots = torch.arange(sorted_ids.numel(), device=sorted_ids.device)
     key = owner * (sorted_ids.numel() + 1) + sorted_ids.to(torch.int64)
     key = torch.where(slots < padded, key, torch.iinfo(torch.int64).max)

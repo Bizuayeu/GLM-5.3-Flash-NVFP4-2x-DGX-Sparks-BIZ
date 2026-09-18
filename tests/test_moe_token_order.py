@@ -40,6 +40,7 @@ class PatchTests(unittest.TestCase):
         patched = patch_moe_order.patch_text(SOURCE)
         self.assertEqual(patched.count("canonical_expert_order("), 1)
         self.assertIn("moe_order_enabled() and expert_map is None", patched)
+        self.assertIn("num_tokens_post_padded, block_size_m", patched)
         self.assertLess(
             patched.index("ignore_invalid_experts=True"),
             patched.index("canonical_expert_order("),
@@ -70,12 +71,24 @@ class OrderTests(unittest.TestCase):
         sorted_ids = torch.tensor([9, 3, 10, 4, 8, 1, 6, 5, 2, 10, 10, 0, 7, 7, 7, 7])
         before = sorted_ids.clone()
         expert_ids = torch.tensor([2, 5, 5, 0])
-        result = canonical_expert_order(sorted_ids, expert_ids, torch.tensor(12))
+        result = canonical_expert_order(sorted_ids, expert_ids, torch.tensor(12), 4)
         self.assertEqual(
             result.tolist(), [3, 4, 9, 10, 0, 1, 2, 5, 6, 8, 10, 10, 7, 7, 7, 7]
         )
         self.assertEqual(result.dtype, before.dtype)
         self.assertTrue(torch.equal(sorted_ids, before))
+
+    def test_buffers_need_not_divide_by_the_block(self):
+        import torch
+
+        from glm53_setup.runtime.moe_token_order import canonical_expert_order
+
+        # The served model allocates expert_ids longer than the blocks that fit in
+        # sorted_ids (34,020 slots against 34,528 = 1,079 x 32 on the reference pair).
+        sorted_ids = torch.tensor([5, 1, 9, 9, 3, 2, 9, 9, 0, 4])  # 10 slots, block 4
+        expert_ids = torch.tensor([0, 1, 1, 2])  # one block more than fits
+        result = canonical_expert_order(sorted_ids, expert_ids, torch.tensor(8), 4)
+        self.assertEqual(result.tolist(), [1, 5, 9, 9, 2, 3, 9, 9, 0, 4])
 
 
 if __name__ == "__main__":
