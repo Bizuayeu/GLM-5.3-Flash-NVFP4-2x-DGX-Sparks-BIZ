@@ -61,6 +61,7 @@ enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
 [validation]
 component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP integration
 expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
+# memory_probe = true # Optional: dev /collective_rpc method allocator_stats (torch reserved/allocated, retries); excludes LPA and the other workers
 
 [cache]
 # Native checkpoint retention. Omission preserves the runtime default (0).

@@ -20,6 +20,7 @@
 
 ### Changed
 
+- **`validation.memory_probe`** (optional, default `false`): a worker extension whose `allocator_stats` method, reached through the dev `/collective_rpc` route, reports the torch caching allocator per rank (reserved, allocated, segments, retries, `mem_get_info`), for telling allocator growth from other host-memory growth on GB10's shared memory.
 - **`runtime.derived_checkpoint.enabled`** (optional, default `true`): `false` keeps the table in the profile and serves the pinned snapshot, so the requantized checkpoint is a one-key switch like the other measures.
 - **`runtime.decode_graphs`** (optional, template `false`) is the positive one-stop switch for decode Graphs; `runtime.enforce_eager` is still read as the earlier spelling and existing profiles keep their fingerprint.
 - **Decode Graphs may be combined with MTP and prefix caching for one sequence.** `runtime.enforce_eager = false` had been refused whenever MTP or prefix caching was on, and its capture size was fixed at `[1]`, which the pinned runtime rejects outright with MTP (decode sizes are rounded up to a multiple of `num_speculative_tokens + 1`). The launcher now passes `[num_speculative_tokens + 1]` with MTP on and `[1]` otherwise, and still refuses `max_num_seqs > 1`, LPA and synchronous index checks with Graphs. Ground: on the four-layer MTP fixture with the expert token order fixed, eager and Graph runs are identical in tokens and logprobs at every length, with and without prefix caching (component validation). Full-model speed and acceptance are not claimed.

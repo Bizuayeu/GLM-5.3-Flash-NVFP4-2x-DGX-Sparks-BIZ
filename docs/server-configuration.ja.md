@@ -57,6 +57,8 @@
 
 `api.dev_endpoints`（任意キー、未指定はfalse）は両rankに `VLLM_SERVER_DEV_MODE=1` を渡し、loopbackのAPIにvLLMのdev経路（`/reset_prefix_cache`・`/reset_mm_cache`・`/collective_rpc`・`/sleep`・`/wake_up`・`/server_info`）を載せます。LPA・component・expertのprofileは元からこのモードで動きます。このキーは、LPA offの配布profileでもベンチやwarmupの後始末のために再起動なしでprefix cacheを消せるようにするためのものです。これらの経路は無認証です（[起動契約](launch-safety.ja.md#モデルapiクライアント)）。他のローカル利用者がいる機体では off のままにします。
 
+`validation.memory_probe`（任意、未指定はfalse）はworker拡張を一つ載せ、その唯一のメソッド `allocator_stats` をdev経路 `POST /collective_rpc`（`{"method": "allocator_stats"}`）から呼べるようにします。rankごとにtorchのcaching allocatorのreserved・allocated・active・inactive-splitバイト、segment数、確保のretry回数、`mem_get_info` を返します。GB10ではGPUがホストのメモリを共有するので、allocatorの成長はworkerのRSSやコンテナのcgroupが平らなまま `MemAvailable` の減少として現れます。この探針はその二つを切り分けます。LPAや他のworker拡張とは排他（起動につき拡張クラスは一つ）で、起動の他の点は変えません。
+
 `resources.stall_seconds`（任意、未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（任意、未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。いずれもprofileのfingerprintを変えるため、次の切替から有効になります。
 
 `runtime.nccl_channels`（任意、未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。各rankのエンジンはcommunicatorを2本開き、MTU 1500で8本にすると、実モデルの最小空きメモリが64本に比べてheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（1%速い）。decodeは設定の差より計測ごとのぶれの方が大きい値でした。数値は[チャネル数の測定](nccl-validation.ja.md#チャネル数)にあります。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択とfingerprintをそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。

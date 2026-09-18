@@ -65,6 +65,7 @@ def validate(profile):
                     "mm_processor_cache_gb",
                 },
                 "server.api": {"prompt_tokens_details", "dev_endpoints"},
+                "server.validation": {"memory_probe"},
                 "server.resources": {"stall_seconds"},
                 "server.generation": {"warmup", "warmup_long_tokens"},
             }.get(path, set())
@@ -213,6 +214,15 @@ def validate(profile):
         raise ValueError(
             "LPA requires max_num_seqs=1; use a separate no-LPA throughput profile"
         )
+    if type(profile["validation"].get("memory_probe", False)) is not bool:
+        raise ValueError("validation.memory_probe must be true or false")
+    if profile["validation"].get("memory_probe") and (
+        profile["lpa"]["enabled"]
+        or profile["validation"]["component_worker"]
+        or profile["validation"]["expert_worker"]
+    ):
+        # One worker extension class per launch; the others carry their own.
+        raise ValueError("validation.memory_probe excludes LPA and the other workers")
     if not 0 < profile["cache"]["gpu_memory_utilization"] <= 1:
         raise ValueError("gpu_memory_utilization must be in (0, 1]")
     if profile["generation"]["temperature"] < 0:
@@ -521,6 +531,11 @@ def serve_args(profile, rank, model_path):
         args += [
             "--worker-extension-cls",
             "glm53_setup.validation.expert_worker.ExpertFixtureWorker",
+        ]
+    if profile["validation"].get("memory_probe"):
+        args += [
+            "--worker-extension-cls",
+            "glm53_setup.runtime.memory_probe.MemoryProbeWorker",
         ]
     if profile["profiling"]["enabled"]:
         args += [
