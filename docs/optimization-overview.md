@@ -48,7 +48,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P01 MTP k=3 | Load the checkpoint's BF16 draft through a separate metadata view and speculate three tokens; no external draft model | Selected (k=3 preferred for further experiments; k=2 and k≥4 untested) | on (`mtp.enabled=true`; `num_speculative_tokens=3`) | Short-input decode 24.1 → 30.3 token/s from k=1 to k=3, after 14.3 → 24.1 from off to k=1 (one sequence, separate runs). Long-input aggregate throughput nearly unchanged, TTFT slightly higher, about 7 GiB more per rank | [k=3](speculative-decoding.md#measured-k3-comparison) / [k=1](speculative-decoding.md#measured-k1-results) |
 | P08 async index checks | Keep range checks but move them to a GPU assert: about 22 fewer host syncs per rank and 22 fewer copies across both ranks per token, at the cost of 11 more GPU kernels | Accepted (independent opt-in) | async (`runtime.index_checks`) | About 0.7–2.5% shorter at 128 output tokens, largest for short inputs | [P08](benchmarks.md#independent-cpu-synchronization-reduction-p08) |
-| P06 CUDA Graphs | Capture/replay for decode only | Held (full model unqualified; a small fixture diverged from eager at 2K input) | off (`runtime.enforce_eager=true`) | — | [Graph fixture](component-validation.md#independent-decode-graph-fixture) |
+| P06 CUDA Graphs | Capture/replay for decode only | Held (full model unqualified; the 2K fixture divergence was the expert-order variability and is gone with it fixed) | off (`runtime.decode_graphs=false`) | — | [Graph fixture](component-validation.md#independent-decode-graph-fixture) |
 
 ### Parallelism and throughput
 

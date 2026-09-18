@@ -89,7 +89,7 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(self.profile)
         self.profile["runtime"]["index_checks"] = "sync"
-        self.profile["runtime"]["enforce_eager"] = False
+        self.profile["runtime"]["decode_graphs"] = True
         with self.assertRaisesRegex(ValueError, "Graph"):
             config.validate(self.profile)
 
@@ -118,7 +118,7 @@ class ServerConfigTests(unittest.TestCase):
     def test_graphs_are_explicit_uncompiled_decode_with_checked_indices(self):
         eager_env = config.environment(self.profile, 0)
         self.assertNotIn("GLM53_ASYNC_INDEX_CHECKS", eager_env)
-        self.profile["runtime"]["enforce_eager"] = False
+        self.profile["runtime"]["decode_graphs"] = True
         config.validate(self.profile)
         for rank in (0, 1):
             args = config.serve_args(self.profile, rank, "/hf/model")
@@ -329,7 +329,7 @@ class ServerConfigTests(unittest.TestCase):
         # One sequence with MTP and prefix caching was qualified on the MTP fixture
         # (records/20260918-stage1-graph); batching was not.
         p = copy.deepcopy(self.profile)
-        p["runtime"]["enforce_eager"] = False
+        p["runtime"]["decode_graphs"] = True
         p["mtp"]["enabled"] = True
         p["cache"]["prefix_caching"] = True
         config.validate(p)
@@ -354,10 +354,36 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(p)
 
+    def test_decode_graphs_is_the_positive_switch(self):
+        # One-stop true/false in the profile; enforce_eager stays readable as the
+        # legacy spelling and may not contradict it.
+        del self.profile["runtime"]["decode_graphs"]
+        config.validate(self.profile)
+        self.assertIn(
+            "--enforce-eager", config.serve_args(self.profile, 0, "/hf/model")
+        )
+        self.profile["runtime"]["enforce_eager"] = False  # the earlier spelling
+        config.validate(self.profile)
+        self.assertNotIn(
+            "--enforce-eager", config.serve_args(self.profile, 0, "/hf/model")
+        )
+        self.profile["runtime"]["decode_graphs"] = True
+        config.validate(self.profile)
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertNotIn("--enforce-eager", args)
+        self.assertIn("--compilation-config", args)
+        self.profile["runtime"]["enforce_eager"] = True
+        with self.assertRaisesRegex(ValueError, "decode_graphs"):
+            config.validate(self.profile)
+        self.profile["runtime"]["decode_graphs"] = "yes"
+        del self.profile["runtime"]["enforce_eager"]
+        with self.assertRaisesRegex(ValueError, "decode_graphs"):
+            config.validate(self.profile)
+
     def test_graph_capture_size_follows_the_speculative_depth(self):
         # The pinned runtime rounds decode capture sizes up to a multiple of
         # num_speculative_tokens + 1 and rejects [1] outright with MTP on.
-        self.profile["runtime"]["enforce_eager"] = False
+        self.profile["runtime"]["decode_graphs"] = True
         self.profile["mtp"]["enabled"] = True
         self.profile["mtp"]["num_speculative_tokens"] = 3
         config.validate(self.profile)
@@ -961,7 +987,7 @@ class ServerConfigTests(unittest.TestCase):
             ("lpa", "cut", 45),
             ("lpa", "tail", 0),
             ("lpa", "break_even_tokens", -1),
-            ("runtime", "enforce_eager", False),
+            ("runtime", "decode_graphs", True),
         ]:
             with self.subTest(section=section, key=key):
                 p = copy.deepcopy(self.profile)

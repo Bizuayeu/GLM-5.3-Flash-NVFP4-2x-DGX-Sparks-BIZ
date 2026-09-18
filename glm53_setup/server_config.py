@@ -20,6 +20,28 @@ def load(path):
     return profile
 
 
+def decode_graphs(profile):
+    """True when the profile asks for decode Graphs.
+
+    ``runtime.decode_graphs`` is the switch; ``runtime.enforce_eager`` is the
+    earlier spelling and, when both are present, may not contradict it.
+    Absent both, the launch is eager.
+    """
+    runtime = profile["runtime"]
+    if "decode_graphs" in runtime:
+        if type(runtime["decode_graphs"]) is not bool:
+            raise ValueError("runtime.decode_graphs must be true or false")
+        if (
+            "enforce_eager" in runtime
+            and runtime["enforce_eager"] == runtime["decode_graphs"]
+        ):
+            raise ValueError("runtime.decode_graphs contradicts runtime.enforce_eager")
+        return runtime["decode_graphs"]
+    if type(runtime.get("enforce_eager", True)) is not bool:
+        raise ValueError("runtime.enforce_eager must be true or false")
+    return not runtime["enforce_eager"] if "enforce_eager" in runtime else False
+
+
 def validate(profile):
     # The shipped, commented file also defines the complete schema. No silent
     # defaults: a typo or missing category must not silently change a launch.
@@ -35,6 +57,8 @@ def validate(profile):
                     "nccl_channels",
                     "derived_checkpoint",
                     "canonical_moe_order",
+                    "decode_graphs",
+                    "enforce_eager",
                 },
                 "server.cache": {
                     "prefix_cache_retention_interval",
@@ -78,6 +102,7 @@ def validate(profile):
             raise ValueError(
                 "runtime.cuda_allocator_conf must be a single-line string, including empty"
             )
+    decode_graphs(profile)
     if type(profile["runtime"].get("vision", False)) is not bool:
         raise ValueError("runtime.vision must be true or false")
     if "nccl_channels" in profile["runtime"]:
@@ -131,7 +156,7 @@ def validate(profile):
         or profile["lpa"]["enabled"]
         or profile["mtp"]["enabled"]
         or profile["cache"]["prefix_caching"]
-        or not profile["runtime"]["enforce_eager"]
+        or decode_graphs(profile)
         or profile["context"]["max_num_seqs"] > 2
     ):
         raise ValueError(
@@ -142,7 +167,7 @@ def validate(profile):
         raise ValueError(
             "index_checks must be auto, sync or async; checks cannot be disabled"
         )
-    if not runtime["enforce_eager"] and runtime["index_checks"] == "sync":
+    if decode_graphs(profile) and runtime["index_checks"] == "sync":
         raise ValueError("Graph execution requires asynchronous index checks")
     if runtime["pipeline_parallel_size"] not in (1, 2):
         raise ValueError("Only PP sizes 1 and 2 are supported")
@@ -151,7 +176,7 @@ def validate(profile):
         raise ValueError("PP stage boundaries must retain an MLA layer in both stages")
     if runtime["pipeline_parallel_size"] == 2 and (
         runtime["expert_parallel"]
-        or not runtime["enforce_eager"]
+        or decode_graphs(profile)
         or profile["lpa"]["enabled"]
         or profile["mtp"]["enabled"]
         or profile["cache"]["prefix_caching"]
@@ -166,7 +191,7 @@ def validate(profile):
         or profile["mtp"]["enabled"]
         or profile["cache"]["prefix_caching"]
         or profile["cache"]["fused_unpack"]
-        or not profile["runtime"]["enforce_eager"]
+        or decode_graphs(profile)
         or profile["context"]["max_num_seqs"] > 2
     ):
         # cc-defer: independent EP with up to two sequences; extend combinations
@@ -179,7 +204,7 @@ def validate(profile):
         or profile["mtp"]["enabled"]
         or profile["context"]["max_num_seqs"] != 1
         or profile["cache"]["prefix_caching"]
-        or not profile["runtime"]["enforce_eager"]
+        or decode_graphs(profile)
     ):
         raise ValueError(
             "Component validation requires eager, one sequence, no LPA/MTP/prefix cache"
@@ -221,12 +246,9 @@ def validate(profile):
         raise ValueError("Invalid LPA cut or tail")
     if not re.fullmatch(r"[0-9a-f]{64}", lpa["projector_sha256"]):
         raise ValueError("Invalid projector_sha256")
-    if lpa["enabled"] and not profile["runtime"]["enforce_eager"]:
+    if lpa["enabled"] and decode_graphs(profile):
         raise ValueError("LPA requires eager execution")
-    if (
-        not profile["runtime"]["enforce_eager"]
-        and profile["context"]["max_num_seqs"] != 1
-    ):
+    if decode_graphs(profile) and profile["context"]["max_num_seqs"] != 1:
         # cc-defer: one sequence only (MTP k=3 and prefix caching were qualified on
         # the MTP fixture, records/20260918-stage1-graph); extend to batching after
         # a fixture with max_num_seqs > 1 shows the same eager/graph identity.
@@ -379,7 +401,7 @@ def apc_lpa_enabled(profile):
 def asynchronous_index_checks(profile):
     runtime = profile["runtime"]
     return runtime["index_checks"] == "async" or (
-        runtime["index_checks"] == "auto" and not runtime["enforce_eager"]
+        runtime["index_checks"] == "auto" and decode_graphs(profile)
     )
 
 
@@ -400,11 +422,16 @@ def serve_args(profile, rank, model_path):
     for flag, value in values.items():
         args[args.index(flag) + 1] = str(value)
     for section, key, flag in [
-        ("runtime", "enforce_eager", "--enforce-eager"),
+        ("runtime", "decode_graphs", "--enforce-eager"),
         ("context", "chunked_prefill", "--enable-chunked-prefill"),
         ("api", "auto_tool_choice", "--enable-auto-tool-choice"),
     ]:
-        if not profile[section][key]:
+        enabled = (
+            not decode_graphs(profile)
+            if key == "decode_graphs"
+            else profile[section][key]
+        )
+        if not enabled:
             args.remove(flag)
             if key == "chunked_prefill":
                 args.append("--no-enable-chunked-prefill")
@@ -453,7 +480,7 @@ def serve_args(profile, rank, model_path):
                 }
             ),
         ]
-    if not profile["runtime"]["enforce_eager"]:
+    if decode_graphs(profile):
         args += [
             "--compilation-config",
             json.dumps(

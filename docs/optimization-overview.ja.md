@@ -48,7 +48,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | P01 MTP k=3 | checkpoint同梱のBF16 draftを別メタデータviewで読み、3 token先読み。外部draftモデルなし | 選定（次の実験ではk=3を優先。k=2／k≥4は未試験） | on（`mtp.enabled=true`、`num_speculative_tokens=3`） | 短文decodeはk=1→k=3で24.1 → 30.3 token/s、その前のoff→k=1で14.3 → 24.1（1系列、別実行の比較）。長文の全体throughputはほぼ不変、TTFTは微増、約7 GiB/rank追加 | [k=3](speculative-decoding.ja.md#k3の比較結果)／[k=1](speculative-decoding.ja.md#k1の実測結果) |
 | P08 非同期index検査 | 範囲検査を省かずGPU assertへ移す。tokenあたりCPU同期は各rankで約22回、copyは両rank合計で約22回減り、GPU kernelは11回増える | 受入（独立opt-in） | async（`runtime.index_checks`） | 128出力で約0.7〜2.5%の小幅改善、短文ほど大きい | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
-| P06 CUDA Graphs | decodeのみcapture／replay | 保留（全モデル未検収。小層fixtureで2K入力の生成が分岐） | off（`runtime.enforce_eager=true`） | — | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価) |
+| P06 CUDA Graphs | decodeのみcapture／replay | 保留（全モデル未検収。小層fixtureの2K分岐はexpert順の揺れで、固定後は消えた） | off（`runtime.decode_graphs=false`） | — | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価) |
 
 ### 並列・throughput
 

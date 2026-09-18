@@ -144,7 +144,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 
 ## LPAとMTP・制約
 
-`runtime.enforce_eager=true` が既定です。`false` は実験用のdecode Graph経路を明示的に選び、`CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAは引き続きeagerが必要で、複数系列のGraph設定はbatchingで同じ一致がfixtureで示されるまで起動設定で拒否します。これは全モデルの受入完了を意味せず、全モデルA/Bを読むまで既定はeagerのままです。
+`runtime.decode_graphs`（任意、テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAは引き続きeagerが必要で、複数系列のGraph設定はbatchingで同じ一致がfixtureで示されるまで起動設定で拒否します。これは全モデルの受入完了を意味せず、全モデルA/Bを読むまで既定はeagerのままです。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
 
 Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて検収する場合は、kごとにcacheを分けるか、kを変えたときに消してください。上のopt-inは何もcompileせず、MTPとの併用も拒否します。eagerの検査方式も `runtime.index_checks` に従い、配布既定はasyncです。
 

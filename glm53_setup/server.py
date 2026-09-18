@@ -139,7 +139,7 @@ def image_capability_checks(profile, image):
         (
             "decode_graph_support",
             "GLM53_DECODE_GRAPH_API=1",
-            not runtime["enforce_eager"],
+            settings.decode_graphs(profile),
         ),
         (
             "async_index_check_support",

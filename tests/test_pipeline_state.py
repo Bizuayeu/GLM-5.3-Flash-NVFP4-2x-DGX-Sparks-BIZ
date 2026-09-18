@@ -43,7 +43,7 @@ class PipelineStartupTests(unittest.TestCase):
             ("runtime", "pipeline_split_layer", 3),
             ("runtime", "pipeline_split_layer", 44),
             ("runtime", "expert_parallel", True),
-            ("runtime", "enforce_eager", False),
+            ("runtime", "decode_graphs", True),
             ("mtp", "enabled", True),
             ("lpa", "enabled", True),
             ("cache", "prefix_caching", True),

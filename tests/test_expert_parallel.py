@@ -36,7 +36,7 @@ class ExpertParallelConfigTests(unittest.TestCase):
             ("mtp", "enabled", True),
             ("cache", "prefix_caching", True),
             ("cache", "fused_unpack", True),
-            ("runtime", "enforce_eager", False),
+            ("runtime", "decode_graphs", True),
             ("context", "max_num_seqs", 4),
         ):
             trial = copy.deepcopy(self.profile)
@@ -63,7 +63,7 @@ class ExpertParallelConfigTests(unittest.TestCase):
             ("mtp", "enabled", True),
             ("lpa", "enabled", True),
             ("cache", "prefix_caching", True),
-            ("runtime", "enforce_eager", False),
+            ("runtime", "decode_graphs", True),
         ):
             trial = copy.deepcopy(self.profile)
             trial[section][key] = value
