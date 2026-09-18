@@ -25,7 +25,7 @@ def main(argv=None):
         type=int,
         nargs="+",
         default=[64, 2048, 8192],
-        help="input lengths; add one above the cache block (8,704) to see a hit",
+        help="input lengths (with MTP the cache block is 8,960 and a hit needs priming past 16K)",
     )
     args = parser.parse_args(argv)
     config = json.loads((args.fixture / "config.json").read_text())
