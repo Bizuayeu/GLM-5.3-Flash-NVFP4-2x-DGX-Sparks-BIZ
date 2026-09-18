@@ -32,12 +32,14 @@ def failure_details(error):
     }
 
 
-def switch(backend, launch, *, save):
+def switch(backend, launch, *, save, config=None):
     """backend operations must address explicit owned launch identities.
 
     prepare checks static assets/fabric only. start performs the post-stop memory
     check. ready checks the new head API and both rank identities. This is a
-    recoverable stop/start, not an atomic or zero-downtime deployment.
+    recoverable stop/start, not an atomic or zero-downtime deployment. config is
+    the profile text both ranks write to the launch's configuration path once
+    the new pair is complete; None leaves the remote files alone.
     """
     report = {"status": "preparing", "new": [], "stopped": [], "recovery": []}
     save(report)
@@ -155,6 +157,21 @@ def switch(backend, launch, *, save):
         raise RuntimeError(
             "Switch failed; inspect the saved cleanup and recovery result"
         ) from None
+    # Only a complete pair gets its profile file: after a recovery the old file
+    # still describes what runs. Like the ladder, a failed write is recorded
+    # and never rolls the pair back.
+    if config is not None:
+        try:
+            report["config"] = [
+                {
+                    "rank": row["rank"],
+                    **backend.install(row["rank"], row["identity"], config),
+                }
+                for row in sorted(report["new"], key=lambda row: row["rank"])
+            ]
+        except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
+            report["config"] = {"failed": True, **failure_details(error)}
+        save(report)
     # The pair is complete before the ladder runs: warmup is evidence for the
     # operator, not a readiness gate, so its failure never triggers recovery.
     try:

@@ -207,3 +207,136 @@ class ClusterOwnershipTests(unittest.TestCase):
         self.assertEqual(result["failure"]["reason"], "candidate-failed")
         backend.start.assert_not_called()
         backend.stop.assert_not_called()
+
+
+EXAMPLE = Path(__file__).resolve().parents[1] / "examples/server.example.toml"
+
+
+class ProfileInstallTests(unittest.TestCase):
+    """The rank writes the profile text it was switched to, and only that."""
+
+    def running(self, tmp, text):
+        config = Path(tmp) / "site/server.toml"
+        config.parent.mkdir()
+        launch = {
+            "manifest": server.freeze(server_config.loads(text), {}),
+            "config_path": str(config),
+        }
+        identity = cluster.rpc("reserve", 0, launch)
+        (Path(tmp) / "state").mkdir()
+        cluster.write_json(
+            Path(tmp) / "state/startup-rank0.json", {"name": identity["name"]}
+        )
+        return config, identity
+
+    def test_install_writes_the_running_profile_and_keeps_the_old_file(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            config.write_text("old = true\n", encoding="utf-8")
+            result = cluster.rpc("install", 0, {"identity": identity, "text": text})
+            self.assertEqual(config.read_bytes(), text.encode())
+            backup = Path(result["backup"])
+            self.assertEqual(backup.parent, config.parent)
+            self.assertTrue(backup.name.startswith("server.toml.bak-"))
+            self.assertTrue(backup.name.endswith("-unparsed"))
+            self.assertEqual(backup.read_text(encoding="utf-8"), "old = true\n")
+            again = cluster.rpc("install", 0, {"identity": identity, "text": text})
+            self.assertEqual(again, {"unchanged": True})
+            self.assertEqual(len(list(config.parent.iterdir())), 2)
+
+    def test_install_without_an_old_file_makes_no_backup(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            result = cluster.rpc("install", 0, {"identity": identity, "text": text})
+            self.assertEqual(result, {"written": True})
+            self.assertEqual([p.name for p in config.parent.iterdir()], ["server.toml"])
+
+    def test_install_rejects_text_that_is_not_the_running_profile(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        other = text.replace("seed = 42", "seed = 43")
+        self.assertNotEqual(text, other)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            with self.assertRaises(ValueError):
+                cluster.rpc("install", 0, {"identity": identity, "text": other})
+            self.assertFalse(config.exists())
+
+    def test_install_accepts_a_launch_time_allocator_override(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            identity["launch"]["manifest"] = server.freeze(
+                server_config.loads(text),
+                {"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"},
+            )
+            identity["fingerprint"] = identity["launch"]["manifest"]["fingerprint"]
+            cluster.write_json(Path(identity["record"]) / "identity.json", identity)
+            cluster.rpc("install", 0, {"identity": identity, "text": text})
+            self.assertEqual(config.read_bytes(), text.encode())
+
+    def test_install_needs_the_attempt_to_be_the_running_rank(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            cluster.write_json(
+                Path(tmp) / "state/startup-rank0.json", {"name": "someone-else"}
+            )
+            with self.assertRaises(ValueError):
+                cluster.rpc("install", 0, {"identity": identity, "text": text})
+            self.assertFalse(config.exists())
+
+
+class SwitchCommandTests(unittest.TestCase):
+    def run_switch(self, extra):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(
+                cluster, "switch", return_value={"status": "complete"}
+            ) as switch,
+        ):
+            cluster.main(
+                [
+                    "switch",
+                    "--config",
+                    str(EXAMPLE),
+                    "--remote-config",
+                    "/srv/glm53/state/server.toml",
+                    "--hosts",
+                    "head",
+                    "peer",
+                    "--checkout",
+                    "/srv/glm53/source",
+                    "--output",
+                    str(Path(tmp) / "out"),
+                    *extra,
+                ]
+            )
+            return switch.call_args
+
+    def test_switch_sends_the_profile_text_by_default(self):
+        call = self.run_switch([])
+        self.assertEqual(call.kwargs["config"], EXAMPLE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            call.args[1]["manifest"],
+            server.freeze(server_config.loads(call.kwargs["config"])),
+        )
+
+    def test_no_send_config_keeps_the_remote_file_untouched(self):
+        self.assertIsNone(self.run_switch(["--no-send-config"]).kwargs["config"])

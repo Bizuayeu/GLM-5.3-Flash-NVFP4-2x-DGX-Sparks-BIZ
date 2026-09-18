@@ -42,8 +42,68 @@ class Backend:
         self.calls.append(("warmup", tuple(r["identity"]["name"] for r in rows)))
         return {"skipped": True}
 
+    def install(self, rank, identity, config):
+        self.calls.append(("install", rank, identity["name"], config))
+        return {"written": True}
+
+
+def startable(backend):
+    backend.start = lambda rank, identity: backend.calls.append(
+        ("start", rank, identity["name"])
+    )
+    return backend
+
 
 class SwitchTests(unittest.TestCase):
+    def test_profile_text_reaches_both_ranks_after_the_pair_is_complete(self):
+        backend = startable(Backend())
+        reports = []
+        result = switch(
+            backend,
+            "new",
+            save=lambda r: reports.append(copy.deepcopy(r)),
+            config="text",
+        )
+        names = [call[0] for call in backend.calls]
+        self.assertEqual(
+            [c for c in backend.calls if c[0] == "install"],
+            [("install", 0, "new-0", "text"), ("install", 1, "new-1", "text")],
+        )
+        self.assertLess(names.index("ready"), names.index("install"))
+        self.assertLess(names.index("install"), names.index("warmup"))
+        self.assertEqual(
+            result["config"],
+            [{"rank": 0, "written": True}, {"rank": 1, "written": True}],
+        )
+        first = next(r for r in reports if r["status"] == "complete")
+        self.assertNotIn("config", first)
+
+    def test_no_profile_text_means_no_install(self):
+        backend = startable(Backend())
+        result = switch(backend, "new", save=lambda r: None)
+        self.assertNotIn("install", [call[0] for call in backend.calls])
+        self.assertNotIn("config", result)
+
+    def test_a_failed_switch_never_installs_the_candidate_profile(self):
+        backend = Backend()
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: None, config="text")
+        self.assertNotIn("install", [call[0] for call in backend.calls])
+
+    def test_install_failure_is_recorded_and_never_rolls_back_a_complete_pair(self):
+        backend = startable(Backend())
+
+        def broken(rank, identity, config):
+            raise OperationFailure("install", rank, "remote-operation-failed", 1)
+
+        backend.install = broken
+        result = switch(backend, "new", save=lambda r: None, config="text")
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["config"]["failed"])
+        self.assertEqual(result["config"]["failure"]["action"], "install")
+        self.assertEqual(result["recovery"], [])
+        self.assertEqual(backend.calls[-1][0], "warmup")
+
     def test_warmup_failure_is_recorded_and_never_rolls_back_a_complete_pair(self):
         backend = Backend()
         backend.start = lambda rank, identity: backend.calls.append(

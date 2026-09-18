@@ -57,6 +57,45 @@ def owned_record(identity):
     return record
 
 
+def install(rank, value):
+    """Write the profile text this rank was switched to at its recorded path."""
+    identity, text = value["identity"], value["text"]
+    owned_record(identity)
+    state = ROOT / f"state/startup-rank{rank}.json"
+    if not state.exists() or server.read_json(state)["name"] != identity["name"]:
+        raise ValueError("This attempt is not the running rank")
+    running = server.thaw(identity["launch"]["manifest"])
+    profile = server_config.loads(text)
+    # The launch may have frozen an allocator override from its environment.
+    if "cuda_allocator_conf" in running["runtime"]:
+        profile["runtime"].setdefault(
+            "cuda_allocator_conf", running["runtime"]["cuda_allocator_conf"]
+        )
+    if profile != running:
+        raise ValueError("Profile text is not the running profile")
+    path = Path(identity["launch"]["config_path"])
+    if not path.is_absolute() or path.suffix != ".toml":
+        raise ValueError("Configuration path must be an absolute .toml path")
+    result = {"written": True}
+    if path.exists():
+        old = path.read_bytes()
+        if old == text.encode():
+            return {"unchanged": True}
+        try:
+            mark = server_config.fingerprint(server_config.loads(old.decode()))[:8]
+        except ValueError:  # TOMLDecodeError and UnicodeDecodeError included
+            mark = "unparsed"
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        backup = path.with_name(f"{path.name}.bak-{stamp}-{mark}")
+        with backup.open("xb") as stream:
+            stream.write(old)
+        result["backup"] = str(backup)
+    temporary = path.with_name(path.name + ".installing")
+    temporary.write_bytes(text.encode())
+    os.replace(temporary, path)
+    return result
+
+
 def rpc(action, rank, value):
     if type(rank) is not int or rank not in (0, 1):
         raise ValueError("Invalid rank")
@@ -166,6 +205,8 @@ def rpc(action, rank, value):
                     raise
                 return {"ready": False}
         return {"ready": True}
+    if action == "install":
+        return install(rank, value)
     if action == "warmup":
         profile = server.thaw(value["launch"]["manifest"])
         if rank != 0 or not profile["generation"].get("warmup", False):
@@ -251,6 +292,9 @@ class SSHBackend:
     def stop(self, rank, identity):
         return self.call("stop", rank, identity)
 
+    def install(self, rank, identity, text):
+        return self.call("install", rank, {"identity": identity, "text": text})
+
     def warmup(self, rows):
         head = next(r for r in rows if r["rank"] == 0)
         return self.call("warmup", 0, head["identity"])
@@ -314,6 +358,12 @@ def main(argv=None):
     parser.add_argument("--config", type=Path)
     parser.add_argument(
         "--remote-config", help="Same absolute configuration path on both Linux ranks"
+    )
+    parser.add_argument(
+        "--no-send-config",
+        action="store_true",
+        help="Leave the --remote-config files as they are (default: both ranks "
+        "write the --config text there once the new pair is complete)",
     )
     parser.add_argument("--hosts", nargs=2)
     parser.add_argument(
@@ -397,15 +447,21 @@ def main(argv=None):
     if not args.remote_config.startswith("/") or not args.checkout.startswith("/"):
         parser.error("Remote paths must be absolute Linux paths")
     args.output.mkdir(parents=True, exist_ok=False)
+    # Read once: the manifest and the text the ranks write come from the same
+    # bytes. Text mode turns CRLF into LF on the way.
+    text = args.config.read_text(encoding="utf-8")
     launch = {
-        "manifest": server.freeze(server_config.load(args.config)),
+        "manifest": server.freeze(server_config.loads(text)),
         "config_path": args.remote_config,
     }
     write_json(args.output / "launch.json", launch)
     backend = SSHBackend(args.hosts, args.checkout, args.ssh_config, args.ready_timeout)
     try:
         result = switch(
-            backend, launch, save=lambda r: write_json(args.output / "result.json", r)
+            backend,
+            launch,
+            save=lambda r: write_json(args.output / "result.json", r),
+            config=None if args.no_send_config else text,
         )
     except Exception as error:
         write_json(
@@ -413,7 +469,20 @@ def main(argv=None):
             {"error": type(error).__name__, "message": str(error)},
         )
         raise
-    print(json.dumps({"status": result["status"], "output": str(args.output)}))
+    sent = result.get("config")
+    print(
+        json.dumps(
+            {
+                "status": result["status"],
+                "config": "not-sent"
+                if sent is None
+                else "failed"
+                if isinstance(sent, dict)
+                else "installed",
+                "output": str(args.output),
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

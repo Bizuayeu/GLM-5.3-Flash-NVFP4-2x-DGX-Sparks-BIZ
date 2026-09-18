@@ -20,6 +20,12 @@ def load(path):
     return profile
 
 
+def loads(text):
+    profile = tomllib.loads(text)
+    validate(profile)
+    return profile
+
+
 def decode_graphs(profile):
     """True when the profile asks for decode Graphs.
 
