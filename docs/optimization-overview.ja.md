@@ -137,8 +137,10 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 
 ## 次の候補
 
-- P06 Graphs：LPAのeager制約を解く検証と全モデル受入。位置別採択率が1.00に張り付いていない（vllm#53030の兆候でない）ことを門にする
-- P05 SM90 FA2のserving経路：部品は全候補幅で合格。切り替えにはBF16 KVの容量設計と、P03・P19・P22・候補順序の再検収が要る
+次の版では、[expertのtoken順の固定](server-configuration.ja.md#コマンド)で得たbit再現の基準の上で、効果が起動間のばらつきより小さくて見送った施策を測り直します。順序はdecode Graph→MTPの深さ→prefill向けのSM90 FA2 attention経路→attention射影のW4A16（P23）→再び深さで、各段はまず一致（同じtoken・不合格条件なし）を、次に速さを読み、fixture合格を全モデルの採否に格上げしません。
+
+- P06 Graphs：expert順を固定した4層MTP fixtureでeagerとGraphは一致（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。全モデルA/Bはdecodeを固定9標本で読み、位置別採択率が1.00に張り付いていない（vllm#53030の兆候でない）ことを門にする。LPAはeagerのまま
+- P05 SM90 FA2のserving経路：部品は全候補幅で合格し、512行で参照の約20倍速いのでprefillの候補。切り替えはpacked FP8 cacheを保ったまま候補行をBF16に展開してカーネルへ渡し（FlashInfer 0.6.18はSM90以外のFP8 MLA KVを拒否）、P03・P19・候補順序・長文検査を再検収する。LPAとの併用は拒否
 - P24 要求単位のprefix cache無登録：単体では無害な15,025 tokenのレーン4本が80,024 tokenの会話の復元分を全て消したため、[台帳](optimization-catalog.ja.md#性能施策一覧)へ起票
 - P23 BF16のまま残る射影（`self_attn*`・`shared_experts*`・`lm_head`）のFP8 weight-only：[台帳](optimization-catalog.ja.md#性能施策一覧)に候補として起票、品質が門、未着手
 - Euryale：本リポジトリ外の投機draft研究（非公開・独立プロジェクト）。標準MTP k=3との同条件比較で品質・性能・メモリ・復旧のゲートを通した場合に限り、既定の投機経路を置き換える候補。全モデルの教師採取・学習は未着手

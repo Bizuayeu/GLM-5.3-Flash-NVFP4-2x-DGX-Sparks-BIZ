@@ -137,8 +137,10 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 
 ## Next candidates
 
-- P06 Graphs: lift LPA's eager constraint and qualify on the full model; gate on per-position acceptance not being pinned at 1.00 (vllm#53030 signature)
-- P05 SM90 FA2 serving path: the component passed at full candidate width; a switch needs BF16 KV capacity planning and requalification of P03, P19, P22 and candidate order
+The next version re-measures, on the bit-reproducible baseline that the [canonical expert order](server-configuration.md#commands) gives, the measures that were set aside because their effect was smaller than the run-to-run spread. The order is decode Graphs, then the MTP depth, then the SM90 FA2 attention path for prefill, then the W4A16 attention projections (P23) and the depth again; each step is read first for identity (same tokens, no failed check) and only then for speed, and none of them is promoted from a fixture pass.
+
+- P06 Graphs: on the four-layer MTP fixture with the expert order fixed, eager and Graph runs are identical ([component validation](component-validation.md#independent-decode-graph-fixture)); the full-model A/B reads decode over nine fixed samples and gates on per-position acceptance not being pinned at 1.00 (vllm#53030 signature). LPA stays eager
+- P05 SM90 FA2 serving path: the component passed at full candidate width and is about twenty times faster than the reference at 512 query rows, so it is the candidate for prefill. A switch keeps the packed FP8 cache and unpacks candidate rows to BF16 for the kernel (FlashInfer 0.6.18 rejects FP8 MLA KV off SM90), and requalifies P03, P19, candidate order and the long-context checks; LPA is refused with it
 - P24 Per-request prefix-cache no-store: filed in the [catalog](optimization-catalog.md#performance-initiatives) after four individually harmless 15,025-token lanes evicted an 80,024-token conversation's entire cached prefix
 - P23 FP8 weight-only for the BF16 projections (`self_attn*`, `shared_experts*`, `lm_head`): candidate filed in the [catalog](optimization-catalog.md#performance-initiatives), quality-gated, not started
 - Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started
