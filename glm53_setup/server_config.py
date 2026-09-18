@@ -59,6 +59,7 @@ def validate(profile):
                     "canonical_moe_order",
                     "decode_graphs",
                     "enforce_eager",
+                    "fa2_attention",
                 },
                 "server.cache": {
                     "prefix_cache_retention_interval",
@@ -114,6 +115,11 @@ def validate(profile):
         validate_derived(profile["runtime"]["derived_checkpoint"])
     if type(profile["runtime"].get("canonical_moe_order", True)) is not bool:
         raise ValueError("runtime.canonical_moe_order must be true or false")
+    if type(profile["runtime"].get("fa2_attention", False)) is not bool:
+        raise ValueError("runtime.fa2_attention must be true or false")
+    if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
+        # LPA's skip_mla_queries hooks the reference computation only.
+        raise ValueError("runtime.fa2_attention excludes LPA")
     if "mm_processor_cache_gb" in profile["cache"]:
         size = profile["cache"]["mm_processor_cache_gb"]
         if type(size) not in (int, float) or not math.isfinite(size) or size < 0:
@@ -369,6 +375,8 @@ def environment(profile, rank):
         channels = str(profile["runtime"]["nccl_channels"])
         result["NCCL_MIN_NCHANNELS"] = channels
         result["NCCL_MAX_NCHANNELS"] = channels
+    if "fa2_attention" in profile["runtime"]:
+        result["GLM53_FA2_ATTENTION"] = str(int(profile["runtime"]["fa2_attention"]))
     if "canonical_moe_order" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(

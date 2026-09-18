@@ -51,6 +51,12 @@ def sparse_nope_reference(
             raise ValueError("Candidate points outside cache")
         if bool((physical_indices < -1).any().item()):
             raise ValueError("Only -1 is a padding index")
+    if os.environ.get("GLM53_FA2_ATTENTION") == "1":
+        # Opt-in prefill kernel; decode-sized calls continue below.
+        from glm53_setup.runtime.fa2_attention import sparse_nope_fa2, use_fa2
+
+        if use_fa2(query.shape[0]):
+            return sparse_nope_fa2(query, packed_cache, physical_indices, scale)
     output = torch.empty_like(query)
     # Default eight rows cap FP32 KV scratch at ~34 MiB for 2176 candidates.
     # The larger experimental sizes trade memory for fewer launches; they are

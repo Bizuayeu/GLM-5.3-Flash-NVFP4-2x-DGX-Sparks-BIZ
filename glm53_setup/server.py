@@ -23,6 +23,8 @@ VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/n
 # Where the reference image installs this package (build-reference); a module
 # newer than the image is bind-mounted there so a worker extension can import it.
 IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
+# The backend patch imports the reference attention from this copy.
+IMAGE_REFERENCE = "/usr/local/lib/python3.12/dist-packages/glm53_reference.py"
 
 
 def projector_path(profile, config_path):
@@ -99,6 +101,18 @@ def command(profile, config_path, rank, name, cache=None):
         # The probe is newer than the image; mount the checkout's copy.
         source = ROOT / "glm53_setup/runtime/memory_probe.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
+    if profile["runtime"].get("fa2_attention"):
+        # The FA2 path and its dispatch are newer than the image.
+        runtime = ROOT / "glm53_setup/runtime"
+        reference = runtime / "reference_attention.py"
+        args += [
+            "-v",
+            f"{runtime / 'fa2_attention.py'}:{IMAGE_PACKAGE_DIR}/runtime/fa2_attention.py:ro",
+            "-v",
+            f"{reference}:{IMAGE_PACKAGE_DIR}/runtime/reference_attention.py:ro",
+            "-v",
+            f"{reference}:{IMAGE_REFERENCE}:ro",
+        ]
     if profile["profiling"]["enabled"]:
         args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():
