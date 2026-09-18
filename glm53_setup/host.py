@@ -167,6 +167,40 @@ def memory_sample():
         return {"memory_sample_error": type(error).__name__}
 
 
+def container_memory_sample(
+    container_id, cgroup_root=Path("/sys/fs/cgroup"), proc_root=Path("/proc")
+):
+    """Observation only: what the container's own processes hold.
+
+    On GB10 the GPU shares host memory and device allocations are charged to
+    neither the cgroup nor a process, so a falling MemAvailable beside a flat
+    cgroup and flat RSS points at the device side, and rising RSS at the host side.
+    """
+    try:
+        scope = cgroup_root / "system.slice" / f"docker-{container_id}.scope"
+        sample = {
+            "container_cgroup_gib": int((scope / "memory.current").read_text())
+            / 1024**3
+        }
+        rss = anon = 0
+        for pid in (scope / "cgroup.procs").read_text().split():
+            try:
+                status = (proc_root / pid / "status").read_text()
+            except OSError:
+                continue  # exited between the two reads
+            for line in status.splitlines():
+                name, _, value = line.partition(":")
+                if name == "VmRSS":
+                    rss += int(value.split()[0])
+                elif name == "RssAnon":
+                    anon += int(value.split()[0])
+        sample["container_rss_gib"] = rss / 1024**2
+        sample["container_anon_gib"] = anon / 1024**2
+        return sample
+    except Exception as error:  # noqa: BLE001 - any unreadable sample is recorded, never raised
+        return {"container_memory_error": type(error).__name__}
+
+
 def running_containers():
     """Inspections of running containers; one that exits or is removed meanwhile is dropped.
 

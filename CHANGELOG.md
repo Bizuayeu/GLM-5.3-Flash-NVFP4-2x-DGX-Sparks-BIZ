@@ -20,6 +20,7 @@
 
 ### Changed
 
+- **The supervisor's `resources.jsonl` records the container's cgroup memory and its processes' RSS** beside `MemAvailable` every 2 seconds, so a `memory-reserve` stop can be read afterwards: flat cgroup and RSS with falling `MemAvailable` is device-side growth on GB10's shared memory, rising RSS is process growth.
 - **`validation.memory_probe`** (optional, default `false`): a worker extension whose `allocator_stats` method, reached through the dev `/collective_rpc` route, reports the torch caching allocator per rank (reserved, allocated, segments, retries, `mem_get_info`), for telling allocator growth from other host-memory growth on GB10's shared memory.
 - **`runtime.derived_checkpoint.enabled`** (optional, default `true`): `false` keeps the table in the profile and serves the pinned snapshot, so the requantized checkpoint is a one-key switch like the other measures.
 - **`runtime.decode_graphs`** (optional, template `false`) is the positive one-stop switch for decode Graphs; `runtime.enforce_eager` is still read as the earlier spelling and existing profiles keep their fingerprint.

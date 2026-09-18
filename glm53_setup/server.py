@@ -333,6 +333,7 @@ def supervise(profile, name, record, rank):
                 available = available_gib()
                 entry = {"epoch": time.time(), "available_gib": available}
                 entry.update(host.memory_sample())
+                entry.update(host.container_memory_sample(info.get("Id", "")))
                 reason = None
                 if available < profile["resources"]["reserve_gib"]:
                     reason = {"reason": "memory-reserve"}

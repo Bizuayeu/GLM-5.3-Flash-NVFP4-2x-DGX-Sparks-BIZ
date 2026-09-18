@@ -1,5 +1,6 @@
 import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -141,6 +142,32 @@ class HostContractTests(unittest.TestCase):
         with patch.object(host, "run", side_effect=["a1\n", broken, "a1\n"]):
             with self.assertRaises(subprocess.CalledProcessError):
                 host.running_containers()
+
+    def test_container_memory_sample_reads_cgroup_and_process_status(self):
+        # What told device-side growth from process growth on 2026-09-18: the
+        # cgroup and the workers' RSS stayed flat while MemAvailable fell.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scope = root / "cgroup/system.slice/docker-abc.scope"
+            scope.mkdir(parents=True)
+            (scope / "memory.current").write_text(str(3 * 1024**3))
+            (scope / "cgroup.procs").write_text("11\n12\n13\n")
+            for pid, rss, anon in ((11, 1048576, 524288), (12, 2097152, 1048576)):
+                status = root / f"proc/{pid}"
+                status.mkdir(parents=True)
+                (status / "status").write_text(
+                    f"Name:\tx\nVmRSS:\t{rss} kB\nRssAnon:\t{anon} kB\n"
+                )
+            sample = host.container_memory_sample(
+                "abc", cgroup_root=root / "cgroup", proc_root=root / "proc"
+            )
+        self.assertEqual(sample["container_cgroup_gib"], 3.0)
+        self.assertEqual(sample["container_rss_gib"], 3.0)  # pid 13 vanished: skipped
+        self.assertEqual(sample["container_anon_gib"], 1.5)
+        missing = host.container_memory_sample(
+            "nope", cgroup_root=Path("/nonexistent"), proc_root=Path("/nonexistent")
+        )
+        self.assertEqual(missing, {"container_memory_error": "FileNotFoundError"})
 
     def test_memory_sample_records_unreadable_observation_instead_of_raising(self):
         meminfo = "MemFree: 1048576 kB\n"

@@ -484,7 +484,9 @@ class ServerConfigTests(unittest.TestCase):
         with (
             patch("pathlib.Path.open", opened),
             patch.object(
-                server, "inspect_owned", return_value={"State": {"Running": True}}
+                server,
+                "inspect_owned",
+                return_value={"Id": "abc", "State": {"Running": True}},
             ),
             patch.object(server, "available_gib", side_effect=[100, reserve - 1]),
             patch.object(
@@ -492,6 +494,11 @@ class ServerConfigTests(unittest.TestCase):
                 "memory_sample",
                 return_value={"mem_free_gib": 0.01, "free_2mib_gib": 0.0},
             ),
+            patch.object(
+                server.host,
+                "container_memory_sample",
+                return_value={"container_cgroup_gib": 7.1, "container_rss_gib": 3.7},
+            ) as container,
             patch.object(server.time, "sleep") as sleep,
             patch.object(server, "write_json") as write,
             patch.object(server.host, "run"),
@@ -503,6 +510,10 @@ class ServerConfigTests(unittest.TestCase):
         for line in lines:
             self.assertEqual(line["mem_free_gib"], 0.01)
             self.assertEqual(line["free_2mib_gib"], 0.0)
+            # Flat cgroup/RSS beside a falling MemAvailable is the device side.
+            self.assertEqual(line["container_cgroup_gib"], 7.1)
+            self.assertEqual(line["container_rss_gib"], 3.7)
+        container.assert_called_with("abc")
         # A tiny MemFree alone never stops the rank; MemAvailable still does.
         self.assertEqual(sleep.call_count, 1)
         write.assert_any_call(
