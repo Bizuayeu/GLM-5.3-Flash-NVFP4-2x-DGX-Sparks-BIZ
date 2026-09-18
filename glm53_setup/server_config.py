@@ -204,8 +204,11 @@ def validate(profile):
         raise ValueError(
             "Use a supported reasoning_effort; thinking-off is unqualified"
         )
-    if profile["mtp"]["num_speculative_tokens"] not in (1, 3):
-        raise ValueError("Only MTP depths 1 and 3 have experimental coverage")
+    depth = profile["mtp"]["num_speculative_tokens"]
+    if type(depth) is not int or not 1 <= depth <= 5:
+        # 1 and 3 are measured; 2, 4 and 5 are launchable for the depth sweep
+        # (the draft is one layer, run k times, so acceptance falls with depth).
+        raise ValueError("MTP depth must be an integer from 1 to 5")
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")

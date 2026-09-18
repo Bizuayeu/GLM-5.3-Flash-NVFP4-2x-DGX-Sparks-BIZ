@@ -83,7 +83,7 @@ gpu_memory_utilization = 0.80
 
 [mtp]
 enabled = true # LPA併用には対応イメージが必要 / Combined use needs a compatible image
-num_speculative_tokens = 3 # Measured: 1, 3; other depths rejected
+num_speculative_tokens = 3 # Measured: 1, 3; 2, 4 and 5 launch for a depth sweep
 # Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
 # HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
 view = "local-views/glm53-mtp-compatible"

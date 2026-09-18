@@ -21,7 +21,8 @@
 ### Changed
 
 - **Decode Graphs may be combined with MTP and prefix caching for one sequence.** `runtime.enforce_eager = false` had been refused whenever MTP or prefix caching was on, and its capture size was fixed at `[1]`, which the pinned runtime rejects outright with MTP (decode sizes are rounded up to a multiple of `num_speculative_tokens + 1`). The launcher now passes `[num_speculative_tokens + 1]` with MTP on and `[1]` otherwise, and still refuses `max_num_seqs > 1`, LPA and synchronous index checks with Graphs. Ground: on the four-layer MTP fixture with the expert token order fixed, eager and Graph runs are identical in tokens and logprobs at every length, with and without prefix caching (component validation). Full-model speed and acceptance are not claimed.
-- `validation.run_graph_fixture` takes `--apc` (prefix caching on) and `--lengths`, and records each sample's cached tokens.
+- `validation.run_graph_fixture` takes `--apc` (prefix caching on), `--lengths` and `--seqs` (a batch of distinct prompts), and records each sample's cached tokens.
+- `mtp.num_speculative_tokens` accepts 1 to 5 instead of only the measured 1 and 3, so a depth sweep can be launched from the profile; the template keeps 3.
 - `tools/check_publication.py` fails when the version in the README headline table, in either language, is not the newest `Measurements on X.Y.Z` section of the benchmark document.
 - Private plans live under `docs/plans/`, which is now the ignored path; the audit had been counting them as public files.
 

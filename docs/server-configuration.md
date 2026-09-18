@@ -150,7 +150,7 @@ The Graph path checks internal candidate-index bounds asynchronously on the GPU.
 
 Measured CUDA A/B and indexer observations, including their validation limits, are recorded in [component validation](component-validation.md).
 
-Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting. LPA selects `runtime.lpa_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware LPA worker; old LPA images reject it.
+Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared with [prepare_mtp_view.py](../tools/prepare_mtp_view.py) and BF16 Triton drafting; `mtp.num_speculative_tokens` accepts 1 to 5, of which 1 and 3 are measured ([speculative decoding](speculative-decoding.md)) and 2, 4 and 5 launch for a depth sweep on the same one-layer draft. LPA selects `runtime.lpa_image`, mounts the projector read-only and enables the worker extension. Combined use requires an image with the explicit MTP-aware LPA worker; old LPA images reject it.
 
 LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat. General harness and production acceptance remain separate.
 

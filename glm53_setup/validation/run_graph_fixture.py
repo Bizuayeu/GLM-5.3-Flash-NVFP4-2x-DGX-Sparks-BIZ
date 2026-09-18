@@ -18,7 +18,7 @@ def main(argv=None):
     parser.add_argument("--graphs", action="store_true")
     parser.add_argument("--fused-unpack", action="store_true")
     parser.add_argument("--async-index-checks", action="store_true")
-    parser.add_argument("--mtp", type=int, choices=[1, 3])
+    parser.add_argument("--mtp", type=int, choices=[1, 2, 3, 4, 5])
     parser.add_argument("--apc", action="store_true", help="prefix caching on")
     parser.add_argument(
         "--seqs",

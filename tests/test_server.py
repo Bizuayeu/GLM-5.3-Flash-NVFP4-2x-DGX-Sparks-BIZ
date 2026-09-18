@@ -337,6 +337,23 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Graph"):
             config.validate(p)
 
+    def test_speculative_depths_one_to_five_are_accepted(self):
+        # k=2, 4 and 5 are launchable for the depth sweep; the measured choice
+        # stays in the template (RELEASE 1.6.0 Stage 2).
+        for depth in (1, 2, 3, 4, 5):
+            p = copy.deepcopy(self.profile)
+            p["mtp"]["enabled"] = True
+            p["mtp"]["num_speculative_tokens"] = depth
+            config.validate(p)
+            args = config.serve_args(p, 0, "/hf/model")
+            spec = json.loads(args[args.index("--speculative-config") + 1])
+            self.assertEqual(spec["num_speculative_tokens"], depth)
+        for depth in (0, 6, True, 2.5):
+            p = copy.deepcopy(self.profile)
+            p["mtp"]["num_speculative_tokens"] = depth
+            with self.assertRaises(ValueError):
+                config.validate(p)
+
     def test_graph_capture_size_follows_the_speculative_depth(self):
         # The pinned runtime rounds decode capture sizes up to a multiple of
         # num_speculative_tokens + 1 and rejects [1] outright with MTP on.
@@ -938,7 +955,9 @@ class ServerConfigTests(unittest.TestCase):
             ("context", "max_num_seqs", 2),
             ("context", "typo", 123),
             ("cache", "gpu_memory_utilization", float("nan")),
-            ("mtp", "num_speculative_tokens", 2),
+            ("mtp", "num_speculative_tokens", 0),
+            ("mtp", "num_speculative_tokens", 6),
+            ("mtp", "num_speculative_tokens", 2.5),
             ("lpa", "cut", 45),
             ("lpa", "tail", 0),
             ("lpa", "break_even_tokens", -1),

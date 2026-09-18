@@ -154,7 +154,7 @@ Graph経路では内部候補indexの範囲検査をGPU上で非同期に行い�
 
 CUDA融合の実モデルA/Bとindexerの採取結果・検証限界は [部品検証記録](component-validation.ja.md) を参照してください。
 
-`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したLPA workerを含むイメージが必要で、旧LPAイメージは併用指定を拒否します。
+`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受け、測定済みは1と3（[投機デコード](speculative-decoding.ja.md)）、2・4・5は同じ1層draftで深さを掃引するために起動できます。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したLPA workerを含むイメージが必要で、旧LPAイメージは併用指定を拒否します。
 
 LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。一般ハーネスや本番運用の認定は別です。
 
