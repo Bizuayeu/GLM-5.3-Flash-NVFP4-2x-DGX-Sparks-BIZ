@@ -21,6 +21,12 @@ def main(argv=None):
     parser.add_argument("--mtp", type=int, choices=[1, 3])
     parser.add_argument("--apc", action="store_true", help="prefix caching on")
     parser.add_argument(
+        "--seqs",
+        type=int,
+        default=1,
+        help="max_num_seqs; above 1 each case runs that many distinct prompts together",
+    )
+    parser.add_argument(
         "--lengths",
         type=int,
         nargs="+",
@@ -67,6 +73,7 @@ def main(argv=None):
         "async_index_checks": args.graphs or args.async_index_checks,
         "mtp": args.mtp,
         "prefix_caching": args.apc,
+        "max_num_seqs": args.seqs,
         "cases": [],
         "attention_source_sha256": hashlib.sha256(deployed).hexdigest(),
     }
@@ -84,7 +91,7 @@ def main(argv=None):
             enable_prefix_caching=args.apc,
             enable_chunked_prefill=True,
             max_model_len=16384,
-            max_num_seqs=1,
+            max_num_seqs=args.seqs,
             max_num_batched_tokens=512,
             block_size=256,
             kv_cache_dtype="fp8",
@@ -95,7 +102,9 @@ def main(argv=None):
                 "mode": CompilationMode.NONE,
                 "cudagraph_mode": "FULL_DECODE_ONLY" if args.graphs else "NONE",
                 "cudagraph_capture_sizes": [
-                    n for n in (1, 2, 4) if n <= (args.mtp or 0) + 1
+                    n
+                    for n in (1, 2, 4, 8, 16)
+                    if n <= args.seqs * ((args.mtp or 0) + 1)
                 ],
             },
             speculative_config={
@@ -138,25 +147,37 @@ def main(argv=None):
         report["status"] = "running"
         save()
         for length in args.lengths:
-            ids = (base * (length // len(base) + 1))[:length]
-            prompt = [{"prompt_token_ids": ids}]
+            # Sequence i starts i tokens further into the repeated base text, so a
+            # batch holds distinct prompts of the same length.
+            prompt = [
+                {"prompt_token_ids": (base * (length // len(base) + 2))[i : i + length]}
+                for i in range(args.seqs)
+            ]
             llm.generate(prompt, params, use_tqdm=False)
             case = {"input_tokens": length, "samples": []}
             report["cases"].append(case)
             for _ in range(3):
                 began = time.perf_counter()
-                result = llm.generate(prompt, params, use_tqdm=False)[0]
+                results = llm.generate(prompt, params, use_tqdm=False)
+                outputs = [
+                    {
+                        "cached_tokens": getattr(r, "num_cached_tokens", None),
+                        **encode_output(r),
+                    }
+                    for r in results
+                ]
                 row = {
                     "seconds": time.perf_counter() - began,
-                    "cached_tokens": getattr(result, "num_cached_tokens", None),
-                    **encode_output(result),
+                    **outputs[0],
+                    "batch": outputs[1:],
                 }
-                if len(row["token_ids"]) != 32 or not all(
-                    math.isfinite(v)
-                    for values in row["logprobs"]
-                    for v in values.values()
-                ):
-                    raise ValueError("Incomplete or nonfinite fixture output")
+                for output in outputs:
+                    if len(output["token_ids"]) != 32 or not all(
+                        math.isfinite(v)
+                        for values in output["logprobs"]
+                        for v in values.values()
+                    ):
+                        raise ValueError("Incomplete or nonfinite fixture output")
                 case["samples"].append(row)
                 save()
             print(length, "generated", flush=True)
