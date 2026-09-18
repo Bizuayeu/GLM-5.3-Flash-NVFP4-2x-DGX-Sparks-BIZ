@@ -72,6 +72,8 @@ Graphのtraceでは、hostのGraph launchが31回、eagerでは0回でした。�
 
 **判断: capture／replayは実証しましたが、数値面の受け入れと全モデルへの展開は保留し、既定はoffとします。** 終了コード0を受け入れと見なさず、不一致はそのまま残します。実測した速度差が小さいため、他の独立した施策を優先します。全モデルでdispatch削減が有効だという証拠が出た時点で再開し、受け入れ前に同一の強制token prefixでattention／KDAなどの状態差を切り分けます。全モデルのGraph、既定での有効化、LPA/MTPとの併用は未検収です。候補imageは `eb30095` から両ノードで同一にビルドし、`sha256:e18f7ae02e96beeb9af954a4e5600ce6ff534d9f91a9fcc2e440a4d91350c494` としました。全モデルのGraph試験は未実施で、通常のprofileも置き換えていません。
 
+**2026-09-18、expertのtoken順を固定して読み直し**（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#コマンド)有効）。byte検証済みの4層MTP fixture（MTP k=3・融合unpack・非同期index検査・FP8 KV 512 MiB・seed 42・temperature 0）で同じdriverをeager 2回・`FULL_DECODE_ONLY` decode Graph 2回（captureしたdecode形状は4 tokenの1つ、Graph launchは各122）回したところ、64／2,048／8,192 tokenのすべてで生成32 tokenとtop-10 logprobが、各実行内でも全実行対でも一致しました（以前の2Kのtieも割れません）。prefix cacheを有効にした4回（うち2回は12,288 tokenを追加）も一致しましたが、この fixture のMTP時のblockは8,960 tokenで、hitには16,384のcontextを超えるprimingが要るためcache hitは一度も起きておらず、hit経路そのものは未検証です。2026-09-12の分岐はexpert順の揺れであってGraphの差ではなかったと読みます。結果として起動設定は、同時1シーケンスならMTP・prefix cacheとGraphの併用を受け、capture sizeを投機の深さから決めます（[起動設定](server-configuration.ja.md#lpaとmtp制約)）。batching・LPA・TP=2のcollectiveはGraphでは未検収のままで、全モデルの速度と採否は別のA/Bです。
+
 ## padding付きnative attentionの直接試験
 
 非公開run `native-attention-v15` では、全モデルのサーバーを停止した後、同じ `e18f7ae…` imageで公開FlashInferのsparse MLA APIを試験しました。実際のFP8 cache packing、64次元の零RoPE、GLMの `arbitrary_fp32` scaleを使い、候補はすべて保持しています。driver SHA256: `4c41525d85ca5ba148cbd98d8c53241cf5e00817e47cd373c7089dc14f93fef6`、module: `glm53_setup.validation.benchmark_native_attention`。

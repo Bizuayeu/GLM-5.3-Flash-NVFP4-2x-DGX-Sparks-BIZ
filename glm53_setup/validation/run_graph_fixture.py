@@ -19,6 +19,14 @@ def main(argv=None):
     parser.add_argument("--fused-unpack", action="store_true")
     parser.add_argument("--async-index-checks", action="store_true")
     parser.add_argument("--mtp", type=int, choices=[1, 3])
+    parser.add_argument("--apc", action="store_true", help="prefix caching on")
+    parser.add_argument(
+        "--lengths",
+        type=int,
+        nargs="+",
+        default=[64, 2048, 8192],
+        help="input lengths; add one above the cache block (8,704) to see a hit",
+    )
     args = parser.parse_args(argv)
     config = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
@@ -53,11 +61,12 @@ def main(argv=None):
 
     report = {
         "status": "loading",
-        "scope": "four-layer fixture, no LPA; MTP/fusion recorded separately",
+        "scope": "four-layer fixture, no LPA; MTP/fusion/prefix caching recorded separately",
         "graphs_requested": args.graphs,
         "fused_unpack": args.fused_unpack,
         "async_index_checks": args.graphs or args.async_index_checks,
         "mtp": args.mtp,
+        "prefix_caching": args.apc,
         "cases": [],
         "attention_source_sha256": hashlib.sha256(deployed).hexdigest(),
     }
@@ -72,7 +81,7 @@ def main(argv=None):
             tensor_parallel_size=1,
             language_model_only=True,
             enforce_eager=not args.graphs,
-            enable_prefix_caching=False,
+            enable_prefix_caching=args.apc,
             enable_chunked_prefill=True,
             max_model_len=16384,
             max_num_seqs=1,
@@ -128,7 +137,7 @@ def main(argv=None):
         )
         report["status"] = "running"
         save()
-        for length in (64, 2048, 8192):
+        for length in args.lengths:
             ids = (base * (length // len(base) + 1))[:length]
             prompt = [{"prompt_token_ids": ids}]
             llm.generate(prompt, params, use_tqdm=False)
@@ -137,7 +146,11 @@ def main(argv=None):
             for _ in range(3):
                 began = time.perf_counter()
                 result = llm.generate(prompt, params, use_tqdm=False)[0]
-                row = {"seconds": time.perf_counter() - began, **encode_output(result)}
+                row = {
+                    "seconds": time.perf_counter() - began,
+                    "cached_tokens": getattr(result, "num_cached_tokens", None),
+                    **encode_output(result),
+                }
                 if len(row["token_ids"]) != 32 or not all(
                     math.isfinite(v)
                     for values in row["logprobs"]

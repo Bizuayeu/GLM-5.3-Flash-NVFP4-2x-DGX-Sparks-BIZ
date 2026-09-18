@@ -326,16 +326,39 @@ class ServerConfigTests(unittest.TestCase):
                 config.validate(self.profile)
 
     def test_graph_combination_scope_is_explicit_until_integration(self):
-        for section, key, value in (
-            ("mtp", "enabled", True),
-            ("cache", "prefix_caching", True),
-            ("context", "max_num_seqs", 2),
-        ):
-            p = copy.deepcopy(self.profile)
-            p["runtime"]["enforce_eager"] = False
-            p[section][key] = value
-            with self.assertRaisesRegex(ValueError, "Graph"):
-                config.validate(p)
+        # One sequence with MTP and prefix caching was qualified on the MTP fixture
+        # (records/20260918-stage1-graph); batching was not.
+        p = copy.deepcopy(self.profile)
+        p["runtime"]["enforce_eager"] = False
+        p["mtp"]["enabled"] = True
+        p["cache"]["prefix_caching"] = True
+        config.validate(p)
+        p["context"]["max_num_seqs"] = 2
+        with self.assertRaisesRegex(ValueError, "Graph"):
+            config.validate(p)
+
+    def test_graph_capture_size_follows_the_speculative_depth(self):
+        # The pinned runtime rounds decode capture sizes up to a multiple of
+        # num_speculative_tokens + 1 and rejects [1] outright with MTP on.
+        self.profile["runtime"]["enforce_eager"] = False
+        self.profile["mtp"]["enabled"] = True
+        self.profile["mtp"]["num_speculative_tokens"] = 3
+        config.validate(self.profile)
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertEqual(
+            json.loads(args[args.index("--compilation-config") + 1])[
+                "cudagraph_capture_sizes"
+            ],
+            [4],
+        )
+        self.profile["mtp"]["enabled"] = False
+        args = config.serve_args(self.profile, 0, "/hf/model")
+        self.assertEqual(
+            json.loads(args[args.index("--compilation-config") + 1])[
+                "cudagraph_capture_sizes"
+            ],
+            [1],
+        )
 
     def test_component_worker_is_an_explicit_independent_diagnostic(self):
         self.profile["validation"]["component_worker"] = True

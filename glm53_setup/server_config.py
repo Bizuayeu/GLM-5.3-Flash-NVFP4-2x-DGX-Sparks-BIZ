@@ -220,14 +220,14 @@ def validate(profile):
         raise ValueError("Invalid projector_sha256")
     if lpa["enabled"] and not profile["runtime"]["enforce_eager"]:
         raise ValueError("LPA requires eager execution")
-    if not profile["runtime"]["enforce_eager"] and (
-        profile["mtp"]["enabled"]
-        or profile["cache"]["prefix_caching"]
-        or profile["context"]["max_num_seqs"] != 1
+    if (
+        not profile["runtime"]["enforce_eager"]
+        and profile["context"]["max_num_seqs"] != 1
     ):
-        # cc-defer: independent serial target Graph evaluation only; extend after
-        # the corresponding MTP/APC/batching integration is qualified.
-        raise ValueError("Graph experiments require one sequence, no MTP/prefix cache")
+        # cc-defer: one sequence only (MTP k=3 and prefix caching were qualified on
+        # the MTP fixture, records/20260918-stage1-graph); extend to batching after
+        # a fixture with max_num_seqs > 1 shows the same eager/graph identity.
+        raise ValueError("Graph experiments require one sequence")
     for rank in (0, 1):
         host.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
@@ -457,7 +457,13 @@ def serve_args(profile, rank, model_path):
                 {
                     "mode": 0,  # CompilationMode.NONE in the pinned runtime.
                     "cudagraph_mode": "FULL_DECODE_ONLY",
-                    "cudagraph_capture_sizes": [1],
+                    # The pinned runtime rounds decode sizes up to a multiple of
+                    # num_speculative_tokens + 1 and rejects a list with none.
+                    "cudagraph_capture_sizes": [
+                        1 + profile["mtp"]["num_speculative_tokens"]
+                        if profile["mtp"]["enabled"]
+                        else 1
+                    ],
                 }
             ),
         ]
