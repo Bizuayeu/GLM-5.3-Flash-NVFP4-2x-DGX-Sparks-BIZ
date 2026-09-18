@@ -32,7 +32,7 @@
 | 投機・近似 | MTP k=3。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
-| MoEのtoken順 | `canonical_moe_order = true`：expert内のtoken順を一つに固定し、同一要求の反復を一致させる。この版から作った参照imageが要る |
+| MoEのtoken順 | `canonical_moe_order = true`：expert内のtoken順を一つに固定し、同一要求の反復を一致させる。この版から作った参照imageが要る（参照機では2026-09-18から配信中） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
@@ -61,7 +61,7 @@
 
 `runtime.nccl_channels`（任意、未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。各rankのエンジンはcommunicatorを2本開き、MTU 1500で8本にすると、実モデルの最小空きメモリが64本に比べてheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（1%速い）。decodeは設定の差より計測ごとのぶれの方が大きい値でした。数値は[チャネル数の測定](nccl-validation.ja.md#チャネル数)にあります。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択とfingerprintをそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。
 
-`runtime.canonical_moe_order`（任意。テンプレートは `true`。未指定はimageの既定に従い、この版から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（[測定](validation.ja.md#フルモデルtp2の実験範囲)、上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。このとき `server preflight` はimageに `GLM53_MOE_ORDER_API=1` を要求するので、古いimageには指定できません。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。8層fixtureでは全反復がbit一致になり、prefillは変わらず、decodeは約1%遅くなりました。全モデルでは未計測です。既定で有効にしているのは、今後graphや再量子化のA/Bを読む物差しとして、再現できる基準が要るためです。
+`runtime.canonical_moe_order`（任意。テンプレートは `true`。未指定はimageの既定に従い、この版から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（[測定](validation.ja.md#フルモデルtp2の実験範囲)、上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。このとき `server preflight` はimageに `GLM53_MOE_ORDER_API=1` を要求するので、古いimageには指定できません。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。8層fixtureでは全反復がbit一致になり、prefillは変わらず、decodeは約1%遅くなりました。参照機では同一要求がbit一致で反復し、decodeは遅くならず、MTPの採択長は上がりました（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。既定で有効にしているのは、今後graphや再量子化のA/Bを読む物差しとして、再現できる基準が要るためです。
 
 `runtime.derived_checkpoint`（任意のtable、既定では無し。持たないprofileのfingerprintは変わらない）は、固定checkpointを手元で再量子化した複製をA/B用に配信します。`path`（両hostの絶対ディレクトリ。`/derived` に読み取り専用でmount）、`requant_target`（そのディレクトリの `quantization_config.producer.requant_target` と照合）、`overlays`（`{target, source, sha256, base_sha256, marker}` の列。`source` は絶対パスのファイルで、image内のGLMモデルディレクトリの `target` に重ねてmount）を取ります。`server preflight` は、checkpointが `MIXED_PRECISION` とそのtargetを宣言していること、MTP draft層に量子化宣言が無いこと、各overlayが指定のSHA-256でmarkerを含むこと、image内の `target` が `base_sha256` であることを確かめ、どれか一つでも違えば失敗します。別のimage向けに作ったoverlayはmountできません。derived checkpointではMTPのメタデータviewを使いません。`MIXED_PRECISION` では宣言の無いmodule（BF16のdraft層を含む）が無量子化で読まれるためです。テンプレートにこのtableはありません。参照機では[施策台帳](optimization-catalog.ja.md)のP23の比較で一度使いました。
 
