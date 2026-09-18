@@ -27,7 +27,7 @@ def projector_path(profile, config_path):
 
 
 def model_path(profile, cache):
-    derived = profile["runtime"].get("derived_checkpoint")
+    derived = settings.derived_checkpoint(profile)
     if derived:
         # Undeclared modules resolve unquantized under MIXED_PRECISION, so the
         # BF16 draft layer needs no metadata view.
@@ -83,7 +83,7 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
     ]
-    derived = profile["runtime"].get("derived_checkpoint")
+    derived = settings.derived_checkpoint(profile)
     if derived:
         args += ["-v", f"{derived['path']}:/derived:ro"]
         for overlay in derived["overlays"]:
@@ -161,7 +161,7 @@ def image_capability_checks(profile, image):
 
 def derived_checks(profile, metadata):
     """Fail closed unless the checkpoint and each overlay are the declared ones."""
-    derived = profile["runtime"].get("derived_checkpoint")
+    derived = settings.derived_checkpoint(profile)
     if not derived:
         return {}
     quantization = metadata.get("quantization_config") or {}
@@ -222,7 +222,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         "num_hidden_layers"
     ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
     checks.update(derived_checks(profile, metadata))
-    if profile["mtp"]["enabled"] and "derived_checkpoint" not in profile["runtime"]:
+    if profile["mtp"]["enabled"] and not settings.derived_checkpoint(profile):
         view = metadata.get("_local_mtp_metadata", {})
         checks["mtp_view"] = (
             view.get("source_revision") == lock["revision"]

@@ -783,6 +783,26 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"].pop("derived_checkpoint")
         self.assertEqual(config.fingerprint(self.profile), before)
 
+    def test_derived_checkpoint_enabled_false_serves_the_pinned_snapshot(self):
+        # The table can stay in the profile with its switch off (one-stop
+        # true/false); only a boolean is accepted.
+        self.profile["mtp"]["enabled"] = True
+        with tempfile.TemporaryDirectory() as tmp:
+            derived = self.derived(Path(tmp).resolve())
+            derived["enabled"] = False
+            self.profile["runtime"]["derived_checkpoint"] = derived
+            config.validate(self.profile)
+            self.assertIsNone(config.derived_checkpoint(self.profile))
+            args = server.command(
+                self.profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
+            )
+            self.assertNotIn("/derived", args)
+            derived["enabled"] = True
+            self.assertEqual(config.derived_checkpoint(self.profile), derived)
+            derived["enabled"] = "no"
+            with self.assertRaisesRegex(ValueError, "enabled"):
+                config.validate(self.profile)
+
     def test_command_serves_a_derived_checkpoint_with_its_overlays(self):
         self.profile["mtp"]["enabled"] = True
         with tempfile.TemporaryDirectory() as tmp:

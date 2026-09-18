@@ -260,15 +260,25 @@ def validate(profile):
             raise ValueError(f"Invalid api.{key}")
 
 
+def derived_checkpoint(profile):
+    """The derived-checkpoint table when present and switched on, else None."""
+    derived = profile["runtime"].get("derived_checkpoint")
+    if derived and derived.get("enabled", True):
+        return derived
+    return None
+
+
 def validate_derived(derived):
     """A locally requantized checkpoint and the source overlays it needs to boot."""
     name = "runtime.derived_checkpoint"
-    if not isinstance(derived, dict) or derived.keys() != {
+    if not isinstance(derived, dict) or derived.keys() - {"enabled"} != {
         "path",
         "requant_target",
         "overlays",
     }:
         raise ValueError(f"Unknown/missing settings in {name}")
+    if type(derived.get("enabled", True)) is not bool:
+        raise ValueError(f"{name}.enabled must be true or false")
 
     def absolute(value):
         return isinstance(value, str) and PurePosixPath(value).is_absolute()
