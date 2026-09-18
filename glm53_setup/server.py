@@ -20,6 +20,9 @@ from .io import read_json, write_json
 LABEL = "glm53.experiment.startup"
 # Where the pinned image keeps the GLM model sources that overlays replace.
 VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia"
+# Where the reference image installs this package (build-reference); a module
+# newer than the image is bind-mounted there so a worker extension can import it.
+IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
 
 
 def projector_path(profile, config_path):
@@ -92,6 +95,10 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["lpa"]["enabled"]:
         target = "/lpa/projector.pt"
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
+    if profile["validation"].get("memory_probe"):
+        # The probe is newer than the image; mount the checkout's copy.
+        source = ROOT / "glm53_setup/runtime/memory_probe.py"
+        args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
     if profile["profiling"]["enabled"]:
         args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():

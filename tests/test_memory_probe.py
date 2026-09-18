@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from glm53_setup import server
 from glm53_setup import server_config as config
 from glm53_setup.runtime.memory_probe import MemoryProbeWorker, summarize
 
@@ -65,6 +66,16 @@ class MemoryProbeTests(unittest.TestCase):
             "glm53_setup.runtime.memory_probe.MemoryProbeWorker",
         )
         self.assertIn("--enable-prefix-caching", args)  # nothing else changes
+        command = server.command(
+            profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
+        )
+        self.assertTrue(
+            any(
+                v.endswith(":/opt/glm53/glm53_setup/runtime/memory_probe.py:ro")
+                for v in command
+            ),
+            command,
+        )
         for section, key in (
             ("lpa", "enabled"),
             ("validation", "component_worker"),
