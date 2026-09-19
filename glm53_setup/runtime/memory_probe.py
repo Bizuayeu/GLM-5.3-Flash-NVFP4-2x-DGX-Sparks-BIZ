@@ -299,10 +299,16 @@ class MemoryProbeWorker:
 
             return after
 
-        models = {"": self.get_model()}
-        drafter = getattr(getattr(self, "model_runner", None), "drafter", None)
-        if getattr(drafter, "model", None) is not None:
-            models["draft:"] = drafter.model
+        # The draft model hangs off the runner under a version-dependent name:
+        # take every other torch module reachable one attribute deep.
+        main = self.get_model()
+        models = {"": main}
+        runner = getattr(self, "model_runner", None)
+        for attribute, holder in vars(runner).items() if runner is not None else ():
+            for candidate in (holder, getattr(holder, "model", None)):
+                if isinstance(candidate, torch.nn.Module) and candidate is not main:
+                    if all(candidate is not known for known in models.values()):
+                        models[f"{attribute}:"] = candidate
         for prefix, model in models.items():
             for name, module in model.named_modules():
                 if pattern.search(name):
