@@ -340,3 +340,59 @@ class SwitchCommandTests(unittest.TestCase):
 
     def test_no_send_config_keeps_the_remote_file_untouched(self):
         self.assertIsNone(self.run_switch(["--no-send-config"]).kwargs["config"])
+
+
+class ReadinessPollTests(unittest.TestCase):
+    def poll(self, tail, full):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        calls = []
+
+        def logs(args, **kwargs):
+            calls.append(args)
+            return tail if "--tail" in args else full
+
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+        ):
+            launch = {
+                "manifest": server.freeze(server_config.loads(text), {}),
+                "config_path": "/srv/glm53/state/server.toml",
+            }
+            identity = cluster.rpc("reserve", 0, launch)
+            (Path(tmp) / "state").mkdir()
+            cluster.write_json(
+                Path(tmp) / "state/startup-rank0.json", {"name": identity["name"]}
+            )
+            with (
+                patch.object(
+                    cluster,
+                    "inspect_attempt",
+                    return_value={"State": {"Running": True}},
+                ),
+                patch.object(cluster.subprocess, "check_output", side_effect=logs),
+                patch.object(
+                    cluster.model_http, "open_response", return_value=response
+                ),
+            ):
+                return cluster.rpc("poll", 0, identity), calls
+
+    def test_a_long_running_head_is_ready_after_its_startup_line_left_the_tail(self):
+        # The supervisor reads /metrics every two seconds; the access log pushes the
+        # startup line out of the last 200 lines within minutes, and a resume
+        # then never confirmed a healthy pair.
+        noise = b"GET /metrics HTTP/1.1 200 OK\n" * 200
+        result, calls = self.poll(noise, b"Application startup complete.\n" + noise)
+        self.assertEqual(result, {"ready": True})
+        self.assertEqual(len(calls), 2)
+
+    def test_a_fresh_head_reads_only_the_tail(self):
+        result, calls = self.poll(b"Application startup complete.\n", b"")
+        self.assertEqual(result, {"ready": True})
+        self.assertEqual(len(calls), 1)
+
+    def test_a_head_that_never_logged_startup_is_not_ready(self):
+        result, _ = self.poll(b"loading\n", b"loading\n")
+        self.assertEqual(result, {"ready": False})

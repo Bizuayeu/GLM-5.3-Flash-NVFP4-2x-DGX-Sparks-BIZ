@@ -189,11 +189,19 @@ def rpc(action, rank, value):
             return {"ready": False}
         if rank == 0:
             profile = server.thaw(value["launch"]["manifest"])
-            logs = subprocess.check_output(
-                ["docker", "logs", "--tail", "200", value["name"]],
-                stderr=subprocess.STDOUT,
-            )
-            if b"Application startup complete" not in logs:
+            # The tail answers a starting head cheaply. A head that has served
+            # for minutes has pushed the line out of it (the supervisor reads
+            # /metrics every two seconds), so a resume reads the whole log.
+            started = False
+            for window in (["--tail", "200"], []):
+                logs = subprocess.check_output(
+                    ["docker", "logs", *window, value["name"]],
+                    stderr=subprocess.STDOUT,
+                )
+                if b"Application startup complete" in logs:
+                    started = True
+                    break
+            if not started:
                 return {"ready": False}
             try:
                 with model_http.open_response(

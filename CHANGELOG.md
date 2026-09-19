@@ -20,6 +20,7 @@
 
 ### Fixed
 
+- **`cluster resume` can confirm a pair that has been serving for a while.** The head's readiness poll looked for the startup line in the last 200 log lines only; the supervisor's `/metrics` reads push it out of that window within minutes, so a resume after a lost observation never saw the head as ready. The poll reads the whole log when the tail lacks the line.
 - **The fused FP8 unpack kernel no longer compiles one kernel per input size.** Its element count was a `tl.constexpr`, so every distinct size compiled and kept its own Triton kernel. The reference attention always unpacks the same few sizes, so nothing showed; with `runtime.fa2_attention` the number of distinct cache rows differs on every call, and each serving worker gained about 0.2 MiB of heap per call (about 100 MiB per 100K-token prefill, 0.15 to 0.4 GiB per 256K request, never returned) while `~/.cache/triton` gained one kernel directory per call. The count is a run-time argument now; results are bit-identical.
 
 ### Changed
