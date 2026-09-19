@@ -235,7 +235,128 @@ def fa2_stage(stage):
     return stage
 
 
+TRACED = r"(^|\.)(embed_tokens|norm|lm_head|layers\.\d+(\.[A-Za-z_]+){0,2})$"
+
+
+def trace_differences(reference, rows, limit=24):
+    """Compare two fingerprint sequences of one request, in execution order.
+
+    Each entry is ``[module, rows, fingerprint]``. Identical requests make the
+    same calls until something differs, so the first differing entry names the
+    module that made the difference: everything executed before it matched.
+    """
+    differing = []
+    modules = {}
+    for order, (old, new) in enumerate(zip(reference, rows)):
+        if old != new:
+            if len(differing) < limit:
+                differing.append(
+                    {"order": order, "module": new[0], "rows": new[1], "was": old[:2]}
+                )
+            modules[new[0]] = modules.get(new[0], 0) + 1
+    return {
+        "calls": [len(reference), len(rows)],
+        "first": differing[0] if differing else None,
+        "differing": differing,
+        "modules": dict(sorted(modules.items(), key=lambda item: -item[1])[:limit]),
+    }
+
+
 class MemoryProbeWorker:
+    def trace_begin(self):
+        """Fingerprint every traced module output (and the token ids) of what runs next.
+
+        Fingerprints are two byte sums kept on the GPU, so a whole request fits
+        where clones of the outputs would not.
+        """
+        import re
+
+        import torch
+
+        pattern = re.compile(TRACED)
+        state = {"handles": [], "names": [], "rows": [], "prints": []}
+
+        def fingerprint(tensor):
+            data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
+            return data.sum(dtype=torch.int64) * 1000003 + data[1::3].sum(
+                dtype=torch.int64
+            )
+
+        def note(name, tensor):
+            state["names"].append(name)
+            state["rows"].append(int(tensor.shape[0]) if tensor.ndim else 1)
+            state["prints"].append(fingerprint(tensor))
+
+        def hook(name):
+            def after(module, args, output):
+                if name.endswith("embed_tokens") and args:
+                    note(name + ":input_ids", args[0])
+                items = output if isinstance(output, (tuple, list)) else [output]
+                for item in items:
+                    if isinstance(item, torch.Tensor) and item.is_floating_point():
+                        note(name, item)
+                        break
+
+            return after
+
+        models = {"": self.get_model()}
+        drafter = getattr(getattr(self, "model_runner", None), "drafter", None)
+        if getattr(drafter, "model", None) is not None:
+            models["draft:"] = drafter.model
+        for prefix, model in models.items():
+            for name, module in model.named_modules():
+                if pattern.search(name):
+                    state["handles"].append(
+                        module.register_forward_hook(hook(prefix + name))
+                    )
+        self.probe_trace = state
+        return {
+            "rank": self.rank,
+            "hooked": len(state["handles"]),
+            "models": list(models),
+        }
+
+    def trace_end(self, keep=False):
+        """Stop tracing; ``keep`` stores the run as the reference, otherwise compare to it."""
+        import torch
+
+        state = self.__dict__.pop("probe_trace")
+        for handle in state["handles"]:
+            handle.remove()
+        prints = torch.stack(state["prints"]).cpu().tolist() if state["prints"] else []
+        rows = [list(item) for item in zip(state["names"], state["rows"], prints)]
+        if keep:
+            self.probe_reference = rows
+            return {"rank": self.rank, "kept": len(rows)}
+        return {"rank": self.rank, **trace_differences(self.probe_reference, rows)}
+
+    def zero_moe_scratch(self):
+        """Diagnostic: hand the Marlin MoE kernel zeroed scratch buffers on every call.
+
+        If repeats become identical, the kernel reads scratch memory it did not write.
+        """
+        from vllm.model_executor.layers.fused_moe.experts import marlin_moe
+
+        if not hasattr(self, "probe_zeroed"):
+            original = marlin_moe.fused_marlin_moe
+            self.probe_zeroed = counts = {"calls": 0, "buffers": 0}
+
+            def zeroed(*args, **kwargs):
+                counts["calls"] += 1
+                for key in (
+                    "intermediate_cache13",
+                    "intermediate_cache2",
+                    "output",
+                    "workspace",
+                ):
+                    if kwargs.get(key) is not None:
+                        kwargs[key].zero_()
+                        counts["buffers"] += 1
+                return original(*args, **kwargs)
+
+            marlin_moe.fused_marlin_moe = zeroed
+        return {"rank": self.rank, **self.probe_zeroed}
+
     def fa2_stage(self, stage):
         return {"rank": self.rank, "stage": fa2_stage(stage)}
 

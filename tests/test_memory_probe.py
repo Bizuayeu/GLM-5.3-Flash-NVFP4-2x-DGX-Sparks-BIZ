@@ -171,6 +171,38 @@ class MemoryProbeTests(unittest.TestCase):
         self.assertEqual(row["top_types"]["Tensor"], 3)
         self.assertEqual(row["objects"], 4)
 
+    def test_trace_names_the_first_differing_call_in_execution_order(self):
+        from glm53_setup.runtime.memory_probe import trace_differences
+
+        reference = [["embed_tokens", 5, 1], ["layers.0.mlp", 5, 7], ["lm_head", 5, 9]]
+        same = trace_differences(reference, [list(row) for row in reference])
+        self.assertIsNone(same["first"])
+        self.assertEqual(same["modules"], {})
+        moved = [["embed_tokens", 5, 1], ["layers.0.mlp", 5, 8], ["lm_head", 5, 10]]
+        result = trace_differences(reference, moved)
+        self.assertEqual(result["first"]["module"], "layers.0.mlp")
+        self.assertEqual(result["first"]["order"], 1)
+        self.assertEqual(result["modules"], {"layers.0.mlp": 1, "lm_head": 1})
+        self.assertEqual(result["calls"], [3, 3])
+
+    def test_trace_covers_layers_and_two_levels_below_them(self):
+        import re
+
+        from glm53_setup.runtime.memory_probe import TRACED
+
+        pattern = re.compile(TRACED)
+        for name in (
+            "model.embed_tokens",
+            "model.layers.3",
+            "model.layers.3.self_attn",
+            "model.layers.3.mlp.experts",
+            "lm_head",
+            "model.norm",
+        ):
+            self.assertTrue(pattern.search(name), name)
+        for name in ("model", "model.layers", "model.layers.3.mlp.experts.w13"):
+            self.assertFalse(pattern.search(name), name)
+
     def test_profile_key_mounts_the_probe_and_stays_exclusive(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn(
