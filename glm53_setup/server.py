@@ -102,10 +102,14 @@ def command(profile, config_path, rank, name, cache=None):
         source = ROOT / "glm53_setup/runtime/memory_probe.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
     if profile["runtime"].get("fa2_attention"):
-        # The FA2 path and its dispatch are newer than the image.
+        # The FA2 path and its dispatch are newer than the image, and so is the
+        # fused unpack that takes its element count at run time: the image's
+        # copy compiles one kernel per size, which FA2's varying row counts leak.
         runtime = ROOT / "glm53_setup/runtime"
         reference = runtime / "reference_attention.py"
         args += [
+            "-v",
+            f"{runtime / 'fused_unpack.py'}:{IMAGE_PACKAGE_DIR}/runtime/fused_unpack.py:ro",
             "-v",
             f"{runtime / 'fa2_attention.py'}:{IMAGE_PACKAGE_DIR}/runtime/fa2_attention.py:ro",
             "-v",

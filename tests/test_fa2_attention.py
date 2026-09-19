@@ -43,6 +43,8 @@ class Fa2SwitchTests(unittest.TestCase):
         for target in (
             ":/opt/glm53/glm53_setup/runtime/fa2_attention.py:ro",
             ":/opt/glm53/glm53_setup/runtime/reference_attention.py:ro",
+            # The image's copy compiles one kernel per size; FA2 needs the fixed one.
+            ":/opt/glm53/glm53_setup/runtime/fused_unpack.py:ro",
             ":/usr/local/lib/python3.12/dist-packages/glm53_reference.py:ro",
         ):
             self.assertTrue(any(v.endswith(target) for v in command), target)
