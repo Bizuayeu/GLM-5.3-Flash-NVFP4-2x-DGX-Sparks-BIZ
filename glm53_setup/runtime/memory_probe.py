@@ -118,7 +118,8 @@ def census(limit=12):
     storages = set()
     for item in gc.get_objects():
         counts[type(item).__name__] += 1
-        if isinstance(item, torch.Tensor) and item.device.type == "cpu":
+        # type(), not isinstance(): a dead weakref proxy raises on __class__.
+        if issubclass(type(item), torch.Tensor) and item.device.type == "cpu":
             tensors += 1
             storage = item.untyped_storage()
             if storage.data_ptr() not in storages:
@@ -132,17 +133,29 @@ def census(limit=12):
     }
 
 
-FA2_STAGES = ("off", "compact", "plan", "full")
+FA2_STAGES = (
+    "off",
+    "unique",
+    "mask",
+    "lengths",
+    "unpack",
+    "bitmap",
+    "compact",
+    "plan",
+    "full",
+)
 _fa2_original = {}
 
 
 def fa2_stage(stage):
     """Run only part of the FA2 path in this process, the rest on the reference path.
 
-    ``off`` is the reference computation, ``compact`` adds the distinct-row
-    compaction, its host copy and the BF16 unpack, ``plan`` adds FlashInfer's
-    ``plan()``, ``full`` restores the real function. The partial stages throw
-    their work away, so the served numbers are the reference path's.
+    ``off`` is the reference computation. ``unique``, ``mask``, ``lengths`` and
+    ``unpack`` each add one operation of the compaction alone; ``bitmap`` is a
+    compaction without ``torch.unique``; ``compact`` is the whole compaction,
+    ``plan`` adds FlashInfer's ``plan()``, ``full`` restores the real function.
+    The partial stages throw their work away, so the served numbers are the
+    reference path's.
     """
     import torch
 
@@ -158,19 +171,42 @@ def fa2_stage(stage):
         return stage
     inner = []
 
+    def unpack(query, flat_cache, rows):
+        ckv = torch.empty(
+            (rows.numel(), 1, 512), dtype=torch.bfloat16, device=query.device
+        )
+        for start in range(0, rows.numel(), fa2.UNPACK_ROWS):
+            part = rows[start : start + fa2.UNPACK_ROWS].long()
+            ckv[start : start + part.numel(), 0] = unpack_latent(flat_cache[part])
+
     def partial(query, packed_cache, physical_indices, scale):
         import glm53_reference
 
         if stage != "off":
+            flat_cache = packed_cache.reshape(-1, 656)
+            valid = physical_indices >= 0
+        if stage == "unique":
+            torch.unique(physical_indices.clamp_min(0), return_inverse=True)
+        elif stage == "mask":
+            physical_indices[valid].to(torch.int32)
+        elif stage == "lengths":
+            valid.sum(dim=1).to(torch.int32).to("cpu")
+        elif stage == "unpack":
+            unpack(query, flat_cache, physical_indices[:, -1].clamp_min(0))
+        elif stage == "bitmap":
+            used = torch.zeros(
+                flat_cache.shape[0], dtype=torch.bool, device=query.device
+            )
+            used[physical_indices.clamp_min(0).long().reshape(-1)] = True
+            rows = used.nonzero().squeeze(1)
+            position = torch.cumsum(used, dim=0, dtype=torch.int32) - 1
+            position[physical_indices[valid].long()]
+            valid.sum(dim=1).to(torch.int32).to("cpu")
+            unpack(query, flat_cache, rows)
+        elif stage in ("compact", "plan"):
             rows, kv_indices, lengths = fa2.compact_candidates(physical_indices)
             host_lengths = lengths.to("cpu")
-            flat_cache = packed_cache.reshape(-1, 656)
-            ckv = torch.empty(
-                (rows.numel(), 1, 512), dtype=torch.bfloat16, device=query.device
-            )
-            for start in range(0, rows.numel(), fa2.UNPACK_ROWS):
-                part = rows[start : start + fa2.UNPACK_ROWS].long()
-                ckv[start : start + part.numel(), 0] = unpack_latent(flat_cache[part])
+            unpack(query, flat_cache, rows)
         if stage == "plan":
             fa2._wrapper(query.device).plan(
                 torch.arange(query.shape[0] + 1, dtype=torch.int32),
