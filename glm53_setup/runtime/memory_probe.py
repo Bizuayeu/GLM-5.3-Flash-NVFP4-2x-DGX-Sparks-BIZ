@@ -102,7 +102,110 @@ def trim_heap():
     return ctypes.CDLL("libc.so.6").malloc_trim(0)
 
 
+def census(limit=12):
+    """Live Python objects by type and the CPU tensors among them.
+
+    A heap that grows with objects Python can see shows up here; one that grows
+    without them is held by native code.
+    """
+    import gc
+    from collections import Counter
+
+    import torch
+
+    counts = Counter()
+    tensors = tensor_bytes = 0
+    storages = set()
+    for item in gc.get_objects():
+        counts[type(item).__name__] += 1
+        if isinstance(item, torch.Tensor) and item.device.type == "cpu":
+            tensors += 1
+            storage = item.untyped_storage()
+            if storage.data_ptr() not in storages:
+                storages.add(storage.data_ptr())
+                tensor_bytes += storage.nbytes()
+    return {
+        "objects": sum(counts.values()),
+        "cpu_tensors": tensors,
+        "cpu_tensor_mib": round(tensor_bytes / MIB, 1),
+        "top_types": dict(counts.most_common(limit)),
+    }
+
+
+FA2_STAGES = ("off", "compact", "plan", "full")
+_fa2_original = {}
+
+
+def fa2_stage(stage):
+    """Run only part of the FA2 path in this process, the rest on the reference path.
+
+    ``off`` is the reference computation, ``compact`` adds the distinct-row
+    compaction, its host copy and the BF16 unpack, ``plan`` adds FlashInfer's
+    ``plan()``, ``full`` restores the real function. The partial stages throw
+    their work away, so the served numbers are the reference path's.
+    """
+    import torch
+
+    from glm53_setup.runtime import fa2_attention as fa2
+    from glm53_setup.runtime.reference_attention import unpack_latent
+
+    if stage not in FA2_STAGES:
+        raise ValueError(f"stage must be one of {FA2_STAGES}")
+    if not _fa2_original:
+        _fa2_original.update(run=fa2.sparse_nope_fa2, use=fa2.use_fa2)
+    fa2.sparse_nope_fa2, fa2.use_fa2 = _fa2_original["run"], _fa2_original["use"]
+    if stage == "full":
+        return stage
+    inner = []
+
+    def partial(query, packed_cache, physical_indices, scale):
+        import glm53_reference
+
+        if stage != "off":
+            rows, kv_indices, lengths = fa2.compact_candidates(physical_indices)
+            host_lengths = lengths.to("cpu")
+            flat_cache = packed_cache.reshape(-1, 656)
+            ckv = torch.empty(
+                (rows.numel(), 1, 512), dtype=torch.bfloat16, device=query.device
+            )
+            for start in range(0, rows.numel(), fa2.UNPACK_ROWS):
+                part = rows[start : start + fa2.UNPACK_ROWS].long()
+                ckv[start : start + part.numel(), 0] = unpack_latent(flat_cache[part])
+        if stage == "plan":
+            fa2._wrapper(query.device).plan(
+                torch.arange(query.shape[0] + 1, dtype=torch.int32),
+                fa2.indptr(host_lengths),
+                kv_indices,
+                host_lengths,
+                query.shape[1],
+                512,
+                0,
+                1,
+                False,
+                scale,
+                q_data_type=query.dtype,
+                kv_data_type=torch.bfloat16,
+            )
+        inner.append(True)
+        try:
+            return glm53_reference.sparse_nope_reference(
+                query, packed_cache, physical_indices, scale
+            )
+        finally:
+            inner.pop()
+
+    fa2.sparse_nope_fa2 = partial
+    fa2.use_fa2 = lambda query_rows: not inner and _fa2_original["use"](query_rows)
+    return stage
+
+
 class MemoryProbeWorker:
+    def fa2_stage(self, stage):
+        return {"rank": self.rank, "stage": fa2_stage(stage)}
+
+    def host_census(self):
+        return {"rank": self.rank, **census()}
+
     def host_stats(self, trim=False):
         row = {"rank": self.rank}
         if trim:

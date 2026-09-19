@@ -103,6 +103,74 @@ class MemoryProbeTests(unittest.TestCase):
         self.assertEqual(trimmed["trim_released"], 1)
         self.assertEqual(trimmed["rss_anon_mib"], 4)
 
+    def test_fa2_stage_off_serves_the_reference_path_and_full_restores(self):
+        from glm53_setup.runtime import fa2_attention, memory_probe
+
+        original = (fa2_attention.sparse_nope_fa2, fa2_attention.use_fa2)
+        seen = []
+
+        def reference(query, cache, indices, scale):
+            # The reference module asks use_fa2 again; inside the partial stage
+            # the answer has to be no, or the call would recurse.
+            seen.append(fa2_attention.use_fa2(2048))
+            return "reference result"
+
+        fake = {
+            "torch": SimpleNamespace(),
+            "glm53_reference": SimpleNamespace(sparse_nope_reference=reference),
+        }
+        try:
+            with (
+                patch.dict(sys.modules, fake),
+                patch.dict("os.environ", {"GLM53_FA2_ATTENTION": "1"}),
+            ):
+                self.assertEqual(memory_probe.fa2_stage("off"), "off")
+                self.assertTrue(fa2_attention.use_fa2(2048))
+                result = fa2_attention.sparse_nope_fa2("q", "cache", "idx", 1.0)
+                self.assertEqual(result, "reference result")
+                self.assertEqual(seen, [False])
+                with self.assertRaises(ValueError):
+                    memory_probe.fa2_stage("half")
+                self.assertEqual(memory_probe.fa2_stage("full"), "full")
+            self.assertEqual(
+                (fa2_attention.sparse_nope_fa2, fa2_attention.use_fa2), original
+            )
+        finally:
+            fa2_attention.sparse_nope_fa2, fa2_attention.use_fa2 = original
+
+    def test_census_counts_cpu_tensor_storage_once(self):
+        from glm53_setup.runtime import memory_probe
+
+        class Storage:
+            def __init__(self, ptr, size):
+                self.ptr, self.size = ptr, size
+
+            def data_ptr(self):
+                return self.ptr
+
+            def nbytes(self):
+                return self.size
+
+        class Tensor:
+            def __init__(self, kind, storage):
+                self.device = SimpleNamespace(type=kind)
+                self.storage = storage
+
+            def untyped_storage(self):
+                return self.storage
+
+        shared = Storage(1, 2 * 2**20)
+        live = [Tensor("cpu", shared), Tensor("cpu", shared), Tensor("cuda", shared)]
+        with (
+            patch.dict(sys.modules, {"torch": SimpleNamespace(Tensor=Tensor)}),
+            patch("gc.get_objects", return_value=live + ["text"]),
+        ):
+            row = memory_probe.census()
+        self.assertEqual(row["cpu_tensors"], 2)
+        self.assertEqual(row["cpu_tensor_mib"], 2.0)
+        self.assertEqual(row["top_types"]["Tensor"], 3)
+        self.assertEqual(row["objects"], 4)
+
     def test_profile_key_mounts_the_probe_and_stays_exclusive(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn(
