@@ -263,18 +263,23 @@ def trace_differences(reference, rows, limit=24):
 
 
 class MemoryProbeWorker:
-    def trace_begin(self):
-        """Fingerprint every traced module output (and the token ids) of what runs next.
+    def trace_begin(self, pattern=None, inputs=False, sync=False, functions=True):
+        """Fingerprint what the traced modules take and return in what runs next.
 
         Fingerprints are two byte sums kept on the GPU, so a whole request fits
-        where clones of the outputs would not.
+        where clones would not. Every tensor of an output is taken, integer ones
+        too (an indexer returns candidate indices); ``inputs`` adds the tensors a
+        module receives; ``functions`` also wraps the sparse NoPE attention, which
+        is a function and not a module; ``sync`` synchronises after every traced
+        call, so a difference that then disappears was a race between streams.
         """
         import re
+        import sys
 
         import torch
 
-        pattern = re.compile(TRACED)
-        state = {"handles": [], "names": [], "rows": [], "prints": []}
+        pattern = re.compile(pattern or TRACED)
+        state = {"handles": [], "names": [], "rows": [], "prints": [], "patched": []}
 
         def fingerprint(tensor):
             data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
@@ -283,21 +288,55 @@ class MemoryProbeWorker:
             )
 
         def note(name, tensor):
+            if tensor.numel() == 0 or tensor.is_meta:
+                return
             state["names"].append(name)
             state["rows"].append(int(tensor.shape[0]) if tensor.ndim else 1)
             state["prints"].append(fingerprint(tensor))
 
+        def note_all(name, values):
+            items = values if isinstance(values, (tuple, list)) else [values]
+            for index, item in enumerate(items):
+                if isinstance(item, torch.Tensor):
+                    note(f"{name}[{index}]" if index else name, item)
+
         def hook(name):
             def after(module, args, output):
-                if name.endswith("embed_tokens") and args:
-                    note(name + ":input_ids", args[0])
-                items = output if isinstance(output, (tuple, list)) else [output]
-                for item in items:
-                    if isinstance(item, torch.Tensor) and item.is_floating_point():
-                        note(name, item)
-                        break
+                if inputs or name.endswith("embed_tokens"):
+                    note_all(name + ":in", args)
+                note_all(name, output)
+                if sync:
+                    torch.cuda.synchronize()
 
             return after
+
+        if functions:
+            # The attention core is a plain function; callers may hold it by name,
+            # so replace it in every module that refers to the same object.
+            import glm53_reference
+
+            original = glm53_reference.sparse_nope_reference
+
+            def traced(query, packed_cache, physical_indices, scale, **kwargs):
+                note("sparse_nope:query", query)
+                note("sparse_nope:indices", physical_indices)
+                touched = packed_cache.reshape(-1, 656)[
+                    physical_indices.clamp_min(0).long().reshape(-1)
+                ]
+                note("sparse_nope:cache_rows", touched)
+                result = original(
+                    query, packed_cache, physical_indices, scale, **kwargs
+                )
+                note("sparse_nope:output", result)
+                if sync:
+                    torch.cuda.synchronize()
+                return result
+
+            for module in list(sys.modules.values()):
+                for attribute, value in list(getattr(module, "__dict__", {}).items()):
+                    if value is original:
+                        setattr(module, attribute, traced)
+                        state["patched"].append((module, attribute, original))
 
         # The draft model hangs off the runner under a version-dependent name:
         # take every other torch module reachable one attribute deep.
@@ -319,6 +358,7 @@ class MemoryProbeWorker:
         return {
             "rank": self.rank,
             "hooked": len(state["handles"]),
+            "functions": len(state["patched"]),
             "models": list(models),
         }
 
@@ -329,11 +369,19 @@ class MemoryProbeWorker:
         state = self.__dict__.pop("probe_trace")
         for handle in state["handles"]:
             handle.remove()
+        for module, attribute, original in state["patched"]:
+            setattr(module, attribute, original)
         prints = torch.stack(state["prints"]).cpu().tolist() if state["prints"] else []
         rows = [list(item) for item in zip(state["names"], state["rows"], prints)]
         if keep:
             self.probe_reference = rows
-            return {"rank": self.rank, "kept": len(rows)}
+            return {
+                "rank": self.rank,
+                "kept": len(rows),
+                "function_entries": sum(
+                    row[0].startswith("sparse_nope:") for row in rows
+                ),
+            }
         return {"rank": self.rank, **trace_differences(self.probe_reference, rows)}
 
     def zero_moe_scratch(self):
