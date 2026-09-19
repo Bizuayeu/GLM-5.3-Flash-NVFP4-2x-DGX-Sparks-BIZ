@@ -319,7 +319,11 @@ class MemoryProbeWorker:
 
             def traced(query, packed_cache, physical_indices, scale, **kwargs):
                 note("sparse_nope:query", query)
-                note("sparse_nope:indices", physical_indices)
+                # Physical slots depend on where the blocks of this request landed;
+                # the number of candidates per row and the rows' contents do not.
+                note(
+                    "sparse_nope:candidates_per_row", (physical_indices >= 0).sum(dim=1)
+                )
                 touched = packed_cache.reshape(-1, 656)[
                     physical_indices.clamp_min(0).long().reshape(-1)
                 ]
