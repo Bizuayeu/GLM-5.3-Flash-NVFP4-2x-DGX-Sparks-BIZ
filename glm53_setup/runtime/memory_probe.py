@@ -318,14 +318,11 @@ class MemoryProbeWorker:
                 return
             state["names"].append(name)
             state["rows"].append(int(tensor.shape[0]) if tensor.ndim else 1)
+            # Candidate indices come out of the top-k kernel in a different order
+            # every call and are sorted before attention: compare them as sets.
+            if tensor.ndim == 2 and tensor.dtype in (torch.int32, torch.int64):
+                tensor = tensor.sort(dim=-1).values
             state["prints"].append(fingerprint(tensor))
-            decode_sized = tensor.ndim == 2 and gathers_cache_rows(tensor.shape[0])
-            if decode_sized and tensor.dtype in (torch.int32, torch.int64):
-                # Candidate indices: the same set in another order is a different
-                # finding from another set.
-                state["names"].append(name + ":sorted")
-                state["rows"].append(int(tensor.shape[0]))
-                state["prints"].append(fingerprint(tensor.sort(dim=-1).values))
 
         def note_all(name, values):
             items = values if isinstance(values, (tuple, list)) else [values]
@@ -362,7 +359,8 @@ class MemoryProbeWorker:
                     touched = packed_cache.reshape(-1, 656)[flat.clamp_min(0).long()]
                     # Padding gathers slot 0, which belongs to whoever wrote it last.
                     touched[flat < 0] = 0
-                    note("sparse_nope:cache_rows", touched)
+                    # One row per query row, so the entry's row count is the call's.
+                    note("sparse_nope:cache_rows", touched.view(query.shape[0], -1))
                 result = original(
                     query, packed_cache, physical_indices, scale, **kwargs
                 )
