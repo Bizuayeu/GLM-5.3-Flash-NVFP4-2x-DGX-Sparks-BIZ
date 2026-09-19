@@ -36,7 +36,7 @@ class StableTopkTests(unittest.TestCase):
 
     def test_a_tie_across_the_boundary_goes_to_the_lower_index_every_time(self):
         values = torch.arange(4096, 0, -1, device="cuda").float().repeat(2, 1)
-        values[:, 508:520] = 7.0  # twelve tied pools straddle rank 512
+        values[:, 508:520] = values[0, 508]  # twelve tied pools straddle rank 512
         first = self.select(values, [604, 604])
         self.assertEqual(sorted(first[0].tolist()), list(range(512)))
         for _ in range(50):
