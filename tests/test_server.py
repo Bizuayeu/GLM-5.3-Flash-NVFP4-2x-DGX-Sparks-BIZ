@@ -239,18 +239,17 @@ class ServerConfigTests(unittest.TestCase):
             server.image_capability_checks(distributed, image)["moe_order_support"],
             False,
         )
-        # 1 was carried both by the image whose sort mis-sized its buffer and by
-        # the fixed one; 2 is the fixed one only.
-        image["Config"]["Env"].append("GLM53_MOE_ORDER_API=1")
-        self.assertIs(
-            server.image_capability_checks(distributed, image)["moe_order_support"],
-            False,
-        )
-        image["Config"]["Env"].append("GLM53_MOE_ORDER_API=2")
-        self.assertIs(
-            server.image_capability_checks(distributed, image)["moe_order_support"],
-            True,
-        )
+        # A switch prepares the running pair as its recovery target with the checkout
+        # that switches away from it, so a requirement on an existing key never
+        # tightens: images built before and after the marker became 2 both pass.
+        for marker in ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2"):
+            env = ["GLM53_REFERENCE_ATTENTION=1", marker]
+            self.assertIs(
+                server.image_capability_checks(distributed, {"Config": {"Env": env}})[
+                    "moe_order_support"
+                ],
+                True,
+            )
         # Off is an explicit comparison arm and needs no support from the image.
         self.profile["runtime"]["canonical_moe_order"] = False
         config.validate(self.profile)
