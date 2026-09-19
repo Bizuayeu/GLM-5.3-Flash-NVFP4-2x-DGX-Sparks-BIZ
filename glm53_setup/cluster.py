@@ -127,6 +127,9 @@ def rpc(action, rank, value):
                 "This attempt was already started; reserve a fresh identity"
             )
         if (record / "supervisor.log").exists():
+            # cc-defer: supervisor.log exists before Popen; a replay in that window
+            # reports a launch that did not happen and the poll's deadline recovers
+            # it. Write job.json from this side once Popen returns if that is seen.
             # A replay: the first start reached this rank and its reply was lost
             # on the way back. The supervisor it launched owns the attempt.
             return {"started": True, "replayed": True}
