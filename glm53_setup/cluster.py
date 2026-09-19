@@ -15,7 +15,7 @@ from pathlib import Path
 from . import host, launch_assets, model_http, server, server_config
 from .config import ROOT
 from .io import write_json
-from .switch import OperationFailure, switch
+from .switch import OperationFailure, finish, switch
 
 
 def current(rank):
@@ -332,7 +332,7 @@ class SSHBackend:
         raise OperationFailure("ready", None, "readiness-deadline")
 
 
-def resume(backend, report):
+def resume(backend, report, *, config=None, save=lambda report: None):
     recovering = report["status"] == "recovery-readiness-unconfirmed"
     rows = report["recovery"] if recovering else report["new"]
     if report["status"] not in (
@@ -365,6 +365,9 @@ def resume(backend, report):
         report["prior_observation_failure"] = report.pop("failure")
         report.pop("error")
         report["status"] = "complete"
+        save(report)
+        # The switch that lost its observation never reached its last steps.
+        finish(backend, report, save=save, config=config)
     return report
 
 
@@ -398,7 +401,12 @@ def main(argv=None):
         backend = SSHBackend(
             args.hosts, args.checkout, args.ssh_config, args.ready_timeout
         )
-        result = resume(backend, server.read_json(args.output / "result.json"))
+        result = resume(
+            backend,
+            server.read_json(args.output / "result.json"),
+            config=args.config.read_text(encoding="utf-8") if args.config else None,
+            save=lambda report: write_json(args.output / "result.json", report),
+        )
         write_json(args.output / "result.json", result)
         print(
             json.dumps(

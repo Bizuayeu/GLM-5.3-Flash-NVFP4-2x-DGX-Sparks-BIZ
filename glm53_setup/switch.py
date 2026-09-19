@@ -32,6 +32,33 @@ def failure_details(error):
     }
 
 
+def finish(backend, report, *, save, config=None):
+    """What a complete new pair gets, from a switch or from a resumed one."""
+    # Only a complete pair gets its profile file: after a recovery the old file
+    # still describes what runs. Like the ladder, a failed write is recorded
+    # and never rolls the pair back.
+    if config is not None:
+        try:
+            report["config"] = [
+                {
+                    "rank": row["rank"],
+                    **backend.install(row["rank"], row["identity"], config),
+                }
+                for row in sorted(report["new"], key=lambda row: row["rank"])
+            ]
+        except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
+            report["config"] = {"failed": True, **failure_details(error)}
+        save(report)
+    # The pair is complete before the ladder runs: warmup is evidence for the
+    # operator, not a readiness gate, so its failure never triggers recovery.
+    try:
+        report["warmup"] = backend.warmup(report["new"])
+    except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
+        report["warmup"] = {"failed": True, **failure_details(error)}
+    save(report)
+    return report
+
+
 def switch(backend, launch, *, save, config=None):
     """backend operations must address explicit owned launch identities.
 
@@ -157,26 +184,4 @@ def switch(backend, launch, *, save, config=None):
         raise RuntimeError(
             "Switch failed; inspect the saved cleanup and recovery result"
         ) from None
-    # Only a complete pair gets its profile file: after a recovery the old file
-    # still describes what runs. Like the ladder, a failed write is recorded
-    # and never rolls the pair back.
-    if config is not None:
-        try:
-            report["config"] = [
-                {
-                    "rank": row["rank"],
-                    **backend.install(row["rank"], row["identity"], config),
-                }
-                for row in sorted(report["new"], key=lambda row: row["rank"])
-            ]
-        except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
-            report["config"] = {"failed": True, **failure_details(error)}
-        save(report)
-    # The pair is complete before the ladder runs: warmup is evidence for the
-    # operator, not a readiness gate, so its failure never triggers recovery.
-    try:
-        report["warmup"] = backend.warmup(report["new"])
-    except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
-        report["warmup"] = {"failed": True, **failure_details(error)}
-    save(report)
-    return report
+    return finish(backend, report, save=save, config=config)

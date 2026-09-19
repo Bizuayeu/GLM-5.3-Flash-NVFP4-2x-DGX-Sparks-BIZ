@@ -200,6 +200,74 @@ class ClusterOwnershipTests(unittest.TestCase):
             backend.start.assert_not_called()
             backend.stop.assert_not_called()
 
+    def test_a_resumed_pair_gets_what_a_completed_switch_gives_it(self):
+        # 2026-09-20: resume confirmed a pair whose observation was lost, and the
+        # ladder and the profile file had to be supplied by hand.
+        def unconfirmed(status, rows):
+            return {
+                "status": status,
+                "error": "OperationFailure",
+                "failure": {"reason": "ssh-unavailable"},
+                "recovery_observation_failure": {"reason": "ssh-unavailable"},
+                "assets": [{"rank": 0}, {"rank": 1}],
+                "recovery_assets": [{"rank": 0}, {"rank": 1}],
+                rows: [
+                    {
+                        "rank": i,
+                        "identity": {
+                            "name": f"owned-{i}",
+                            "fingerprint": "fixed",
+                            "launch": "profile",
+                        },
+                    }
+                    for i in (0, 1)
+                ],
+                "new" if rows == "recovery" else "recovery": [],
+            }
+
+        def backend():
+            fake = MagicMock()
+            fake.current.side_effect = [
+                {"name": f"owned-{i}", "fingerprint": "fixed"} for i in (0, 1)
+            ]
+            fake.prepare.side_effect = [{"rank": 0}, {"rank": 1}]
+            fake.install.return_value = {"installed": True}
+            fake.warmup.return_value = {"passed": True}
+            return fake
+
+        fake = backend()
+        result = cluster.resume(
+            fake, unconfirmed("readiness-unconfirmed", "new"), config="text"
+        )
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual([c.args[0] for c in fake.install.call_args_list], [0, 1])
+        self.assertEqual(result["config"][1], {"rank": 1, "installed": True})
+        fake.warmup.assert_called_once()
+        self.assertEqual(result["warmup"], {"passed": True})
+
+        fake = backend()
+        result = cluster.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
+        fake.install.assert_not_called()  # no text given: the files stay as they are
+        fake.warmup.assert_called_once()
+
+        # A failed ladder is recorded and leaves the pair complete, as in a switch.
+        fake = backend()
+        fake.warmup.side_effect = RuntimeError("ladder")
+        result = cluster.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["warmup"]["failed"])
+
+        # The recovered old pair keeps its file, and a recovery is never warmed.
+        fake = backend()
+        result = cluster.resume(
+            fake,
+            unconfirmed("recovery-readiness-unconfirmed", "recovery"),
+            config="text",
+        )
+        self.assertEqual(result["status"], "failed")
+        fake.install.assert_not_called()
+        fake.warmup.assert_not_called()
+
     def test_transport_timeout_never_exposes_subprocess_command(self):
         backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
         with (
