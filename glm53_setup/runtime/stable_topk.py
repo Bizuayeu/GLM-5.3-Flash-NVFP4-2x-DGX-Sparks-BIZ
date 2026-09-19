@@ -23,3 +23,35 @@ def stable_topk(logits, lengths, output, k, max_len):
     ranks = torch.arange(order.shape[1], device=logits.device)
     output.fill_(-1)
     output[:, : order.shape[1]] = torch.where(ranks < limit, order, -1).to(output.dtype)
+
+
+# A prefill chunk is up to 2,048 rows over up to max_model_len / kpool columns; the
+# sort keeps values (4 B), indices (8 B) and a masked copy (4 B) per cell, so 64
+# rows x 65,536 columns stay near 70 MiB whatever the chunk size.
+RANGE_ROWS = 64
+
+
+def stable_topk_ranges(logits, starts, ends, output, k):
+    """The prefill form: row ``r`` selects among columns ``[starts[r], ends[r])``.
+
+    Indices are relative to the row's start, as ``top_k_per_row_prefill`` returns them.
+    """
+    import torch
+
+    rows = output.shape[0]
+    columns = torch.arange(logits.shape[1], device=logits.device)
+    output.fill_(-1)
+    for first in range(0, rows, RANGE_ROWS):
+        part = slice(first, min(first + RANGE_ROWS, rows))
+        low = starts[part].to(torch.int64).unsqueeze(1)
+        high = ends[part].to(torch.int64).unsqueeze(1)
+        masked = (
+            logits[part]
+            .float()
+            .masked_fill((columns < low) | (columns >= high), float("-inf"))
+        )
+        order = torch.sort(masked, dim=-1, descending=True, stable=True).indices[:, :k]
+        ranks = torch.arange(order.shape[1], device=logits.device)
+        output[part, : order.shape[1]] = torch.where(
+            ranks < high - low, order - low, -1
+        ).to(output.dtype)

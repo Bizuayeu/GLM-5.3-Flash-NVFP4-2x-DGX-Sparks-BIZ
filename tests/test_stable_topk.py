@@ -47,3 +47,37 @@ class StableTopkTests(unittest.TestCase):
         output = self.select(values, [100])
         self.assertEqual(sorted(output[0, :100].tolist()), list(range(100)))
         self.assertTrue(bool((output[0, 100:] == -1).all()))
+
+
+@unittest.skipUnless(HAS_CUDA, "needs torch with a CUDA device")
+class StableTopkRangesTests(unittest.TestCase):
+    def test_matches_the_prefill_kernel_where_nothing_ties(self):
+        import vllm._C_stable_libtorch  # noqa: F401
+
+        from glm53_setup.runtime.stable_topk import stable_topk_ranges
+
+        rows, width, k = 70, 900, 512
+        logits = torch.randn((rows, width), device="cuda")
+        starts = torch.arange(rows, dtype=torch.int32, device="cuda") % 3
+        ends = torch.full((rows,), 600, dtype=torch.int32, device="cuda") + starts * 100
+        ends[0] = 40  # shorter than k
+        kernel = torch.full((rows, k), -7, dtype=torch.int32, device="cuda")
+        torch.ops._C.top_k_per_row_prefill(
+            logits, starts, ends, kernel, rows, logits.stride(0), logits.stride(1), k
+        )
+        stable = torch.full((rows, k), -7, dtype=torch.int32, device="cuda")
+        stable_topk_ranges(logits, starts, ends, stable, k)
+        self.assertTrue(
+            torch.equal(kernel.sort(dim=-1).values, stable.sort(dim=-1).values)
+        )
+
+    def test_a_tie_goes_to_the_lower_index_every_time(self):
+        from glm53_setup.runtime.stable_topk import stable_topk_ranges
+
+        values = torch.arange(900, 0, -1, device="cuda").float().repeat(70, 1)
+        values[:, 508:520] = values[0, 508]
+        starts = torch.zeros(70, dtype=torch.int32, device="cuda")
+        ends = torch.full((70,), 604, dtype=torch.int32, device="cuda")
+        output = torch.full((70, 512), -7, dtype=torch.int32, device="cuda")
+        stable_topk_ranges(values, starts, ends, output, 512)
+        self.assertEqual(sorted(output[69].tolist()), list(range(512)))
