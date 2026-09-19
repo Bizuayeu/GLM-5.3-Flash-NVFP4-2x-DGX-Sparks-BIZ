@@ -122,10 +122,14 @@ def rpc(action, rank, value):
         return identity
     if action == "start":
         record = owned_record(value)
-        if (record / "job.json").exists() or (record / "cancel.json").exists():
+        if (record / "finished.json").exists() or (record / "cancel.json").exists():
             raise ValueError(
                 "This attempt was already started; reserve a fresh identity"
             )
+        if (record / "supervisor.log").exists():
+            # A replay: the first start reached this rank and its reply was lost
+            # on the way back. The supervisor it launched owns the attempt.
+            return {"started": True, "replayed": True}
         with (record / "supervisor.log").open("x") as log:
             subprocess.Popen(
                 [
@@ -255,7 +259,11 @@ class SSHBackend:
             self.hosts[rank],
             command,
         ]
-        attempts = 3 if action in ("current", "prepare", "poll") else 1
+        # Reads, and the two mutations a rank makes harmless to replay: stop is
+        # idempotent, start answers for an attempt already in flight. A switch has
+        # stopped both ranks by the time it starts the new ones, so one dropped
+        # connection there used to cost a recovery.
+        attempts = 3 if action in ("current", "prepare", "poll", "start", "stop") else 1
         for attempt in range(attempts):
             try:
                 response = subprocess.run(

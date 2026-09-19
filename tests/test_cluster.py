@@ -32,6 +32,36 @@ class ClusterOwnershipTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cluster.rpc("start", 0, identity)
 
+    def test_a_replayed_start_finds_the_attempt_in_flight_and_does_not_launch_twice(
+        self,
+    ):
+        # The first start reached the rank and the connection dropped before the
+        # reply (2026-09-20: `ssh-unavailable` at start failed a switch that had
+        # already stopped both ranks). The replay must not raise and must not
+        # spawn a second supervisor; a finished attempt still refuses.
+        profile = server_config.load(
+            Path(__file__).resolve().parents[1] / "examples/server.example.toml"
+        )
+        launch = {
+            "manifest": server.freeze(profile, {}),
+            "config_path": "/srv/glm53/state/server.toml",
+        }
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(cluster, "ROOT", Path(tmp)),
+            patch.object(cluster.subprocess, "Popen") as spawn,
+        ):
+            identity = cluster.rpc("reserve", 0, launch)
+            self.assertEqual(cluster.rpc("start", 0, identity), {"started": True})
+            self.assertEqual(
+                cluster.rpc("start", 0, identity), {"started": True, "replayed": True}
+            )
+            self.assertEqual(spawn.call_count, 1)
+            record = Path(identity["record"])
+            (record / "finished.json").write_text('{"status": "stopped"}')
+            with self.assertRaises(ValueError):
+                cluster.rpc("start", 0, identity)
+
     def test_warmup_rpc_runs_only_for_the_owned_running_head_when_requested(self):
         profile = server_config.load(
             Path(__file__).resolve().parents[1] / "examples/server.example.toml"
@@ -84,7 +114,7 @@ class ClusterOwnershipTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cluster.SSHBackend(["-oProxyCommand=bad", "peer"], "/srv/model", None, 30)
 
-    def test_transient_reads_retry_but_mutations_are_never_replayed(self):
+    def test_transient_reads_retry_and_only_harmless_mutations_are_replayed(self):
         backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
         failed = subprocess.CompletedProcess(
             [], 255, stdout="", stderr="connect failed"
@@ -100,13 +130,24 @@ class ClusterOwnershipTests(unittest.TestCase):
         ):
             self.assertEqual(backend.call("poll", 0, {}), {"ready": False})
             self.assertEqual(run.call_count, 2)
-        for action in ("start", "stop", "reserve"):
+        # A mutation is replayed only where the rank makes the replay harmless:
+        # stop is idempotent and start answers "already started" for an attempt
+        # in flight. reserve would mint a second identity, install and warmup
+        # would run twice.
+        for action, attempts in (
+            ("start", 3),
+            ("stop", 3),
+            ("reserve", 1),
+            ("install", 1),
+            ("warmup", 1),
+        ):
             with (
                 patch.object(cluster.subprocess, "run", return_value=failed) as run,
+                patch.object(cluster.time, "sleep"),
                 self.assertRaises(RuntimeError),
             ):
                 backend.call(action, 0, {})
-            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_count, attempts, action)
 
     def test_read_retries_are_bounded_and_do_not_hide_asset_failures(self):
         backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
