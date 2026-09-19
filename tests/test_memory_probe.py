@@ -203,6 +203,17 @@ class MemoryProbeTests(unittest.TestCase):
         for name in ("model", "model.layers", "model.layers.3.mlp.experts.w13"):
             self.assertFalse(pattern.search(name), name)
 
+    def test_cache_rows_are_gathered_for_decode_sized_calls_only(self):
+        # A prefill chunk gathers 2,048 rows x 2,048 candidates x 656 bytes, about
+        # 2.75 GiB per MLA layer; on 2026-09-19 that took both serving hosts down.
+        from glm53_setup.runtime.fa2_attention import DECODE_MAX_ROWS
+        from glm53_setup.runtime.memory_probe import gathers_cache_rows
+
+        self.assertTrue(gathers_cache_rows(1))
+        self.assertTrue(gathers_cache_rows(DECODE_MAX_ROWS))
+        self.assertFalse(gathers_cache_rows(DECODE_MAX_ROWS + 1))
+        self.assertFalse(gathers_cache_rows(2048))
+
     def test_profile_key_mounts_the_probe_and_stays_exclusive(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn(

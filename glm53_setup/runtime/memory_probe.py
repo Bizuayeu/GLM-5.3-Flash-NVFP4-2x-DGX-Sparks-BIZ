@@ -238,6 +238,18 @@ def fa2_stage(stage):
 TRACED = r"(^|\.)(embed_tokens|norm|lm_head|layers\.\d+(\.[A-Za-z_]+){0,2})$"
 
 
+def gathers_cache_rows(query_rows):
+    """Whether a traced attention call may gather the cache rows it touches.
+
+    The gather is rows x candidates x 656 bytes on the device: megabytes for a
+    verification step, gigabytes for a prefill chunk, per MLA layer. On GB10 that
+    memory is the host's, and the supervisor's two-second watch is too slow for it.
+    """
+    from glm53_setup.runtime.fa2_attention import DECODE_MAX_ROWS
+
+    return query_rows <= DECODE_MAX_ROWS
+
+
 def trace_differences(reference, rows, limit=24):
     """Compare two fingerprint sequences of one request, in execution order.
 
@@ -324,10 +336,11 @@ class MemoryProbeWorker:
                 note(
                     "sparse_nope:candidates_per_row", (physical_indices >= 0).sum(dim=1)
                 )
-                touched = packed_cache.reshape(-1, 656)[
-                    physical_indices.clamp_min(0).long().reshape(-1)
-                ]
-                note("sparse_nope:cache_rows", touched)
+                if gathers_cache_rows(query.shape[0]):
+                    touched = packed_cache.reshape(-1, 656)[
+                        physical_indices.clamp_min(0).long().reshape(-1)
+                    ]
+                    note("sparse_nope:cache_rows", touched)
                 result = original(
                     query, packed_cache, physical_indices, scale, **kwargs
                 )
