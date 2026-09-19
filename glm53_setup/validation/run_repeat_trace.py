@@ -45,6 +45,65 @@ def summarize(rows):
     }
 
 
+def block_size_of(args, kwargs):
+    """The block size ``moe_align_block_size`` was called with.
+
+    Second positional argument at the pinned call site, ``block_size`` by name
+    otherwise. The buffers it returns are worst-case ones whose lengths need not
+    divide into each other, so their ratio is not the block size.
+    """
+    return args[1] if len(args) > 1 else kwargs["block_size"]
+
+
+def ordered_align(original):
+    """``moe_align_block_size`` with the served order fix applied to its result."""
+
+    def ordered(*args, **kwargs):
+        result = original(*args, **kwargs)
+        block = block_size_of(args, kwargs)
+        result[0].copy_(canonical_order(result[0], result[1], result[2], block))
+        return result
+
+    return ordered
+
+
+def watched_align(original, log, canonicalize):
+    """``moe_align_block_size`` that fingerprints what it hands the Marlin kernel.
+
+    With ``canonicalize`` the token order inside each expert is made the same on
+    every call, by the function the served patch uses.
+    """
+    import hashlib
+
+    def digest(tensor):
+        return hashlib.sha256(tensor.cpu().numpy().tobytes()).hexdigest()[:16]
+
+    def watched(*args, **kwargs):
+        result = original(*args, **kwargs)
+        block = block_size_of(args, kwargs)
+        sorted_ids, expert_ids, padded = result[:3]
+        # Both buffers are allocated for the worst case; only this prefix is written.
+        valid = int(padded)
+        as_a_set = canonical_order(sorted_ids, expert_ids, padded, block)
+        if canonicalize:
+            # Same blocks, same experts; only the order inside each expert changes.
+            result[0].copy_(as_a_set)
+        log.append(
+            {
+                "sorted_token_ids": digest(sorted_ids[:valid]),
+                "as_a_set_per_expert": digest(as_a_set[:valid]),
+                "expert_ids": digest(expert_ids[: -(-valid // block)]),
+                "num_tokens_post_padded": valid,
+                "unwritten_tail": digest(sorted_ids[valid:])
+                if valid < sorted_ids.numel()
+                else None,
+            }
+        )
+        return result
+
+    return watched
+
+
 class RepeatTraceWorker:
     def repeat_trace_start(self, compare):
         import torch
@@ -121,14 +180,7 @@ class RepeatTraceWorker:
         """The order fix alone, as a runtime patch would apply it: no log, no sync."""
         from vllm.model_executor.layers.fused_moe.experts import marlin_moe
 
-        original = marlin_moe.moe_align_block_size
-
-        def ordered(*args, **kwargs):
-            result = original(*args, **kwargs)
-            result[0].copy_(canonical_order(result[0], result[1], result[2]))
-            return result
-
-        marlin_moe.moe_align_block_size = ordered
+        marlin_moe.moe_align_block_size = ordered_align(marlin_moe.moe_align_block_size)
         return {"rank": self.rank, "patched": "moe_align_block_size, order only"}
 
     def repeat_trace_watch_align(self, canonicalize=False):
@@ -137,50 +189,12 @@ class RepeatTraceWorker:
         With ``canonicalize`` the token order inside each expert is made the same on
         every call; if repeats then match, the kernel's result depends on that order.
         """
-        import hashlib
-
-        import torch
         from vllm.model_executor.layers.fused_moe.experts import marlin_moe
 
-        original = marlin_moe.moe_align_block_size
         self.repeat_align = log = []
-
-        def canonical(sorted_ids, expert_ids):
-            """Slots ordered by (expert, token id): the same sets in one fixed order."""
-            block = sorted_ids.numel() // expert_ids.numel()
-            owner = expert_ids.to(torch.int64).repeat_interleave(block)
-            key = owner * (int(sorted_ids.max()) + 1) + sorted_ids.to(torch.int64)
-            return sorted_ids[torch.argsort(key, stable=True)]
-
-        def watched(*args, **kwargs):
-            result = original(*args, **kwargs)
-            sorted_ids, expert_ids, padded = result[:3]
-            # Both buffers are allocated for the worst case; only this prefix is written.
-            valid = int(padded)
-            blocks = valid // (sorted_ids.numel() // expert_ids.numel())
-            tail = None
-            if valid < sorted_ids.numel():
-                tail = sorted_ids[valid:]
-            if canonicalize:
-                # Same blocks, same experts; only the order inside each expert changes.
-                result[0][:valid] = canonical(sorted_ids[:valid], expert_ids[:blocks])
-            sorted_ids, expert_ids = sorted_ids[:valid], expert_ids[:blocks]
-
-            def digest(tensor):
-                return hashlib.sha256(tensor.cpu().numpy().tobytes()).hexdigest()[:16]
-
-            log.append(
-                {
-                    "sorted_token_ids": digest(sorted_ids),
-                    "as_a_set_per_expert": digest(canonical(sorted_ids, expert_ids)),
-                    "expert_ids": digest(expert_ids),
-                    "num_tokens_post_padded": valid,
-                    "unwritten_tail": None if tail is None else digest(tail),
-                }
-            )
-            return result
-
-        marlin_moe.moe_align_block_size = watched
+        marlin_moe.moe_align_block_size = watched_align(
+            marlin_moe.moe_align_block_size, log, canonicalize
+        )
         return {"rank": self.rank, "patched": "moe_align_block_size"}
 
     def repeat_trace_align_log(self):
