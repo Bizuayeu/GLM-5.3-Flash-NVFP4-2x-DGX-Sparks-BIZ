@@ -1,6 +1,29 @@
+import ast
 import importlib.util
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+
+class FusedUnpackSourceTests(unittest.TestCase):
+    def test_element_count_is_a_run_time_argument(self):
+        # A tl.constexpr element count compiles and keeps one kernel per distinct
+        # size: a caller whose row count changes every call (the FA2 compaction)
+        # then grows the worker's heap and the on-disk Triton cache without bound.
+        source = (
+            Path(__file__).resolve().parents[1] / "glm53_setup/runtime/fused_unpack.py"
+        )
+        kernel = next(
+            node
+            for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+            if isinstance(node, ast.FunctionDef) and node.name == "_unpack"
+        )
+        constexpr = [
+            arg.arg
+            for arg in kernel.args.args
+            if arg.annotation is not None and "constexpr" in ast.unparse(arg.annotation)
+        ]
+        self.assertEqual(constexpr, ["BLOCK"])
 
 
 @unittest.skipUnless(
@@ -33,6 +56,32 @@ class FusedUnpackTests(unittest.TestCase):
             actual = sparse_nope_reference(query, packed, indices, 512**-0.5)
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
         self.assertEqual(torch.count_nonzero(actual[0]).item(), 0)
+
+    def test_changing_row_counts_do_not_add_compiled_kernels(self):
+        import torch
+
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA device required")
+        from glm53_setup.runtime import fused_unpack
+
+        def compiled():
+            caches = getattr(fused_unpack._unpack, "device_caches", None)
+            if caches is not None:
+                return sum(len(entry[0]) for entry in caches.values())
+            return sum(len(entry) for entry in fused_unpack._unpack.cache.values())
+
+        packed = torch.zeros((4096, 656), dtype=torch.uint8, device="cuda")
+        for rows in (
+            16,
+            32,
+            1,
+            3,
+        ):  # the integer specialisations: multiple of 16, one, neither
+            fused_unpack.unpack_latent_cuda(packed[:rows])
+        before = compiled()
+        for rows in range(100, 1100, 7):
+            fused_unpack.unpack_latent_cuda(packed[:rows])
+        self.assertEqual(compiled(), before)
 
     def test_all_fp8_codes_and_group_scales_match_reference(self):
         import torch

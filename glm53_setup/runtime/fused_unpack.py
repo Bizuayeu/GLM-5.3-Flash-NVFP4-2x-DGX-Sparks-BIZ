@@ -4,8 +4,10 @@ import triton
 import triton.language as tl
 
 
+# elements is a run-time argument: as a constexpr every distinct size compiled
+# and kept its own kernel, which leaks for a caller whose row count varies.
 @triton.jit
-def _unpack(packed, output, elements: tl.constexpr, BLOCK: tl.constexpr):
+def _unpack(packed, output, elements, BLOCK: tl.constexpr):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = offset < elements
     row, column = offset // 512, offset % 512

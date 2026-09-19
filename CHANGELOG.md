@@ -18,6 +18,10 @@
 - **`fixture-build --with-mtp`** keeps the BF16 draft layer in the four-layer fixture, renumbered to follow the kept layers and excluded from the global NVFP4 setting in both quantization files, so MTP can be exercised on one GPU.
 - **Releases follow tags.** Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes that version's Changelog section as the GitHub Release through `tools/release_notes.py`. Tags 1.2.0 to 1.5.0 had been pushed without a Release; those were created by hand, and 1.2.1, which had a Changelog section but no tag, was tagged at its release commit.
 
+### Fixed
+
+- **The fused FP8 unpack kernel no longer compiles one kernel per input size.** Its element count was a `tl.constexpr`, so every distinct size compiled and kept its own Triton kernel. The reference attention always unpacks the same few sizes, so nothing showed; with `runtime.fa2_attention` the number of distinct cache rows differs on every call, and each serving worker gained about 0.2 MiB of heap per call (about 100 MiB per 100K-token prefill, 0.15 to 0.4 GiB per 256K request, never returned) while `~/.cache/triton` gained one kernel directory per call. The count is a run-time argument now; results are bit-identical.
+
 ### Changed
 
 - **`cluster switch` writes the profile file on both ranks.** Until now the switch carried the settings in the frozen manifest only and left the `--remote-config` file as it was, so a rank-side command reading that file could see a profile other than the running one. Once the new pair is complete, each rank now writes the `--config` text to that path: it accepts only text that parses to the profile it was started with, keeps a differing old file as `<name>.bak-<UTC time>-<fingerprint prefix>` and replaces the file in one rename. A failed or recovered switch writes nothing; a failed write is recorded under `config` in the journal and never rolls the pair back. `--no-send-config` keeps the earlier behaviour. Both checkouts need this version.
