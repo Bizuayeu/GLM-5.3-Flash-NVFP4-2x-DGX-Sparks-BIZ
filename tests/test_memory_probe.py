@@ -214,6 +214,15 @@ class MemoryProbeTests(unittest.TestCase):
         self.assertFalse(gathers_cache_rows(DECODE_MAX_ROWS + 1))
         self.assertFalse(gathers_cache_rows(2048))
 
+    def test_fingerprint_sums_whole_words_and_leaves_a_short_tail(self):
+        # Summing bytes as int64 materialises the cast, eight times the tensor
+        # (measured on GB10: 16 MiB -> +128 MiB); summing int64 words allocates nothing.
+        from glm53_setup.runtime.memory_probe import whole_words
+
+        self.assertEqual(whole_words(16), 16)
+        self.assertEqual(whole_words(23), 16)
+        self.assertEqual(whole_words(7), 0)
+
     def test_profile_key_mounts_the_probe_and_stays_exclusive(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn(

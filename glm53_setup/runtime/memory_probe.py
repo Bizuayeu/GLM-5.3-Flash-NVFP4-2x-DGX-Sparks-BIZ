@@ -250,6 +250,15 @@ def gathers_cache_rows(query_rows):
     return query_rows <= DECODE_MAX_ROWS
 
 
+def whole_words(nbytes):
+    """Bytes of a tensor that a fingerprint reads as int64 words; the rest is a tail.
+
+    ``bytes.sum(dtype=int64)`` materialises the cast, eight times the tensor on
+    the device; a sum over int64 words (wrapping) allocates nothing.
+    """
+    return nbytes - nbytes % 8
+
+
 def trace_differences(reference, rows, limit=24):
     """Compare two fingerprint sequences of one request, in execution order.
 
@@ -295,9 +304,14 @@ class MemoryProbeWorker:
 
         def fingerprint(tensor):
             data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
-            return data.sum(dtype=torch.int64) * 1000003 + data[1::3].sum(
-                dtype=torch.int64
-            )
+            if data.storage_offset() % 8:
+                # A view as int64 needs an aligned offset; a copy (one times the
+                # tensor) keeps the fingerprint independent of where it sat.
+                data = data.clone()
+            split = whole_words(data.numel())
+            words = data[:split].view(torch.int64)
+            tail = data[split:].to(torch.int64).sum()
+            return words.sum() * 1000003 + words[1::3].sum() + tail
 
         def note(name, tensor):
             if tensor.numel() == 0 or tensor.is_meta:
@@ -305,6 +319,13 @@ class MemoryProbeWorker:
             state["names"].append(name)
             state["rows"].append(int(tensor.shape[0]) if tensor.ndim else 1)
             state["prints"].append(fingerprint(tensor))
+            decode_sized = tensor.ndim == 2 and gathers_cache_rows(tensor.shape[0])
+            if decode_sized and tensor.dtype in (torch.int32, torch.int64):
+                # Candidate indices: the same set in another order is a different
+                # finding from another set.
+                state["names"].append(name + ":sorted")
+                state["rows"].append(int(tensor.shape[0]))
+                state["prints"].append(fingerprint(tensor.sort(dim=-1).values))
 
         def note_all(name, values):
             items = values if isinstance(values, (tuple, list)) else [values]
@@ -337,9 +358,10 @@ class MemoryProbeWorker:
                     "sparse_nope:candidates_per_row", (physical_indices >= 0).sum(dim=1)
                 )
                 if gathers_cache_rows(query.shape[0]):
-                    touched = packed_cache.reshape(-1, 656)[
-                        physical_indices.clamp_min(0).long().reshape(-1)
-                    ]
+                    flat = physical_indices.reshape(-1)
+                    touched = packed_cache.reshape(-1, 656)[flat.clamp_min(0).long()]
+                    # Padding gathers slot 0, which belongs to whoever wrote it last.
+                    touched[flat < 0] = 0
                     note("sparse_nope:cache_rows", touched)
                 result = original(
                     query, packed_cache, physical_indices, scale, **kwargs
@@ -397,6 +419,13 @@ class MemoryProbeWorker:
                 "kept": len(rows),
                 "function_entries": sum(
                     row[0].startswith("sparse_nope:") for row in rows
+                ),
+                # The largest call the run carried, and the largest whose cache
+                # rows were gathered: the cost of a reading is set by the former.
+                "max_rows": max((row[1] for row in rows), default=0),
+                "max_gathered_rows": max(
+                    (row[1] for row in rows if row[0] == "sparse_nope:cache_rows"),
+                    default=0,
                 ),
             }
         return {"rank": self.rank, **trace_differences(self.probe_reference, rows)}
