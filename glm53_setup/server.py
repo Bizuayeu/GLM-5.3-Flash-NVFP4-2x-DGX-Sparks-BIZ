@@ -99,8 +99,10 @@ def command(profile, config_path, rank, name, cache=None):
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
     if profile["validation"].get("memory_probe"):
         # The probe is newer than the image; mount the checkout's copy.
-        source = ROOT / "glm53_setup/runtime/memory_probe.py"
-        args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
+        # So is the stable top-k the probe can switch in.
+        for name in ("memory_probe.py", "stable_topk.py"):
+            source = ROOT / "glm53_setup/runtime" / name
+            args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/{name}:ro"]
     if profile["runtime"].get("fa2_attention"):
         # The FA2 path and its dispatch are newer than the image, and so is the
         # fused unpack that takes its element count at run time: the image's

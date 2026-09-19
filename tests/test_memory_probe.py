@@ -246,6 +246,14 @@ class MemoryProbeTests(unittest.TestCase):
             ),
             command,
         )
+        # The stable top-k the probe can switch in is not in the image either.
+        self.assertTrue(
+            any(
+                v.endswith(":/opt/glm53/glm53_setup/runtime/stable_topk.py:ro")
+                for v in command
+            ),
+            command,
+        )
         for section, key in (
             ("lpa", "enabled"),
             ("validation", "component_worker"),

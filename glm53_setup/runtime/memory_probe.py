@@ -455,6 +455,27 @@ class MemoryProbeWorker:
             marlin_moe.fused_marlin_moe = zeroed
         return {"rank": self.rank, **self.probe_zeroed}
 
+    def stable_topk(self, enabled=True):
+        """Diagnostic: serve the indexer's decode top-k from a stable sort.
+
+        ``persistent_topk`` picks a different set when pools tie across rank k.
+        If identical requests stop forking with this on, that tie was the fork.
+        """
+        import torch
+
+        from glm53_setup.runtime.stable_topk import stable_topk
+
+        if not hasattr(self, "probe_topk"):
+            self.probe_topk = {"original": torch.ops._C.persistent_topk, "calls": 0}
+        state = self.probe_topk
+
+        def replaced(logits, lengths, output, workspace, k, max_seq_len):
+            state["calls"] += 1
+            stable_topk(logits, lengths, output, k, max_seq_len)
+
+        torch.ops._C.persistent_topk = replaced if enabled else state["original"]
+        return {"rank": self.rank, "enabled": bool(enabled), "calls": state["calls"]}
+
     def fa2_stage(self, stage):
         return {"rank": self.rank, "stage": fa2_stage(stage)}
 
