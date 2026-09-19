@@ -19,6 +19,7 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["index_checks"] = "auto"
         self.profile["runtime"]["vision"] = False
         self.profile["runtime"]["canonical_moe_order"] = False
+        self.profile["runtime"]["stable_indexer_topk"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -265,6 +266,46 @@ class ServerConfigTests(unittest.TestCase):
         for bad in (1, 0, "true", None):
             profile = copy.deepcopy(self.profile)
             profile["runtime"]["canonical_moe_order"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
+    def test_stable_indexer_topk_is_on_in_the_template_and_optional(self):
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertIs(distributed["runtime"]["stable_indexer_topk"], True)
+        self.assertEqual(
+            config.environment(distributed, 0)["GLM53_STABLE_INDEXER_TOPK"], "1"
+        )
+        image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertIs(
+            server.image_capability_checks(distributed, image)["indexer_topk_support"],
+            False,
+        )
+        image["Config"]["Env"].append("GLM53_INDEXER_TOPK_API=1")
+        self.assertIs(
+            server.image_capability_checks(distributed, image)["indexer_topk_support"],
+            True,
+        )
+        # Off is the comparison arm: the kernels alone, which any image has.
+        self.profile["runtime"]["stable_indexer_topk"] = False
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 1)["GLM53_STABLE_INDEXER_TOPK"], "0"
+        )
+        self.assertNotIn(
+            "indexer_topk_support",
+            server.image_capability_checks(
+                self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+            ),
+        )
+        # Omitted: the image decides, and an earlier profile keeps its fingerprint.
+        self.profile["runtime"].pop("stable_indexer_topk")
+        config.validate(self.profile)
+        self.assertNotIn(
+            "GLM53_STABLE_INDEXER_TOPK", config.environment(self.profile, 0)
+        )
+        for bad in (1, 0, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["stable_indexer_topk"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
 

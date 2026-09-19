@@ -12,6 +12,10 @@ canonical_moe_order = true # One token order inside each expert; needs an image 
 # Without it identical requests do not repeat exactly: the align kernel orders an expert's tokens by
 # thread scheduling and the Marlin MoE result depends on it (docs/validation.md). false = comparison arm;
 # omitted = whatever the image defaults to. 同一要求の反復を一致させるexpert内token順の固定。
+stable_indexer_topk = true # Indexer top-k ties go to the lower pool index; needs an image with GLM53_INDEXER_TOPK_API=1
+# The pinned kernels pick a different candidate set for the same input when pools tie across rank k, and
+# one such tie forks a completion (docs/validation.md). false = comparison arm; omitted = the image's default.
+# indexerのtop-kで同点のpoolを低いindexに決める。同点があると同じ入力から違う候補集合が出て、completionが割れるため。
 # Optional A/B of a locally requantized checkpoint; absent by default (docs/server-configuration.md).
 # 手元で再量子化したcheckpointのA/B用。既定では書かない。
 # [runtime.derived_checkpoint] goes after this table: path, requant_target and

@@ -63,6 +63,7 @@ def validate(profile):
                     "nccl_channels",
                     "derived_checkpoint",
                     "canonical_moe_order",
+                    "stable_indexer_topk",
                     "decode_graphs",
                     "enforce_eager",
                     "fa2_attention",
@@ -121,6 +122,8 @@ def validate(profile):
         validate_derived(profile["runtime"]["derived_checkpoint"])
     if type(profile["runtime"].get("canonical_moe_order", True)) is not bool:
         raise ValueError("runtime.canonical_moe_order must be true or false")
+    if type(profile["runtime"].get("stable_indexer_topk", True)) is not bool:
+        raise ValueError("runtime.stable_indexer_topk must be true or false")
     if type(profile["runtime"].get("fa2_attention", False)) is not bool:
         raise ValueError("runtime.fa2_attention must be true or false")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
@@ -387,6 +390,11 @@ def environment(profile, rank):
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(
             int(profile["runtime"]["canonical_moe_order"])
+        )
+    if "stable_indexer_topk" in profile["runtime"]:
+        # Absent: the image decides (on where the patch is installed).
+        result["GLM53_STABLE_INDEXER_TOPK"] = str(
+            int(profile["runtime"]["stable_indexer_topk"])
         )
     if (
         profile["lpa"]["enabled"]

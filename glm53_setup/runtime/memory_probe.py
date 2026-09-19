@@ -455,44 +455,6 @@ class MemoryProbeWorker:
             marlin_moe.fused_marlin_moe = zeroed
         return {"rank": self.rank, **self.probe_zeroed}
 
-    def stable_topk(self, enabled=True):
-        """Diagnostic: serve the indexer's decode top-k from a stable sort.
-
-        ``persistent_topk`` picks a different set when pools tie across rank k.
-        If identical requests stop forking with this on, that tie was the fork.
-        """
-        import torch
-
-        from glm53_setup.runtime.stable_topk import stable_topk, stable_topk_ranges
-
-        if not hasattr(self, "probe_topk"):
-            self.probe_topk = {
-                "original": torch.ops._C.persistent_topk,
-                "original_prefill": torch.ops._C.top_k_per_row_prefill,
-                "calls": 0,
-                "prefill_calls": 0,
-            }
-        state = self.probe_topk
-
-        def replaced(logits, lengths, output, workspace, k, max_seq_len):
-            state["calls"] += 1
-            stable_topk(logits, lengths, output, k, max_seq_len)
-
-        def replaced_prefill(logits, starts, ends, output, rows, stride0, stride1, k):
-            state["prefill_calls"] += 1
-            stable_topk_ranges(logits[:rows], starts, ends, output[:rows], k)
-
-        torch.ops._C.persistent_topk = replaced if enabled else state["original"]
-        torch.ops._C.top_k_per_row_prefill = (
-            replaced_prefill if enabled else state["original_prefill"]
-        )
-        return {
-            "rank": self.rank,
-            "enabled": bool(enabled),
-            "calls": state["calls"],
-            "prefill_calls": state["prefill_calls"],
-        }
-
     def fa2_stage(self, stage):
         return {"rank": self.rank, "stage": fa2_stage(stage)}
 
