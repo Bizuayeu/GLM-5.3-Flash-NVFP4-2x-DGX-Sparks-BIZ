@@ -239,7 +239,14 @@ class ServerConfigTests(unittest.TestCase):
             server.image_capability_checks(distributed, image)["moe_order_support"],
             False,
         )
+        # 1 was carried both by the image whose sort mis-sized its buffer and by
+        # the fixed one; 2 is the fixed one only.
         image["Config"]["Env"].append("GLM53_MOE_ORDER_API=1")
+        self.assertIs(
+            server.image_capability_checks(distributed, image)["moe_order_support"],
+            False,
+        )
+        image["Config"]["Env"].append("GLM53_MOE_ORDER_API=2")
         self.assertIs(
             server.image_capability_checks(distributed, image)["moe_order_support"],
             True,

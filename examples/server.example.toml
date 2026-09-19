@@ -8,7 +8,7 @@
 schema_version = 1
 
 [runtime]
-canonical_moe_order = true # One token order inside each expert; needs an image with GLM53_MOE_ORDER_API=1
+canonical_moe_order = true # One token order inside each expert; needs an image with GLM53_MOE_ORDER_API=2
 # Without it identical requests do not repeat exactly: the align kernel orders an expert's tokens by
 # thread scheduling and the Marlin MoE result depends on it (docs/validation.md). false = comparison arm;
 # omitted = whatever the image defaults to. 同一要求の反復を一致させるexpert内token順の固定。

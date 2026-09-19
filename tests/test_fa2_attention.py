@@ -28,32 +28,34 @@ class Fa2SwitchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fa2_attention.use_fa2(2048)
 
-    def test_profile_key_sets_the_switch_and_mounts_the_newer_modules(self):
+    def test_profile_key_sets_the_switch_and_asks_the_image_for_the_path(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn("GLM53_FA2_ATTENTION", config.environment(profile, 0))
+        bare = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertNotIn("fa2_support", server.image_capability_checks(profile, bare))
         profile["runtime"]["fa2_attention"] = True
         config.validate(profile)
         for rank in (0, 1):
             self.assertEqual(
                 config.environment(profile, rank)["GLM53_FA2_ATTENTION"], "1"
             )
+        # The path, its dispatch and the fused unpack that takes its element count
+        # at run time ship in the image; an image without them is refused, not
+        # patched over with files from the checkout.
+        self.assertIs(
+            server.image_capability_checks(profile, bare)["fa2_support"], False
+        )
+        bare["Config"]["Env"].append("GLM53_FA2_ATTENTION_API=1")
+        self.assertIs(
+            server.image_capability_checks(profile, bare)["fa2_support"], True
+        )
         command = server.command(
             profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
         )
-        for target in (
-            ":/opt/glm53/glm53_setup/runtime/fa2_attention.py:ro",
-            ":/opt/glm53/glm53_setup/runtime/reference_attention.py:ro",
-            # The image's copy compiles one kernel per size; FA2 needs the fixed one.
-            ":/opt/glm53/glm53_setup/runtime/fused_unpack.py:ro",
-            ":/usr/local/lib/python3.12/dist-packages/glm53_reference.py:ro",
-        ):
-            self.assertTrue(any(v.endswith(target) for v in command), target)
+        for name in ("fa2_attention.py", "fused_unpack.py", "glm53_reference.py"):
+            self.assertFalse(any(v.endswith(f"{name}:ro") for v in command), name)
         profile["runtime"]["fa2_attention"] = False
         self.assertEqual(config.environment(profile, 0)["GLM53_FA2_ATTENTION"], "0")
-        off = server.command(
-            profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
-        )
-        self.assertFalse(any("fa2_attention.py" in v for v in off))
 
     def test_the_switch_is_boolean_and_excludes_lpa(self):
         profile = config.load(ROOT / "examples/server.example.toml")

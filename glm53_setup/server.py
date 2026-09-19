@@ -24,7 +24,6 @@ VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/n
 # newer than the image is bind-mounted there so a worker extension can import it.
 IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
 # The backend patch imports the reference attention from this copy.
-IMAGE_REFERENCE = "/usr/local/lib/python3.12/dist-packages/glm53_reference.py"
 
 
 def projector_path(profile, config_path):
@@ -101,22 +100,6 @@ def command(profile, config_path, rank, name, cache=None):
         # The probe is newer than the image; mount the checkout's copy.
         source = ROOT / "glm53_setup/runtime/memory_probe.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
-    if profile["runtime"].get("fa2_attention"):
-        # The FA2 path and its dispatch are newer than the image, and so is the
-        # fused unpack that takes its element count at run time: the image's
-        # copy compiles one kernel per size, which FA2's varying row counts leak.
-        runtime = ROOT / "glm53_setup/runtime"
-        reference = runtime / "reference_attention.py"
-        args += [
-            "-v",
-            f"{runtime / 'fused_unpack.py'}:{IMAGE_PACKAGE_DIR}/runtime/fused_unpack.py:ro",
-            "-v",
-            f"{runtime / 'fa2_attention.py'}:{IMAGE_PACKAGE_DIR}/runtime/fa2_attention.py:ro",
-            "-v",
-            f"{reference}:{IMAGE_PACKAGE_DIR}/runtime/reference_attention.py:ro",
-            "-v",
-            f"{reference}:{IMAGE_REFERENCE}:ro",
-        ]
     if profile["profiling"]["enabled"]:
         args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():
@@ -176,8 +159,13 @@ def image_capability_checks(profile, image):
         ("reference_attention", "GLM53_REFERENCE_ATTENTION=1", True),
         (
             "moe_order_support",
-            "GLM53_MOE_ORDER_API=1",
+            "GLM53_MOE_ORDER_API=2",
             runtime.get("canonical_moe_order", False),
+        ),
+        (
+            "fa2_support",
+            "GLM53_FA2_ATTENTION_API=1",
+            runtime.get("fa2_attention", False),
         ),
         (
             "indexer_topk_support",
