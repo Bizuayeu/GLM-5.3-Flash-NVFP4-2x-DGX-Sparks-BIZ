@@ -12,6 +12,7 @@ class APCStartupTests(unittest.TestCase):
         value["cache"]["prefix_caching"] = True
         value["lpa"]["enabled"] = True
         value["lpa"]["break_even_tokens"] = 1024
+        value["runtime"]["fa2_attention"] = False  # FA2 excludes LPA
         return value
 
     def test_apc_priority_is_wired_from_the_unified_profile(self):

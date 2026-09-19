@@ -15,6 +15,7 @@ class ExpertParallelConfigTests(unittest.TestCase):
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
         self.profile["cache"]["fused_unpack"] = False
+        self.profile["runtime"]["fa2_attention"] = False
 
     def test_opt_in_changes_only_expert_partitioning_on_both_ranks(self):
         for rank in (0, 1):

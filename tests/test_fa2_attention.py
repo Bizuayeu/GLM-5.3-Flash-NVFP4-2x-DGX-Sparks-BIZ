@@ -30,8 +30,13 @@ class Fa2SwitchTests(unittest.TestCase):
 
     def test_profile_key_sets_the_switch_and_mounts_the_newer_modules(self):
         profile = config.load(ROOT / "examples/server.example.toml")
-        self.assertNotIn("GLM53_FA2_ATTENTION", config.environment(profile, 0))
-        profile["runtime"]["fa2_attention"] = True
+        # On in the template from 1.6.0. A profile written before the key has none,
+        # keeps the reference path and its fingerprint.
+        self.assertIs(profile["runtime"]["fa2_attention"], True)
+        earlier = copy.deepcopy(profile)
+        earlier["runtime"].pop("fa2_attention")
+        config.validate(earlier)
+        self.assertNotIn("GLM53_FA2_ATTENTION", config.environment(earlier, 0))
         config.validate(profile)
         for rank in (0, 1):
             self.assertEqual(

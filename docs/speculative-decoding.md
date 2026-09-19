@@ -93,3 +93,22 @@ Per-position acceptance is accepted tokens at that position divided by all draft
 All 21 measured requests produced 64 tokens without errors, and all 11 basic API checks passed. Reasoning wording again differed on replay; broad output equivalence and actual harness acceptance remain separate. Model memory stayed at 95.17 GiB/rank. Minimum host available memory was 7.33/10.12 GiB, with no reserve-triggered stop or OOM kill. Both servers were stopped; rank 1 again required Docker's stop timeout (exit 137), so recovery qualification remains open.
 
 **Decision:** prefer k=3 for the next experimental text/tool and harness evaluations, while preserving k=1 and MTP-off references. In these samples, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7% over k=1. The long-input aggregate gain was only 0.45%, too small to establish a repeatable benefit, and its TTFT increased slightly. The measurements are small, separate runs, not a statistical optimum search. k=2 and k≥4 were not tested; no claim that k=3 beats k=4 is supported. Two active sequences, graphs, prefix caching, vision, both harnesses and routine deployment remain unqualified.
+
+## Depths one to five (2026-09-19 and 20)
+
+`mtp.num_speculative_tokens` accepts 1 to 5. The draft has one layer, so a depth above one runs the same draft again and acceptance falls with depth; what a deeper step buys depends on how predictable the text is. The decode measure is nine samples of 512 tokens after a fixed 2,048-token prompt, median tok/s, with the mean acceptance length in brackets; both tables ran FA2 prefill, the fixed expert order and one sequence on the reference pair.
+
+With the requantized attention projections (`runtime.derived_checkpoint`, route g):
+
+| Prompt | k=1 | k=3 | k=4 | k=5 |
+|---|---|---|---|---|
+| Counting | 30.64 (1.98) | 42.17 (3.79) | 45.13 (4.68) | 45.89 (5.41) |
+| Prose | 26.67 (1.77) | 24.95 (2.15) | 24.28 (2.36) | 20.55 (2.30) |
+| Code | 29.07 (1.88) | 34.84 (3.15) | 34.59 (3.65) | 30.27 (3.66) |
+| Short prompts (`glm_bench`) | 28.51 | 27.19 | 37.79 | 36.33 |
+
+Teacher-forced NLL was the same to four decimals at every depth, and the 199,652-token passphrase request was answered correctly at k=3 (166.5 s) and k=4 (164.3 s). k=2 was dropped from the sweep after its nine completions came out in three variants, and the k=4 prose run above came out in two; both were the [indexer top-k tie](validation.md#full-model-tp2-experimental-scope), not the depth, and with `runtime.stable_indexer_topk` k=4 repeats nine of nine (prose 24.68, counting 45.99, short prompts 38.82).
+
+With the pinned checkpoint as it is, k=4 with the tie settled against k=3 without it: counting 33.08 against 32.84, prose 19.60 against 20.68, code 28.37 against 27.41, short prompts 28.10 against 27.38. The requantized projections make every step cheaper, so the longer verification step of a deeper draft costs relatively less there; without them depth four gains 1 to 4% where the text is predictable and loses 5% on prose.
+
+**Decision (2026-09-20):** the template keeps k=3, which is never the slowest depth on any of the three prompts. k=4 is the setting to pair with `runtime.derived_checkpoint`; the reference pair serves that pair of settings. k=1 is the fastest depth for prose alone.
