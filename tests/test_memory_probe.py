@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 from glm53_setup import server
 from glm53_setup import server_config as config
-from glm53_setup.runtime.memory_probe import MemoryProbeWorker, summarize
+from glm53_setup.runtime.memory_probe import (
+    MemoryProbeWorker,
+    summarize,
+    summarize_host,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,6 +56,52 @@ class MemoryProbeTests(unittest.TestCase):
         self.assertEqual(row["rank"], 1)
         self.assertEqual(row["reserved_gib"], 1.0)
         self.assertEqual(row["device_total_gib"], 4.0)
+
+    def test_host_summary_separates_used_retained_and_mapped_heap(self):
+        heap = {"arena": 3 * 2**20, "hblkhd": 2 * 2**20, "uordblks": 2**20}
+        heap["fordblks"] = 2 * 2**20
+        status = "\n".join(
+            ["Name: x", "RssAnon:   2048 kB", "RssFile:  1024 kB", "RssShmem: 0 kB"]
+        )
+        pinned = {
+            "allocated_bytes.current": 4 * 2**20,
+            "reserved_bytes.current": 8 * 2**20,
+        }
+        row = summarize_host(heap, status, pinned)
+        self.assertEqual(row["heap_in_use_mib"], 1.0)
+        self.assertEqual(row["heap_free_retained_mib"], 2.0)
+        self.assertEqual(row["heap_arena_mib"], 3.0)
+        self.assertEqual(row["heap_mmapped_mib"], 2.0)
+        self.assertEqual(row["rss_anon_mib"], 2.0)
+        self.assertEqual(row["rss_file_mib"], 1.0)
+        self.assertEqual(row["pinned_reserved_mib"], 8.0)
+        self.assertEqual(row["pinned_allocated_mib"], 4.0)
+        # A torch without host allocator statistics still yields the heap row.
+        self.assertNotIn("pinned_reserved_mib", summarize_host(heap, status, None))
+
+    def test_host_stats_can_trim_the_heap_and_report_both_sides(self):
+        worker = MemoryProbeWorker()
+        worker.rank = 0
+        calls = []
+        with (
+            patch(
+                "glm53_setup.runtime.memory_probe.read_host",
+                side_effect=lambda: (
+                    calls.append("read") or {"rss_anon_mib": len(calls)}
+                ),
+            ),
+            patch(
+                "glm53_setup.runtime.memory_probe.trim_heap",
+                side_effect=lambda: calls.append("trim") or 1,
+            ),
+        ):
+            plain = worker.host_stats()
+            trimmed = worker.host_stats(trim=True)
+        self.assertEqual(plain, {"rank": 0, "rss_anon_mib": 1})
+        self.assertEqual(calls, ["read", "read", "trim", "read"])
+        self.assertEqual(trimmed["before_trim"], {"rss_anon_mib": 2})
+        self.assertEqual(trimmed["trim_released"], 1)
+        self.assertEqual(trimmed["rss_anon_mib"], 4)
 
     def test_profile_key_mounts_the_probe_and_stays_exclusive(self):
         profile = config.load(ROOT / "examples/server.example.toml")
