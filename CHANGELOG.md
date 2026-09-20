@@ -2,6 +2,17 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.6.1 — 2026-09-20
+
+### Changed
+
+- The entry layer is restructured without changing behaviour. `server.main`, `cluster.main`, `server_config.validate` and `server_config.serve_args` become sequences of small named steps, the seven fixture runners can state their engine settings without a GPU, and `apc_history` exposes its helpers to tests. Defaults, the generated `serve` arguments, the launch fingerprint and the command line are unchanged; two fixture runners now take the compilation mode as an argument. A comparator found 459 settings, validation and CLI results byte-identical to 1.6.0. On the reference pair, `server plan`, `server preflight` and the `prepare` RPC gave the same results from a 1.6.0 checkout and this one on both ranks, and `apc_history` matched 1.6.0 request for request against a deterministic fake server; the production profile excludes LPA, so that harness was not run against a real server. Tests grow from 325 to 388.
+
+### Documentation
+
+- README: the verified table and its narrative describe 1.6.0, and a new section states what the reference pair's serving profile measures, with its conditions and cost.
+- Statements that 1.5.0 and 1.6.0 had overtaken: image-input links no longer say "at 200K", the Japanese optimization overview drops three old default values its English pair never carried, the validation guide says depths 1–5 and decode graphs were measured rather than untested, and the licensing page gains the heading its Japanese pair already had.
+
 ## 1.6.0 — 2026-09-20
 
 ### Documentation
