@@ -640,16 +640,16 @@ Prefill is 2.2 times 1.5.0, the FA2 path. Decode did not get faster; its spread 
 
 ### Long input
 
-Measured on 2026-09-19 on that day's profile: FA2 prefill, depth 3 and the fixed expert order on image `e7a2a606…`, without `stable_indexer_topk`, which was written the day after and ships in a later image. Each request followed a prefix-cache reset.
+Measured on 2026-09-20 on the distributed defaults as they ship: FA2 prefill, depth 3, the fixed expert order and `stable_indexer_topk`, image `3a396af5…`, fingerprint `22fb593910af…`. Each request followed a prefix-cache reset. The first series, on 2026-09-19 before the tie rule existed (image `e7a2a606…`), is kept in parentheses.
 
 | Request | Result | 1.5.0 |
 |---|---|---|
-| 255,950-token input, one passphrase at the midpoint | 207.4 s, correct | 462.8 s, correct |
-| Maximum capacity, 262,080 input + 64 output tokens, twice | 228.9 and 229.0 s, no preemption, finite logprobs | 488.6 s |
-| Three-position reference, three runs | correct, correct, incorrect (224, 223 and 235 s): the same misreading after an idle wait as before | unstable |
-| Lowest available memory over the series, head | 5.38 GiB | 5.82 GiB |
+| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct (207.4 s) | 462.8 s, correct |
+| Maximum capacity, 262,080 input + 64 output tokens, twice | 240.3 and 237.9 s, no preemption, finite logprobs (228.9 and 229.0 s) | 488.6 s |
+| Three-position reference, three runs | correct, incorrect, incorrect (233.5, 247.1 and 246.5 s): both failures reproduced a record's text up to the output limit instead of its code, the second of them after the idle wait (correct, correct, incorrect) | unstable |
+| Lowest available memory over the series, head / peer | 6.08 / 8.03 GiB (head 5.38) | 5.82 GiB |
 
-The tie rule adds a check to every prefill chunk. On the serving profile below it cost 2.9% at 199,652 tokens (169.1 s against 164.3 s, one run each); it has not been measured on these defaults.
+The tie rule adds a check to every prefill chunk. On the serving profile below it cost 2.9% at 199,652 tokens (169.1 s against 164.3 s, one run each). On these defaults the 255,950-token request took 217.3 s with the rule against 207.4 s the day before without it, one run each on different images, so that 4.8% is an upper reading of its cost, not an isolated one.
 
 ### The reference pair's serving profile
 
@@ -660,7 +660,7 @@ The pair itself serves two further settings that a fresh installation does not h
 | Decode after a 2,048-token prompt: counting / prose / code (tok/s) | 45.43 / 24.33 / 34.75 | 32.50 / 21.00 / 28.30 |
 | Decode after a fixed short prompt (tok/s) | 38.30 | 27.17 |
 | Prefill, 38,962 tokens (tok/s) | 1,250.3 | 1,271.6 |
-| 199,652-token input, one passphrase at the midpoint | 169.1 s, correct | not measured |
+| 199,652-token input, one passphrase at the midpoint | 169.1 s, correct | 167.7 s, correct |
 | Weights per rank / lowest available memory, head | 91.76 GiB / 10.08 GiB | 95.76 GiB / 6.28 GiB |
 | NLL: Japanese / English / code / mathematics | 1.6600 / 2.0020 / 1.0040 / 0.6184 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
 
