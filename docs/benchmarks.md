@@ -646,8 +646,10 @@ Measured on 2026-09-20 on the distributed defaults as they ship: FA2 prefill, de
 |---|---|---|
 | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct (207.4 s) | 462.8 s, correct |
 | Maximum capacity, 262,080 input + 64 output tokens, twice | 240.3 and 237.9 s, no preemption, finite logprobs (228.9 and 229.0 s) | 488.6 s |
-| Three-position reference, three runs | correct, incorrect, incorrect (233.5, 247.1 and 246.5 s): both failures reproduced a record's text up to the output limit instead of its code, the second of them after the idle wait (correct, correct, incorrect) | unstable |
+| Three-position reference, explicit prompt, three runs | correct 3 of 3 (232.7, 233.7 and 233.5 s, the last after a 300 s idle wait), 36 output tokens and no reasoning each | see below |
 | Lowest available memory over the series, head / peer | 6.08 / 8.03 GiB (head 5.38) | 5.82 GiB |
+
+The three-position reference had been reported as unstable since 1.5.0 (correct in 2 of 3 runs on 2026-09-19 and in 1 of 3 earlier on 2026-09-20). That was the prompt, not the long-context reading: the ambiguity was first read from the failures [on 1.4.0](#200k-real-input-on-140), and this is the controlled comparison. The old prompt put a `REGISTRY name = code` line in front of each 130K-token article and asked for "the three REGISTRY values" without saying that a record is its one line. In every saved run, the correct ones included, the model's reasoning took the values to be the articles that follow the lines, and located all three lines correctly; whether it then answered with the codes or started copying an article decided the score. With the archive unchanged and only the framing made explicit (a record is one line, its value the short code, the articles belong to no record), the same profile answered 3 of 3. The old framing in the same session scored 2 of 2 with the same misreading in its reasoning (237.0 and 241.1 s, 79 and 207 output tokens).
 
 The tie rule adds a check to every prefill chunk. On the serving profile below it cost 2.9% at 199,652 tokens (169.1 s against 164.3 s, one run each). On these defaults the 255,950-token request took 217.3 s with the rule against 207.4 s the day before without it, one run each on different images, so that 4.8% is an upper reading of its cost, not an isolated one.
 
@@ -663,6 +665,8 @@ The pair itself serves two further settings that a fresh installation does not h
 | 199,652-token input, one passphrase at the midpoint | 169.1 s, correct | 167.7 s, correct |
 | Weights per rank / lowest available memory, head | 91.76 GiB / 10.08 GiB | 95.76 GiB / 6.28 GiB |
 | NLL: Japanese / English / code / mathematics | 1.6600 / 2.0020 / 1.0040 / 0.6184 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
+
+**Above 200K tokens this profile is not qualified, and at 261,461 tokens it fails.** On 2026-09-20 one chat request of that length ended in a CUDA illegal memory access on both ranks near the end of its prefill, four times out of four: twice on this profile, once with `CUDA_LAUNCH_BLOCKING=1`, and once with the depth lowered to 3. The supervisor then stopped the pair. The same request completed on the default weights at depth 4 (231.0 s, correct) and at depth 3, so the failure follows the requantized checkpoint and its overlays, not the depth; with synchronous reporting it surfaced in vLLM's slot-mapping kernel, which does not depend on the weights, so what corrupts its inputs is not yet named. A four-layer requantized fixture at TP=1 completed the same length. Until this is isolated, keep requests to this profile at or below the 199,652 tokens it has completed; the distributed defaults are not affected.
 
 Three launches of this profile, with launches of other profiles between them, produced the same three completions (equal hashes) and the same NLL to four decimals. On the four-layer fixture two launches out of three differed from the third in their numbers from the first layer's linear-attention kernel on, while repeats inside a launch were identical; whether a given launch of the full model reproduces the last one is therefore a measurement to repeat, not a guarantee.
 

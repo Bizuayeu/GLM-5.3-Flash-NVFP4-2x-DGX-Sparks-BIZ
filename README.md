@@ -67,7 +67,7 @@ Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 
 | Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s |
 | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct (462.8 s on 1.5.0) |
 | Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs |
-| Three-position reference at 256K | unstable: correct in 1 of 3 runs on 2026-09-20, 2 of 3 the day before |
+| Three-position reference at 256K | correct 3 of 3 with an explicit prompt; the instability reported since 1.5.0 was the old prompt's ambiguity |
 | Lowest available memory at 256K | head 6.08 GiB |
 
 **With the two optional settings the reference pair serves** (attention projections requantized locally to W4A16 NVFP4 through `runtime.derived_checkpoint`, and MTP depth 4; the requantized weights are built by the operator and not distributed here):
