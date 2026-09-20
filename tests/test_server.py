@@ -74,6 +74,14 @@ class ServerConfigTests(unittest.TestCase):
                 env["TORCHINDUCTOR_CACHE_DIR"], "/root/.cache/torchinductor"
             )
 
+    def test_autotuned_kernel_choices_are_kept_with_the_triton_cache(self):
+        # Without this every launch tunes again, and one KDA kernel's pick decides
+        # which of two numerical states the launch computes in.
+        for rank in (0, 1):
+            env = config.environment(self.profile, rank)
+            self.assertEqual(env["TRITON_CACHE_AUTOTUNING"], "1")
+            self.assertTrue(env["TRITON_CACHE_DIR"].startswith("/root/.cache/"))
+
     def test_index_check_mode_is_explicit_without_disabling_validation(self):
         self.assertNotIn(
             "GLM53_ASYNC_INDEX_CHECKS", config.environment(self.profile, 0)

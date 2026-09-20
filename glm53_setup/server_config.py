@@ -458,6 +458,10 @@ def environment(profile, rank):
         TRITON_CACHE_DIR="/root/.cache/triton",
         TILELANG_CACHE_DIR="/root/.cache/tilelang",
         TORCHINDUCTOR_CACHE_DIR="/root/.cache/torchinductor",
+        # Triton keeps compiled kernels there but tunes again on every launch, and
+        # the KDA inverse kernel's pick (num_warps 2 or 4) decides which of two
+        # numerical states a launch computes in. Kept, the first pick stays.
+        TRITON_CACHE_AUTOTUNING="1",
     )
     if "cuda_allocator_conf" in profile["runtime"]:
         result["PYTORCH_CUDA_ALLOC_CONF"] = profile["runtime"]["cuda_allocator_conf"]
