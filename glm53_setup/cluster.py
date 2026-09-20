@@ -374,88 +374,74 @@ def resume(backend, report, *, config=None, save=lambda report: None):
     return report
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["switch", "resume", "rpc", "job"])
-    parser.add_argument("--config", type=Path)
-    parser.add_argument(
-        "--remote-config", help="Same absolute configuration path on both Linux ranks"
-    )
-    parser.add_argument(
-        "--no-send-config",
-        action="store_true",
-        help="Leave the --remote-config files as they are (default: both ranks "
-        "write the --config text there once the new pair is complete)",
-    )
-    parser.add_argument("--hosts", nargs=2)
-    parser.add_argument(
-        "--checkout", help="Same audited absolute Linux checkout on both ranks"
-    )
-    parser.add_argument("--ssh-config", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--record", type=Path)
-    parser.add_argument("--ready-timeout", type=int, default=1800)
-    args = parser.parse_args(argv)
-    if args.action == "resume":
-        if not all((args.output, args.hosts, args.checkout)) or args.ready_timeout < 1:
-            parser.error(
-                "resume requires --output, --hosts, --checkout and a positive timeout"
-            )
-        backend = SSHBackend(
-            args.hosts, args.checkout, args.ssh_config, args.ready_timeout
+def ssh_backend(args):
+    """The transport both transported actions address the two ranks through."""
+    return SSHBackend(args.hosts, args.checkout, args.ssh_config, args.ready_timeout)
+
+
+def act_resume(cli, args):
+    """Carry a recorded switch forward without replaying its start."""
+    if not all((args.output, args.hosts, args.checkout)) or args.ready_timeout < 1:
+        cli.error(
+            "resume requires --output, --hosts, --checkout and a positive timeout"
         )
-        result = resume(
-            backend,
-            server.read_json(args.output / "result.json"),
-            config=args.config.read_text(encoding="utf-8") if args.config else None,
-            save=lambda report: write_json(args.output / "result.json", report),
+    result = resume(
+        ssh_backend(args),
+        server.read_json(args.output / "result.json"),
+        config=args.config.read_text(encoding="utf-8") if args.config else None,
+        save=lambda report: write_json(args.output / "result.json", report),
+    )
+    write_json(args.output / "result.json", result)
+    print(
+        json.dumps(
+            {
+                "status": result["status"],
+                "recovered": result.get("recovered", False),
+                "output": str(args.output),
+            }
         )
-        write_json(args.output / "result.json", result)
-        print(
-            json.dumps(
-                {
-                    "status": result["status"],
-                    "recovered": result.get("recovered", False),
-                    "output": str(args.output),
-                }
-            )
+    )
+
+
+def act_rpc(cli, args):
+    """Serve one coordinator operation for the rank this runs on."""
+    payload = json.load(sys.stdin)
+    print(json.dumps(rpc(payload["action"], payload["rank"], payload["value"])))
+
+
+def act_job(cli, args):
+    """Run a reserved attempt's supervisor; the coordinator owns the identity."""
+    identity = server.read_json(args.record / "identity.json")
+    owned_record(identity)
+    write_json(args.record / "job.json", {"pid": os.getpid()})
+    if (args.record / "cancel.json").exists():
+        write_json(args.record / "finished.json", {"status": "cancelled before launch"})
+        return
+    try:
+        server.main(
+            [
+                "start",
+                "--config",
+                identity["launch"]["config_path"],
+                "--launch",
+                str(args.record / "launch.json"),
+                "--rank",
+                str(identity["rank"]),
+                "--run-id",
+                identity["run_id"],
+            ]
         )
-        return
-    if args.action == "rpc":
-        payload = json.load(sys.stdin)
-        print(json.dumps(rpc(payload["action"], payload["rank"], payload["value"])))
-        return
-    if args.action == "job":
-        identity = server.read_json(args.record / "identity.json")
-        owned_record(identity)
-        write_json(args.record / "job.json", {"pid": os.getpid()})
-        if (args.record / "cancel.json").exists():
-            write_json(
-                args.record / "finished.json", {"status": "cancelled before launch"}
-            )
-            return
-        try:
-            server.main(
-                [
-                    "start",
-                    "--config",
-                    identity["launch"]["config_path"],
-                    "--launch",
-                    str(args.record / "launch.json"),
-                    "--rank",
-                    str(identity["rank"]),
-                    "--run-id",
-                    identity["run_id"],
-                ]
-            )
-            write_json(args.record / "finished.json", {"status": "stopped"})
-        except BaseException as error:
-            write_json(
-                args.record / "finished.json",
-                {"status": "failed", "error": type(error).__name__},
-            )
-            raise
-        return
+        write_json(args.record / "finished.json", {"status": "stopped"})
+    except BaseException as error:
+        write_json(
+            args.record / "finished.json",
+            {"status": "failed", "error": type(error).__name__},
+        )
+        raise
+
+
+def act_switch(cli, args):
+    """Stop the running pair and start the candidate, recoverably."""
     if (
         not all(
             (
@@ -468,11 +454,11 @@ def main(argv=None):
         )
         or args.ready_timeout < 1
     ):
-        parser.error(
+        cli.error(
             "switch requires --config, --remote-config, --hosts, --checkout, --output and positive readiness timeout"
         )
     if not args.remote_config.startswith("/") or not args.checkout.startswith("/"):
-        parser.error("Remote paths must be absolute Linux paths")
+        cli.error("Remote paths must be absolute Linux paths")
     args.output.mkdir(parents=True, exist_ok=False)
     # Read once: the manifest and the text the ranks write come from the same
     # bytes. Text mode turns CRLF into LF on the way.
@@ -482,10 +468,9 @@ def main(argv=None):
         "config_path": args.remote_config,
     }
     write_json(args.output / "launch.json", launch)
-    backend = SSHBackend(args.hosts, args.checkout, args.ssh_config, args.ready_timeout)
     try:
         result = switch(
-            backend,
+            ssh_backend(args),
             launch,
             save=lambda r: write_json(args.output / "result.json", r),
             config=None if args.no_send_config else text,
@@ -510,6 +495,46 @@ def main(argv=None):
             }
         )
     )
+
+
+# Insertion order is the order argparse prints in --help.
+ACTIONS = {
+    "switch": act_switch,
+    "resume": act_resume,
+    "rpc": act_rpc,
+    "job": act_job,
+}
+
+
+def parser():
+    """The coordinator's argument interface; each action validates its own set."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("action", choices=list(ACTIONS))
+    cli.add_argument("--config", type=Path)
+    cli.add_argument(
+        "--remote-config", help="Same absolute configuration path on both Linux ranks"
+    )
+    cli.add_argument(
+        "--no-send-config",
+        action="store_true",
+        help="Leave the --remote-config files as they are (default: both ranks "
+        "write the --config text there once the new pair is complete)",
+    )
+    cli.add_argument("--hosts", nargs=2)
+    cli.add_argument(
+        "--checkout", help="Same audited absolute Linux checkout on both ranks"
+    )
+    cli.add_argument("--ssh-config", type=Path)
+    cli.add_argument("--output", type=Path)
+    cli.add_argument("--record", type=Path)
+    cli.add_argument("--ready-timeout", type=int, default=1800)
+    return cli
+
+
+def main(argv=None):
+    cli = parser()
+    args = cli.parse_args(argv)
+    return ACTIONS[args.action](cli, args)
 
 
 if __name__ == "__main__":
