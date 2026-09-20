@@ -156,6 +156,91 @@ def stream_chat(profile, body):
     }
 
 
+def read_metrics(profile):
+    """The running head's Prometheus text."""
+    with model_http.open_response(
+        f"http://127.0.0.1:{profile['api']['port']}", "/metrics", timeout=10
+    ) as response:
+        return response.read().decode()
+
+
+def reset_prefix_cache(profile):
+    """Empty the dedicated server's prefix cache between cases."""
+    if server.post(profile, "/reset_prefix_cache", {}) != {"success": True}:
+        raise ValueError("Dedicated server cache reset failed")
+
+
+def encode_prompt(profile, body):
+    """The token ids the server itself produces for this request."""
+    return server.post(
+        profile,
+        "/tokenize",
+        {
+            "model": body["model"],
+            "messages": body["messages"],
+            "add_generation_prompt": True,
+            "chat_template_kwargs": body["chat_template_kwargs"],
+        },
+    )["tokens"]
+
+
+def policy_hits(profile, rpc, length, mode):
+    """Both ranks' admission decision, and the joint hit they must agree on."""
+    workers = rpc("apc_lpa_report")
+    hits = []
+    for worker in workers:
+        policy = worker["policy"]["policy"]
+        hit = policy["cached_tokens"]
+        hits.append(hit)
+        if policy["prompt_tokens"] != length:
+            raise ValueError("Tokenization and scheduler N differ")
+        eligible = max(0, length - min(length, profile["lpa"]["tail"]) - hit)
+        active = mode == "auto" and eligible > profile["lpa"]["break_even_tokens"]
+        expected = (
+            {
+                str(layer): eligible
+                for layer in range(profile["lpa"]["cut"] + 1, 45)
+                if layer % 4 == 3
+            }
+            if active
+            else {}
+        )
+        actual = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
+        if actual != expected or policy["shared_cache_limit"] != (
+            hit if active else None
+        ):
+            raise ValueError("Actual LPA queries/shared limit differ from policy")
+    if len(hits) != 2 or len(set(hits)) != 1:
+        raise ValueError("Both ranks must report the same joint H")
+    return hits[0], workers
+
+
+def chat_turn(profile, rpc, body, expected, mode):
+    """One request against the running head, with its policy evidence."""
+    body = server_config.request_body(profile, body)
+    ids = encode_prompt(profile, body)
+    if len(ids) + body["max_tokens"] > profile["context"]["max_model_len"]:
+        raise ValueError("History exceeds the qualified context budget")
+    before = read_metrics(profile)
+    row = stream_chat(profile, {**body, "vllm_xargs": {"glm53_lpa_mode": mode}})
+    hit, workers = policy_hits(profile, rpc, len(ids), mode)
+    row.update(
+        prompt_token_ids=ids,
+        prompt_sha256=hashlib.sha256(json.dumps(ids).encode()).hexdigest(),
+        cached_tokens=hit,
+        recomputed_tokens=len(ids) - hit,
+        workers=workers,
+        metrics_before=before,
+        metrics_after=read_metrics(profile),
+        expected=expected,
+        passed=row["finish_reason"] == "stop"
+        and answer_matches(row["content"], expected),
+    )
+    if row["usage"]["prompt_tokens"] != len(ids):
+        raise ValueError("SSE usage differs from input tokens")
+    return row
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
@@ -232,84 +317,13 @@ def main(argv=None):
     def save():
         write_json(args.output / "result.json", report)
 
-    def post(path, body):
-        return server.post(profile, path, body)
-
+    post = partial(server.post, profile)
     rpc = partial(server.collective_rpc, profile)
-
-    def metrics():
-        with model_http.open_response(
-            f"http://127.0.0.1:{profile['api']['port']}", "/metrics", timeout=10
-        ) as response:
-            return response.read().decode()
-
-    def reset():
-        if post("/reset_prefix_cache", {}) != {"success": True}:
-            raise ValueError("Dedicated server cache reset failed")
-
-    def encode(body):
-        return post(
-            "/tokenize",
-            {
-                "model": body["model"],
-                "messages": body["messages"],
-                "add_generation_prompt": True,
-                "chat_template_kwargs": body["chat_template_kwargs"],
-            },
-        )["tokens"]
-
-    def check_policy(length, mode):
-        workers = rpc("apc_lpa_report")
-        hits = []
-        for worker in workers:
-            policy = worker["policy"]["policy"]
-            hit = policy["cached_tokens"]
-            hits.append(hit)
-            if policy["prompt_tokens"] != length:
-                raise ValueError("Tokenization and scheduler N differ")
-            eligible = max(0, length - min(length, profile["lpa"]["tail"]) - hit)
-            active = mode == "auto" and eligible > profile["lpa"]["break_even_tokens"]
-            expected = (
-                {
-                    str(layer): eligible
-                    for layer in range(profile["lpa"]["cut"] + 1, 45)
-                    if layer % 4 == 3
-                }
-                if active
-                else {}
-            )
-            actual = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
-            if actual != expected or policy["shared_cache_limit"] != (
-                hit if active else None
-            ):
-                raise ValueError("Actual LPA queries/shared limit differ from policy")
-        if len(hits) != 2 or len(set(hits)) != 1:
-            raise ValueError("Both ranks must report the same joint H")
-        return hits[0], workers
-
-    def chat(body, expected, mode):
-        body = server_config.request_body(profile, body)
-        ids = encode(body)
-        if len(ids) + body["max_tokens"] > profile["context"]["max_model_len"]:
-            raise ValueError("History exceeds the qualified context budget")
-        before = metrics()
-        row = stream_chat(profile, {**body, "vllm_xargs": {"glm53_lpa_mode": mode}})
-        hit, workers = check_policy(len(ids), mode)
-        row.update(
-            prompt_token_ids=ids,
-            prompt_sha256=hashlib.sha256(json.dumps(ids).encode()).hexdigest(),
-            cached_tokens=hit,
-            recomputed_tokens=len(ids) - hit,
-            workers=workers,
-            metrics_before=before,
-            metrics_after=metrics(),
-            expected=expected,
-            passed=row["finish_reason"] == "stop"
-            and answer_matches(row["content"], expected),
-        )
-        if row["usage"]["prompt_tokens"] != len(ids):
-            raise ValueError("SSE usage differs from input tokens")
-        return row
+    metrics = partial(read_metrics, profile)
+    reset = partial(reset_prefix_cache, profile)
+    encode = partial(encode_prompt, profile)
+    check_policy = partial(policy_hits, profile, rpc)
+    chat = partial(chat_turn, profile, rpc)
 
     save()
     try:
