@@ -4,6 +4,10 @@
 
 ## 1.6.2 — 2026-09-20
 
+### Fixed
+
+- Tests: ten host-guard tests added in 1.6.1 renamed the running platform through `os.name`, which pathlib also reads, so they errored on Linux and 1.6.1's CI failed on ubuntu. They now give `server` its own view of the `os` module. The guarded code is unchanged from 1.6.1.
+
 ### Documentation
 
 - Operations: distinguish reported GB10 power clamping after an unclean restart from a model slowdown, and record that a fixed KV-byte budget skips memory profiling without validating a larger prefill chunk’s activation peak.
