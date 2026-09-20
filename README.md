@@ -70,6 +70,19 @@ Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 
 | Three-position reference at 256K | unstable: correct in 2 of 3 runs, incorrect after an idle wait |
 | Lowest available memory at 256K | head 5.38 GiB |
 
+**With the two optional settings the reference pair serves** (attention projections requantized locally to W4A16 NVFP4 through `runtime.derived_checkpoint`, and MTP depth 4; the requantized weights are built by the operator and not distributed here):
+
+| Measure | Result |
+|---|---|
+| Decode after a 2,048-token prompt, predictable text (counting) | **45.4 tok/s** (32.5 on the defaults) |
+| same, code / prose | 34.8 / 24.3 tok/s (28.3 / 21.0 on the defaults) |
+| Decode, 512 tokens after a fixed short prompt | 38.3 tok/s (27.2 on the defaults) |
+| 199,652-token input, one passphrase at the midpoint | 169.1 s, correct |
+| Weights per rank / lowest available memory, head | 91.8 GiB / 10.1 GiB (95.8 / 6.3 on the defaults) |
+| Cost | teacher-forced NLL 4 to 6% higher on three of four texts; identical requests still repeat bit for bit |
+
+How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 24 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile) and [depths one to five](docs/speculative-decoding.md#depths-one-to-five-2026-09-19-and-20) hold the numbers.
+
 [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
 
 [LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed server template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path. Its quality/speed acceptance is separate from the baseline below.
