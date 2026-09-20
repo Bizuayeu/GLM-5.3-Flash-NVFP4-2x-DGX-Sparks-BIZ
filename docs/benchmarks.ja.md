@@ -640,7 +640,7 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 
 ### 長い入力
 
-2026-09-19に、同じprofileから `stable_indexer_topk` を除いた形で測りました（このキーは翌日に書いたものです）。各要求の前にprefix cacheをresetしています。
+2026-09-19に、その日のprofileで測りました。prefillはFA2、深さ3、expert内の順序は固定、imageは `e7a2a606…` で、`stable_indexer_topk` は含みません（このキーは翌日に書いたもので、後のimageに入っています）。各要求の前にprefix cacheをresetしています。
 
 | 要求 | 結果 | 1.5.0 |
 |---|---|---|

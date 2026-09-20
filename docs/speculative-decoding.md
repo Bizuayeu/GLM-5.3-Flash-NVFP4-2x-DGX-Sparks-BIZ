@@ -4,7 +4,7 @@
 
 The first TP=2 baseline used no speculation. The speculative profiles use the MTP tensors already in the pinned NVIDIA checkpoint. No external draft model, EXL3 conversion or DFlash2 weights are needed; this introduces no additional model license. Existing [artifact licenses](licensing.md) still apply.
 
-Both k=1 and k=3 now have limited experimental evidence. Use [the k=3 comparison](#measured-k3-comparison) for the current candidate choice; k=1 remains the comparison baseline.
+Depths one to five have been measured. [Depths one to five](#depths-one-to-five-2026-09-19-and-20) holds the current comparison and the choice of k=3 for the template; the k=1 and k=3 sections below are the earlier, smaller runs that led there.
 
 ## Why a flag alone is insufficient
 
@@ -92,7 +92,7 @@ Per-position acceptance is accepted tokens at that position divided by all draft
 
 All 21 measured requests produced 64 tokens without errors, and all 11 basic API checks passed. Reasoning wording again differed on replay; broad output equivalence and actual harness acceptance remain separate. Model memory stayed at 95.17 GiB/rank. Minimum host available memory was 7.33/10.12 GiB, with no reserve-triggered stop or OOM kill. Both servers were stopped; rank 1 again required Docker's stop timeout (exit 137), so recovery qualification remains open.
 
-**Decision:** prefer k=3 for the next experimental text/tool and harness evaluations, while preserving k=1 and MTP-off references. In these samples, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7% over k=1. The long-input aggregate gain was only 0.45%, too small to establish a repeatable benefit, and its TTFT increased slightly. The measurements are small, separate runs, not a statistical optimum search. k=2 and k≥4 were not tested; no claim that k=3 beats k=4 is supported. Two active sequences, graphs, prefix caching, vision, both harnesses and routine deployment remain unqualified.
+**Decision:** prefer k=3 for the next experimental text/tool and harness evaluations, while preserving k=1 and MTP-off references. In these samples, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7% over k=1. The long-input aggregate gain was only 0.45%, too small to establish a repeatable benefit, and its TTFT increased slightly. The measurements are small, separate runs, not a statistical optimum search. k=2 and k≥4 were not tested in this run; they were measured later ([depths one to five](#depths-one-to-five-2026-09-19-and-20)). Two active sequences, graphs, prefix caching, vision, both harnesses and routine deployment remain unqualified.
 
 ## Depths one to five (2026-09-19 and 20)
 

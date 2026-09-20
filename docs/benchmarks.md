@@ -640,7 +640,7 @@ Prefill is 2.2 times 1.5.0, the FA2 path. Decode did not get faster; its spread 
 
 ### Long input
 
-Measured on 2026-09-19 on the same profile without `stable_indexer_topk`, which was written the day after; each request followed a prefix-cache reset.
+Measured on 2026-09-19 on that day's profile: FA2 prefill, depth 3 and the fixed expert order on image `e7a2a606…`, without `stable_indexer_topk`, which was written the day after and ships in a later image. Each request followed a prefix-cache reset.
 
 | Request | Result | 1.5.0 |
 |---|---|---|
