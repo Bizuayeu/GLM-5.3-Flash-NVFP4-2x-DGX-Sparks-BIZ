@@ -11,6 +11,10 @@
 - `runtime.canonical_moe_order = true` の場合、新規の起動にはimageのmarker `GLM53_MOE_ORDER_API=2` が必要になりました。marker 1しか持たないimageを指すprofileは、`server preflight`・`server start`・`cluster switch` の停止前検査で拒否されます。marker 1は、整列のbuffer長を誤っていた以前のimageも持っているためです。このcheckoutから参照imageを作り直し、`reference_image` を更新してください。すでにmarker 1のimageで稼働している対は、引き続き復旧できます。`cluster switch` はその対を復旧先として検査し、切替が失敗した場合はmarker 1のまま再起動して（coordinatorが渡す `server start --recovery`）、許した内容を `warnings` に記録します。fingerprintは変わりません。
 - 起動時に `TRITON_CACHE_AUTOTUNING=1` を設定するようにしました。Tritonがautotuneで選んだkernelの構成は、起動のたびに選び直されるのではなく、永続化している `TRITON_CACHE_DIR` にコンパイル済みkernelと一緒に残ります。4層fixtureでは、この設定なしの10起動が2つの数値状態に分かれました。どちらの状態になるかは、KDAのkernel一つ（`merge_16x16_to_64x64_inverse_kernel`）がその起動で選んだ `num_warps` と完全に対応していました。設定ありの6起動は1つの状態になり、起動も約50秒短くなりました。参照ペアはこの設定で3回起動し、3回とも1.6.0と同じcompletionを返しています。全モデルではもともとこの分かれ方を観測していないので、効果を確認できているのはfixtureだけです。profileのfingerprintは変わりません。
 
+### Fixed
+
+- 参照imageは、固定しているvLLMのslot対応付けのkernelにpatchを当て、block tableを行の中だけで読むようにします（marker `GLM53_SLOT_MAPPING_GUARD=1`。issue #53982に対するvLLMのpull request #54296と同じguardで、執筆時点で上流は未マージです）。これがないと、kernelはindexerのtailのscratchを置くKV groupの32要素の行を、position 128から先で1 tokenごとに1 byteずつ遠くまで読み、未割り当てのメモリに届いた時に失敗します。基準の2台の配信profileでは、約25万tokenを超える要求がすべて、両rankのCUDA illegal memory accessに終わっていました（248,954 tokenは完走、252,958 tokenは失敗、261,461 tokenは4回中4回失敗）。配布している既定は、同じ読み込みをしながら失敗していませんでした。guardを入れると、fixtureではcompute-sanitizerの不正な読み込みが0件になり、log確率はguardのないimageとbyte単位で一致します。配信profileは252,914 tokenと261,461 tokenを正答で完走し、decodeの完了文は1.6.0と一致しました。参照imageを作り直して `reference_image` を更新してください。このmarkerを要求する検査はありません。固定しているvLLMが上流の修正より先へ進んだら、patchは外します。
+
 ## 1.6.2 — 2026-09-20
 
 ### Fixed
