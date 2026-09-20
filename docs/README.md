@@ -2,7 +2,7 @@
 
 [日本語](README.ja.md)
 
-Every document has one role; other documents link to it instead of repeating its content. Every user-facing page comes as an English/Japanese pair (`name.md` / `name.ja.md`); only the changelog, the agent instructions and the license/notice texts are English-only by design. Update both when user-visible instructions change ([Contributing](../CONTRIBUTING.md)).
+Every document has one role; other documents link to it instead of repeating its content. Every user-facing page comes as an English/Japanese pair (`name.md` / `name.ja.md`); only the agent instructions and the license/notice texts are English-only by design. The changelog is a pair from 1.6.0 on: the English file is canonical, the GitHub Release is made from it, and earlier versions exist in English only. Update both when user-visible instructions change ([Contributing](../CONTRIBUTING.md)).
 
 ## Entry points
 
@@ -11,7 +11,7 @@ Every document has one role; other documents link to it instead of repeating its
 | README | What is deployed, supported hardware, verified scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
-| Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | — |
+| Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) (from 1.6.0) |
 | Repository instructions | Rules for AI agents and operators editing this checkout | [EN](../AGENTS.md) | — |
 | Licensing and notices | Apache-2.0 text, attribution, third-party provenance | [LICENSE](../LICENSE), [NOTICE](../NOTICE), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md), [LICENSES/](../LICENSES/) | — |
 

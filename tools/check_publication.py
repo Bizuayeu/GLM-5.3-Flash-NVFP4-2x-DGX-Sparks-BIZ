@@ -15,6 +15,7 @@ REQUIRED = {
     "SETUP.md",
     "SETUP.ja.md",
     "CHANGELOG.md",
+    "CHANGELOG.ja.md",
     "LICENSE",
     "NOTICE",
     "THIRD_PARTY_NOTICES.md",
