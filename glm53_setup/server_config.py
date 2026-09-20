@@ -48,37 +48,52 @@ def decode_graphs(profile):
     return not runtime["enforce_eager"] if "enforce_eager" in runtime else False
 
 
-def validate(profile):
-    # The shipped, commented file also defines the complete schema. No silent
-    # defaults: a typo or missing category must not silently change a launch.
+# Keys a profile may omit, per category. The shipped example file is the
+# schema; these are the entries whose absence is not a typo.
+OPTIONAL_KEYS = {
+    "server.runtime": frozenset(
+        {
+            "cuda_allocator_conf",
+            "vision",
+            "nccl_channels",
+            "derived_checkpoint",
+            "canonical_moe_order",
+            "stable_indexer_topk",
+            "decode_graphs",
+            "enforce_eager",
+            "fa2_attention",
+        }
+    ),
+    "server.cache": frozenset(
+        {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
+    ),
+    "server.api": frozenset({"prompt_tokens_details", "dev_endpoints"}),
+    "server.validation": frozenset({"memory_probe"}),
+    "server.resources": frozenset({"stall_seconds"}),
+    "server.generation": frozenset({"warmup", "warmup_long_tokens"}),
+    "server.nodes[]": frozenset({"additional_rails"}),
+}
+
+
+def optional_at(path):
+    """Which keys may be absent at this point in the schema."""
+    if path.startswith("server.nodes["):
+        return OPTIONAL_KEYS["server.nodes[]"]
+    return OPTIONAL_KEYS.get(path, frozenset())
+
+
+def check_schema(profile):
+    """Match the profile against the shipped example, shape for shape.
+
+    No silent defaults: a typo or a missing category must not quietly change
+    a launch, so every key is either present, or named as optional above.
+    """
     with (ROOT / "examples/server.example.toml").open("rb") as stream:
         schema = tomllib.load(stream)
 
     def check(value, expected, path):
         if isinstance(expected, dict):
-            optional = {
-                "server.runtime": {
-                    "cuda_allocator_conf",
-                    "vision",
-                    "nccl_channels",
-                    "derived_checkpoint",
-                    "canonical_moe_order",
-                    "stable_indexer_topk",
-                    "decode_graphs",
-                    "enforce_eager",
-                    "fa2_attention",
-                },
-                "server.cache": {
-                    "prefix_cache_retention_interval",
-                    "mm_processor_cache_gb",
-                },
-                "server.api": {"prompt_tokens_details", "dev_endpoints"},
-                "server.validation": {"memory_probe"},
-                "server.resources": {"stall_seconds"},
-                "server.generation": {"warmup", "warmup_long_tokens"},
-            }.get(path, set())
-            if path.startswith("server.nodes["):
-                optional = {"additional_rails"}
+            optional = optional_at(path)
             if (
                 not isinstance(value, dict)
                 or value.keys() - optional != expected.keys() - optional
@@ -99,6 +114,10 @@ def validate(profile):
             raise ValueError(f"Invalid type in {path}")
 
     check(profile, schema, "server")
+
+
+def check_optional_shapes(profile):
+    """Type-check the keys a profile may omit, and the pairs they exclude."""
     if "prefix_cache_retention_interval" in profile["cache"]:
         interval = profile["cache"]["prefix_cache_retention_interval"]
         if interval != "dense" and (type(interval) is not int or interval < 0):
@@ -146,11 +165,19 @@ def validate(profile):
         value = profile[section].get(key, 0)
         if type(value) is not int or value < 0:
             raise ValueError(f"{section}.{key} must be a nonnegative integer")
+
+
+def check_pinned_identity(profile):
+    """The schema version and the immutable image IDs this launch is pinned to."""
     if profile["schema_version"] != 1:
         raise ValueError("Unsupported profile schema_version")
     for key in ("reference_image", "lpa_image"):
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", profile["runtime"][key]):
             raise ValueError(f"runtime.{key} must be an immutable image ID")
+
+
+def check_magnitudes(profile):
+    """Sizes and counts that a launch cannot meaningfully take at zero."""
     for section, keys in {
         "context": ("max_model_len", "max_num_seqs", "max_num_batched_tokens"),
         "cache": ("kv_cache_memory_bytes", "block_size"),
@@ -166,6 +193,10 @@ def validate(profile):
                 raise ValueError(f"{section}.{key} must be positive")
     if profile["resources"]["run_seconds"] < 0:
         raise ValueError("resources.run_seconds must be nonnegative (0 = no deadline)")
+
+
+def check_expert_observer(profile):
+    """The EP observer runs alone, on its own eager TP2 launch."""
     if profile["validation"]["expert_worker"] and (
         profile["validation"]["component_worker"]
         or profile["runtime"]["pipeline_parallel_size"] != 1
@@ -178,6 +209,10 @@ def validate(profile):
         raise ValueError(
             "EP observer requires independent eager TP2, no other worker/MTP/APC"
         )
+
+
+def check_parallelism(profile):
+    """Index checks, pipeline shape and expert parallelism, and what they exclude."""
     runtime = profile["runtime"]
     if runtime["index_checks"] not in ("auto", "sync", "async"):
         raise ValueError(
@@ -215,6 +250,10 @@ def validate(profile):
         raise ValueError(
             "EP requires eager, at most two sequences, no LPA/MTP/fusion/APC"
         )
+
+
+def check_worker_exclusivity(profile):
+    """One worker extension class per launch, each with its own constraints."""
     if profile["validation"]["component_worker"] and (
         profile["lpa"]["enabled"]
         or profile["mtp"]["enabled"]
@@ -238,6 +277,10 @@ def validate(profile):
     ):
         # One worker extension class per launch; the others carry their own.
         raise ValueError("validation.memory_probe excludes LPA and the other workers")
+
+
+def check_generation(profile):
+    """Memory share, sampling, and the room a reply needs inside the context."""
     if not 0 < profile["cache"]["gpu_memory_utilization"] <= 1:
         raise ValueError("gpu_memory_utilization must be in (0, 1]")
     if profile["generation"]["temperature"] < 0:
@@ -254,6 +297,10 @@ def validate(profile):
         raise ValueError(
             "Use a supported reasoning_effort; thinking-off is unqualified"
         )
+
+
+def check_speculation(profile):
+    """Draft depth, and the local view the draft weights are served from."""
     depth = profile["mtp"]["num_speculative_tokens"]
     if type(depth) is not int or not 1 <= depth <= 5:
         # 1 and 3 are measured; 2, 4 and 5 are launchable for the depth sweep
@@ -262,6 +309,10 @@ def validate(profile):
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")
+
+
+def check_lpa(profile):
+    """Where the approximation cuts, and the projector it is pinned to."""
     lpa = profile["lpa"]
     if (
         not 0 <= lpa["cut"] < MODEL_LAYERS
@@ -273,16 +324,47 @@ def validate(profile):
         raise ValueError("Invalid projector_sha256")
     if lpa["enabled"] and decode_graphs(profile):
         raise ValueError("LPA requires eager execution")
+
+
+def check_graph_scope(profile):
+    """What the decode Graph path has been qualified to cover."""
     if decode_graphs(profile) and profile["context"]["max_num_seqs"] != 1:
         # cc-defer: one sequence only (MTP k=3 and prefix caching were qualified on
         # the MTP fixture, records/20260918-stage1-graph); extend to batching after
         # a fixture with max_num_seqs > 1 shows the same eager/graph identity.
         raise ValueError("Graph experiments require one sequence")
+
+
+def check_identifiers(profile):
+    """The two sites, and the names the API is served under."""
     for rank in (0, 1):
         host.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile["api"][key]):
             raise ValueError(f"Invalid api.{key}")
+
+
+# Order is part of the contract: the first raise is the sentence the operator
+# reads, so a profile with two faults must report the one it met first.
+VALIDATORS = (
+    check_schema,
+    check_optional_shapes,
+    check_pinned_identity,
+    check_magnitudes,
+    check_expert_observer,
+    check_parallelism,
+    check_worker_exclusivity,
+    check_generation,
+    check_speculation,
+    check_lpa,
+    check_graph_scope,
+    check_identifiers,
+)
+
+
+def validate(profile):
+    for check in VALIDATORS:
+        check(profile)
 
 
 def derived_checkpoint(profile):
@@ -447,9 +529,8 @@ def asynchronous_index_checks(profile):
     )
 
 
-def serve_args(profile, rank, model_path):
-    """Assemble a profile already validated by load() or server.command()."""
-    args = host.serve_args(site(profile, rank), model_path)
+def apply_scalar_settings(args, profile):
+    """Substitute the named values into the placeholders host.serve_args left."""
     values = {
         "--served-model-name": profile["api"]["served_model_name"],
         "--reasoning-parser": profile["api"]["reasoning_parser"],
@@ -463,6 +544,10 @@ def serve_args(profile, rank, model_path):
     }
     for flag, value in values.items():
         args[args.index(flag) + 1] = str(value)
+
+
+def apply_boolean_flags(args, profile):
+    """Drop the flags this profile turns off; chunked prefill states both ways."""
     for section, key, flag in [
         ("runtime", "decode_graphs", "--enforce-eager"),
         ("context", "chunked_prefill", "--enable-chunked-prefill"),
@@ -477,15 +562,24 @@ def serve_args(profile, rank, model_path):
             args.remove(flag)
             if key == "chunked_prefill":
                 args.append("--no-enable-chunked-prefill")
-    if profile["runtime"].get("vision", False):
-        args.remove("--language-model-only")
-        # Images only. Startup profiling encodes the largest item once, and a
-        # 30,000-token video would otherwise set that peak.
-        args += ["--limit-mm-per-prompt", json.dumps({"video": 0})]
-        # vLLM defaults to 4 GiB, duplicated in the head's API and engine
-        # processes; this host keeps about 1 GiB above the memory reserve.
-        size = profile["cache"].get("mm_processor_cache_gb", 0.1)
-        args += ["--mm-processor-cache-gb", str(size)]
+
+
+def apply_vision(args, profile):
+    """Accept image input, and bound what the startup profile encodes."""
+    if not profile["runtime"].get("vision", False):
+        return
+    args.remove("--language-model-only")
+    # Images only. Startup profiling encodes the largest item once, and a
+    # 30,000-token video would otherwise set that peak.
+    args += ["--limit-mm-per-prompt", json.dumps({"video": 0})]
+    # vLLM defaults to 4 GiB, duplicated in the head's API and engine
+    # processes; this host keeps about 1 GiB above the memory reserve.
+    size = profile["cache"].get("mm_processor_cache_gb", 0.1)
+    args += ["--mm-processor-cache-gb", str(size)]
+
+
+def apply_cache(args, profile):
+    """Prefix caching, the KV budget, and how long a prefix is retained."""
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
     if profile["api"].get("prompt_tokens_details"):
@@ -497,6 +591,10 @@ def serve_args(profile, rank, model_path):
             "--prefix-cache-retention-interval",
             str(retention_interval(profile)),
         ]
+
+
+def apply_determinism(args, profile):
+    """The seed and the kernel choices an identical request repeats under."""
     args += [
         "--seed",
         str(profile["runtime"]["seed"]),
@@ -511,75 +609,118 @@ def serve_args(profile, rank, model_path):
             }
         ),
     ]
-    if profile["mtp"]["enabled"]:
-        args += [
-            "--speculative-config",
-            json.dumps(
-                {
-                    "method": "mtp",
-                    "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
-                    "moe_backend": "triton",
-                }
-            ),
-        ]
-    if decode_graphs(profile):
-        args += [
-            "--compilation-config",
-            json.dumps(
-                {
-                    "mode": 0,  # CompilationMode.NONE in the pinned runtime.
-                    "cudagraph_mode": "FULL_DECODE_ONLY",
-                    # The pinned runtime rounds decode sizes up to a multiple of
-                    # num_speculative_tokens + 1 and rejects a list with none.
-                    "cudagraph_capture_sizes": [
-                        1 + profile["mtp"]["num_speculative_tokens"]
-                        if profile["mtp"]["enabled"]
-                        else 1
-                    ],
-                }
-            ),
-        ]
-    if profile["lpa"]["enabled"]:
-        args += [
-            "--worker-extension-cls",
-            "glm53_setup.runtime.lpa.LPAWorkerExtension",
-        ]
-    if profile["validation"]["component_worker"]:
-        args += [
-            "--worker-extension-cls",
+
+
+def apply_speculation(args, profile):
+    """The MTP draft, when this profile serves the local view."""
+    if not profile["mtp"]["enabled"]:
+        return
+    args += [
+        "--speculative-config",
+        json.dumps(
+            {
+                "method": "mtp",
+                "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
+                "moe_backend": "triton",
+            }
+        ),
+    ]
+
+
+def apply_decode_graphs(args, profile):
+    """Capture decode as a Graph, at the sizes the draft depth implies."""
+    if not decode_graphs(profile):
+        return
+    args += [
+        "--compilation-config",
+        json.dumps(
+            {
+                "mode": 0,  # CompilationMode.NONE in the pinned runtime.
+                "cudagraph_mode": "FULL_DECODE_ONLY",
+                # The pinned runtime rounds decode sizes up to a multiple of
+                # num_speculative_tokens + 1 and rejects a list with none.
+                "cudagraph_capture_sizes": [
+                    1 + profile["mtp"]["num_speculative_tokens"]
+                    if profile["mtp"]["enabled"]
+                    else 1
+                ],
+            }
+        ),
+    ]
+
+
+def apply_worker_extension(args, profile):
+    """The one worker class this launch carries; validate() keeps them apart."""
+    for enabled, extension in (
+        (profile["lpa"]["enabled"], "glm53_setup.runtime.lpa.LPAWorkerExtension"),
+        (
+            profile["validation"]["component_worker"],
             "glm53_setup.runtime.component_worker.ComponentWorker",
-        ]
-    if profile["validation"]["expert_worker"]:
-        args += [
-            "--worker-extension-cls",
+        ),
+        (
+            profile["validation"]["expert_worker"],
             "glm53_setup.validation.expert_worker.ExpertFixtureWorker",
-        ]
-    if profile["validation"].get("memory_probe"):
-        args += [
-            "--worker-extension-cls",
+        ),
+        (
+            profile["validation"].get("memory_probe"),
             "glm53_setup.runtime.memory_probe.MemoryProbeWorker",
-        ]
-    if profile["profiling"]["enabled"]:
-        args += [
-            "--profiler-config",
-            json.dumps(
-                {
-                    "profiler": "torch",
-                    "torch_profiler_dir": "/profiles",
-                    "torch_profiler_with_stack": False,
-                    "torch_profiler_record_shapes": False,
-                    "torch_profiler_with_memory": False,
-                    "torch_profiler_use_gzip": True,
-                    "ignore_frontend": True,
-                    "torch_profiler_dump_cuda_time_total": False,
-                }
-            ),
-        ]
+        ),
+    ):
+        if enabled:
+            args += ["--worker-extension-cls", extension]
+
+
+def apply_profiling(args, profile):
+    """On-demand Torch tracing into the record directory."""
+    if not profile["profiling"]["enabled"]:
+        return
+    args += [
+        "--profiler-config",
+        json.dumps(
+            {
+                "profiler": "torch",
+                "torch_profiler_dir": "/profiles",
+                "torch_profiler_with_stack": False,
+                "torch_profiler_record_shapes": False,
+                "torch_profiler_with_memory": False,
+                "torch_profiler_use_gzip": True,
+                "ignore_frontend": True,
+                "torch_profiler_dump_cuda_time_total": False,
+            }
+        ),
+    ]
+
+
+def apply_parallelism(args, profile):
+    """Expert parallelism, and the PP2 shape that re-splits the two ranks."""
     if profile["runtime"]["expert_parallel"]:
         args.append("--enable-expert-parallel")
     if profile["runtime"]["pipeline_parallel_size"] == 2:
         args[args.index("--tensor-parallel-size") + 1] = "1"
         args += ["--pipeline-parallel-size", "2"]
+
+
+# Order is part of the contract: these steps write into one argument list and
+# several of them index into what the earlier steps left.
+SERVE_STEPS = (
+    apply_scalar_settings,
+    apply_boolean_flags,
+    apply_vision,
+    apply_cache,
+    apply_determinism,
+    apply_speculation,
+    apply_decode_graphs,
+    apply_worker_extension,
+    apply_profiling,
+    apply_parallelism,
+)
+
+
+def serve_args(profile, rank, model_path):
+    """Assemble a profile already validated by load() or server.command()."""
+    args = host.serve_args(site(profile, rank), model_path)
+    for step in SERVE_STEPS:
+        step(args, profile)
     return args
 
 

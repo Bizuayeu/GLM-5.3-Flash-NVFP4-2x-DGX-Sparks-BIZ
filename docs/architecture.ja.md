@@ -4,6 +4,21 @@
 
 本プロジェクトは、checkout内で完結する運用者向けのツールキットです。ソースアーカイブにはモデル重みも遠隔管理サービスも含みません。任意のLPA重みは独立したRelease添付物で、配布ファイル構成と導入先は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。
 
+## どこから読むか
+
+枠組みではなく「テストから何ができるか」で分けた四種類です。
+
+| | 持つもの | 名前の付いた継ぎ目 |
+|---|---|---|
+| **入口** | 引数の解釈と、action がどのハンドラに届くか | `server.ACTIONS`、`cluster.ACTIONS`、`__main__.COMMANDS` |
+| **編成** | 手順の順序と、失敗時に何を巻き戻すか | `switch.switch`、`server.act_launch`、`cluster.act_switch` |
+| **判断** | 設定の検査、引数の組み立て、報告の整形——純粋関数 | `server_config.VALIDATORS`、`server_config.SERVE_STEPS`、`validation.*.engine_kwargs`、`runtime.apc_policy` |
+| **副作用** | docker、HTTP、subprocess、torch、vLLM | `host.run`、`model_http`、各runner内のGPU遅延import |
+
+判断層には「ある測定を次の測定と比較可能にしている数値」が置かれるため、torch・vLLM なしで import できる状態を保ちます。`engine_kwargs(args)` は、実行できないホストの上でも fixture runner の起動設定を述べられます。入口層と編成層は副作用を引数で受け取るのでテストが差し替えられ、副作用層は差し替え点であって検査対象ではありません。
+
+順序が契約の一部である箇所が二つあります。`VALIDATORS` が profile の規則を固定した順に走らせるのは、**最初の raise が運用者の読む一文**だからです。`SERVE_STEPS` は一つの引数リストに書き込み、後段が前段の残したものを参照します。
+
 | 場所 | 責務 |
 |---|---|
 | `glm53_setup/__main__.py` | 固定したコマンド振り分け。利用者が指定するモジュールの動的読込は行わない |

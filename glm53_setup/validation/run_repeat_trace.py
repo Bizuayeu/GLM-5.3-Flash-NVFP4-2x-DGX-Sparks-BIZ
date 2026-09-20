@@ -216,38 +216,71 @@ class RepeatTraceWorker:
         return {"rank": self.rank}
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--long-tokens", type=int, default=8192)
-    parser.add_argument(
+def parser():
+    """The runner's argument interface; the engine settings follow from it."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--fixture", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    cli.add_argument("--repeats", type=int, default=3)
+    cli.add_argument("--long-tokens", type=int, default=8192)
+    cli.add_argument(
         "--watch-align",
         action="store_true",
         help="diagnostic: compare the expert token ordering between passes",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--verify-canonical",
         action="store_true",
         help="record one plain pass, install the order fix, compare the next passes",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--timing",
         action="store_true",
         help="no hooks: time prefill and decode, with --canonical-align as the variable",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--canonical-align",
         action="store_true",
         help="diagnostic: fix the token order inside each expert before the kernel",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--zero-moe-buffers",
         action="store_true",
         help="diagnostic: zero the Marlin MoE scratch buffers before every call",
     )
-    args = parser.parse_args(argv)
+    return cli
+
+
+def engine_kwargs(args):
+    """What LLM() is constructed with; these settings define the measurement."""
+    return {
+        "model": str(args.fixture),
+        "tensor_parallel_size": 1,
+        "language_model_only": True,
+        "enforce_eager": True,
+        "enable_prefix_caching": False,
+        "enable_chunked_prefill": True,
+        "max_model_len": 16384,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 512,
+        "block_size": 256,
+        "kv_cache_dtype": "fp8",
+        "kv_cache_memory_bytes": 512 * 1024**2,
+        "gpu_memory_utilization": 0.2,
+        "seed": 42,
+        "worker_extension_cls": "glm53_setup.validation.run_repeat_trace.RepeatTraceWorker",
+        "kernel_config": {
+            "enable_flashinfer_autotune": False,
+            "enable_cutedsl_warmup": False,
+            "enable_jit_warmup": False,
+            "moe_backend": "marlin",
+            "linear_backend": "marlin",
+        },
+    }
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     config = json.loads((args.fixture / "config.json").read_text())
     if not status.get("all_tensor_bytes_verified") or not config.get(
@@ -268,30 +301,7 @@ def main(argv=None):
     from ..agreement import TEXTS
     from .run_agreement_fixture import cycle_tokens
 
-    llm = LLM(
-        model=str(args.fixture),
-        tensor_parallel_size=1,
-        language_model_only=True,
-        enforce_eager=True,
-        enable_prefix_caching=False,
-        enable_chunked_prefill=True,
-        max_model_len=16384,
-        max_num_seqs=1,
-        max_num_batched_tokens=512,
-        block_size=256,
-        kv_cache_dtype="fp8",
-        kv_cache_memory_bytes=512 * 1024**2,
-        gpu_memory_utilization=0.20,
-        seed=42,
-        worker_extension_cls="glm53_setup.validation.run_repeat_trace.RepeatTraceWorker",
-        kernel_config={
-            "enable_flashinfer_autotune": False,
-            "enable_cutedsl_warmup": False,
-            "enable_jit_warmup": False,
-            "moe_backend": "marlin",
-            "linear_backend": "marlin",
-        },
-    )
+    llm = LLM(**engine_kwargs(args))
     if args.zero_moe_buffers:
         report["zero_moe_buffers"] = llm.collective_rpc("repeat_trace_zero_moe_buffers")
     if args.timing:

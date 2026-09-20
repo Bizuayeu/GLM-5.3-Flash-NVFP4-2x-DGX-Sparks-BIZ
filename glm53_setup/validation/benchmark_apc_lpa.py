@@ -6,10 +6,66 @@ import json
 import math
 import statistics
 import time
+from functools import partial
 from pathlib import Path
 
 from .. import server, server_config
 from ..io import write_json
+
+
+def check(row, length, hit, eligible, approximate):
+    for worker in row["workers"]:
+        policy = worker["policy"]["policy"]
+        if (
+            policy["prompt_tokens"] != length
+            or policy["cached_tokens"] != hit
+            or worker["eligible_tokens"] != eligible
+        ):
+            raise ValueError(
+                "Actual N/H/R differs from the paired calibration condition"
+            )
+        counts = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
+        expected = (
+            {str(layer): eligible for layer in (35, 39, 43)}
+            if approximate and eligible
+            else {}
+        )
+        if counts != expected:
+            raise ValueError(("Actual approximation differs", counts, expected))
+
+
+def generate_completion(profile, ids, mode):
+    body = {
+        "model": profile["api"]["served_model_name"],
+        "prompt": ids,
+        "temperature": 0,
+        "seed": 42,
+        "max_tokens": 1,
+        "ignore_eos": True,
+        "logprobs": 5,
+        "return_token_ids": True,
+        "vllm_xargs": {"glm53_lpa_mode": mode},
+    }
+    began = time.perf_counter()
+    response = server.post(profile, "/v1/completions", body)
+    elapsed = time.perf_counter() - began
+    workers = server.post(
+        profile,
+        "/collective_rpc",
+        {"method": "apc_lpa_report", "kwargs": {}, "timeout": 60},
+    )["results"]
+    choice = response["choices"][0]
+    if (
+        response["usage"]["prompt_tokens"] != len(ids)
+        or response["usage"]["completion_tokens"] != 1
+        or len(choice["token_ids"]) != 1
+        or not all(
+            math.isfinite(value) for value in choice["logprobs"]["token_logprobs"]
+        )
+        or len(workers) != 2
+    ):
+        raise ValueError("Invalid full-model calibration response")
+    return {"seconds": elapsed, "response": response, "workers": workers}
 
 
 def main(argv=None):
@@ -53,6 +109,7 @@ def main(argv=None):
     if not text:
         raise ValueError("Calibration requires the validation split")
     args.output.mkdir(parents=True, exist_ok=False)
+    generate = partial(generate_completion, profile)
     report = {
         "status": "starting",
         "profile": profile,
@@ -71,57 +128,6 @@ def main(argv=None):
             raise ValueError(
                 "Cache reset did not complete; do not compare these conditions"
             )
-
-    def generate(ids, mode):
-        body = {
-            "model": profile["api"]["served_model_name"],
-            "prompt": ids,
-            "temperature": 0,
-            "seed": 42,
-            "max_tokens": 1,
-            "ignore_eos": True,
-            "logprobs": 5,
-            "return_token_ids": True,
-            "vllm_xargs": {"glm53_lpa_mode": mode},
-        }
-        began = time.perf_counter()
-        response = post("/v1/completions", body)
-        elapsed = time.perf_counter() - began
-        workers = post(
-            "/collective_rpc", {"method": "apc_lpa_report", "kwargs": {}, "timeout": 60}
-        )["results"]
-        choice = response["choices"][0]
-        if (
-            response["usage"]["prompt_tokens"] != len(ids)
-            or response["usage"]["completion_tokens"] != 1
-            or len(choice["token_ids"]) != 1
-            or not all(
-                math.isfinite(value) for value in choice["logprobs"]["token_logprobs"]
-            )
-            or len(workers) != 2
-        ):
-            raise ValueError("Invalid full-model calibration response")
-        return {"seconds": elapsed, "response": response, "workers": workers}
-
-    def check(row, length, hit, eligible, approximate):
-        for worker in row["workers"]:
-            policy = worker["policy"]["policy"]
-            if (
-                policy["prompt_tokens"] != length
-                or policy["cached_tokens"] != hit
-                or worker["eligible_tokens"] != eligible
-            ):
-                raise ValueError(
-                    "Actual N/H/R differs from the paired calibration condition"
-                )
-            counts = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
-            expected = (
-                {str(layer): eligible for layer in (35, 39, 43)}
-                if approximate and eligible
-                else {}
-            )
-            if counts != expected:
-                raise ValueError(("Actual approximation differs", counts, expected))
 
     save()
     try:

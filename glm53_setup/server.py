@@ -5,9 +5,11 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import time
+from collections import namedtuple
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -629,156 +631,131 @@ def ask(profile, request, sender=post):
         sender(profile, "/collective_rpc", rpc)
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "action",
-        choices=[
-            "plan",
-            "freeze",
-            "assets",
-            "preflight",
-            "start",
-            "stop",
-            "status",
-            "ask",
-            "capacity",
-            "warmup",
-            "mojibake",
-            "agreement",
-        ],
-    )
-    parser.add_argument(
-        "--reference",
-        type=Path,
-        help="Saved agreement result.json to compare this run against",
-    )
-    parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
-    parser.add_argument("--rank", type=int, choices=[0, 1], default=0)
-    parser.add_argument("--prompt")
-    parser.add_argument("--run-id", help="Unique coordinator-owned launch ID")
-    parser.add_argument("--request", type=Path)
-    parser.add_argument(
-        "--launch",
-        type=Path,
-        help="Shared frozen JSON from server freeze; host allocator environment is ignored",
-    )
-    parser.add_argument("--output", type=Path, help="New output file for server freeze")
-    args = parser.parse_args(argv)
-    args.config = args.config.resolve()
-    state = ROOT / f"state/startup-rank{args.rank}.json"
-    # Recovery must work even if the operator has just mistyped the TOML.
-    if args.action == "stop":
-        if os.name != "posix":
-            parser.error("Run stop on the Linux model host")
-        current = read_json(state)
-        inspect_owned(current["name"])
-        print(host.run("docker", "stop", current["name"]))
-        return
-    profile = (
-        thaw(read_json(args.launch)) if args.launch else settings.load(args.config)
-    )
-    if args.action == "freeze":
-        if not args.output or args.launch:
-            parser.error("freeze requires --output and a TOML --config")
-        manifest = freeze(profile)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open("x", encoding="utf-8") as stream:
-            json.dump(manifest, stream, indent=2)
-            stream.write("\n")
-        print(
-            json.dumps(
-                {"fingerprint": manifest["fingerprint"], "output": str(args.output)}
-            )
+def state_path(rank):
+    """Where this rank records the container it owns."""
+    return ROOT / f"state/startup-rank{rank}.json"
+
+
+def report_verdict(result):
+    """Print a recorded verdict; a failed check leaves a non-zero status."""
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if not result["passed"]:
+        raise SystemExit(1)
+
+
+def act_plan(cli, args, profile):
+    """Show what a launch would run, without touching the host."""
+    print(
+        json.dumps(
+            {
+                "scope": "experimental-reference",
+                "fingerprint": settings.fingerprint(profile),
+                "command": command(
+                    profile, args.config, args.rank, f"glm53-startup-r{args.rank}-RUN"
+                ),
+                "generation": profile["generation"],
+                "resources": profile["resources"],
+                "lpa": profile["lpa"],
+            },
+            indent=2,
         )
-        return
-    if (
-        args.action in ("start", "preflight", "assets")
-        and not args.launch
-        and "PYTORCH_CUDA_ALLOC_CONF" in os.environ
-    ):
-        parser.error(
-            "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to both ranks"
-        )
-    if args.action == "plan":
-        print(
-            json.dumps(
-                {
-                    "scope": "experimental-reference",
-                    "fingerprint": settings.fingerprint(profile),
-                    "command": command(
-                        profile,
-                        args.config,
-                        args.rank,
-                        f"glm53-startup-r{args.rank}-RUN",
-                    ),
-                    "generation": profile["generation"],
-                    "resources": profile["resources"],
-                    "lpa": profile["lpa"],
-                },
-                indent=2,
-            )
-        )
-        return
+    )
+
+
+def act_freeze(cli, args, profile):
+    """Write the shared launch manifest both ranks will be started from."""
+    if not args.output or args.launch:
+        cli.error("freeze requires --output and a TOML --config")
+    manifest = freeze(profile)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("x", encoding="utf-8") as stream:
+        json.dump(manifest, stream, indent=2)
+        stream.write("\n")
+    print(
+        json.dumps({"fingerprint": manifest["fingerprint"], "output": str(args.output)})
+    )
+
+
+def act_stop(cli, args, profile):
+    """Stop this rank's container; runs without a loadable profile."""
     if os.name != "posix":
-        parser.error("Run this action on the Linux model host; plan works on Windows")
-    if args.action in ("capacity", "warmup", "mojibake", "agreement"):
-        if args.rank != 0:
-            parser.error(f"{args.action} requires rank 0")
-        if args.action in ("warmup", "mojibake", "agreement"):
-            if args.action == "warmup":
-                result = warmup_running(profile)
-            elif args.action == "agreement":
-                result = agreement_running(profile, args.reference)
-                # Per-position rows stay in the record; the terminal gets the rates.
-                for row in result["texts"]:
-                    for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
-                        row.pop(key, None)
-                result.pop("first_raw_response", None)
-            else:
-                result = mojibake_running(profile)
-                # The answers stay in the record; the terminal gets the verdicts.
-                for row in result["runs"]:
-                    row.pop("content", None)
-                    row.pop("reasoning", None)
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-            if not result["passed"]:
-                raise SystemExit(1)
-            return
-        current, info = running_head(profile)
-        if not info["State"]["Running"]:
-            parser.error("capacity requires the running rank 0")
-        print(json.dumps(capacity_report(profile, current["name"]), indent=2))
-        return
-    if args.action in ("status", "ask"):
-        current = read_json(state)
-        info = inspect_owned(current["name"])
-        if args.action == "status":
-            print(
-                json.dumps(
-                    {
-                        "name": current["name"],
-                        "state": info["State"],
-                        "settings_changed": current["fingerprint"]
-                        != settings.fingerprint(profile),
-                    },
-                    indent=2,
-                )
-            )
-        else:
-            if args.rank != 0 or not info["State"]["Running"]:
-                parser.error("ask requires the running rank 0")
-            inspect_owned(current["name"], settings.fingerprint(profile))
-            if bool(args.prompt) == bool(args.request):
-                parser.error("Supply one --prompt or --request JSON")
-            with request_lock():
-                body = (
-                    read_json(args.request)
-                    if args.request
-                    else {"messages": [{"role": "user", "content": args.prompt}]}
-                )
-                print(json.dumps(ask(profile, body), ensure_ascii=False, indent=2))
-        return
+        cli.error("Run stop on the Linux model host")
+    current = read_json(state_path(args.rank))
+    inspect_owned(current["name"])
+    print(host.run("docker", "stop", current["name"]))
+
+
+def act_status(cli, args, profile):
+    """Report this rank's container state and whether the settings moved."""
+    current = read_json(state_path(args.rank))
+    info = inspect_owned(current["name"])
+    print(
+        json.dumps(
+            {
+                "name": current["name"],
+                "state": info["State"],
+                "settings_changed": current["fingerprint"]
+                != settings.fingerprint(profile),
+            },
+            indent=2,
+        )
+    )
+
+
+def act_ask(cli, args, profile):
+    """Send one request to the running head under the host request lock."""
+    current = read_json(state_path(args.rank))
+    info = inspect_owned(current["name"])
+    if args.rank != 0 or not info["State"]["Running"]:
+        cli.error("ask requires the running rank 0")
+    inspect_owned(current["name"], settings.fingerprint(profile))
+    if bool(args.prompt) == bool(args.request):
+        cli.error("Supply one --prompt or --request JSON")
+    with request_lock():
+        body = (
+            read_json(args.request)
+            if args.request
+            else {"messages": [{"role": "user", "content": args.prompt}]}
+        )
+        print(json.dumps(ask(profile, body), ensure_ascii=False, indent=2))
+
+
+def act_capacity(cli, args, profile):
+    """Decompose the running head's KV boot line; read-only."""
+    current, info = running_head(profile)
+    if not info["State"]["Running"]:
+        cli.error("capacity requires the running rank 0")
+    print(json.dumps(capacity_report(profile, current["name"]), indent=2))
+
+
+def act_warmup(cli, args, profile):
+    """Run the post-readiness request ladder against the running head."""
+    report_verdict(warmup_running(profile))
+
+
+def act_mojibake(cli, args, profile):
+    """Check the running head for Japanese/Korean broken characters."""
+    result = mojibake_running(profile)
+    # The answers stay in the record; the terminal gets the verdicts.
+    for row in result["runs"]:
+        row.pop("content", None)
+        row.pop("reasoning", None)
+    report_verdict(result)
+
+
+def act_agreement(cli, args, profile):
+    """Score the running head against a saved reading."""
+    result = agreement_running(profile, args.reference)
+    # Per-position rows stay in the record; the terminal gets the rates.
+    for row in result["texts"]:
+        for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
+            row.pop(key, None)
+    result.pop("first_raw_response", None)
+    report_verdict(result)
+
+
+def act_launch(cli, args, profile):
+    """Preflight this rank, and for ``start`` keep supervising it."""
     if args.action == "start":
 
         def interrupted(signum, frame):
@@ -794,14 +771,17 @@ def main(argv=None):
         raise SystemExit(2)
     if args.action in ("preflight", "assets"):
         return
+    start_rank(cli, args, profile, result)
+
+
+def start_rank(cli, args, profile, result):
+    """Launch this rank's container and supervise it in the foreground."""
+    state = state_path(args.rank)
     if state.exists() and inspect_owned(read_json(state)["name"])["State"]["Running"]:
         raise ValueError("The previous rank is still running; stop it first")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    if args.run_id:
-        import re
-
-        if not re.fullmatch(r"[0-9a-f]{32}", args.run_id):
-            parser.error("run-id must be a 32-character hexadecimal launch ID")
+    if args.run_id and not re.fullmatch(r"[0-9a-f]{32}", args.run_id):
+        cli.error("run-id must be a 32-character hexadecimal launch ID")
     name = f"glm53-startup-r{args.rank}-{args.run_id or stamp.lower()}"
     record = ROOT / "records" / (stamp + f"-server-r{args.rank}")
     record.mkdir(parents=True)
@@ -832,6 +812,89 @@ def main(argv=None):
         flush=True,
     )
     supervise(profile, name, record, args.rank)
+
+
+Action = namedtuple(
+    "Action", ("handler", "needs_profile", "windows", "rank0", "launch_path")
+)
+
+
+def entry(
+    handler, *, needs_profile=True, windows=False, rank0=False, launch_path=False
+):
+    """One action and the preconditions ``main`` enforces before calling it.
+
+    ``needs_profile`` false reaches the handler without reading the operator's
+    TOML; ``windows`` true runs away from the model host; ``rank0`` refuses a
+    peer rank; ``launch_path`` refuses an allocator inherited from the host.
+    """
+    return Action(handler, needs_profile, windows, rank0, launch_path)
+
+
+# Insertion order is the order argparse prints in --help.
+ACTIONS = {
+    "plan": entry(act_plan, windows=True),
+    "freeze": entry(act_freeze, windows=True),
+    "assets": entry(act_launch, launch_path=True),
+    "preflight": entry(act_launch, launch_path=True),
+    "start": entry(act_launch, launch_path=True),
+    "stop": entry(act_stop, needs_profile=False),
+    "status": entry(act_status),
+    "ask": entry(act_ask),
+    "capacity": entry(act_capacity, rank0=True),
+    "warmup": entry(act_warmup, rank0=True),
+    "mojibake": entry(act_mojibake, rank0=True),
+    "agreement": entry(act_agreement, rank0=True),
+}
+
+
+def parser():
+    """The launcher's argument interface; ``main`` adds the table's guards."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("action", choices=list(ACTIONS))
+    cli.add_argument(
+        "--reference",
+        type=Path,
+        help="Saved agreement result.json to compare this run against",
+    )
+    cli.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
+    cli.add_argument("--rank", type=int, choices=[0, 1], default=0)
+    cli.add_argument("--prompt")
+    cli.add_argument("--run-id", help="Unique coordinator-owned launch ID")
+    cli.add_argument("--request", type=Path)
+    cli.add_argument(
+        "--launch",
+        type=Path,
+        help="Shared frozen JSON from server freeze; host allocator environment is ignored",
+    )
+    cli.add_argument("--output", type=Path, help="New output file for server freeze")
+    return cli
+
+
+def main(argv=None):
+    cli = parser()
+    args = cli.parse_args(argv)
+    args.config = args.config.resolve()
+    action = ACTIONS[args.action]
+    # Recovery must work even if the operator has just mistyped the TOML.
+    if not action.needs_profile:
+        return action.handler(cli, args, None)
+    profile = (
+        thaw(read_json(args.launch)) if args.launch else settings.load(args.config)
+    )
+    if (
+        action.launch_path
+        and not args.launch
+        and "PYTORCH_CUDA_ALLOC_CONF" in os.environ
+    ):
+        cli.error(
+            "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to both ranks"
+        )
+    if not action.windows and os.name != "posix":
+        cli.error("Run this action on the Linux model host; plan works on Windows")
+    if action.rank0 and args.rank != 0:
+        cli.error(f"{args.action} requires rank 0")
+    return action.handler(cli, args, profile)
 
 
 if __name__ == "__main__":

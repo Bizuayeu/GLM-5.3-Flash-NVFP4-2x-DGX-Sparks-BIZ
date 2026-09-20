@@ -4,6 +4,21 @@
 
 The project is a checkout-local operator toolkit. Source archives contain no weights or remotely managed service. The optional LPA weights are a separate Release asset; [operations](operations.md#artifact-storage-and-paths) owns the package layout and installation paths.
 
+## Where to start reading
+
+Four kinds of code, distinguished by what a test can do with them rather than by any framework:
+
+| | What it holds | Named seams |
+|---|---|---|
+| **Entry** | The argument interface, and which handler an action reaches | `server.ACTIONS`, `cluster.ACTIONS`, `__main__.COMMANDS` |
+| **Assembly** | The order steps run in, and what a failure rolls back | `switch.switch`, `server.act_launch`, `cluster.act_switch` |
+| **Decision** | Settings validated, arguments built, reports shaped — pure functions | `server_config.VALIDATORS`, `server_config.SERVE_STEPS`, `validation.*.engine_kwargs`, `runtime.apc_policy` |
+| **Side effect** | docker, HTTP, subprocess, torch, vLLM | `host.run`, `model_http`, the lazy GPU imports inside each runner |
+
+The decision layer is where the numbers live that make one measurement comparable to the next, so it is the layer kept importable without torch or vLLM: `engine_kwargs(args)` states what a fixture runner launches under, on a host that cannot run it. Entry and assembly take their side effects as arguments, so a test substitutes them; the side-effect layer is the substitution point, not the thing under test.
+
+Order is part of the contract in two places. `VALIDATORS` runs the profile rules in a fixed sequence because the first raise is the sentence the operator reads. `SERVE_STEPS` writes into one argument list and later steps index into what earlier ones left.
+
 | Location | Responsibility |
 |---|---|
 | `glm53_setup/__main__.py` | Fixed command dispatch; no dynamic user-supplied module loading |
