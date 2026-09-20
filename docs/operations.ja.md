@@ -125,6 +125,8 @@ python -m glm53_setup server preflight --rank 0
 
 `server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、他のコンテナがGPUを使っていないこと、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。両rankの切替では、稼働中の対を止める前と新しい対を起動する前に、両rankでこの検査を繰り返します。
 
+`runtime.canonical_moe_order = true` の場合、新規の起動にはimageのmarker `GLM53_MOE_ORDER_API=2` が必要です。marker 1は、token整列のbuffer長を誤っていた以前のimageも持っているためです。marker 1のimageを指すprofileは、`server preflight`・`server start`・`cluster switch` の停止前検査で `moe_order_support` が不合格になります。このcheckoutから参照imageを作り直し、`reference_image` を更新してください。すでにmarker 1のimageで稼働している対が取り残されることはありません。切替はその対を復旧先として検査し、新しい対が失敗した場合はmarker 1のまま再起動して、rankの `warnings` に `moe_order_marker_1_accepted_for_recovery` を記録します。稼働中のmarker 1の対のprofileに同じ読み取り検査を手で行う場合は、`server preflight` に `--recovery` を付けます。このflagは切替の復旧経路のためのもので、古いimageを新規に起動する手段ではありません。
+
 `exclusive_gpu` は、このランチャーの `glm53.experiment.startup` ラベルを持たない稼働中のコンテナがGPUを要求していると不合格になり、該当するコンテナを結果の `foreign_gpu_containers` に並べます。GPUの要求は `HostConfig.DeviceRequests` が空でないことで判定します。`--gpus` とCDI（`--device nvidia.com/gpu=...`）の要求はどちらもここに表れ、GPUのデバイスノードは `Devices` には表れません。このランチャーの対はfingerprintによらずラベルを持つので、旧い対が動いたままでも `cluster switch` の停止前の検査は止まりません。値が空のラベルは数えません。検査の途中で終了・削除されたコンテナは飛ばし、一覧に残っているのに調べられないコンテナがあれば、合格にせず例外で止めます。部品試験や別のモデルなど、他のGPU負荷は起動前に止めてください。無効化のオプションはありません。`server assets` もメモリ以外の検査として同じ判定を行います。着想はsfxnz PR #12（コードは採用しない）です。
 
 preflightの合格は資材と設定の確認であり、品質や可用性の保証ではありません。通常運用として受け入れるまでに残る項目は[セットアップ手順](../SETUP.ja.md#6-フルモデルの検証)に、範囲別の現状はREADMEの状態表にあります。失敗した検査の緩和、attention候補の切り捨て、無断の精度変更で通過させないでください。

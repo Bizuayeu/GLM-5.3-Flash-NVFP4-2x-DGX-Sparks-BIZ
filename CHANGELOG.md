@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased (1.7.0)
+
+### Changed
+
+- With `runtime.canonical_moe_order = true`, a new launch requires the image marker `GLM53_MOE_ORDER_API=2`: `server preflight`, `server start` and the pre-stop checks of `cluster switch` refuse a profile whose image carries only marker 1, which an earlier image with a mis-sized sort buffer shares. Rebuild the reference image from this checkout and update `reference_image`. A pair already serving from a marker-1 image stays restorable: `cluster switch` prepares it, and restarts it after a failed switch, as a recovery target that keeps marker 1 (`server start --recovery`, passed by the coordinator), and records the allowance under `warnings`. Fingerprints are unchanged.
+
 ## 1.6.2 — 2026-09-20
 
 ### Fixed
