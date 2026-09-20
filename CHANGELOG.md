@@ -7,8 +7,8 @@
 ### Documentation
 
 - Operations: distinguish reported GB10 power clamping after an unclean restart from a model slowdown, and record that a fixed KV-byte budget skips memory profiling without validating a larger prefill chunk’s activation peak.
-- Validation: require unchanged-arm variation, executed-artifact checks, separate cold/APC measurements, completion hashes and request/token accounting. Reassessed the saved requantization/depth comparisons without changing their measured values or configuration decisions; claims remain scoped to their prompts and available evidence.
-- Component validation: compared cold-cache FA2 startup on the eight-layer fixture with JIT parallelism unset versus MAX_JOBS=2 / FLASHINFER_NVCC_THREADS=1. Both passed, but an overall peak-memory benefit was not established; runtime defaults are unchanged.
+- Validation: require unchanged-arm variation, executed-artifact checks, separate cold/APC measurements, completion hashes and request/token accounting. Reassessed the saved requantization/depth comparisons without changing their measured values or configuration decisions; claims remain scoped to their prompts and available evidence. At the same depth the requantization gain holds per step (+20–22% estimated steps/s on all three prompts).
+- Component validation: compared cold-cache FA2 startup on the eight-layer fixture with JIT parallelism unset versus MAX_JOBS=2 / FLASHINFER_NVCC_THREADS=1. Both passed. The run-time JIT build is three translation units, on the fixture and on the reference pair, so the limit can remove one compiler process on the first launch of a new cache; runtime defaults are unchanged.
 - README: add the single-Spark 0xSero recipe and separate mosaic checkpoint as comparison sources, with artifact-specific license labels and no code or weights adopted. Keep the headline inference measurements on 1.6.0.
 ## 1.6.1 — 2026-09-20
 
