@@ -432,6 +432,25 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(p)
 
+    def test_mtp_local_argmax_reduction_is_optional_and_passed_through(self):
+        # Absent: the speculative config is what it always was (and so is the fingerprint).
+        self.profile["mtp"]["enabled"] = True
+        config.validate(self.profile)
+        args = config.serve_args(self.profile, 0, "/hf/mtp-view")
+        spec = json.loads(args[args.index("--speculative-config") + 1])
+        self.assertNotIn("use_local_argmax_reduction", spec)
+        for value in (True, False):
+            p = copy.deepcopy(self.profile)
+            p["mtp"]["local_argmax_reduction"] = value
+            config.validate(p)
+            args = config.serve_args(p, 0, "/hf/mtp-view")
+            spec = json.loads(args[args.index("--speculative-config") + 1])
+            self.assertIs(spec["use_local_argmax_reduction"], value)
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["local_argmax_reduction"] = 1
+        with self.assertRaises(ValueError):
+            config.validate(p)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.

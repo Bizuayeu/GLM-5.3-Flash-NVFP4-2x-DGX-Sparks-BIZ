@@ -64,6 +64,7 @@ OPTIONAL_KEYS = {
             "fa2_attention",
         }
     ),
+    "server.mtp": frozenset({"local_argmax_reduction"}),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
@@ -306,6 +307,8 @@ def check_speculation(profile):
         # 1 and 3 are measured; 2, 4 and 5 are launchable for the depth sweep
         # (the draft is one layer, run k times, so acceptance falls with depth).
         raise ValueError("MTP depth must be an integer from 1 to 5")
+    if type(profile["mtp"].get("local_argmax_reduction", False)) is not bool:
+        raise ValueError("mtp.local_argmax_reduction must be true or false")
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")
@@ -619,16 +622,17 @@ def apply_speculation(args, profile):
     """The MTP draft, when this profile serves the local view."""
     if not profile["mtp"]["enabled"]:
         return
-    args += [
-        "--speculative-config",
-        json.dumps(
-            {
-                "method": "mtp",
-                "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
-                "moe_backend": "triton",
-            }
-        ),
-    ]
+    spec = {
+        "method": "mtp",
+        "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
+        "moe_backend": "triton",
+    }
+    if "local_argmax_reduction" in profile["mtp"]:
+        # The draft shares the target's vocabulary-sharded lm_head. By default vLLM
+        # all-gathers the full logits on every draft step before the argmax; this
+        # takes the maximum on each rank and gathers only those.
+        spec["use_local_argmax_reduction"] = profile["mtp"]["local_argmax_reduction"]
+    args += ["--speculative-config", json.dumps(spec)]
 
 
 def apply_decode_graphs(args, profile):
