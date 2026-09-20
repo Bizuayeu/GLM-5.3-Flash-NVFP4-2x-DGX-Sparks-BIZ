@@ -7,6 +7,7 @@
 ### Changed
 
 - With `runtime.canonical_moe_order = true`, a new launch requires the image marker `GLM53_MOE_ORDER_API=2`: `server preflight`, `server start` and the pre-stop checks of `cluster switch` refuse a profile whose image carries only marker 1, which an earlier image with a mis-sized sort buffer shares. Rebuild the reference image from this checkout and update `reference_image`. A pair already serving from a marker-1 image stays restorable: `cluster switch` prepares it, and restarts it after a failed switch, as a recovery target that keeps marker 1 (`server start --recovery`, passed by the coordinator), and records the allowance under `warnings`. Fingerprints are unchanged.
+- Launches set `TRITON_CACHE_AUTOTUNING=1`, so the kernel configurations Triton autotunes are kept with the compiled kernels under the persistent `TRITON_CACHE_DIR` instead of being tuned again on every launch. On the four-layer fixture ten launches without it computed in two numerical states, and the state followed the `num_warps` that one KDA kernel (`merge_16x16_to_64x64_inverse_kernel`) happened to pick; with it six launches computed in one state and started about 50 s sooner. The reference pair launched three times with it and repeated the 1.6.0 completions each time; the full model had not shown the split before, so that effect is established on the fixture only. Profile fingerprints do not change.
 
 ## 1.6.2 — 2026-09-20
 
