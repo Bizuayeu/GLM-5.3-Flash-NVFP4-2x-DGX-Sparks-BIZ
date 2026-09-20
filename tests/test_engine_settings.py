@@ -39,6 +39,7 @@ ENGINE_RUNNERS = {
     "run_indexer_fixture": (),
     "run_repeat_trace": (),
     "run_apc_lpa_fixture": (),
+    "run_agreement_fixture": (),
     "run_lpa": (0,),
     "run_graph_fixture": (0,),
 }
