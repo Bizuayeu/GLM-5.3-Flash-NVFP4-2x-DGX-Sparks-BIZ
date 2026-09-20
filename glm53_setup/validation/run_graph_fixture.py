@@ -11,29 +11,88 @@ from pathlib import Path
 from ..io import write_json
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--graphs", action="store_true")
-    parser.add_argument("--fused-unpack", action="store_true")
-    parser.add_argument("--async-index-checks", action="store_true")
-    parser.add_argument("--mtp", type=int, choices=[1, 2, 3, 4, 5])
-    parser.add_argument("--apc", action="store_true", help="prefix caching on")
-    parser.add_argument(
+def parser():
+    """The runner's argument interface; the engine settings follow from it."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--fixture", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    cli.add_argument("--graphs", action="store_true")
+    cli.add_argument("--fused-unpack", action="store_true")
+    cli.add_argument("--async-index-checks", action="store_true")
+    cli.add_argument("--mtp", type=int, choices=[1, 2, 3, 4, 5])
+    cli.add_argument("--apc", action="store_true", help="prefix caching on")
+    cli.add_argument(
         "--seqs",
         type=int,
         default=1,
         help="max_num_seqs; above 1 each case runs that many distinct prompts together",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--lengths",
         type=int,
         nargs="+",
         default=[64, 2048, 8192],
         help="input lengths (with MTP the cache block is 8,960 and a hit needs priming past 16K)",
     )
-    args = parser.parse_args(argv)
+    return cli
+
+
+def engine_kwargs(args, compilation_mode):
+    """What LLM() is constructed with; these settings define the measurement.
+
+    ``compilation_mode`` is passed in rather than imported, so these settings stay readable without the GPU stack.
+    """
+    return {
+        "model": str(args.fixture),
+        "tensor_parallel_size": 1,
+        "language_model_only": True,
+        "enforce_eager": not args.graphs,
+        "enable_prefix_caching": args.apc,
+        "enable_chunked_prefill": True,
+        "max_model_len": 16384,
+        "max_num_seqs": args.seqs,
+        "max_num_batched_tokens": 512,
+        "block_size": 256,
+        "kv_cache_dtype": "fp8",
+        "kv_cache_memory_bytes": 512 * 1024**2,
+        "gpu_memory_utilization": 0.2,
+        "seed": 42,
+        "compilation_config": {
+            "mode": compilation_mode,
+            "cudagraph_mode": "FULL_DECODE_ONLY" if args.graphs else "NONE",
+            "cudagraph_capture_sizes": [
+                n for n in (1, 2, 4, 8, 16) if n <= args.seqs * ((args.mtp or 0) + 1)
+            ],
+        },
+        "speculative_config": {
+            "method": "mtp",
+            "num_speculative_tokens": args.mtp,
+            "moe_backend": "triton",
+        }
+        if args.mtp
+        else None,
+        "profiler_config": {
+            "profiler": "torch",
+            "torch_profiler_dir": str(args.output / "profiles"),
+            "torch_profiler_with_stack": False,
+            "torch_profiler_record_shapes": False,
+            "torch_profiler_with_memory": False,
+            "torch_profiler_use_gzip": True,
+            "ignore_frontend": True,
+            "torch_profiler_dump_cuda_time_total": False,
+        },
+        "kernel_config": {
+            "enable_flashinfer_autotune": False,
+            "enable_cutedsl_warmup": False,
+            "enable_jit_warmup": False,
+            "moe_backend": "marlin",
+            "linear_backend": "marlin",
+        },
+    }
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
     config = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     if (
@@ -83,55 +142,7 @@ def main(argv=None):
 
     save()
     try:
-        llm = LLM(
-            model=str(args.fixture),
-            tensor_parallel_size=1,
-            language_model_only=True,
-            enforce_eager=not args.graphs,
-            enable_prefix_caching=args.apc,
-            enable_chunked_prefill=True,
-            max_model_len=16384,
-            max_num_seqs=args.seqs,
-            max_num_batched_tokens=512,
-            block_size=256,
-            kv_cache_dtype="fp8",
-            kv_cache_memory_bytes=512 * 1024**2,
-            gpu_memory_utilization=0.20,
-            seed=42,
-            compilation_config={
-                "mode": CompilationMode.NONE,
-                "cudagraph_mode": "FULL_DECODE_ONLY" if args.graphs else "NONE",
-                "cudagraph_capture_sizes": [
-                    n
-                    for n in (1, 2, 4, 8, 16)
-                    if n <= args.seqs * ((args.mtp or 0) + 1)
-                ],
-            },
-            speculative_config={
-                "method": "mtp",
-                "num_speculative_tokens": args.mtp,
-                "moe_backend": "triton",
-            }
-            if args.mtp
-            else None,
-            profiler_config={
-                "profiler": "torch",
-                "torch_profiler_dir": str(args.output / "profiles"),
-                "torch_profiler_with_stack": False,
-                "torch_profiler_record_shapes": False,
-                "torch_profiler_with_memory": False,
-                "torch_profiler_use_gzip": True,
-                "ignore_frontend": True,
-                "torch_profiler_dump_cuda_time_total": False,
-            },
-            kernel_config={
-                "enable_flashinfer_autotune": False,
-                "enable_cutedsl_warmup": False,
-                "enable_jit_warmup": False,
-                "moe_backend": "marlin",
-                "linear_backend": "marlin",
-            },
-        )
+        llm = LLM(**engine_kwargs(args, CompilationMode.NONE))
         base = llm.get_tokenizer().encode(
             "Tokyo is the capital of Japan. The sequence is 2, 4, 6, 8. ",
             add_special_tokens=False,

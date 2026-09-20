@@ -74,17 +74,20 @@ def encode_output(output):
     }
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--chunk", type=int, choices=[128, 512], default=512)
-    parser.add_argument("--context", type=int, choices=[2048, 16384], default=2048)
-    parser.add_argument("--backend", choices=["auto", "marlin"], default="auto")
-    parser.add_argument("--smoke", action="store_true")
-    args = parser.parse_args(argv)
-    config = json.loads((args.fixture / "config.json").read_text())
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
+def parser():
+    """The runner's argument interface; the engine settings follow from it."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--fixture", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    cli.add_argument("--chunk", type=int, choices=[128, 512], default=512)
+    cli.add_argument("--context", type=int, choices=[2048, 16384], default=2048)
+    cli.add_argument("--backend", choices=["auto", "marlin"], default="auto")
+    cli.add_argument("--smoke", action="store_true")
+    return cli
+
+
+def check_fixture(config, status):
+    """Refuse anything but a fully downloaded, byte-verified four-layer fixture."""
     if (
         not config.get("_test_fixture_only")
         or config["text_config"]["num_hidden_layers"] != 4
@@ -92,21 +95,23 @@ def main(argv=None):
         or status.get("all_tensor_bytes_verified") is not True
     ):
         raise ValueError("Only a byte-verified four-layer test fixture is allowed")
-    args.output.mkdir(parents=True, exist_ok=True)
-    report = {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "status": "loading",
-        "full_model_inference_validated": False,
-        "tp_size": 1,
-    }
 
-    def save():
-        write_json(args.output / "result.json", report)
 
-    save()
-    from vllm import LLM, SamplingParams
+def read_fixture(fixture):
+    """Read the builder's two files and apply the gate to them."""
+    config = json.loads((fixture / "config.json").read_text())
+    status = json.loads((fixture / "fixture-status.json").read_text())
+    check_fixture(config, status)
+    return config, status
 
-    kwargs = {
+
+def engine_kwargs(args):
+    """What LLM() is constructed with; these settings define the measurement.
+
+    Kept free of torch and vLLM imports so the values can be read, compared
+    and recorded on a host without the GPU stack.
+    """
+    return {
         "model": str(args.fixture),
         "tensor_parallel_size": 1,
         "language_model_only": True,
@@ -130,6 +135,26 @@ def main(argv=None):
             "linear_backend": args.backend,
         },
     }
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    read_fixture(args.fixture)
+    args.output.mkdir(parents=True, exist_ok=True)
+    report = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "loading",
+        "full_model_inference_validated": False,
+        "tp_size": 1,
+    }
+
+    def save():
+        write_json(args.output / "result.json", report)
+
+    save()
+    from vllm import LLM, SamplingParams
+
+    kwargs = engine_kwargs(args)
     report["engine_args"] = kwargs
     save()
     try:

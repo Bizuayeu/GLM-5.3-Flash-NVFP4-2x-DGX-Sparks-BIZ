@@ -5,11 +5,44 @@ import json
 from pathlib import Path
 
 
+def parser():
+    """The runner's argument interface; the engine settings follow from it."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--fixture", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    return cli
+
+
+def engine_kwargs(args):
+    """What LLM() is constructed with; these settings define the measurement."""
+    return {
+        "model": str(args.fixture),
+        "tensor_parallel_size": 1,
+        "language_model_only": True,
+        "enforce_eager": True,
+        "enable_prefix_caching": False,
+        "enable_chunked_prefill": True,
+        "max_model_len": 16384,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 512,
+        "block_size": 256,
+        "kv_cache_dtype": "fp8",
+        "kv_cache_memory_bytes": 512 * 1024**2,
+        "gpu_memory_utilization": 0.2,
+        "seed": 42,
+        "worker_extension_cls": "glm53_setup.runtime.indexer_worker.IndexerCaptureWorker",
+        "kernel_config": {
+            "enable_flashinfer_autotune": False,
+            "enable_cutedsl_warmup": False,
+            "enable_jit_warmup": False,
+            "moe_backend": "marlin",
+            "linear_backend": "marlin",
+        },
+    }
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args(argv)
+    args = parser().parse_args(argv)
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     config = json.loads((args.fixture / "config.json").read_text())
     if (
@@ -21,30 +54,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=False)
     from vllm import LLM, SamplingParams
 
-    llm = LLM(
-        model=str(args.fixture),
-        tensor_parallel_size=1,
-        language_model_only=True,
-        enforce_eager=True,
-        enable_prefix_caching=False,
-        enable_chunked_prefill=True,
-        max_model_len=16384,
-        max_num_seqs=1,
-        max_num_batched_tokens=512,
-        block_size=256,
-        kv_cache_dtype="fp8",
-        kv_cache_memory_bytes=512 * 1024**2,
-        gpu_memory_utilization=0.20,
-        seed=42,
-        worker_extension_cls="glm53_setup.runtime.indexer_worker.IndexerCaptureWorker",
-        kernel_config={
-            "enable_flashinfer_autotune": False,
-            "enable_cutedsl_warmup": False,
-            "enable_jit_warmup": False,
-            "moe_backend": "marlin",
-            "linear_backend": "marlin",
-        },
-    )
+    llm = LLM(**engine_kwargs(args))
     base = llm.get_tokenizer().encode(
         "Tokyo is the capital of Japan. The sequence is 2, 4, 6, 8. ",
         add_special_tokens=False,

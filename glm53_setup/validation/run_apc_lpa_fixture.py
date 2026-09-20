@@ -11,25 +11,71 @@ from ..config import REVISION, TEACHER_PRECISION
 from ..io import write_json
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--mtp", type=int, choices=(1, 3))
-    parser.add_argument("--fused-unpack", action="store_true")
-    parser.add_argument("--async-index-checks", action="store_true")
-    parser.add_argument("--async-scheduling", action="store_true")
-    parser.add_argument(
+def parser():
+    """The runner's argument interface; the engine settings follow from it."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--fixture", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    cli.add_argument("--mtp", type=int, choices=(1, 3))
+    cli.add_argument("--fused-unpack", action="store_true")
+    cli.add_argument("--async-index-checks", action="store_true")
+    cli.add_argument("--async-scheduling", action="store_true")
+    cli.add_argument(
         "--retention-interval",
         type=int,
         help="Explicit native checkpoint-retention candidate",
     )
-    parser.add_argument(
+    cli.add_argument(
         "--history",
         action="store_true",
         help="Additional edit/branch and shared-state checks",
     )
-    args = parser.parse_args(argv)
+    return cli
+
+
+def engine_kwargs(args):
+    """What LLM() is constructed with; these settings define the measurement."""
+    return {
+        "model": str(args.fixture),
+        "tensor_parallel_size": 1,
+        "language_model_only": True,
+        "enforce_eager": True,
+        "enable_prefix_caching": True,
+        "enable_chunked_prefill": True,
+        "async_scheduling": args.async_scheduling,
+        "max_model_len": 32768,
+        "max_num_seqs": 1,
+        "max_num_batched_tokens": 512,
+        "block_size": 256,
+        "kv_cache_dtype": "fp8",
+        "kv_cache_memory_bytes": 1024**3,
+        "gpu_memory_utilization": 0.2,
+        "seed": 42,
+        "worker_extension_cls": "glm53_setup.validation.apc_fixture_worker.APCFixtureWorker",
+        "speculative_config": {
+            "method": "mtp",
+            "num_speculative_tokens": args.mtp,
+            "moe_backend": "triton",
+        }
+        if args.mtp
+        else None,
+        "kernel_config": {
+            "moe_backend": "marlin",
+            "linear_backend": "marlin",
+            "enable_flashinfer_autotune": False,
+            "enable_cutedsl_warmup": False,
+            "enable_jit_warmup": False,
+        },
+        **(
+            {"prefix_cache_retention_interval": args.retention_interval}
+            if args.retention_interval is not None
+            else {}
+        ),
+    }
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
     configuration = json.loads((args.fixture / "config.json").read_text())
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     model = configuration["text_config"]
@@ -105,43 +151,7 @@ def main(argv=None):
 
         from .run_fixture import encode_output
 
-        llm = LLM(
-            model=str(args.fixture),
-            tensor_parallel_size=1,
-            language_model_only=True,
-            enforce_eager=True,
-            enable_prefix_caching=True,
-            enable_chunked_prefill=True,
-            async_scheduling=args.async_scheduling,
-            max_model_len=32768,
-            max_num_seqs=1,
-            max_num_batched_tokens=512,
-            block_size=256,
-            kv_cache_dtype="fp8",
-            kv_cache_memory_bytes=1024**3,
-            gpu_memory_utilization=0.20,
-            seed=42,
-            worker_extension_cls="glm53_setup.validation.apc_fixture_worker.APCFixtureWorker",
-            speculative_config={
-                "method": "mtp",
-                "num_speculative_tokens": args.mtp,
-                "moe_backend": "triton",
-            }
-            if args.mtp
-            else None,
-            kernel_config={
-                "moe_backend": "marlin",
-                "linear_backend": "marlin",
-                "enable_flashinfer_autotune": False,
-                "enable_cutedsl_warmup": False,
-                "enable_jit_warmup": False,
-            },
-            **(
-                {"prefix_cache_retention_interval": args.retention_interval}
-                if args.retention_interval is not None
-                else {}
-            ),
-        )
+        llm = LLM(**engine_kwargs(args))
         client = llm.llm_engine.engine_core
         if type(client).__name__ != "InprocClient":
             raise ValueError("Fixture requires the explicit in-process engine")
