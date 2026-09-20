@@ -23,6 +23,19 @@ Marlin changes the arithmetic: its [linear kernel](https://github.com/vllm-proje
 
 vLLM [does not guarantee default reproducibility](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/docs/usage/reproducibility.md). This does not prove that our adapter is correct either: the W4A4 differences remain observations requiring investigation.
 
+## Comparing a candidate with an unchanged control
+
+Before judging a difference, measure the unchanged arm at least twice and preserve every repetition, its median and range. Include separate launches when the candidate requires a restart. A difference inside the observed control variation is **inconclusive at this resolution**, not proof of equality; a few repetitions do not establish the absence of a slow tail.
+
+- Identify the executed artifacts: model/tokenizer revisions, image ID, source and loaded overlays, effective settings and target-kernel dispatch. A comparison without evidence that its intended implementation ran is invalid. Keep launch identity, sampling/thinking settings, input/output lengths, concurrency, warmup and APC history with the results.
+- Separate cold prefill from APC hits. For a cold length ladder, place a unique nonce early in each request so shorter inputs are not prefixes of later ones, and measure lengths with the tokenizer or returned usage. Shared system/tool prefixes may still hit: inspect cached-token counts and server logs, and mark missing evidence as unknown.
+- Compare completion hashes for speed measurements that assume identical output. Different completions are different conditions; keep their performance and quality outcomes, including failures, rather than pooling them into an identical-output claim.
+- When weights, quantization or speculative depth change, use several prompts per task type and separate tuning from evaluation inputs. Start with at least three per type as a provisional design, then justify the sample count from unchanged-arm variation across prompts. Report acceptance length and estimated steps/s (decode tok/s divided by acceptance length) with tok/s; changing the completion can change draft acceptance without making the underlying arithmetic faster. The route-g and depth sweeps on 1.6.0 used one prompt per type, so their conclusions remain limited to those paths.
+- Match sent/completed requests and output tokens to server-counter deltas over the same measurement window. Exclude windows with background requests or unexplained mismatches from controlled comparisons, retaining their values and exclusion reasons. If old records lack counters, state which isolation checks were possible. Mia’s independent TP2 report on PR #139 illustrates this distinction; its adaptive policy, graph coverage and scratch-size changes were measured together.
+- Keep acceptance-rate denominators explicit: proposed drafts, verified candidates and accepted draft tokens (excluding the bonus) differ. Shortening a verification prefix can raise the rate without improving prediction at a fixed depth (Mia PR #235). Do not transfer DFlash2 results to standard MTP or greedy results to sampling.
+
+`server agreement --reference` accepts one saved result, not two control records. Its `self_agreement` describes within-run repeats. For an unchanged-before / candidate / unchanged-after comparison, preserve all three records and inspect the control pair with the existing `agreement.compare_records` function; do not treat within-run stability as evidence of stability across launches. No second-reference CLI option is provided.
+
 ## Reproduce the single-GPU fixture
 
 Use a Linux GB10 host and a verified checkpoint. Run from the checkout root. The example uses the default Hugging Face cache; adjust the host mount if yours differs.

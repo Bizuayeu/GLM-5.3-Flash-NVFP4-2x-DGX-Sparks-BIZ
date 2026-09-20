@@ -100,6 +100,8 @@ After either choice, repeat the [NCCL validation](nccl-validation.md) and a full
 
 A separate report with the same error, on MS-C931 systems running an Ubuntu generic 7.0 kernel with driver 595.84, failed with about 118 GiB free before weights loaded and attributes the fix to MSI board firmware updates (embedded controller, SoC firmware, USB-C PD) ([MiaAI-Lab issue #259](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/issues/259)). If the error appears without memory pressure, check the vendor firmware as well.
 
+**Check loaded clocks after an unclean restart.** tonyd2wild reports a persistent ~14 W clamp after watchdog resets: 611–890 MHz under load, with BF16 matrix throughput about half the unaffected host. GPU reset, clock/power settings and reboots did not restore it; disconnecting and reconnecting AC did. Running CUDA immediately after a GPU reset without a reboot also faulted (speed-night report, commit `9f5cc2c`; no code adopted). This is an external observation, not reproduced on this reference pair. Before attributing a post-restart slowdown to a model change, record GPU clocks and power under the same workload; an idle power reading alone does not diagnose the clamp.
+
 ## Network and site configuration
 
 For physical connection and persistent IPv4 configuration, use the [QSFP hands-on guide](qsfp-network.md).

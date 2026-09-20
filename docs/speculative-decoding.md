@@ -46,6 +46,8 @@ This is an experimental recipe, not an acceptance for routine use. To return to 
 - Check final answers, tools, SSE, EOS/length termination and state behavior. Keep greedy token/logprob differences as numerical diagnostics instead of demanding identical free-form reasoning text.
 - Compare both prefill latency and decode/aggregate throughput. A faster decode path can still lose on long-input, short-output workloads. Increase k only in a separate test after k=1 passes.
 
+amasu reports similar aggregate scores at k=3 and k=4 in its own configuration (benchmark §12, commit `73e19d8`). That external result does not select a depth for this setup; use the local comparison below.
+
 ## Measured k=1 results
 
 On 2026-09-12 (Asia/Tokyo), the full model completed all five baseline workloads: 21 measured requests and 1,344 output tokens, with no request errors. Each request produced the requested 64 tokens. The image, target arithmetic, network and workload settings match the [MTP-off baseline](benchmarks.md#initial-full-model-results); this is a comparison between separate runs, not a repeated A/B/A study. Client concurrency 2 still queues behind server `max_num_seqs=1`.

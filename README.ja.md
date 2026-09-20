@@ -118,9 +118,9 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 **Euryale**は、凍結したモデルの中間表現から軽い補助器で複数のdraft tokenを提案する独立した非公開の研究プロジェクトで、GLM-5.3-Flash／GB10 2台を最初の対象としています。本配布物には含まれず、上記の候補順序の正規化を除いて本リポジトリのcheckpoint・runtime・既定値を変更しません。checkpoint同梱の標準MTPに対する速度・品質・メモリの優位は未実証で、4層fixtureで実効投機幅5〜12を限定検収した段階です。全モデルの教師採取・補助器学習・同条件比較は未着手です。上記の候補順序の正規化は、この研究から生まれたruntime共通の変更です。既定の投機経路をMTP k=3からEuryaleへ切り替えるのは、同条件比較で品質・性能・メモリ・復旧のゲートを通し、[施策台帳の区別](docs/optimization-catalog.ja.md#機能受入と既定設定)（機能受入・性能採用・既定値・併用検収）で判定した場合に限ります。それまではMTP k=3が実測済みの候補です。
 
-### DGX Spark 2台向けの他のGLM-5.3-Flashレシピ
+### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
-同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
+同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
 
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
@@ -130,6 +130,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果 |
+| [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
 
 ## 必要な環境
 

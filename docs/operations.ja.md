@@ -100,6 +100,8 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 
 同じエラーの別の報告もあります。Ubuntu 汎用の 7.0 カーネル・ドライバー 595.84 の MS-C931 機で、空きが約 118 GiB あり重みのロード前だったにもかかわらず失敗し、MSI のボードファームウェア更新（組み込みコントローラー、SoC ファームウェア、USB-C PD）で解決したとしています（[MiaAI-Lab issue #259](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/issues/259)）。メモリに余裕があるのにこのエラーが出る場合は、メーカーのファームウェアも確認してください。
 
+**異常終了後は負荷時のクロックを確認する。** tonyd2wildはwatchdog reset後に約14 Wの電力制限が残り、負荷時611〜890 MHz、BF16行列演算の速度が正常機の約半分になったと報告しています。GPU reset・クロック／電力設定・再起動では戻らず、ACの抜き差しで復旧しました。GPU reset直後に再起動を挟まずCUDAを実行した場合もfaultが発生しています（speed-night報告、commit `9f5cc2c`。コードは採用しない）。基準の2台で再現した事実ではなく、外部の観測です。再起動後の低速化をモデル変更の効果と読む前に、同じ負荷でGPUクロックと電力を記録してください。アイドル時の電力だけではこの制限を診断できません。
+
 ## ネットワークとサイト設定
 
 物理接続と永続的なIPv4設定は、[QSFPのハンズオン手順](qsfp-network.ja.md)に従います。
