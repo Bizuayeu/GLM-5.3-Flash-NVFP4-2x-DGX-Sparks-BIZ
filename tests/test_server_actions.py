@@ -8,6 +8,7 @@ They are table entries here so each one can be read and exercised on its own.
 
 import contextlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,14 +33,34 @@ def frozen_launch(manifest):
         yield path
 
 
+class HostView:
+    """The os module as server sees it, with another host's name and environment.
+
+    Patching os.name itself reaches pathlib, which then refuses to build a path
+    of the other platform's flavour: the guard tests would pass only on the
+    platform they happen to name.
+    """
+
+    def __init__(self, name, environ):
+        self.name, self.environ = name, environ
+
+    def __getattr__(self, attribute):
+        return getattr(os, attribute)
+
+
+def on_host(name="posix", environ=None):
+    return patch.object(
+        server, "os", HostView(name, {} if environ is None else environ)
+    )
+
+
 def dispatch(action, *extra, environ=None, name="posix"):
     """Run main() with this action's handler replaced; return the mock."""
     handler = MagicMock()
     entry = server.ACTIONS[action]._replace(handler=handler)
     with (
         patch.dict(server.ACTIONS, {action: entry}),
-        patch.object(server.os, "name", name),
-        patch.object(server.os, "environ", {} if environ is None else environ),
+        on_host(name, environ),
         patch.object(server.settings, "load", return_value=profile()),
     ):
         server.main([action, *extra])
@@ -93,7 +114,7 @@ class ActionGuardTests(unittest.TestCase):
                     dispatch(action, name="nt")
 
     def test_stop_refuses_windows_with_its_own_recovery_message(self):
-        with patch.object(server.os, "name", "nt"):
+        with on_host("nt"):
             with self.assertRaises(SystemExit):
                 server.main(["stop"])
 
@@ -123,8 +144,7 @@ class ActionGuardTests(unittest.TestCase):
         with frozen_launch(server.freeze(profile(), {})) as path:
             with (
                 patch.dict(server.ACTIONS, {"preflight": entry}),
-                patch.object(server.os, "name", "posix"),
-                patch.object(server.os, "environ", INHERITED_ALLOCATOR),
+                on_host("posix", INHERITED_ALLOCATOR),
             ):
                 server.main(["preflight", "--launch", str(path)])
         handler.assert_called_once()
