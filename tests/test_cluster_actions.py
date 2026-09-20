@@ -150,20 +150,79 @@ class RemoteProcedureGapTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cluster.rpc("no-such-operation", 0, None)
 
-    def test_the_launch_check_behind_prepare_accepts_either_moe_order_marker(self):
-        # 1.6.1 Stage 3 will require marker 2 for a new launch and warn for a
-        # recovery target. This pins what the current launcher does, so that
-        # change stays a deliberate one rather than a refactoring side effect.
+    def test_a_new_launch_needs_moe_order_marker_2_and_a_recovery_target_does_not(self):
+        # Marker 1 also names the image whose sort mis-sized its buffer (46cd464).
         # prepare reaches this through launch_assets.inspect -> server.preflight.
         current = profile()
         current["runtime"]["canonical_moe_order"] = True
-        for marker, expected in (("1", True), ("2", True), (None, False)):
-            with self.subTest(marker=marker):
+        for marker, recovery, expected in (
+            ("2", False, True),
+            ("2", True, True),
+            ("1", False, False),
+            ("1", True, True),
+            (None, False, False),
+            (None, True, False),
+        ):
+            with self.subTest(marker=marker, recovery=recovery):
                 env = [f"GLM53_MOE_ORDER_API={marker}"] if marker else []
                 image = {"Id": "sha256:" + "0" * 64, "Config": {"Env": env}}
-                with patch.object(server.host, "run", return_value=json.dumps([image])):
-                    checks = server.image_capability_checks(current, image)
+                checks = server.image_capability_checks(
+                    current, image, recovery=recovery
+                )
                 self.assertEqual(checks["moe_order_support"], expected)
+
+    def test_prepare_tells_the_launch_checks_when_it_inspects_a_recovery_target(self):
+        launch = {
+            "manifest": server.freeze(profile(), {}),
+            "config_path": "/srv/glm53/state/server.toml",
+        }
+        for value, expected in ((launch, False), ({**launch, "recovery": True}, True)):
+            with self.subTest(recovery=expected):
+                with patch.object(cluster.launch_assets, "inspect") as inspect:
+                    cluster.rpc("prepare", 0, value)
+                self.assertEqual(inspect.call_args.kwargs, {"recovery": expected})
+
+    def test_the_ssh_backend_marks_a_recovery_target_inside_the_launch_it_sends(self):
+        backend = cluster.SSHBackend.__new__(cluster.SSHBackend)
+        sent = []
+        backend.call = lambda action, rank, value=None: sent.append((action, value))
+        launch = {"manifest": {}, "config_path": "/srv/server.toml"}
+        backend.prepare(0, launch)
+        backend.prepare(0, launch, recovery=True)
+        backend.reserve(1, launch)
+        backend.reserve(1, launch, recovery=True)
+        self.assertEqual(
+            sent,
+            [
+                ("prepare", launch),
+                ("prepare", {**launch, "recovery": True}),
+                ("reserve", launch),
+                ("reserve", {**launch, "recovery": True}),
+            ],
+        )
+        self.assertNotIn("recovery", launch)
+
+    def test_a_reserved_recovery_attempt_starts_its_rank_as_a_recovery(self):
+        for recovery in (False, True):
+            with self.subTest(recovery=recovery), tempfile.TemporaryDirectory() as tmp:
+                record = Path(tmp)
+                launch = {"manifest": {}, "config_path": "/srv/server.toml"}
+                if recovery:
+                    launch["recovery"] = True
+                identity = {
+                    "rank": 1,
+                    "run_id": "abc",
+                    "record": str(record),
+                    "launch": launch,
+                }
+                (record / "identity.json").write_text(json.dumps(identity))
+                args = cluster.parser().parse_args(["job", "--record", str(record)])
+                with (
+                    patch.object(cluster, "owned_record", return_value=record),
+                    patch.object(cluster.server, "main") as main,
+                ):
+                    cluster.act_job(None, args)
+                self.assertEqual("--recovery" in main.call_args.args[0], recovery)
 
     def test_prepare_refuses_when_the_static_checks_did_not_pass(self):
         launch = {

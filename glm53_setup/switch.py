@@ -84,12 +84,12 @@ def switch(backend, launch, *, save, config=None):
     old_assets = []
     for rank, previous in enumerate(old):
         if previous is not None:
-            old_assets.append(backend.prepare(rank, previous["launch"]))
+            old_assets.append(backend.prepare(rank, previous["launch"], recovery=True))
     if old_assets and old_assets[0]["common"] != old_assets[1]["common"]:
         raise ValueError("Old ranks differ; a common recoverable profile is required")
     second = [backend.prepare(rank, launch) for rank in (0, 1)]
     old_again = [
-        backend.prepare(rank, previous["launch"])
+        backend.prepare(rank, previous["launch"], recovery=True)
         for rank, previous in enumerate(old)
         if previous is not None
     ]
@@ -150,7 +150,9 @@ def switch(backend, launch, *, save, config=None):
             for rank in (1, 0):
                 if rank in report["stopped"]:
                     try:
-                        identity = backend.reserve(rank, old[rank]["launch"])
+                        identity = backend.reserve(
+                            rank, old[rank]["launch"], recovery=True
+                        )
                         row = {"rank": rank, "identity": identity}
                         report["recovery"].append(row)
                         save(report)

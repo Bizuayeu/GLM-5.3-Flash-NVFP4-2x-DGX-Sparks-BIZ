@@ -240,16 +240,38 @@ class ServerConfigTests(unittest.TestCase):
             server.image_capability_checks(distributed, image)["moe_order_support"],
             False,
         )
-        # A switch prepares the running pair as its recovery target with the checkout
-        # that switches away from it, so a requirement on an existing key never
-        # tightens: images built before and after the marker became 2 both pass.
-        for marker in ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2"):
+        # Marker 1 is shared by the image whose sort mis-sized its buffer, so a new
+        # launch needs 2. A switch prepares and, if it fails, restarts the running
+        # pair with the checkout that switches away from it: that path keeps 1.
+        for marker, recovery, expected in (
+            ("GLM53_MOE_ORDER_API=2", False, True),
+            ("GLM53_MOE_ORDER_API=1", False, False),
+            ("GLM53_MOE_ORDER_API=1", True, True),
+        ):
             env = ["GLM53_REFERENCE_ATTENTION=1", marker]
             self.assertIs(
-                server.image_capability_checks(distributed, {"Config": {"Env": env}})[
-                    "moe_order_support"
-                ],
-                True,
+                server.image_capability_checks(
+                    distributed, {"Config": {"Env": env}}, recovery=recovery
+                )["moe_order_support"],
+                expected,
+            )
+        self.assertEqual(
+            server.capability_warnings(
+                distributed,
+                {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}},
+                recovery=True,
+            ),
+            ["moe_order_marker_1_accepted_for_recovery"],
+        )
+        for env, recovery in (
+            (["GLM53_MOE_ORDER_API=2"], True),
+            (["GLM53_MOE_ORDER_API=1"], False),
+        ):
+            self.assertEqual(
+                server.capability_warnings(
+                    distributed, {"Config": {"Env": env}}, recovery=recovery
+                ),
+                [],
             )
         # Off is an explicit comparison arm and needs no support from the image.
         self.profile["runtime"]["canonical_moe_order"] = False

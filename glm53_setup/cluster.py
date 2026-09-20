@@ -103,7 +103,10 @@ def rpc(action, rank, value):
         return current(rank)
     if action == "prepare":
         return launch_assets.inspect(
-            server.thaw(value["manifest"]), Path(value["config_path"]), rank
+            server.thaw(value["manifest"]),
+            Path(value["config_path"]),
+            rank,
+            recovery=value.get("recovery", False),
         )
     if action == "reserve":
         run_id = uuid.uuid4().hex
@@ -234,6 +237,15 @@ def rpc(action, rank, value):
     raise ValueError("Unknown cluster operation")
 
 
+def as_recovery(launch):
+    """The same launch, marked as the pair a switch must be able to restore.
+
+    The mark rides beside the manifest, never inside it: the fingerprint and the
+    frozen launch stay what the pair was started with.
+    """
+    return {**launch, "recovery": True}
+
+
 class SSHBackend:
     def __init__(self, hosts, checkout, ssh_config, timeout):
         if any(
@@ -299,11 +311,11 @@ class SSHBackend:
     def current(self, rank):
         return self.call("current", rank)
 
-    def prepare(self, rank, launch):
-        return self.call("prepare", rank, launch)
+    def prepare(self, rank, launch, *, recovery=False):
+        return self.call("prepare", rank, as_recovery(launch) if recovery else launch)
 
-    def reserve(self, rank, launch):
-        return self.call("reserve", rank, launch)
+    def reserve(self, rank, launch, *, recovery=False):
+        return self.call("reserve", rank, as_recovery(launch) if recovery else launch)
 
     def start(self, rank, identity):
         return self.call("start", rank, identity)
@@ -429,6 +441,7 @@ def act_job(cli, args):
                 str(identity["rank"]),
                 "--run-id",
                 identity["run_id"],
+                *(["--recovery"] if identity["launch"].get("recovery") else []),
             ]
         )
         write_json(args.record / "finished.json", {"status": "stopped"})

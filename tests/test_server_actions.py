@@ -7,6 +7,7 @@ They are table entries here so each one can be read and exercised on its own.
 """
 
 import contextlib
+import io
 import json
 import os
 import tempfile
@@ -120,6 +121,21 @@ class ActionGuardTests(unittest.TestCase):
 
     def test_planning_still_runs_on_windows(self):
         dispatch("plan", name="nt").assert_called_once()
+
+    def test_recovery_is_a_flag_of_the_launch_path_and_reaches_the_launch_checks(self):
+        passed = {"passed": True, "checks": {}, "warnings": []}
+        for extra, expected in (((), False), (("--recovery",), True)):
+            with self.subTest(recovery=expected):
+                with (
+                    on_host("posix"),
+                    patch.object(server.settings, "load", return_value=profile()),
+                    patch.object(server, "preflight", return_value=passed) as preflight,
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    server.main(["preflight", *extra])
+                self.assertIs(preflight.call_args.kwargs["recovery"], expected)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            dispatch("plan", "--recovery")
 
     def test_an_inherited_allocator_is_refused_only_on_the_launch_path(self):
         for action, entry in server.ACTIONS.items():

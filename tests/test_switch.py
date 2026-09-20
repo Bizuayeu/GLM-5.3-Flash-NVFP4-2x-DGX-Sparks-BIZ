@@ -11,12 +11,14 @@ class Backend:
         self.mismatch = False
         self.changed = False
         self.prepares = 0
+        self.marked = {}
 
     def current(self, rank):
         return {"launch": "old", "name": f"old-{rank}"}
 
-    def prepare(self, rank, launch):
+    def prepare(self, rank, launch, *, recovery=False):
         self.prepares += 1
+        self.marked[("prepare", launch)] = recovery
         if self.fail_rank == rank:
             raise ValueError("missing asset")
         return {
@@ -27,7 +29,8 @@ class Backend:
     def stop(self, rank, identity):
         self.calls.append(("stop", rank, identity["name"]))
 
-    def reserve(self, rank, launch):
+    def reserve(self, rank, launch, *, recovery=False):
+        self.marked[("reserve", launch)] = recovery
         return {"launch": launch, "name": f"{launch}-{rank}"}
 
     def start(self, rank, identity):
@@ -201,6 +204,22 @@ class SwitchTests(unittest.TestCase):
             ],
         )
         self.assertTrue(reports[-1]["recovered"])
+
+    def test_only_the_running_pair_is_prepared_and_reserved_as_a_recovery_target(self):
+        # A new launch must meet today's image requirements; the pair that is
+        # already serving only has to be restartable as it was.
+        backend = Backend()
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: None)
+        self.assertEqual(
+            backend.marked,
+            {
+                ("prepare", "new"): False,
+                ("prepare", "old"): True,
+                ("reserve", "new"): False,
+                ("reserve", "old"): True,
+            },
+        )
 
     def test_cleanup_failure_never_starts_recovery_over_an_unknown_process(self):
         backend = Backend()

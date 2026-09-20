@@ -145,8 +145,15 @@ def inspect_owned(name, fingerprint=None):
     return info
 
 
-def image_capability_checks(profile, image):
-    """Each enabled feature must find its API marker baked into the image env."""
+MOE_ORDER_MARKERS = ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2")
+
+
+def image_capability_checks(profile, image, *, recovery=False):
+    """Each enabled feature must find its API marker baked into the image env.
+
+    recovery names the pair a switch leaves: it must stay restartable as it was
+    launched, so it keeps the requirement of its own day.
+    """
     runtime, validation = profile["runtime"], profile["validation"]
     required = [
         (
@@ -180,12 +187,9 @@ def image_capability_checks(profile, image):
         ("reference_attention", "GLM53_REFERENCE_ATTENTION=1", True),
         (
             "moe_order_support",
-            # 2 since the rebuild of 2026-09-20; 1 still passes, because a switch
-            # prepares the running pair as its recovery target with this checkout.
-            # cc-defer: accepts the image whose sort mis-sized its buffer (46cd464,
-            # also 1); require 2 for new launches once recovery targets are
-            # prepared apart from them (RELEASE_161_PLAN Stage 3).
-            ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2"),
+            # 1 also names the image whose sort mis-sized its buffer (46cd464), so
+            # only an already-launched pair keeps it.
+            MOE_ORDER_MARKERS if recovery else MOE_ORDER_MARKERS[1],
             runtime.get("canonical_moe_order", False),
         ),
         (
@@ -202,6 +206,19 @@ def image_capability_checks(profile, image):
         for key, marker, enabled in required
         if enabled
     }
+
+
+def capability_warnings(profile, image, *, recovery=False):
+    """What a recovery target was allowed that a new launch would be refused."""
+    env = image["Config"].get("Env") or []
+    if (
+        recovery
+        and profile["runtime"].get("canonical_moe_order", False)
+        and MOE_ORDER_MARKERS[1] not in env
+        and MOE_ORDER_MARKERS[0] in env
+    ):
+        return ["moe_order_marker_1_accepted_for_recovery"]
+    return []
 
 
 def derived_checks(profile, metadata):
@@ -245,7 +262,7 @@ def derived_checks(profile, metadata):
     }
 
 
-def preflight(profile, config_path, rank, *, check_memory=True):
+def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
     cache = Path.home() / ".cache/huggingface"
     lock = load_lock()
     source = host.snapshot_from_state(
@@ -283,7 +300,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         host.run("docker", "image", "inspect", settings.selected_image(profile))
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
-    checks.update(image_capability_checks(profile, image))
+    checks.update(image_capability_checks(profile, image, recovery=recovery))
     # Any pair of this launcher carries LABEL, including the old pair that is
     # still running while cluster switch prepares the new profile.
     foreign = host.foreign_gpu_containers(host.running_containers(), LABEL)
@@ -297,6 +314,7 @@ def preflight(profile, config_path, rank, *, check_memory=True):
         "scope": "experimental-reference",
         "checks": checks,
         "foreign_gpu_containers": foreign,
+        "warnings": capability_warnings(profile, image, recovery=recovery),
         "passed": all(checks.values()),
     }
 
@@ -764,7 +782,11 @@ def act_launch(cli, args, profile):
         for signum in (signal.SIGTERM, signal.SIGHUP):
             signal.signal(signum, interrupted)
     result = preflight(
-        profile, args.config, args.rank, check_memory=args.action != "assets"
+        profile,
+        args.config,
+        args.rank,
+        check_memory=args.action != "assets",
+        recovery=args.recovery,
     )
     print(json.dumps(result, indent=2), flush=True)
     if not result["passed"]:
@@ -868,6 +890,12 @@ def parser():
         help="Shared frozen JSON from server freeze; host allocator environment is ignored",
     )
     cli.add_argument("--output", type=Path, help="New output file for server freeze")
+    cli.add_argument(
+        "--recovery",
+        action="store_true",
+        help="Restart a pair as it was launched: the coordinator passes this when a "
+        "switch restores the previous profile. A new launch does not use it",
+    )
     return cli
 
 
@@ -890,6 +918,8 @@ def main(argv=None):
         cli.error(
             "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to both ranks"
         )
+    if args.recovery and not action.launch_path:
+        cli.error("--recovery belongs to assets, preflight and start")
     if not action.windows and os.name != "posix":
         cli.error("Run this action on the Linux model host; plan works on Windows")
     if action.rank0 and args.rank != 0:

@@ -14,8 +14,10 @@ def sha(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def inspect(profile, config_path, rank):
-    checks = server.preflight(profile, config_path, rank, check_memory=False)
+def inspect(profile, config_path, rank, *, recovery=False):
+    checks = server.preflight(
+        profile, config_path, rank, check_memory=False, recovery=recovery
+    )
     if not checks["passed"]:
         detail = {key: checks[key] for key in ("checks", "foreign_gpu_containers")}
         raise ValueError("Static launch checks failed: " + json.dumps(detail))
@@ -105,5 +107,8 @@ def inspect(profile, config_path, rank):
             "rank": rank,
             "weights": identities,
             "site": settings.site(profile, rank),
+            # Beside the identities, never in common: what one rank was allowed
+            # must not decide whether the two ranks agree.
+            "warnings": checks.get("warnings", []),
         },
     }
