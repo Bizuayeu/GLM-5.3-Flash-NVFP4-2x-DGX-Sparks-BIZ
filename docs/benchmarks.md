@@ -615,3 +615,53 @@ The [1.4.0 runs](#measurements-on-140) were repeated unchanged on the 1.5.0 prof
 | Three-position 200,095 | 5.85 GiB | 8.37 GiB | 6.40 / 8.95 GiB |
 
 Speed matches 1.4.0 within run-to-run variation. Both ranks keep 0.5–0.7 GiB less free memory, about the added KV. With this run the three-position reference at chunk 2048 has answered correctly in none of three runs that directly followed a 200K capacity request and in one of two at 256K, while the runs after an idle wait, one at each length, were both correct; that is too few runs to say the preceding request matters. These are single runs per case and do not qualify multiple sequences, every history-edit pattern or long-term reliability.
+
+## Measurements on 1.6.0
+
+Between 2026-09-18 and 20 (Asia/Tokyo) the 1.6.0 defaults were measured on the reference pair: the 1.5.0 profile plus one token order inside each expert (`canonical_moe_order`), FA2 prefill (`fa2_attention`) and the indexer's top-k ties settled (`stable_indexer_topk`), MTP depth 3, image `1b7dc6fa…` (fingerprint `9ecb4bfc9d44…`). One sequence, the monitoring dashboard stopped, no other client. The sections say where a number comes from a profile that differs from these defaults.
+
+### Identical requests repeat
+
+The same request sent nine times, 512 tokens after a fixed 2,048-token prompt at temperature 0, gave one completion for each of three prompts (prose, counting, code) with zero movement of the per-position log-probabilities. `server agreement` read its four texts teacher-forced twice with argmax agreement 1.0 and the same NLL to four decimals (Japanese 1.5963, English 2.0241, code 0.9479, mathematics 0.5931). On 1.5.0 the same check agreed on 0.926 to 0.977 of positions. [What was fixed and how it was found](validation.md#full-model-tp2-experimental-scope).
+
+### Prefill and decode on 1.6.0
+
+| Measure | 1.6.0 | 1.5.0 |
+|---|---|---|
+| Prefill, 38,962 tokens (tok/s) | 1,271.6 (1,266.5–1,272.7) | 569.8 (569.7–570.8) |
+| Decode, 512 tokens after a fixed short prompt (tok/s) | 27.17 (27.14–27.69) | 26.86 (19.41–29.77) |
+| Decode after a 2,048-token prompt, nine samples: counting | 32.50 (32.32–33.09), acceptance length 3.57 | not measured |
+| same, prose | 21.00 (20.91–21.22), 2.17 | not measured |
+| same, code | 28.30 (27.76–28.33), 3.05 | not measured |
+| Weights per rank | 95.76 GiB | 95.76 GiB |
+| Lowest available memory during these requests, head | 6.28 GiB | 5.82 GiB (whole 256K series) |
+
+Prefill is 2.2 times 1.5.0, the FA2 path. Decode did not get faster; its spread between identical runs closed, because the completion no longer changes from run to run and the draft's acceptance with it. The warmup ladder passed, its 65,566-token rung in 53.1 s against 116.2 s.
+
+### Long input
+
+Measured on 2026-09-19 on the same profile without `stable_indexer_topk`, which was written the day after; each request followed a prefix-cache reset.
+
+| Request | Result | 1.5.0 |
+|---|---|---|
+| 255,950-token input, one passphrase at the midpoint | 207.4 s, correct | 462.8 s, correct |
+| Maximum capacity, 262,080 input + 64 output tokens, twice | 228.9 and 229.0 s, no preemption, finite logprobs | 488.6 s |
+| Three-position reference, three runs | correct, correct, incorrect (224, 223 and 235 s): the same misreading after an idle wait as before | unstable |
+| Lowest available memory over the series, head | 5.38 GiB | 5.82 GiB |
+
+The tie rule adds a check to every prefill chunk. On the serving profile below it cost 2.9% at 199,652 tokens (169.1 s against 164.3 s, one run each); it has not been measured on these defaults.
+
+### The reference pair's serving profile
+
+The pair itself serves two further settings that a fresh installation does not have, because the first needs a checkpoint made locally: the attention projections requantized to W4A16 NVFP4 (`runtime.derived_checkpoint`, [P23](optimization-catalog.md)) and MTP depth 4 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). Fingerprint `9de4b4f73570…`, measured on 2026-09-19 and 20.
+
+| Measure | Serving profile | 1.6.0 defaults |
+|---|---|---|
+| Decode after a 2,048-token prompt: counting / prose / code (tok/s) | 45.43 / 24.33 / 34.75 | 32.50 / 21.00 / 28.30 |
+| Decode after a fixed short prompt (tok/s) | 38.30 | 27.17 |
+| Prefill, 38,962 tokens (tok/s) | 1,250.3 | 1,271.6 |
+| 199,652-token input, one passphrase at the midpoint | 169.1 s, correct | not measured |
+| Weights per rank / lowest available memory, head | 91.76 GiB / 10.08 GiB | 95.76 GiB / 6.28 GiB |
+| NLL: Japanese / English / code / mathematics | 1.6600 / 2.0020 / 1.0040 / 0.6184 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
+
+Three launches of this profile, with launches of other profiles between them, produced the same three completions (equal hashes) and the same NLL to four decimals. On the four-layer fixture two launches out of three differed from the third in their numbers from the first layer's linear-attention kernel on, while repeats inside a launch were identical; whether a given launch of the full model reproduces the last one is therefore a measurement to repeat, not a guarantee.

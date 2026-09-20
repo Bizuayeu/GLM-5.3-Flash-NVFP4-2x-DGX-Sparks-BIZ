@@ -53,22 +53,22 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 ## What has been verified
 
-**Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input](docs/vision.md) and [measurements on 1.5.0](docs/benchmarks.md#measurements-on-150) record the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
+**Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) record the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
 
-### Headline measurements (1.5.0)
+### Headline measurements (1.6.0)
 
-Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 KV 3 GiB per rank, MTP k=3, APC, chunk 2048), one active sequence. Single runs or three-run medians; ranges, conditions and earlier versions are in [measurements on 1.5.0](docs/benchmarks.md#measurements-on-150), which owns these numbers.
+Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 KV 3 GiB per rank, MTP k=3, APC, chunk 2048, FA2 prefill, one token order inside each expert, indexer top-k ties settled), one active sequence. Three-run or nine-run medians; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), which owns these numbers. The long-input rows were measured the day before the tie rule was written, on the profile without it.
 
 | Measure | Result |
 |---|---|
-| Prefill, 38,962-token prompt | 569.8 tok/s |
-| Decode, 512 tokens after that prompt | 26.86 tok/s (19.41–29.77) |
-| Decode, short prompts (sparkDash medians) | 26.25–36.24 tok/s, TTFT 356–571 ms |
-| 199,652-token input, one passphrase at the midpoint | 361.4 s, correct |
-| 255,950-token input, one passphrase at the midpoint | 462.8 s, correct |
-| Maximum capacity, 262,080 input + 64 output tokens | 488.6 s, finite logprobs |
-| Three-position reference at 200K / 256K | unstable: incorrect directly after a capacity request in 4 of 5 runs, correct after an idle wait in 2 of 2 |
-| Lowest available memory at 256K | head 5.82 GiB, peer 8.44 GiB |
+| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement (prose, counting, code) |
+| Prefill, 38,962-token prompt | 1,271.6 tok/s (569.8 on 1.5.0) |
+| Decode, 512 tokens after a fixed short prompt | 27.17 tok/s (27.14–27.69) |
+| Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s |
+| 255,950-token input, one passphrase at the midpoint | 207.4 s, correct (462.8 s on 1.5.0) |
+| Maximum capacity, 262,080 input + 64 output tokens | 228.9 s, finite logprobs |
+| Three-position reference at 256K | unstable: correct in 2 of 3 runs, incorrect after an idle wait |
+| Lowest available memory at 256K | head 5.38 GiB |
 
 [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
 

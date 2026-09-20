@@ -53,22 +53,22 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 ## 確認した範囲
 
-**配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[画像入力](docs/vision.ja.md)と[1.5.0での測定](docs/benchmarks.ja.md#150での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
+**配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
-### 主要な測定値（1.5.0）
+### 主要な測定値（1.6.0）
 
-GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 GiB・MTP k=3・APC・chunk 2048）、同時1系列です。単発または3回の中央値で、幅・条件・旧版との比較は数値の正典である[1.5.0での測定](docs/benchmarks.ja.md#150での測定)にあります。
+GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 GiB・MTP k=3・APC・chunk 2048・prefillはFA2・expert内のtoken順を固定・indexerのtop-kの同点を決定）、同時1系列です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)にあります。長い入力の行は、同点の規則を書く前日に、それを含まないprofileで測ったものです。
 
 | 測定 | 結果 |
 |---|---|
-| prefill（38,962 tokenのprompt） | 569.8 tok/s |
-| decode（同promptの後の512 token） | 26.86 tok/s（19.41–29.77） |
-| decode（短いprompt、sparkDashの中央値） | 26.25–36.24 tok/s、TTFT 356–571 ms |
-| 199,652 token入力、中央の合言葉1個 | 361.4 s、正答 |
-| 255,950 token入力、中央の合言葉1個 | 462.8 s、正答 |
-| 最大容量（入力262,080＋出力64 token） | 488.6 s、logprobは有限 |
-| 3か所参照（200K／256K） | 不安定：容量要求の直後は5回中4回誤答、待機後は2回とも正答 |
-| 256Kでの最小空きメモリ | head 5.82 GiB、peer 8.44 GiB |
+| temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0（散文・数え上げ・コード） |
+| prefill（38,962 tokenのprompt） | 1,271.6 tok/s（1.5.0は569.8） |
+| decode（固定の短いpromptの後の512 token） | 27.17 tok/s（27.14–27.69） |
+| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.50／21.00／28.30 tok/s |
+| 255,950 token入力、中央の合言葉1個 | 207.4 s、正答（1.5.0は462.8 s） |
+| 最大容量（入力262,080＋出力64 token） | 228.9 s、logprobは有限 |
+| 3か所参照（256K） | 不安定：3回中2回正答、待機後の1回は誤答 |
+| 256Kでの最小空きメモリ | head 5.38 GiB |
 
 [起動設定の一括管理](docs/server-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、ランチャーと専用クライアントから使えます。
 
