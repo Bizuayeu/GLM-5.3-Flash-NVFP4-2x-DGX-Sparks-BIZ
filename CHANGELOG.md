@@ -108,7 +108,7 @@
 
 ## 1.2.1 — 2026-09-17
 
-Everything here follows from running 1.2.0 on the reference pair for the first time; `docs/MIA_ADOPTION_2_PLAN.md` Stage 6 owns the run.
+Everything here follows from running 1.2.0 on the reference pair for the first time; `docs/plans/MIA_ADOPTION_2_PLAN.md` Stage 6 owns the run.
 
 - **Long warmup rung converges on its target.** The first live ladder built 82,006 tokens for a 65,536 target: a line costs more once its index grows a digit, so a 256-line sample under-counts. The builder now rescales against the measured count.
 - **Host daemon hygiene** in operations, from a half-dead pair: the peer rank stopped at 2.49 GiB against a 2.5 GiB reserve because a monitoring dashboard on the other host opened a new SSH login per metric, 3.6 per second, and every login grew `polkitd` (to 3.40 GiB), made `wireplumber` and `bluetoothd` re-register and grow, and ran every MOTD script. SSH connection reuse on the dashboard's side ended it. How to count logins and compare daemon sizes, why a `MemoryMax` drop-in also needs `Restart=on-failure`, and that a half-dead pair still answers `/health` with 200.

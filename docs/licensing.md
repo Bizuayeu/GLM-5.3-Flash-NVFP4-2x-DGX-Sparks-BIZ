@@ -4,6 +4,8 @@
 
 **Original repository code and documentation are Apache-2.0: commercial use, modification, and paid or free redistribution are permitted subject to its conditions. Weights, containers and harnesses retain separate terms.** This is an operational summary; the applicable license text and artifact version govern. Beta status describes maturity, not a non-commercial restriction.
 
+## Permissions by artifact
+
 | Artifact | Business use / paid service | Private modification | Redistribution / sale | Obligations |
 |---|---|---|---|---|
 | Original setup code and docs | Permitted | Permitted; no general source-publication requirement | Permitted in source or object form | Apache text, applicable notices, prominent modified-file notices |

@@ -2,7 +2,7 @@
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
-This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention) the release-candidate, 200K and 256K real-input checks, and the same sparkDash and 200K checks repeated on 1.3.1. MTP k=1/k=3 comparisons are in [speculative decoding](speculative-decoding.md); the current image-input defaults are in [image input at 200K](vision.md).
+This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention) the release-candidate, 200K and 256K real-input checks, and the same sparkDash and 200K checks repeated on 1.3.1. MTP k=1/k=3 comparisons are in [speculative decoding](speculative-decoding.md); the current image-input defaults are in [image input](vision.md).
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -460,7 +460,7 @@ The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp valid
 
 Neither request increased preemption. A short arithmetic request passed afterward; both ranks and the API remained running, with no OOM or memory-guard stop. Two-second supervision from launch through these checks recorded minimum available RAM of **4.162 / 5.183 GiB** (head/peer).
 
-These scoped checks supported the then-distributed **256K / 3 GiB-per-rank** defaults, now the text-only alternative; the current defaults with image input are recorded in [image input at 200K](vision.md). They do not rerun or transfer the earlier 200K speed, tool-eval or FreedomBench scores to this profile, or qualify general long-context quality, every history-edit pattern, multiple sequences, actual harness behavior or long-term reliability. The test timeout is separate from client defaults; long cold requests need enough client waiting time.
+These scoped checks supported the then-distributed **256K / 3 GiB-per-rank** defaults, now the text-only alternative; the current defaults with image input are recorded in [image input](vision.md). They do not rerun or transfer the earlier 200K speed, tool-eval or FreedomBench scores to this profile, or qualify general long-context quality, every history-edit pattern, multiple sequences, actual harness behavior or long-term reliability. The test timeout is separate from client defaults; long cold requests need enough client waiting time.
 
 ## Measurements on 1.3.1
 
@@ -481,7 +481,7 @@ The release candidate ran with LPA on, a 4 GiB reserve and NCCL's 64 channels, s
 
 ### 200K real input on 1.3.1
 
-The same inputs as the earlier checks were sent after a prefix-cache reset: the one-passphrase ledger used for [image input at 200K](vision.md), and the [release candidate's](#real-input-checks-at-200k) capacity and three-position requests built from the same pinned corpus. Times are whole requests including prefill.
+The same inputs as the earlier checks were sent after a prefix-cache reset: the one-passphrase ledger used for [image input](vision.md), and the [release candidate's](#real-input-checks-at-200k) capacity and three-position requests built from the same pinned corpus. Times are whole requests including prefill.
 
 | Check | Input tokens | 1.3.1 | Earlier |
 |---|---:|---|---|

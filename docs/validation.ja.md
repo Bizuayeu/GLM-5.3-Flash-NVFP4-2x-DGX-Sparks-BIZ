@@ -71,7 +71,7 @@ CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供しま�
 
 [2台でのNCCL通信検証](nccl-validation.ja.md)は、固定したbase imageで試験したcollectiveのパターンに合格しています。その範囲はtransportと合成データの正当性であり、参照Attentionやフルモデルとは別です。
 
-[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。より広いフルモデルの数値・品質評価、持続的な混在負荷、本番復旧、batchingの組合せ、k=1／k=3以外のMTP深さとGraphsは未検証のままで、画像入力には[200Kでの画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、無制限の `tp2-kernel-validation` 証跡に変えないでください。
+[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。より広いフルモデルの数値・品質評価、持続的な混在負荷、本番復旧、batchingの組合せは未検証のままです。MTPの深さ1〜5とdecodeのGraphsには、[投機的デコーディング](speculative-decoding.ja.md)と[施策台帳](optimization-catalog.ja.md)が所有する限定した比較がありますが、これは実測であって本番の検収ではありません。画像入力には[画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、無制限の `tp2-kernel-validation` 証跡に変えないでください。
 
 ## フルモデルTP=2の実験範囲
 
