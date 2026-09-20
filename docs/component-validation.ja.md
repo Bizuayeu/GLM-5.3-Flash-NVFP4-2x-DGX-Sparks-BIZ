@@ -248,3 +248,19 @@ N=18,432、H=8,704では、近似suffixが層3で9,216 queryを省略しまし�
 `fixture-v66-target` と `fixture-v66-mtp3` は、source `441384c`、image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33` を使いました。それぞれ62要求を完了し、pool境界、scheduler blockの境界、10／50／90%位置での編集・分岐18条件を含みます。元の共有prefix hashはすべての条件で変化せず、編集した要求が変更したprefixより先を復元することはなく、厳密な再訪では元の共有stateが保たれました。`3df93c9` からのランタイム差は読み取り専用のcache layout RPCで、forwardとcache公開のアルゴリズムは変えていません。
 
 targetのfixtureは厳密な対照一致に合格し、exit 0しました。MTP3／融合／非同期のfixtureは **厳密な対照一致に不合格で、exit 1** です。最初の厳密対照は以前に観測した一方の経路をたどり、試行・復帰はもう一方をたどりました。独立に比較したところ、先の6組のnativeのみの `v58` 診断に、完全な16 token経路の両方が見つかりました。18件のstate隔離条件は通過していますが、それによって数値面の不合格が合格に変わるわけではありません。どちらのコンテナもOOMで停止していません。全モデルの課題・運用面の受け入れは、bitwiseの再現性とは別です。
+
+## FA2のcold cache起動（2026-09-20）
+
+GB10 1台のbyte検証済み8層stock fixture（ロード重み23.91 GiB）で、JIT並列制御のenv未指定と `MAX_JOBS=2`・`FLASHINFER_NVCC_THREADS=1` を比較しました。両armとも1.6.0のsource、参照image `3a396af5…`、Marlin W4A16、FA2 prefill、1系列、eager、文脈16,384、chunk 512、FP8 KV 512 MiBです。armごとにNVIDIA driver cacheも含む新しい空のruntime cacheを使いました。既存cache・OS page cache・swapは操作していません。他のGPUサービスは比較中に停止し、終了後に復元しました。
+
+| 観測 | env未指定 | 2／1 |
+|---|---:|---:|
+| ロード開始からengine ready | 270.36 s | 266.50 s |
+| ready後の最初の2,048 token要求 | 9.26 s | 8.91 s |
+| 起動・要求全体の最小MemAvailable | 71.38 GiB | 71.11 GiB |
+| 同要求中の最小MemAvailable | 80.12 GiB | 80.94 GiB |
+| 観測したnvcc／ciccの最大同時数 | 3／1 | 2／1 |
+
+両方ともOOMなし・正常終了し、測定要求でFA2を8回呼び、同じ1 tokenを返しました。FA2 NoPEの共有ライブラリと、Triton・TileLang・Inductor・NVIDIA cacheの新規生成物を確認しています。これは実行の確認で、言語品質の証明ではありません。ホスト／プロセスの標本間隔は2秒で、短いピークを取り逃がし得ます。
+
+**判断：既定envを維持します。** 各1回では全体のメモリピーク低減を確認できませんでした。要求区間の最小空きは制限側で高いものの、各窓は4標本だけで、同じarmの反復の幅がありません。固定FlashInferのNVCC thread数は既に既定1なので、変わるのはNinjaのjob数だけです。開始時のOS Cachedは42.86対67.29 GiBで異なり、起動全体の時間はJIT単独の速さではありません。全モデルでの利得は主張せず、このfixture結果ではTP=2再起動を行う根拠は得られませんでした。

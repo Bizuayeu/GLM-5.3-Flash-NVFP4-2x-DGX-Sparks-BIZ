@@ -4,6 +4,14 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.6.2 — 2026-09-20
+
+### Documentation
+
+- 運用：異常終了後に報告されたGB10の電力制限とモデル由来の低速化を区別し、固定KV byte予算ではmemory profilingが省略され、prefill chunk増加時のactivation peakを検証しないことを明記しました。
+- 検証：無改変armのばらつき、実行物の照合、cold／APCの分離、completion hash、要求／token集計を判定手順にしました。保存済みの再量子化・深さ比較を再点検し、測定値と設定の採否を維持しながら、主張を測定promptと残された証拠の範囲に限定しました。
+- 部品検証：8層fixtureのFA2 cold cache起動でJIT並列制御の未指定とMAX_JOBS=2／FLASHINFER_NVCC_THREADS=1を比較しました。両方完走しましたが全体のメモリピーク改善は確立できず、runtimeの既定値は変更していません。
+- README：単機0xSeroレシピと別配布のmosaic checkpointを比較用の参照先として追加し、配布物別のライセンスとコード・重み未採用を明記しました。主要な推論測定値は1.6.0のままです。
 ## 1.6.1 — 2026-09-20
 
 ### Changed

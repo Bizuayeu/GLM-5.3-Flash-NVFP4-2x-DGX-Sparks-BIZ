@@ -248,3 +248,19 @@ A separate `native-apc-mtp-v58` diagnostic ran six exact-prime/exact-follow-up p
 `fixture-v66-target` and `fixture-v66-mtp3` used source `441384c`, image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33`. Each completed 62 requests, including 18 edit/branch conditions at pool boundaries, scheduler-block boundaries and 10/50/90% positions. Original shared-prefix hashes remained unchanged in every condition, edited requests never restored beyond their changed prefix, and exact revisits retained the original shared states. The runtime difference from `3df93c9` was a read-only cache-layout RPC; forward and cache-publication algorithms were unchanged.
 
 The target fixture passed strict control identity and exited 0. The MTP3/fusion/async fixture **failed strict control identity and exited 1**: its first exact control followed one previously observed path, while trial/restored followed the other. Independent comparison found both complete 16-token paths in the earlier six-pair native-only `v58` diagnostic. Its 18 state-isolation conditions passed; that does not turn its numerical failure into a pass. Neither container was OOM-killed. Full-model task and operational acceptance remain separate from bitwise repeatability.
+
+## Cold-cache FA2 startup (2026-09-20)
+
+An eight-layer, byte-verified stock fixture (23.91 GiB loaded weights) on one GB10 compared an unset JIT parallelism environment with `MAX_JOBS=2` and `FLASHINFER_NVCC_THREADS=1`. Both used the 1.6.0 source, reference image `3a396af5…`, Marlin W4A16, FA2 prefill, one sequence, eager mode, 16,384 context, 512-token chunks and 512 MiB FP8 KV. Each arm had a new empty runtime cache, including the NVIDIA driver cache. Existing caches, OS page cache and swap were left intact. Other GPU services were stopped for the comparison and restored afterwards.
+
+| Observation | Unset | 2 / 1 |
+|---|---:|---:|
+| Load start to engine ready | 270.36 s | 266.50 s |
+| First 2,048-token request after ready | 9.26 s | 8.91 s |
+| Lowest host MemAvailable during startup and request | 71.38 GiB | 71.11 GiB |
+| Lowest host MemAvailable during that request | 80.12 GiB | 80.94 GiB |
+| Maximum observed nvcc / cicc processes | 3 / 1 | 2 / 1 |
+
+Both exited successfully without OOM, invoked FA2 eight times in the measured request and returned the same single token. Fresh FA2 NoPE shared libraries and Triton, TileLang, Inductor and NVIDIA cache files were confirmed. These checks establish execution, not language quality. Host/process sampling was every two seconds and can miss short peaks.
+
+**Decision: keep the existing environment.** One run per arm did not establish a reduction in the overall memory peak. The request-window minimum was higher with the limit, but there were only four samples in each window and no repeated-arm spread. The pinned FlashInfer already defaults NVCC threads to one, so only the Ninja job limit changes. Initial OS cached memory differed (42.86 versus 67.29 GiB); overall startup time is not an isolated JIT-speed measurement. No full-model benefit is claimed and no TP=2 restart was warranted by this fixture result.
