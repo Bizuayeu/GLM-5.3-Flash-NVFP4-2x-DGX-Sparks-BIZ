@@ -16,7 +16,7 @@ NVIDIAのGLM-5.3-Flash NVFP4を、**DGX SparkおよびGB10を搭載する互換�
 |---|---|
 | 原モデル | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
 | 使用する重み・取得元 | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)。固定revisionは [runtime.lock.json](config/runtime.lock.json) が正典 |
-| この配布物の役割 | 重みの取得・検証、GB10向けruntime適合、起動と性能・品質検証。本体checkpointはNVIDIA配布物を保持し、独自の再量子化・追加学習は行わない |
+| この配布物の役割 | 重みの取得・検証、GB10向けruntime適合、起動と性能・品質検証。配布の既定は、NVIDIA配布のcheckpointをそのまま配信し、独自の再量子化・追加学習は行わない。手元で再量子化したコピーの配信は、運用者が自分で作って有効にする[任意の設定](docs/server-configuration.ja.md#配布用の既定設定)で、再量子化した重みはここでは配布しない |
 | 機体 | 1台あたりGB10・128 GB級統合メモリ、Linux ARM64、NVIDIA GPU対応Dockerを備える2台。TP=2でモデルを分割し、QSFP/RoCEで接続する |
 | 検証範囲 | MSI EdgeXpertでの結果を掲載。他のDGX Spark互換機も機種名だけで対応済みとはせず、ドライバー・GPU・メモリ・通信を[導入手順](SETUP.ja.md#1-必要情報を集め2台とも現状確認する)で検収する。Windowsは管理・CPU検査用で、推論はLinux実機上で行う |
 | 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。TP=2でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.ja.md#資材の保管場所とパス) |
@@ -47,7 +47,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 - **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。評価全体の検収は未了です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
-速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。MTP有効時の設定例も3で、[k=1との比較結果](docs/speculative-decoding.ja.md#k3の比較結果)を根拠としています。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定)を確認してください。
+速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。深さ1〜5を測定済みです。3は、数え上げ・散文・コードのどれでも最下位にならない深さで、4が効くのは、手元で再量子化したattention projectionと組にした時だけです（[深さ1〜5](docs/speculative-decoding.ja.md#深さ152026-09-1920)）。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定)を確認してください。
 
 業務利用に適するかは検収によって判断します。BIZの語を認定済みの意味にはせず、確認済みの範囲と残る条件を以下と各検証文書に示します。
 
@@ -85,14 +85,17 @@ GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 G
 | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全45層TP=2・同時実行1の参照profile | ロード・基礎APIのテキスト／ツールを確認。[初期ベンチ](docs/benchmarks.ja.md)を測定 |
 | ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode DesktopとClaude Codeのクライアント試験は**未実施**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
-| BF16 draftのMTP k=1 / k=3・同時実行1 | 基礎APIと同条件ベンチが合格。次の実験はk=3を優先。[有効化手順・効果とコスト](docs/speculative-decoding.ja.md) |
+| temperature 0での同一要求・同時実行1 | bit一致で反復する（三つのpromptで9回中9回、log確率の移動0、NLLは小数4桁まで同じ）。原因を二つ直した結果で、expert内のtoken順と、indexerのtop-kの同点。基準の2台のprofileは3回の起動で同じcompletionを返した。4層fixtureでは起動が二つの数値の状態に分かれるので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
+| prefillのFA2（`runtime.fa2_attention`）・同時実行1 | 採用し、テンプレートでon。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
+| BF16 draftのMTP 深さ1〜5・同時実行1 | 数え上げ・散文・コード・短いpromptで測定済み。テンプレートはk=3のまま。[深さ1〜5](docs/speculative-decoding.ja.md#深さ152026-09-1920) |
+| 手元で再量子化したattention projection（`runtime.derived_checkpoint`、P23） | 任意で、テンプレートには無い。基準の2台でMTPの深さ4と組にして試験採用中。decodeは+22〜29%、rankあたり4.0 GiB減、NLLは4文のうち3文で4〜6%上がる。shared expertsを足す変種は測って不採用。[施策台帳](docs/optimization-catalog.ja.md) |
 | Prefix caching（APC）・同時実行1 | 実測した直列の長文prefix再利用の実験用途で受入。起動テンプレートで有効。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | APC優先LPA（P22）・同時実行1 | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。LPA自体は配布テンプレートで無効（バッチ用opt-in）。[契約](docs/apc-lpa-design.ja.md) |
 | checkpoint保持・同時実行1 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | 2系列batching・Expert Parallel・PP2・unpack融合・非同期index検査 | それぞれ独立に実測。2系列と非同期検査は範囲限定で受入、EPとPP2は不採用、unpack融合は起動テンプレートで有効。[全体像](docs/optimization-overview.ja.md) |
 | 200K・256Kでの画像入力（Vision）・同時実行1 | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。ZCodeのツールで読んだ画像1枚を正しく説明。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 日本語・韓国語の長い出力、同時1系列 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
-| 他のMTP先読み数・動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
+| 動画入力・アプリ全体の品質・本番信頼性・最大性能 | **未検証** |
 
 fixtureは元の幅・experts・選択したtensor bytesを保持しますが、層を切り詰めたモデルです。言語品質の評価には使えません。Marlin W4A16とNVIDIAのW4A4 recipeも同一の演算ではありません。[検証結果と限界](docs/validation.ja.md)を区別して利用してください。
 
@@ -109,7 +112,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
 | [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster)（kingjones30のレシピを保持） | Apache-2.0／MIT | **コードを改変して採用：** NoPEゼロ埋めpatchの構造とレシピ |
-| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0（コード）、MIT（重み） | コードは採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23としてfixtureと全モデルで1回評価し、不採用とした。測定は[施策台帳](docs/optimization-catalog.ja.md) |
+| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0（コード）、MIT（重み） | コードは採用せず、再量子化した重みもここでは配布しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価した。全モデルでの最初の読みでは不採用、同一要求が反復するようになってから測り直し、2026-09-19から基準の2台で `runtime.derived_checkpoint` を通して試験採用中。測定は[施策台帳](docs/optimization-catalog.ja.md) |
 | [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、現場の手順記録 |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |

@@ -45,7 +45,7 @@
 | 推論最適化の全体像 | 各施策が効く段階、採用した構成、用途別の構成 | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
 | 施策台帳 | 施策ID P01〜P24／E01〜E03、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | 性能調査 | 計測手順：launch・同期、タスクbatch、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
-| 投機的デコーディング | MTPのメタデータview、k=1・k=3の実測 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
+| 投機的デコーディング | MTPのメタデータview、深さ1〜5の実測、テンプレートがk=3のままである理由 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | 後段Prefill近似：projector取得・モデルカード、起動profileでの有効化、仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |
 | APC優先LPAの設計 | prefix cachingとLPAを併用する共有cacheの契約（P22） | [EN](apc-lpa-design.md) | [JA](apc-lpa-design.ja.md) |
 | 候補順序 | 参照imageでのsparse候補の順序正規化 | [EN](candidate-order.md) | [JA](candidate-order.ja.md) |
