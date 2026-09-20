@@ -14,6 +14,39 @@ from glm53_setup.io import write_json
 from glm53_setup.validation.indexer_overlap import compare_candidates
 
 
+def complete_tokens(profile, ids, count):
+    began = time.perf_counter()
+    response = server.post(
+        profile,
+        "/v1/completions",
+        {
+            "model": profile["api"]["served_model_name"],
+            "prompt": ids,
+            "max_tokens": count,
+            "ignore_eos": True,
+            "temperature": 0,
+            "seed": 42,
+            "return_token_ids": True,
+        },
+    )
+    elapsed = time.perf_counter() - began
+    if (
+        response["usage"]["completion_tokens"] != count
+        or len(response["choices"][0].get("token_ids") or []) != count
+    ):
+        raise ValueError("Incomplete token-count evidence")
+    return {"seconds": elapsed, "response": response}
+
+
+def toggle_profiler(profile, endpoint):
+    with model_http.open_response(
+        f"http://127.0.0.1:{profile['api']['port']}",
+        "/" + endpoint,
+        body={},
+    ) as response:
+        response.read()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
@@ -24,6 +57,8 @@ def main(argv=None):
     if not profile["validation"]["component_worker"]:
         parser.error("Explicit component worker profile required")
     args.output.mkdir(parents=True, exist_ok=False)
+    complete = partial(complete_tokens, profile)
+    profile_toggle = partial(toggle_profiler, profile)
     report = {
         "status": "waiting",
         "profile": profile,
@@ -39,36 +74,6 @@ def main(argv=None):
         return server.post(profile, path, body)
 
     rpc = partial(server.collective_rpc, profile)
-
-    def complete(ids, count):
-        began = time.perf_counter()
-        response = post(
-            "/v1/completions",
-            {
-                "model": profile["api"]["served_model_name"],
-                "prompt": ids,
-                "max_tokens": count,
-                "ignore_eos": True,
-                "temperature": 0,
-                "seed": 42,
-                "return_token_ids": True,
-            },
-        )
-        elapsed = time.perf_counter() - began
-        if (
-            response["usage"]["completion_tokens"] != count
-            or len(response["choices"][0].get("token_ids") or []) != count
-        ):
-            raise ValueError("Incomplete token-count evidence")
-        return {"seconds": elapsed, "response": response}
-
-    def profile_toggle(endpoint):
-        with model_http.open_response(
-            f"http://127.0.0.1:{profile['api']['port']}",
-            "/" + endpoint,
-            body={},
-        ) as response:
-            response.read()
 
     save()
     try:
