@@ -24,6 +24,10 @@ A fourth file and two more runner edits carry a diagnostic, ``GLM53_DRAFT_OBSERV
 the GPU) and the runner summarises the verifier's logits around the rejection sampler and writes
 one line per step. Unset, each site is one cached boolean test.
 
+``GLM53_DRAFT_GATE=<tau>`` (``draft_gate.py``) ends the draft loops once the draft's own top-1
+probability falls under ``tau``; the runner then hands the synchronous scheduler only the
+columns that were drafted, so the next verification has that many rows.
+
 Every rank honours the depth in the scheduler output, so ranks cannot disagree on the number of
 draft forwards. Eager execution only: the speculator's CUDA graphs are captured for the configured
 depth. To be dropped when the pin moves past the merge of #57053.
@@ -104,6 +108,7 @@ RUNNER_EDITS = (
     (
         "import torch\n",
         "import torch\n\n"
+        "from glm53_setup.runtime import draft_gate as _glm53_draft_gate\n"
         "from glm53_setup.runtime import draft_observe as _glm53_draft_observe\n",
     ),
     (
@@ -162,6 +167,9 @@ RUNNER_EDITS = (
     (
         "            self.req_states.draft_tokens[input_batch.idx_mapping] = draft_tokens\n",
         "            self.speculator.glm53_active_steps = None\n"
+        "            glm53_draft_depth = _glm53_draft_gate.drafted(\n"
+        "                self.speculator, glm53_draft_depth\n"
+        "            )\n"
         "            self.req_states.draft_tokens[input_batch.idx_mapping] = draft_tokens\n",
     ),
     (
@@ -183,6 +191,11 @@ RUNNER_EDITS = (
 ACTIVE = "self.glm53_steps"
 SPECULATOR_EDITS = (
     (
+        "import torch.nn as nn\n",
+        "import torch.nn as nn\n\n"
+        "from glm53_setup.runtime import draft_gate as _glm53_draft_gate\n",
+    ),
+    (
         "    @property\n    def advance_draft_positions(self) -> bool:\n",
         "    @property\n"
         "    def glm53_steps(self) -> int:\n"
@@ -199,7 +212,7 @@ SPECULATOR_EDITS = (
         "        if self.num_speculative_steps == 1:\n"
         "            # Early exit.\n"
         "            return self.draft_tokens[:num_reqs, :1]\n",
-        f"        if {ACTIVE} == 1:\n"
+        f"        if {ACTIVE} == 1 or _glm53_draft_gate.stop(self, num_reqs, 1):\n"
         "            # Early exit. Full width: the runner assigns into a full-width buffer.\n"
         "            return self.draft_tokens[:num_reqs]\n",
     ),
@@ -207,11 +220,15 @@ SPECULATOR_EDITS = (
         "        slot_mappings_by_layer = None\n"
         "        for step in range(1, self.num_speculative_steps):\n",
         "        slot_mappings_by_layer = None\n"
-        f"        for step in range(1, {ACTIVE}):\n",
+        f"        for step in range(1, {ACTIVE}):\n"
+        "            if step > 1 and _glm53_draft_gate.stop(self, num_reqs, step):\n"
+        "                break\n",
     ),
     (
         "        )\n\n        for step in range(1, self.num_speculative_steps):\n",
-        f"        )\n\n        for step in range(1, {ACTIVE}):\n",
+        f"        )\n\n        for step in range(1, {ACTIVE}):\n"
+        "            if step > 1 and _glm53_draft_gate.stop(self, num_reqs, step):\n"
+        "                break\n",
     ),
     (
         "                step < self.num_speculative_steps - 1\n",
@@ -234,7 +251,7 @@ BASE_SPECULATOR_EDITS = (
     ),
     (
         "        return self._greedy_sample_draft(hidden_states)\n",
-        "        if _glm53_draft_observe.active():\n"
+        "        if _glm53_draft_observe.draft_side():\n"
         "            return _glm53_draft_observe.draft(\n"
         "                self, hidden_states, idx_mapping, draft_step\n"
         "            )\n"

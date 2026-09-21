@@ -214,6 +214,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             profile["mtp"].get("draft_observe", False),
         ),
         (
+            "draft_gate_support",
+            "GLM53_DRAFT_GATE_API=1",
+            "draft_gate" in profile["mtp"],
+        ),
+        (
             "indexer_topk_support",
             "GLM53_INDEXER_TOPK_API=1",
             runtime.get("stable_indexer_topk", False),

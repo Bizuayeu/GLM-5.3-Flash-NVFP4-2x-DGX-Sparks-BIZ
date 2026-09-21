@@ -591,6 +591,54 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(p)
 
+    def test_mtp_draft_gate_runs_on_every_rank_under_the_synchronous_scheduler(self):
+        self.profile["mtp"]["enabled"] = True
+        self.assertNotIn("GLM53_DRAFT_GATE", config.environment(self.profile, 0))
+        self.assertNotIn(
+            "--no-async-scheduling", config.serve_args(self.profile, 0, "/hf/model")
+        )
+        bare = {"Config": {"Env": ["GLM53_DRAFT_OBSERVE_API=1"]}}
+        self.assertNotIn(
+            "draft_gate_support", server.image_capability_checks(self.profile, bare)
+        )
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["draft_gate"] = 0.85
+        p["mtp"]["depth_trace"] = True
+        p["mtp"]["draft_observe"] = True
+        config.validate(p)
+        for rank in (0, 1):
+            self.assertEqual(config.environment(p, rank)["GLM53_DRAFT_GATE"], "0.85")
+            self.assertIn(
+                "--no-async-scheduling", config.serve_args(p, rank, "/hf/model")
+            )
+        self.assertIs(
+            server.image_capability_checks(p, bare)["draft_gate_support"], False
+        )
+        marked = {"Config": {"Env": ["GLM53_DRAFT_GATE_API=1"]}}
+        self.assertIs(
+            server.image_capability_checks(p, marked)["draft_gate_support"], True
+        )
+        for value in (0, 1, 0.0, 1.0, "0.8", True, -0.1):
+            q = copy.deepcopy(p)
+            q["mtp"]["draft_gate"] = value
+            with self.assertRaises(ValueError):
+                config.validate(q)
+        for section, key in (
+            ("mtp", "local_argmax_reduction"),
+            ("mtp", "adaptive_depth"),
+            ("runtime", "decode_graphs"),
+        ):
+            q = copy.deepcopy(p)
+            q["mtp"].pop("draft_observe")
+            q[section][key] = True
+            q["runtime"].pop("enforce_eager", None)
+            with self.assertRaises(ValueError):
+                config.validate(q)
+        q = copy.deepcopy(p)
+        q["mtp"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            config.validate(q)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.

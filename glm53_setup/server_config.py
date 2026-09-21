@@ -74,6 +74,7 @@ OPTIONAL_KEYS = {
             "adaptive_depth",
             "depth_trace",
             "draft_observe",
+            "draft_gate",
             "index_share",
         }
     ),
@@ -329,6 +330,20 @@ def check_speculation(profile):
         raise ValueError("mtp.depth_trace must be true or false")
     if profile["mtp"].get("depth_trace") and not profile["mtp"]["enabled"]:
         raise ValueError("mtp.depth_trace needs mtp.enabled")
+    if "draft_gate" in profile["mtp"]:
+        gate = profile["mtp"]["draft_gate"]
+        if type(gate) is not float or not 0.0 < gate < 1.0:
+            raise ValueError("mtp.draft_gate must be a number strictly between 0 and 1")
+        if not profile["mtp"]["enabled"]:
+            raise ValueError("mtp.draft_gate needs mtp.enabled")
+        if profile["mtp"].get("local_argmax_reduction"):
+            # The gate reads the draft's probability, which needs the full logits.
+            raise ValueError("mtp.draft_gate excludes mtp.local_argmax_reduction")
+        if profile["mtp"].get("adaptive_depth"):
+            # The adaptive depth rides the asynchronous scheduler, the gate the synchronous.
+            raise ValueError("mtp.draft_gate excludes mtp.adaptive_depth")
+        if decode_graphs(profile):
+            raise ValueError("mtp.draft_gate excludes decode graphs")
     if type(profile["mtp"].get("draft_observe", False)) is not bool:
         raise ValueError("mtp.draft_observe must be true or false")
     if profile["mtp"].get("draft_observe"):
@@ -525,6 +540,9 @@ def environment(profile, rank):
         result["GLM53_DEPTH_TRACE"] = DEPTH_TRACE_FILE
     if profile["mtp"].get("draft_observe") and rank == 0:
         result["GLM53_DRAFT_OBSERVE"] = DRAFT_OBSERVE_FILE
+    if "draft_gate" in profile["mtp"]:
+        # Every rank: they leave the draft loop together, on rank 0's broadcast decision.
+        result["GLM53_DRAFT_GATE"] = repr(profile["mtp"]["draft_gate"])
     if "stable_indexer_topk" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_STABLE_INDEXER_TOPK"] = str(
@@ -682,6 +700,10 @@ def apply_speculation(args, profile):
         # reuse the first step's sparse top-k. false makes every draft step select its own.
         spec["index_share_for_mtp_iteration"] = profile["mtp"]["index_share"]
     args += ["--speculative-config", json.dumps(spec)]
+    if "draft_gate" in profile["mtp"]:
+        # Only the synchronous scheduler schedules the drafts the runner returned; the
+        # asynchronous one fixes their number before the step runs.
+        args += ["--no-async-scheduling"]
 
 
 def apply_decode_graphs(args, profile):

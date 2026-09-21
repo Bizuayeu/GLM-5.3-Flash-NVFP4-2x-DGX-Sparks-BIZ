@@ -8,7 +8,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest import mock
 
-from glm53_setup.runtime import adaptive_depth, draft_observe
+from glm53_setup.runtime import adaptive_depth, draft_gate, draft_observe
 from glm53_setup.runtime import patch_adaptive_depth as patch
 
 # The lines of vLLM 385dce36 that the patch touches, arranged so each excerpt still runs.
@@ -97,7 +97,10 @@ class ExecuteModelState(NamedTuple):
     cudagraph_stats: CUDAGraphStat | None
 """
 
-SPECULATOR = """def record(*arguments, advance_draft_positions):
+SPECULATOR = """import torch.nn as nn
+
+
+def record(*arguments, advance_draft_positions):
     return arguments
 
 
@@ -122,16 +125,16 @@ class AutoRegressiveSpeculator:
             # Early exit.
             return self.draft_tokens[:num_reqs, :1]
 
-        self._multi_step_decode()
+        self._multi_step_decode(num_reqs)
         return self.draft_tokens[:num_reqs]
 
-    def _multi_step_decode(self):
+    def _multi_step_decode(self, num_reqs):
         attn_metadata = None
         slot_mappings_by_layer = None
         for step in range(1, self.num_speculative_steps):
             self._generate_draft(step)
 
-    def _generate_fused_drafts(self, attn_metadata):
+    def _generate_fused_drafts(self, attn_metadata, num_reqs=1):
         attn_groups = (
             []
         )
@@ -171,8 +174,11 @@ class Speculator:
 
 
 def load(name, source, class_name):
+    stub = ModuleType("torch")
+    stub.nn = ModuleType("torch.nn")
     namespace = {}
-    exec(compile(patch.patch_text(name, source), name, "exec"), namespace)
+    with mock.patch.dict(sys.modules, {"torch": stub, "torch.nn": stub.nn}):
+        exec(compile(patch.patch_text(name, source), name, "exec"), namespace)
     return namespace[class_name]
 
 
@@ -246,6 +252,33 @@ class SchedulerPatchTests(unittest.TestCase):
 class SpeculatorPatchTests(unittest.TestCase):
     def setUp(self):
         self.cls = load(patch.SPECULATOR, SPECULATOR, "AutoRegressiveSpeculator")
+        off = mock.patch.object(draft_gate, "_tau", None)
+        off.start()
+        self.addCleanup(off.stop)
+
+    def test_the_gate_is_asked_after_every_depth_and_ends_both_loops(self):
+        asked = []
+
+        def stop_after(depth):
+            def stop(speculator, num_reqs, drafted):
+                asked.append(drafted)
+                return drafted >= depth
+
+            return stop
+
+        with mock.patch.object(draft_gate, "stop", stop_after(3)):
+            speculator = self.cls(5)
+            speculator.propose(max_seq_len=10)
+            self.assertEqual(speculator.forwards, [0, 1, 2])
+            self.assertEqual(asked, [1, 2, 3])
+            speculator.forwards.clear()
+            speculator._generate_fused_drafts(attn_metadata=None)
+            self.assertEqual(speculator.forwards, [1, 2])
+        with mock.patch.object(draft_gate, "stop", stop_after(1)):
+            speculator = self.cls(5)
+            drafts = speculator.propose(max_seq_len=10)
+            self.assertEqual(speculator.forwards, [0])
+            self.assertEqual(len(drafts[0]), 5)
 
     def test_unset_depth_runs_every_configured_draft_forward(self):
         speculator = self.cls(5)
@@ -309,6 +342,10 @@ class RunnerPatchTests(unittest.TestCase):
             "                    :, :glm53_draft_depth\n",
             self.patched,
         )
+        # A gated step hands over only the columns it drafted.
+        gated = self.patched.index("glm53_draft_depth = _glm53_draft_gate.drafted(")
+        self.assertLess(self.patched.index("self.speculator.propose("), gated)
+        self.assertLess(gated, self.patched.index(":, :glm53_draft_depth"))
         # The write into the persistent buffer keeps its full width.
         self.assertIn(
             "self.req_states.draft_tokens[input_batch.idx_mapping] = draft_tokens",
@@ -337,8 +374,17 @@ class ObservePatchTests(unittest.TestCase):
             namespace = {}
             exec(compile(text, patch.BASE_SPECULATOR, "exec"), namespace)
         speculator = namespace["Speculator"]()
-        with mock.patch.object(draft_observe, "_active", False):
+        with (
+            mock.patch.object(draft_observe, "_active", False),
+            mock.patch.object(draft_gate, "_tau", None),
+        ):
             self.assertEqual(speculator.sample_draft("h", "rows", "step"), "stock")
+        with (
+            mock.patch.object(draft_observe, "_active", False),
+            mock.patch.object(draft_gate, "_tau", 0.8),
+            mock.patch.object(draft_observe, "draft", return_value="gated"),
+        ):
+            self.assertEqual(speculator.sample_draft("h", "rows", "step"), "gated")
         with (
             mock.patch.object(draft_observe, "_active", True),
             mock.patch.object(draft_observe, "draft", return_value="seen") as draft,

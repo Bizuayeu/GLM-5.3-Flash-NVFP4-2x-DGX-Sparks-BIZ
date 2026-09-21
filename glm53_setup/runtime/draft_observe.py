@@ -46,6 +46,13 @@ def active():
     return _active
 
 
+def draft_side():
+    """The draft's confidence is computed for the record and for the gate (``draft_gate.py``)."""
+    from . import draft_gate
+
+    return active() or draft_gate.active()
+
+
 def _close():
     if _lines is not None:
         _lines["file"].close()
