@@ -52,6 +52,8 @@ def decode_graphs(profile):
 # schema; these are the entries whose absence is not a typo.
 # Rank 0 writes it; server.command mounts records/depth-trace/<container name> at its directory.
 DEPTH_TRACE_FILE = "/depth-trace/trace.jsonl"
+# The same for the draft diagnostic: records/draft-observe/<container name>.
+DRAFT_OBSERVE_FILE = "/draft-observe/observe.jsonl"
 OPTIONAL_KEYS = {
     "server.runtime": frozenset(
         {
@@ -67,7 +69,7 @@ OPTIONAL_KEYS = {
         }
     ),
     "server.mtp": frozenset(
-        {"local_argmax_reduction", "adaptive_depth", "depth_trace"}
+        {"local_argmax_reduction", "adaptive_depth", "depth_trace", "draft_observe"}
     ),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
@@ -319,6 +321,17 @@ def check_speculation(profile):
         raise ValueError("mtp.depth_trace must be true or false")
     if profile["mtp"].get("depth_trace") and not profile["mtp"]["enabled"]:
         raise ValueError("mtp.depth_trace needs mtp.enabled")
+    if type(profile["mtp"].get("draft_observe", False)) is not bool:
+        raise ValueError("mtp.draft_observe must be true or false")
+    if profile["mtp"].get("draft_observe"):
+        if not profile["mtp"]["enabled"]:
+            raise ValueError("mtp.draft_observe needs mtp.enabled")
+        if profile["mtp"].get("local_argmax_reduction"):
+            # Only rank 0 observes; with the local reduction it alone would take the
+            # full-logits path, a different collective than rank 1's.
+            raise ValueError("mtp.draft_observe excludes mtp.local_argmax_reduction")
+        if decode_graphs(profile):
+            raise ValueError("mtp.draft_observe excludes decode graphs")
     if profile["mtp"].get("adaptive_depth"):
         if not profile["mtp"]["enabled"]:
             raise ValueError("mtp.adaptive_depth needs mtp.enabled")
@@ -502,6 +515,8 @@ def environment(profile, rank):
     if profile["mtp"].get("depth_trace") and rank == 0:
         # The scheduler lives on rank 0; server.command mounts a per-launch directory there.
         result["GLM53_DEPTH_TRACE"] = DEPTH_TRACE_FILE
+    if profile["mtp"].get("draft_observe") and rank == 0:
+        result["GLM53_DRAFT_OBSERVE"] = DRAFT_OBSERVE_FILE
     if "stable_indexer_topk" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_STABLE_INDEXER_TOPK"] = str(

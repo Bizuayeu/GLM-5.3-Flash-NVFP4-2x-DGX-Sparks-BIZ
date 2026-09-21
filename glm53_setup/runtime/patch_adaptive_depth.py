@@ -18,6 +18,12 @@ adds the reader together with CUDA-graph support this deployment does not use). 
   full width; columns past the depth keep earlier token ids, which the verifier never reads
   because it reads as many columns as the scheduler scheduled.
 
+A fourth file and two more runner edits carry a diagnostic, ``GLM53_DRAFT_OBSERVE=<file>``
+(``draft_observe.py``): ``spec_decode/speculator.py`` hands the greedy draft to
+``draft_observe.draft`` (same ``compute_logits`` + ``argmax``, plus the draft's confidence kept on
+the GPU) and the runner summarises the verifier's logits around the rejection sampler and writes
+one line per step. Unset, each site is one cached boolean test.
+
 Every rank honours the depth in the scheduler output, so ranks cannot disagree on the number of
 draft forwards. Eager execution only: the speculator's CUDA graphs are captured for the configured
 depth. To be dropped when the pin moves past the merge of #57053.
@@ -34,10 +40,12 @@ from .patch_nope_reference import replace_once
 SCHEDULER = "v1/core/sched/scheduler.py"
 RUNNER = "v1/worker/gpu/model_runner.py"
 SPECULATOR = "v1/worker/gpu/spec_decode/autoregressive/speculator.py"
+BASE_SPECULATOR = "v1/worker/gpu/spec_decode/speculator.py"
 SOURCES = {
     SCHEDULER: "0f7e248a92e7eb7255264956b5bb1947beca9710bad8e886585b703b045080f2",
     RUNNER: "5d6aa0b3dd567b0a3e5d6a32723ffeac5f331ee37b4e35804a7e011120212f48",
     SPECULATOR: "97e6bfe9a50f4dd6455702e1fd0bfb4ae98edcd45ba812f9e0d3250916b28e3f",
+    BASE_SPECULATOR: "6443d873f066c4f78b090d5afacea4a675b0b3757a4b1f4e9573cda3cc11f480",
 }
 HEADER = (
     "# Modified by GLM setup: the MTP draft depth follows the scheduler's per-step depth.\n"
@@ -93,6 +101,39 @@ SCHEDULER_EDITS = (
 )
 
 RUNNER_EDITS = (
+    (
+        "import torch\n",
+        "import torch\n\n"
+        "from glm53_setup.runtime import draft_observe as _glm53_draft_observe\n",
+    ),
+    (
+        "            assert self.speculator is not None\n"
+        "            sampler_output = self.rejection_sampler(\n"
+        "                logits,\n"
+        "                input_batch,\n"
+        "                # Draft logits are needed for probabilistic rejection sampling.\n"
+        "                self.speculator.draft_logits,\n"
+        "            )\n",
+        "            assert self.speculator is not None\n"
+        "            glm53_observed = (\n"
+        "                _glm53_draft_observe.target(logits, input_batch)\n"
+        "                if _glm53_draft_observe.active() and shard_metadata is None\n"
+        "                else None\n"
+        "            )\n"
+        "            sampler_output = self.rejection_sampler(\n"
+        "                logits,\n"
+        "                input_batch,\n"
+        "                # Draft logits are needed for probabilistic rejection sampling.\n"
+        "                self.speculator.draft_logits,\n"
+        "            )\n"
+        "            if glm53_observed is not None:\n"
+        "                _glm53_draft_observe.write(\n"
+        "                    self.speculator,\n"
+        "                    input_batch,\n"
+        "                    glm53_observed,\n"
+        "                    sampler_output.num_sampled,\n"
+        "                )\n",
+    ),
     (
         "            routed_experts=routed_experts,\n"
         "            cudagraph_stats=cudagraph_stats,\n"
@@ -185,7 +226,27 @@ SPECULATOR_EDITS = (
         "            advance_draft_positions=self.advance_draft_positions,\n",
     ),
 )
-EDITS = {SCHEDULER: SCHEDULER_EDITS, RUNNER: RUNNER_EDITS, SPECULATOR: SPECULATOR_EDITS}
+BASE_SPECULATOR_EDITS = (
+    (
+        "import torch.nn as nn\n",
+        "import torch.nn as nn\n\n"
+        "from glm53_setup.runtime import draft_observe as _glm53_draft_observe\n",
+    ),
+    (
+        "        return self._greedy_sample_draft(hidden_states)\n",
+        "        if _glm53_draft_observe.active():\n"
+        "            return _glm53_draft_observe.draft(\n"
+        "                self, hidden_states, idx_mapping, draft_step\n"
+        "            )\n"
+        "        return self._greedy_sample_draft(hidden_states)\n",
+    ),
+)
+EDITS = {
+    SCHEDULER: SCHEDULER_EDITS,
+    RUNNER: RUNNER_EDITS,
+    SPECULATOR: SPECULATOR_EDITS,
+    BASE_SPECULATOR: BASE_SPECULATOR_EDITS,
+}
 
 
 def patch_text(name, text):

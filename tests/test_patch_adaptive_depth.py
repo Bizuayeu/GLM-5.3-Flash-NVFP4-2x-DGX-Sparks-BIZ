@@ -1,13 +1,14 @@
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
-from glm53_setup.runtime import adaptive_depth
+from glm53_setup.runtime import adaptive_depth, draft_observe
 from glm53_setup.runtime import patch_adaptive_depth as patch
 
 # The lines of vLLM 385dce36 that the patch touches, arranged so each excerpt still runs.
@@ -43,6 +44,8 @@ class Scheduler:
 
 RUNNER = """from typing import NamedTuple
 
+import torch
+
 
 def use_workspace_lane(lane):
     return lane
@@ -57,6 +60,19 @@ class GPUModelRunner:
 
         if not self.is_last_pp_rank:
             return None
+
+    def sample(self, logits, input_batch, shard_metadata):
+        if input_batch.num_draft_tokens == 0:
+            sampler_output = self.sampler(logits, input_batch)
+        else:
+            assert self.speculator is not None
+            sampler_output = self.rejection_sampler(
+                logits,
+                input_batch,
+                # Draft logits are needed for probabilistic rejection sampling.
+                self.speculator.draft_logits,
+            )
+        return sampler_output
 
     def sample_tokens(self):
         routed_experts = self.execute_model_state.routed_experts
@@ -135,6 +151,22 @@ class AutoRegressiveSpeculator:
             self.num_speculative_steps,
             advance_draft_positions=self.advance_draft_positions,
         )
+"""
+
+BASE_SPECULATOR = """import torch
+import torch.nn as nn
+
+
+class Speculator:
+    use_local_argmax_reduction = False
+
+    def _greedy_sample_draft(self, hidden_states):
+        return "stock"
+
+    def sample_draft(self, hidden_states, idx_mapping, draft_step, draft_logits=None):
+        if draft_logits is not None:
+            return "gumbel"
+        return self._greedy_sample_draft(hidden_states)
 """
 
 
@@ -284,11 +316,46 @@ class RunnerPatchTests(unittest.TestCase):
         )
 
 
+class ObservePatchTests(unittest.TestCase):
+    def test_the_verifier_is_summarised_before_the_sampler_and_written_after_it(self):
+        patched = patch.patch_text(patch.RUNNER, RUNNER)
+        before = patched.index("_glm53_draft_observe.target(logits, input_batch)")
+        sampled = patched.index("sampler_output = self.rejection_sampler(")
+        after = patched.index("_glm53_draft_observe.write(")
+        self.assertLess(before, sampled)
+        self.assertLess(sampled, after)
+        # Batch-sharded sampling sees only a part of the batch on a rank: not observed.
+        self.assertIn(
+            "_glm53_draft_observe.active() and shard_metadata is None", patched
+        )
+
+    def test_the_draft_goes_through_the_observer_only_when_it_is_on(self):
+        text = patch.patch_text(patch.BASE_SPECULATOR, BASE_SPECULATOR)
+        stub = ModuleType("torch")
+        stub.nn = ModuleType("torch.nn")
+        with mock.patch.dict(sys.modules, {"torch": stub, "torch.nn": stub.nn}):
+            namespace = {}
+            exec(compile(text, patch.BASE_SPECULATOR, "exec"), namespace)
+        speculator = namespace["Speculator"]()
+        with mock.patch.object(draft_observe, "_active", False):
+            self.assertEqual(speculator.sample_draft("h", "rows", "step"), "stock")
+        with (
+            mock.patch.object(draft_observe, "_active", True),
+            mock.patch.object(draft_observe, "draft", return_value="seen") as draft,
+        ):
+            self.assertEqual(speculator.sample_draft("h", "rows", "step"), "seen")
+            draft.assert_called_once_with(speculator, "h", "rows", "step")
+            self.assertEqual(
+                speculator.sample_draft("h", "rows", "step", "x"), "gumbel"
+            )
+
+
 class PatchTests(unittest.TestCase):
     sources = {
         patch.SCHEDULER: SCHEDULER,
         patch.RUNNER: RUNNER,
         patch.SPECULATOR: SPECULATOR,
+        patch.BASE_SPECULATOR: BASE_SPECULATOR,
     }
 
     def test_refuses_drifted_or_already_patched_source(self):
@@ -296,6 +363,7 @@ class PatchTests(unittest.TestCase):
             patch.SCHEDULER: "num_rejected = ",
             patch.RUNNER: "cudagraph_stats: ",
             patch.SPECULATOR: "# Early exit.",
+            patch.BASE_SPECULATOR: "return self._greedy",
         }
         for name, source in self.sources.items():
             with self.assertRaises(ValueError):

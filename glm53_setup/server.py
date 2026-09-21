@@ -126,6 +126,9 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["mtp"].get("depth_trace") and rank == 0:
         target = str(PurePosixPath(settings.DEPTH_TRACE_FILE).parent)
         args += ["-v", f"{ROOT / 'records/depth-trace' / name}:{target}"]
+    if profile["mtp"].get("draft_observe") and rank == 0:
+        target = str(PurePosixPath(settings.DRAFT_OBSERVE_FILE).parent)
+        args += ["-v", f"{ROOT / 'records/draft-observe' / name}:{target}"]
     for key, value in settings.environment(profile, rank).items():
         args += ["-e", f"{key}={value}"]
     return args + [
@@ -204,6 +207,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             "depth_trace_support",
             "GLM53_DEPTH_TRACE_API=1",
             profile["mtp"].get("depth_trace", False),
+        ),
+        (
+            "draft_observe_support",
+            "GLM53_DRAFT_OBSERVE_API=1",
+            profile["mtp"].get("draft_observe", False),
         ),
         (
             "indexer_topk_support",
@@ -825,6 +833,8 @@ def start_rank(cli, args, profile, result):
         (ROOT / "records/profiles" / name).mkdir(parents=True)
     if profile["mtp"].get("depth_trace") and args.rank == 0:
         (ROOT / "records/depth-trace" / name).mkdir(parents=True)
+    if profile["mtp"].get("draft_observe") and args.rank == 0:
+        (ROOT / "records/draft-observe" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)
     write_json(record / "preflight.json", result)
     write_json(record / "settings.json", profile)

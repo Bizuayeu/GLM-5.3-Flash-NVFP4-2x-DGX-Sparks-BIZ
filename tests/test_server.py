@@ -527,6 +527,51 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(p)
 
+    def test_mtp_draft_observe_is_a_rank0_diagnostic_with_its_own_marker(self):
+        self.profile["mtp"]["enabled"] = True
+        self.assertNotIn("GLM53_DRAFT_OBSERVE", config.environment(self.profile, 0))
+        bare = {"Config": {"Env": ["GLM53_DEPTH_TRACE_API=1"]}}
+        self.assertNotIn(
+            "draft_observe_support", server.image_capability_checks(self.profile, bare)
+        )
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["draft_observe"] = True
+        config.validate(p)
+        self.assertEqual(
+            config.environment(p, 0)["GLM53_DRAFT_OBSERVE"],
+            "/draft-observe/observe.jsonl",
+        )
+        self.assertNotIn("GLM53_DRAFT_OBSERVE", config.environment(p, 1))
+        self.assertIs(
+            server.image_capability_checks(p, bare)["draft_observe_support"], False
+        )
+        marked = {"Config": {"Env": ["GLM53_DRAFT_OBSERVE_API=1"]}}
+        self.assertIs(
+            server.image_capability_checks(p, marked)["draft_observe_support"], True
+        )
+        path = ROOT / "state/server.toml"
+        mount = f"{ROOT / 'records/draft-observe/test-container'}:/draft-observe"
+        for rank, mounted in ((0, True), (1, False)):
+            args = server.command(
+                p, path, rank, "test-container", ROOT / "state/test-hf"
+            )
+            self.assertEqual(mount in args, mounted)
+        # Rank 0 alone on the full-logits path would call a different collective.
+        for key, value in (("local_argmax_reduction", True), ("draft_observe", "yes")):
+            q = copy.deepcopy(p)
+            q["mtp"][key] = value
+            with self.assertRaises(ValueError):
+                config.validate(q)
+        q = copy.deepcopy(p)
+        q["runtime"]["decode_graphs"] = True
+        q["runtime"].pop("enforce_eager", None)
+        with self.assertRaises(ValueError):
+            config.validate(q)
+        q = copy.deepcopy(p)
+        q["mtp"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            config.validate(q)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.
