@@ -89,10 +89,34 @@ class RejectionTests(unittest.TestCase):
         self.assertEqual(found["target_rank_in_draft"], {">5": 2, "3": 1, "5": 1})
         self.assertEqual(stats.rejections(rows, 1)["target_margin"], {"confident": 1})
 
-    def test_a_draft_side_row_that_is_not_about_this_draft_is_set_aside(self):
-        row = step(0, [0.9])
-        row["d5"][0][0] = 555
-        self.assertEqual(stats.rejections([row], 1)["stale"], 1)
+    def test_a_draft_side_row_that_is_not_about_this_draft_is_dropped(self):
+        other = step(0, [0.9, 0.9])
+        other["d5"][0][0] = 555
+        rows = [other, step(1, [0.8, 0.7]), step(2, [0.8, 0.7])]
+        self.assertFalse(stats.paired(other, 1))
+        self.assertTrue(stats.paired(other, 2))
+        self.assertEqual(stats.rejections(rows, 1)["unpaired"], 1)
+        self.assertEqual(stats.samples(rows, 1), [(0.8, True), (0.8, True)])
+        result = stats.summary(rows, stats.cost_table(2))
+        self.assertEqual(result["depths"][1]["unpaired"], 1)
+        # The speed projections use only steps whose every depth is paired.
+        self.assertAlmostEqual(
+            result["speed"]["fixed-2"]["tokens_per_second"], 1000 * 5 / (2 * 74.0)
+        )
+
+    def test_on_an_exact_tie_argmax_and_topk_may_name_different_ids(self):
+        # Fixture smoke 2026-09-21: 21 of 2035 draft rows, all with margin 0, the draft
+        # second in the top 5.
+        row = step(1, [0.4, 0.4])
+        row["d5"][0] = [16, 100, 202, 203, 204]
+        self.assertFalse(stats.paired(row, 1))
+        row["dm"][0] = 0.0
+        self.assertTrue(stats.paired(row, 1))
+        self.assertEqual(
+            stats.summary([row], stats.cost_table(2))["depths"][1]["draft_ties"], 1
+        )
+        row["d5"][0] = [16, 17, 202, 203, 204]
+        self.assertFalse(stats.paired(row, 1))
 
 
 class SpeedTests(unittest.TestCase):

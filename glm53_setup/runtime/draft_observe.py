@@ -9,7 +9,8 @@ appends one JSON line per request and verification step:
     d   draft token ids that were verified, one per depth
     dp  the draft's probability of its own top-1 at each depth
     dm  the draft's top-1 minus top-2 logit at each depth (raw dtype; 0 is an exact tie)
-    d5  the draft's top-5 ids at each depth (d5[i][0] != d[i] marks a stale draft-side row)
+    d5  the draft's top-5 ids at each depth. The draft is their argmax: d5[i][0], or on an exact
+        tie (dm 0) another entry; otherwise the draft-side row is from another step (unpaired)
     t   the target's argmax id at each of the depth + 1 verified positions
     tl  the target's log-probability of the draft token, per depth
     tm  the target's top-1 minus top-2 logit at each of the depth + 1 positions (raw dtype)

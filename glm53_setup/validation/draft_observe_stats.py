@@ -22,12 +22,24 @@ def read(lines):
     return [json.loads(line) for line in lines if line.strip()]
 
 
+def paired(row, depth):
+    """Is the draft-side entry at ``depth`` about the draft that was verified there?
+
+    The draft token is the ``argmax`` of the draft's logits and ``d5`` is their ``topk``; on an
+    exact tie (``dm`` 0, common in BF16) the two order the tied ids differently, so the draft is
+    then some other entry of ``d5``. Anything else is a draft-side row left from another step
+    (a padded resume, a column past an adaptive depth): its confidence says nothing here.
+    """
+    top, draft = row["d5"][depth - 1], row["d"][depth - 1]
+    return top[0] == draft or (row["dm"][depth - 1] == 0 and draft in top)
+
+
 def samples(rows, depth):
-    """``(draft probability, held)`` for the steps that reached ``depth`` (1-based)."""
+    """``(draft probability, held)`` for the paired steps that reached ``depth`` (1-based)."""
     return [
         (row["dp"][depth - 1], row["a"] >= depth)
         for row in rows
-        if len(row["d"]) >= depth and row["a"] >= depth - 1
+        if len(row["d"]) >= depth and row["a"] >= depth - 1 and paired(row, depth)
     ]
 
 
@@ -78,12 +90,12 @@ def margin_class(margin):
 
 def rejections(rows, depth):
     """Where the first rejection fell at ``depth``: the target's margin and the draft's top-5."""
-    classes, ranks, stale = {}, {}, 0
+    classes, ranks, unpaired = {}, {}, 0
     for row in rows:
         if len(row["d"]) < depth or row["a"] != depth - 1:
             continue
-        if row["d5"][depth - 1][0] != row["d"][depth - 1]:
-            stale += 1
+        if not paired(row, depth):
+            unpaired += 1
             continue
         name = margin_class(row["tm"][depth - 1])
         classes[name] = classes.get(name, 0) + 1
@@ -91,7 +103,11 @@ def rejections(rows, depth):
         wanted = row["t"][depth - 1]
         rank = str(top.index(wanted) + 1) if wanted in top else ">5"
         ranks[rank] = ranks.get(rank, 0) + 1
-    return {"target_margin": classes, "target_rank_in_draft": ranks, "stale": stale}
+    return {
+        "target_margin": classes,
+        "target_rank_in_draft": ranks,
+        "unpaired": unpaired,
+    }
 
 
 def cost_table(ceiling, base_ms=47.0, step_ms=13.5, overrides=None):
@@ -126,7 +142,13 @@ def project(rows, costs, depth_of):
 
 
 def speed(rows, costs, taus=(0.3, 0.5, 0.7, 0.8, 0.9, 0.95)):
+    """Projections over the steps whose every depth is paired (a gate reads all of ``dp``)."""
     ceiling = max(len(row["d"]) for row in rows)
+    rows = [
+        row
+        for row in rows
+        if all(paired(row, depth) for depth in range(1, len(row["d"]) + 1))
+    ]
     result = {
         f"fixed-{depth}": project(rows, costs, lambda row, depth=depth: depth)
         for depth in range(1, ceiling + 1)
@@ -146,8 +168,13 @@ def summary(rows, costs):
     for depth in range(1, ceiling + 1):
         pairs = samples(rows, depth)
         if pairs:
+            reached = [
+                row for row in rows if len(row["d"]) >= depth and row["a"] >= depth - 1
+            ]
             depths[depth] = {
                 "reached": len(pairs),
+                "unpaired": len(reached) - len(pairs),
+                "draft_ties": sum(1 for row in reached if row["dm"][depth - 1] == 0),
                 "held": sum(1 for _, label in pairs if label) / len(pairs),
                 "auc": auc(pairs),
                 "calibration": calibration(pairs),
