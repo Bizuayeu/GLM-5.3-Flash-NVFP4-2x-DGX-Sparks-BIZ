@@ -90,23 +90,24 @@ The TP=2 reference profile is **measured but not accepted for routine use**. `se
 
 ### Headline measurements (1.7.0)
 
-Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers. Task types are always listed counting / prose / code.
+Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers; the option's prefill and 256K series were measured on 2026-09-22 and are in the latter. Task types are always listed counting / prose / code.
 
 | Measure | Distributed defaults | Published option |
 |---|---|---|
 | Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; a relaunch repeated the first launch's completions |
 | Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s | **46.20 / 28.79 / 38.18 tok/s** |
-| Prefill, 38,962-token prompt | 1,271.6 tok/s | not measured on the option |
+| Prefill, 38,962-token prompt | 1,271.6 tok/s | 1,268.4 tok/s |
+| Decode, 512 tokens after a fixed short prompt | 27.17 tok/s | 37.82 tok/s |
 | 199,652-token input, one passphrase at the midpoint | 167.7 s, correct | 169.9 s, correct |
-| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | not measured on the option |
+| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct |
 | 261,461-token three-position reference, explicit prompt | 233.5 s, correct 3 of 3 | 235.1 s, correct 3 of 3 |
-| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | not measured on the option |
+| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs |
 | Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 |
-| Lowest available memory, head | 6.08 GiB over the 256K series | 10.6 GiB after the 200K request |
+| Lowest available memory over the 256K series, head | 6.08 GiB | 10.17 GiB |
 
 | | Distributed defaults | Published option |
 |---|---|---|
-| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download. Every capacity check above ran on it | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Identical requests still repeat bit for bit |
+| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download. Every 256K request completes a few seconds sooner | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Identical requests still repeat bit for bit, and the head keeps about 4 GiB more available at 256K |
 | **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
 | **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
 
@@ -170,7 +171,7 @@ Several public recipes serve the same model on the same class of hardware with d
 | [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | No code. Mechanisms and measurements: warmup ladder, stall detection, KV capacity readout, the NCCL channel setting, launch-safety requirements, field runbooks |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | No code. The SM90 attention path and the foreign-container launch guard as reference points |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | No code. Its zero-RoPE shim and reduced `index_topk` as a comparison for the attention probes |
-| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results |
+| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results. Its 2026-09-20 note on quantizing the attention and MLP projections reached the same tensor set as P23 independently, at TP=4 and with quality unmeasured ([catalog](docs/optimization-catalog.md)) |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark) and the [EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT (repository code), MIT (model card for the separate weights) | No code or weights adopted. Reference for the mosaic quality panel, cold/warm measurements and verification that an overlay was actually loaded. The single-Spark mcg MTP recipe and the mul1 mosaic use different artifacts and runtimes; their speed, quality and MTP results must not be combined |
 
 ## Local data and contribution

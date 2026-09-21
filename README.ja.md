@@ -90,23 +90,24 @@ TP=2の参照profileは**実測済みだが通常運用としては未受け入�
 
 ### 主要な測定値（1.7.0）
 
-GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)と[1.7.0での測定](docs/benchmarks.ja.md#170での測定)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)と[1.7.0での測定](docs/benchmarks.ja.md#170での測定)にあります。任意設定のprefillと256Kの一連は2026-09-22に測り、後者の節にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 測定 | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。再起動が最初の起動のcompletionを反復 |
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.50／21.00／28.30 tok/s | **46.20／28.79／38.18 tok/s** |
-| prefill（38,962 tokenのprompt） | 1,271.6 tok/s | 任意設定では未測定 |
+| prefill（38,962 tokenのprompt） | 1,271.6 tok/s | 1,268.4 tok/s |
+| decode（固定の短いpromptの後の512 token） | 27.17 tok/s | 37.82 tok/s |
 | 199,652 token入力、中央の合言葉1個 | 167.7 s、正答 | 169.9 s、正答 |
-| 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 任意設定では未測定 |
+| 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答 |
 | 261,461 tokenの3か所参照、枠を明示したprompt | 233.5 s、3つとも正答 | 235.1 s、3つとも正答 |
-| 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 任意設定では未測定 |
+| 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限 |
 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6645／2.0024／1.0031／0.6279 |
-| headの最小空きメモリ | 256Kの一連で6.08 GiB | 200Kの要求の後で10.6 GiB |
+| 256Kの一連でのheadの最小空きメモリ | 6.08 GiB | 10.17 GiB |
 
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない。上の容量確認はすべてこの構成で通している | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。同一要求のbit一致の反復は保たれる |
+| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない。256Kの要求はどれも数秒早く終わる | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
 | **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
@@ -170,7 +171,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、現場の手順記録 |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
-| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果 |
+| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
 
 ## ローカルデータと開発

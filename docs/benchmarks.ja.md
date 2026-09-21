@@ -704,6 +704,19 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 
 stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上に上がった入力は、`lm_head` の再パックでcompletionが変わってdraftが長く通るようになったものです（短い数え上げと調整用のtool。再パック `g` のk=3では、短くしかdraftが通らない側の文章でした）。教師強制NLLは2026-09-21朝の深さ4の値と小数4桁まで同じです。深さはNLLに入らないので、そうなるべき値です。
 
+2026-09-22（08:07〜08:38 JST）に、同じprofile（fingerprintは `70d01dbf82ca…` のまま）で、既定にはあってこのprofileに無かった項目を測りました。[1.6.0の表](#160でのprefillとdecode)のprefillと短いpromptのdecode（各3標本、`glm_bench.py`）と、[256Kの一連](#長い入力)（既定の一連と同じ `bench_256k.py`、各要求の前にprefix cacheを初期化）です。どちらのhostでも他の作業は走らせず、メモリの最小値はサーバー自身の資源ログの当該時間から取りました。
+
+| 要求 | 公開した任意設定、k=3 | 配布既定、k=3 |
+|---|---|---|
+| prefill（38,962 tokenのprompt、tok/s） | 1,268.4（1,264.4〜1,272.1） | 1,271.6（1,266.5〜1,272.7） |
+| decode（固定の短いpromptの後の512 token、tok/s） | 37.82（37.80〜38.47） | 27.17（27.14〜27.69） |
+| 255,950 token入力、中央の合言葉1個 | 220.9 s、正答 | 217.3 s、正答 |
+| 最大容量（入力262,080＋出力64 token）、2回 | 245.7 sと245.0 s、preemptionなし、logprobは有限 | 240.3 sと237.9 s、preemptionなし、logprobは有限 |
+| 3か所参照（261,595 token）、枠を明示したprompt、3回（3回目は300 s待機の後） | 3回とも正答（236.9・237.2・237.4 s） | 3回とも正答（232.7・233.7・233.5 s） |
+| 一連の最小空きメモリ、head／peer | 10.17／12.62 GiB | 6.08／8.03 GiB |
+
+prefillは幅の内側で変わらず、予想どおりです。再パックが縮めるのはdecodeのstepで、この長さのprefillはexpertsが支配します。256Kの要求はすべてguard入りのimageで完走し、既定より3〜5秒遅く、headの空きはrankあたりの重みが小さい分だけ約4 GiB多く残りました。
+
 ### 全モデルでのdecode Graphs
 
 2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-overview.ja.md#decode)）。

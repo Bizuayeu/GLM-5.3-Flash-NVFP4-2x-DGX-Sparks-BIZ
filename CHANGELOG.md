@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased (1.7.1)
+
+### Documentation
+
+- Optimization catalog and README: tonyd2wild's 2026-09-20 note reached the same attention/MLP projection set as P23 independently (TP=4, quality unmeasured, no code adopted).
+- Validation: vLLM pull request #55122 restated itself on 2026-09-21 as a performance change whose determinism is a side benefit, after a census on its own traffic found no boundary ties; this stack reproduced and caught them, so `runtime.stable_indexer_topk` stays.
+
 ## 1.7.0 — 2026-09-22
 
 ### Changed
@@ -19,6 +26,7 @@
 - Requantized checkpoint: the attention projections and `lm_head` repacked to W4A16 NVFP4 (route l) replace the attention-only repack (route g) as the option for Japanese prose. The decode step is 12–13 ms shorter on every input and teacher-forced NLL moves from route g by at most 1.5% (mathematics); the 200K passphrase and the 261,461-token three-position reference are answered correctly. The weights are published on Hugging Face under MIT with NVIDIA's model card beside them ([catalog P23](docs/optimization-catalog.md), [licensing](docs/licensing.md#weight-notices), [server configuration](docs/server-configuration.md)). The template keeps the pinned weights, because the option is not lossless.
 - Measured on the full model and not adopted, each with its number in the documents: decode CUDA Graphs (7–9 ms per step slower than eager, `runtime.decode_graphs` stays off), a draft depth chosen from the request's acceptance history, a confidence gate on the draft (its host synchronisation costs about what it saves on two hosts), not sharing the first depth's sparse top-k across draft depths, a rank-local draft argmax, and CSA2 indexer reuse (stopped at its cost gate: the indexer is under 1% of prefill on the fixture and about 4% projected at 200K). None of these settings is in the shipped code.
 - Validation: a draft-side change is expected to change completions on this stack (a BF16 tie in the target's logits resolves differently once the drafted candidates change), so such changes are judged by acceptance and NLL, not by equal text.
+- Benchmarks (2026-09-22, after the tag): the published option measured on the items the README had listed as not measured on it: prefill of 38,962 tokens, decode after the fixed short prompt, the 255,950-token passphrase, capacity at 262,080 + 64 twice and the three-position reference three times, with the memory minima of both ranks; the README comparison carries the numbers.
 - README (2026-09-22, after the tag): reordered for the reader's path (what is deployed, prerequisites, start, what has been verified, objectives, related work). The two headline tables become one comparison of the distributed defaults and the published option, with a pros/cons table and one order for task types; the verified scope becomes a status table grouped by tooling, fixture, full model, harness, template, optional, not adopted and not validated, each row a status and its owner link. Version-to-version asides moved to the benchmarks that own them. The licensing table gains the published repack; the server TOML and LPA paragraphs moved next to what is deployed.
 - Document map: task types are listed counting / prose / code and teacher-forced texts Japanese / English / code / mathematics everywhere; the benchmarks role no longer enumerates initiative IDs; the README headline section is named as the one permitted copy of a measured number.
 - Benchmarks: the identical-requests sentence lists the prompts in the canonical order.

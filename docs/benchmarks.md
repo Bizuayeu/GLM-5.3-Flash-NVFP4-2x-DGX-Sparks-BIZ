@@ -704,6 +704,19 @@ On the ten-input set (three repeats each, median tok/s, mean acceptance length; 
 
 The step is 10 ms shorter at the same depth on every input; where tok/s rises by more than that, the completion changed with the `lm_head` repack and drafted longer (the short counting prompt and the tuning tool input, whose k=3 completions on repack `g` had been the short-drafting variants). Teacher-forced NLL is the same to four decimals as on 2026-09-21 morning at depth 4, as it must be: the depth does not enter it.
 
+On 2026-09-22 (08:07 to 08:38, Asia/Tokyo) the same profile, still fingerprint `70d01dbf82ca…`, ran the items the defaults had and this profile lacked: the prefill and short-prompt decode of the [1.6.0 table](#prefill-and-decode-on-160) (three samples each, `glm_bench.py`) and the [256K series](#long-input) (`bench_256k.py`, the script of the defaults' series, each request after a prefix-cache reset). No other work ran on either host; the memory minima are from the servers' own resource logs over the window.
+
+| Request | Published option, k=3 | Distributed defaults, k=3 |
+|---|---|---|
+| Prefill, 38,962-token prompt (tok/s) | 1,268.4 (1,264.4–1,272.1) | 1,271.6 (1,266.5–1,272.7) |
+| Decode, 512 tokens after a fixed short prompt (tok/s) | 37.82 (37.80–38.47) | 27.17 (27.14–27.69) |
+| 255,950-token input, one passphrase at the midpoint | 220.9 s, correct | 217.3 s, correct |
+| Maximum capacity, 262,080 input + 64 output tokens, twice | 245.7 and 245.0 s, no preemption, finite logprobs | 240.3 and 237.9 s, no preemption, finite logprobs |
+| Three-position reference (261,595 tokens), explicit prompt, three runs, the third after 300 s idle | correct 3 of 3 (236.9, 237.2 and 237.4 s) | correct 3 of 3 (232.7, 233.7 and 233.5 s) |
+| Lowest available memory over the series, head / peer | 10.17 / 12.62 GiB | 6.08 / 8.03 GiB |
+
+Prefill is unchanged within the spread, as expected: the repack shortens the decode step, and prefill of this length is dominated by the experts. Every 256K request completed on the guarded image, three to five seconds later than on the defaults, and the head kept about 4 GiB more available, the weights being smaller per rank.
+
 ### Decode Graphs on the full model
 
 `runtime.decode_graphs = true` on the profile served on 2026-09-21 morning (repack `g`, depth 4, `enforce_eager = false`; the launcher captures decode at size 5, and the pinned runtime auto-enabled its breakable-graph mode): every one of the ten inputs decoded slower than eager, by 7.2 to 8.5 ms per step (mean 109.3 against 101.1 ms), with identical completions and acceptance; the three decode prompts gave 22.59 / 42.19 / 32.33 tok/s against 24.01 / 45.13 / 34.85. Two eager launches of the same profile the same day differed by 0.9 ms per step. Not adopted; the option stays off ([P06](optimization-overview.md#decode)).
