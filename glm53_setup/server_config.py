@@ -64,7 +64,7 @@ OPTIONAL_KEYS = {
             "fa2_attention",
         }
     ),
-    "server.mtp": frozenset({"local_argmax_reduction"}),
+    "server.mtp": frozenset({"local_argmax_reduction", "adaptive_depth"}),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
@@ -309,6 +309,14 @@ def check_speculation(profile):
         raise ValueError("MTP depth must be an integer from 1 to 5")
     if type(profile["mtp"].get("local_argmax_reduction", False)) is not bool:
         raise ValueError("mtp.local_argmax_reduction must be true or false")
+    if type(profile["mtp"].get("adaptive_depth", False)) is not bool:
+        raise ValueError("mtp.adaptive_depth must be true or false")
+    if profile["mtp"].get("adaptive_depth"):
+        if not profile["mtp"]["enabled"]:
+            raise ValueError("mtp.adaptive_depth needs mtp.enabled")
+        if decode_graphs(profile):
+            # The speculator's graphs are captured for the configured depth only.
+            raise ValueError("mtp.adaptive_depth excludes decode graphs")
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
         raise ValueError("mtp.view must be a relative path inside the HF cache")
@@ -480,6 +488,9 @@ def environment(profile, rank):
         result["GLM53_CANONICAL_MOE_ORDER"] = str(
             int(profile["runtime"]["canonical_moe_order"])
         )
+    if "adaptive_depth" in profile["mtp"]:
+        # The scheduler reads it; absent, the depth is the configured one on every step.
+        result["GLM53_ADAPTIVE_DEPTH"] = str(int(profile["mtp"]["adaptive_depth"]))
     if "stable_indexer_topk" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_STABLE_INDEXER_TOPK"] = str(

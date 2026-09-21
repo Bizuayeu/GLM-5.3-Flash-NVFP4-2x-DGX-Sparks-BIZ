@@ -451,6 +451,50 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(p)
 
+    def test_mtp_adaptive_depth_is_optional_needs_the_image_and_mtp(self):
+        # Absent: no variable, no capability asked, the fingerprint is what it was.
+        self.profile["mtp"]["enabled"] = True
+        config.validate(self.profile)
+        self.assertNotIn("GLM53_ADAPTIVE_DEPTH", config.environment(self.profile, 0))
+        bare = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertNotIn(
+            "adaptive_depth_support", server.image_capability_checks(self.profile, bare)
+        )
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["adaptive_depth"] = True
+        config.validate(p)
+        for rank in (0, 1):
+            self.assertEqual(config.environment(p, rank)["GLM53_ADAPTIVE_DEPTH"], "1")
+        self.assertIs(
+            server.image_capability_checks(p, bare)["adaptive_depth_support"], False
+        )
+        patched = {
+            "Config": {"Env": [*bare["Config"]["Env"], "GLM53_ADAPTIVE_DEPTH_API=1"]}
+        }
+        self.assertIs(
+            server.image_capability_checks(p, patched)["adaptive_depth_support"], True
+        )
+        p["mtp"]["adaptive_depth"] = False
+        config.validate(p)
+        self.assertEqual(config.environment(p, 0)["GLM53_ADAPTIVE_DEPTH"], "0")
+        self.assertNotIn(
+            "adaptive_depth_support", server.image_capability_checks(p, bare)
+        )
+        # The speculator's CUDA graphs are captured for the configured depth only.
+        p["mtp"]["adaptive_depth"] = True
+        p["runtime"]["decode_graphs"] = True
+        p["runtime"].pop("enforce_eager", None)
+        with self.assertRaises(ValueError):
+            config.validate(p)
+        q = copy.deepcopy(self.profile)
+        q["mtp"]["adaptive_depth"] = "yes"
+        with self.assertRaises(ValueError):
+            config.validate(q)
+        q["mtp"]["adaptive_depth"] = True
+        q["mtp"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            config.validate(q)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.

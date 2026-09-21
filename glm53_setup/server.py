@@ -193,6 +193,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             runtime.get("canonical_moe_order", False),
         ),
         (
+            "adaptive_depth_support",
+            "GLM53_ADAPTIVE_DEPTH_API=1",
+            profile["mtp"].get("adaptive_depth", False),
+        ),
+        (
             "indexer_topk_support",
             "GLM53_INDEXER_TOPK_API=1",
             runtime.get("stable_indexer_topk", False),
