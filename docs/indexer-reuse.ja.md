@@ -2,7 +2,7 @@
 
 [English](indexer-reuse.md)
 
-**実験用の部品であり、モデルのservingには未統合です。** [launch／throughputの調査](performance-investigation.ja.md)を補完しますが、削減量と品質への影響がLPAと加算になるとは前提しません。
+**実験用の部品であり、モデルのservingには未統合です。2026-09-21に下の第一の門で中止しました。** 検証済みの4層fixture（indexer層は1つ、eager、chunk 512、出力1 token）で、indexer自身の演算はprefill 501 msのうち0.43 ms（2,048 token）、1,999 msのうち6.26 ms（8,192）、8,077 msのうち40.2 ms（32,768）＝0.09%・0.31%・0.50%で、prefillが線形に伸びる間にn^1.5程度で伸びます。全モデルには同じ形のindexer層が11あるので、indexer全体は32Kのprefillの約1.7%、200Kで約4%、再利用が削れる採点・選択はその半分ほどで、圧縮keyの書き込みとtailの更新は残ります。再利用の仕組みに見合う改善に届かないため、再利用は作りませんでした。[launch／throughputの調査](performance-investigation.ja.md)を補完しますが、削減量と品質への影響がLPAと加算になるとは前提しません。
 
 ## 固定版GLMで確認した契約
 

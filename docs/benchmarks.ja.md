@@ -655,7 +655,7 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 
 ### 基準の2台の配信profile
 
-基準の2台そのものは、新規の導入には無い設定を二つ足して配信しています。一つ目が手元で作るcheckpointを要るためです。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。
+2026-09-19から21まで、基準の2台は新規の導入には無い設定を二つ足して配信していました。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。**2026-09-21からは、attentionと `lm_head` の再パックを深さ3で配信しており、そのprofileは[1.7.0での測定](#170での測定)にあります。** 下の表は、その間に配信していたprofileのものです。
 
 | 項目 | 配信profile | 1.6.0の既定 |
 |---|---|---|
@@ -671,3 +671,39 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 このprofileの3回の起動は、間に他のprofileの起動を挟んでも、同じ三つのcompletion（hashが一致）と、小数4桁まで同じNLLを返しました。4層のfixtureでは、3回の起動のうち2回が、最初の層の線形attentionのkernelから先の数値で残りの1回と違い、起動の中の反復は同一でした。全モデルのある起動が前の起動を再現するかどうかは、保証ではなく、繰り返し測るべき事柄です。
 
 1.6.0の再量子化・深さの比較は種類ごとに1 promptでした。前後の無改変対照はcompletionと教師強制値が一致しましたが、候補arm間では通常completionが異なります。decode速度はそれに伴うdraft採択の変化を含みます。decode速度を記録済みの採択長で割るとstep/sの目安になります。同じ深さ（k=3）で、再量子化はこれをcount／code／proseの各promptで9.20／9.21／9.68から11.18／11.07／11.79へ上げました。3 promptとも+20〜22%で、採択長の変化は+6%・+5%・0%です。したがってこの利得の大半はstepあたりの速さで、completionがたどった道筋によるものではありません。この目安は深さの異なるarmの比較には使えません。深さでstepあたりの検証コストが変わるためです。保存済みdecode窓の再点検でclient／serverの出力token合計は一致しましたが、独立した要求完了counterは保存されていません。測定値と設定の採否はこの範囲で維持し、新しい負荷には[比較手順](validation.ja.md#候補と無改変対照の比較)を適用します。
+
+## 1.7.0での測定
+
+2026-09-21（Asia/Tokyo）、基準の2台は1.7.0のruntimeで動きました。guard入りのimage `b3f6e18c…`（slot対応付けのguard、MoE順のmarker 2、`TRITON_CACHE_AUTOTUNING=1`）、FA2 prefill、expert内の順序の固定、indexerの同点の決定、1系列です。配布既定そのものは測り直していません。その数字は[1.6.0での測定](#160での測定)のもので、2026-09-20の長い入力の系列はすでにmarker 2のbuildのimageで走っています。1.7.0で足したのは、基準の2台の新しい配信profile、decode Graphsの全モデルでの読み、10入力の深さの掃引（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)が正典）です。
+
+### 基準の2台の配信profile：attentionと `lm_head` の再パック、深さ3
+
+配布テンプレートに、公開したattentionと `lm_head` のW4A16再パックを指す `runtime.derived_checkpoint`（`requant_target = "l"`、[P23](optimization-catalog.ja.md)）と `mtp.num_speculative_tokens = 3` を足したprofileです。fingerprintは `70d01dbf82ca…`、1.7.0のcheckoutから2026-09-21 23:39に起動しました。decodeは固定の2,048 tokenのpromptに続く512 tokenを9標本（中央値のtok/s、括弧内は平均の採択長、completionは各1種）。右の列は、これが置き換えたprofileです。
+
+| 項目 | 再パック `l`、k=3（配信） | 再パック `g`、k=4（2026-09-19〜21に配信） | 1.6.0の既定、k=3 |
+|---|---|---|---|
+| decode：数え上げ／散文／コード（tok/s） | 46.20（3.68）／28.79（2.16）／38.18（3.04） | 45.43／24.33／34.75 | 32.50／21.00／28.30 |
+| NLL：日本語／英語／コード／数学 | 1.6645／2.0024／1.0031／0.6279 | 1.6600／2.0020／1.0040／0.6184 | 1.5963／2.0241／0.9479／0.5931 |
+| 保存した参照とのagreement、文字化け検査 | passed・errors 0（2回）、pass | passed | passed |
+| 199,652 tokenの入力、中央に合言葉一つ | 169.9 s、正答 | 169.1 s、正答 | 167.7 s、正答 |
+| 261,461 tokenの3か所参照、明示のprompt | 235.1 s、3つとも正答 | 235.8 s、3つとも正答 | 233.5 s、3つとも正答 |
+
+長い入力の2行は、同じ夜に同じprofile（fingerprintは同じ）を起動し直して取ったものです。最初の起動では、合言葉要求の途中で、同じhostで走っていた無関係のプロセス（常駐11 GiB）のためにheadの監視がメモリ保護余裕で停止しました。起動し直した対は最初の起動のdecodeの完了文を反復し、長い要求2本に正答し、合言葉要求の後のheadの空きは10.6 GiBでした。配信hostでメモリを大きく使う作業を走らせてはいけません。
+
+10入力（各3回、中央値のtok/s、平均の採択長。[深さの掃引](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)と同じ入力と道具）を、同じ深さのattentionだけの再パックと比べます。
+
+| 入力 | 再パック `l`、k=3 | 再パック `g`、k=3 |
+|---|---|---|
+| 数え上げ、2,048 tokenのprompt／短いprompt | 46.16（3.68）／38.44（3.04） | 42.24（3.79）／27.82（2.47） |
+| 散文、2,048 tokenのprompt | 28.78（2.16） | 25.15（2.15） |
+| 日本語散文、調整用／評価用 | 30.16（2.22）／31.30（2.37） | 26.68／28.94 |
+| コード、2,048 tokenのprompt | 38.13（3.04） | 34.77（3.15） |
+| コード、調整用／評価用 | 41.18（3.28）／40.02（3.24） | 36.60／36.19 |
+| tool往復、調整用／評価用 | 35.44（2.80）／34.62（2.74） | 28.75／30.77 |
+| 10入力の平均step時間（ms） | 78.0 | 88.2 |
+
+stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上に上がった入力は、`lm_head` の再パックでcompletionが変わってdraftが長く通るようになったものです（短い数え上げと調整用のtool。再パック `g` のk=3では、短くしかdraftが通らない側の文章でした）。教師強制NLLは2026-09-21朝の深さ4の値と小数4桁まで同じです。深さはNLLに入らないので、そうなるべき値です。
+
+### 全モデルでのdecode Graphs
+
+2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-overview.ja.md#decode)）。

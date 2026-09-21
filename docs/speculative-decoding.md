@@ -4,7 +4,7 @@
 
 The first TP=2 baseline used no speculation. The speculative profiles use the MTP tensors already in the pinned NVIDIA checkpoint. No external draft model, EXL3 conversion or DFlash2 weights are needed; this introduces no additional model license. Existing [artifact licenses](licensing.md) still apply.
 
-Depths one to five have been measured. [Depths one to five](#depths-one-to-five-2026-09-19-and-20) holds the current comparison and the choice of k=3 for the template; the k=1 and k=3 sections below are the earlier, smaller runs that led there.
+Depths one to five have been measured, on the checkpoint as shipped and on the requantized copies. **The template keeps k=3, and k=3 is also the depth the reference pair serves with the requantized checkpoint** ([the decision of 2026-09-21](#depth-three-for-both-checkpoints-2026-09-21)). [Depths one to five](#depths-one-to-five-2026-09-19-and-20) holds the sweep that led there; the k=1 and k=3 sections below are the earlier, smaller runs. [Beyond a fixed depth](#beyond-a-fixed-depth-2026-09-21) records what was tried after the sweep and why none of it is adopted.
 
 ## Why a flag alone is insufficient
 
@@ -113,4 +113,35 @@ Teacher-forced NLL was the same to four decimals at every depth, and the 199,652
 
 With the pinned checkpoint as it is, both depths with the tie settled: counting 33.08 at k=4 against 32.50 at k=3, prose 19.60 against 21.00, code 28.37 against 28.30, short prompts 28.10 against 27.17. The requantized projections make every step cheaper, so the longer verification step of a deeper draft costs relatively less there; without them depth four gains 0 to 3% where the text is predictable and loses 7% on prose.
 
-**Decision (2026-09-20):** the template keeps k=3, which is never the slowest depth on any of the three prompts. k=4 is the setting to pair with `runtime.derived_checkpoint`; the reference pair serves that pair of settings. k=1 is the fastest depth for prose alone.
+**Decision (2026-09-20, superseded the next day):** the template keeps k=3, which is never the slowest depth on any of the three prompts; k=4 was paired with `runtime.derived_checkpoint` on the reference pair for two days. k=1 is the fastest depth for prose alone. The ten-input sweep below moved the requantized pair to k=3 as well.
+
+## Depth three for both checkpoints (2026-09-21)
+
+The sweep was repeated on ten inputs, three repeats each, on the reference pair with the requantized attention projections (route g, FA2 prefill, one sequence, 512 tokens per request): four regression inputs (the three decode prompts above and a short counting prompt) and, split by document into a tuning and an evaluation set, Japanese prose, code and a tool round-trip. Median tok/s with the mean acceptance length in brackets. Every arm repeated its own completions; **the completion of most inputs changes with the depth** (the draft's candidates enter the verification batch, and a BF16 tie in the target's logits then resolves the other way), so a difference between columns includes a change of text, not only of speed.
+
+| Input | k=2 | k=3 | k=4 | k=5 |
+|---|---|---|---|---|
+| Counting (2,048-token prompt) | 38.04 (2.92) | 42.24 (3.79) | 45.25 (4.68) | 45.60 (5.41) |
+| Counting (short prompt) | 32.90 (2.50) | 27.82 (2.47) | 38.15 (3.93) | 36.09 (4.28) |
+| Prose (2,048-token prompt) | 27.30 (2.00) | 25.15 (2.15) | 24.31 (2.38) | 20.23 (2.30) |
+| Japanese prose, tuning / evaluation | 28.11 / 30.82 | 26.68 / 28.94 | 23.45 / 25.63 | 20.85 / 21.67 |
+| Code (2,048-token prompt) | 33.16 (2.55) | 34.77 (3.15) | 34.85 (3.65) | 30.11 (3.66) |
+| Code, tuning / evaluation | 34.37 / 35.26 | 36.60 / 36.19 | 35.44 / 35.59 | 33.34 / 32.23 |
+| Tool round-trip, tuning / evaluation | 35.34 / 32.77 | 28.75 / 30.77 | 35.41 / 29.54 | 32.08 / 27.56 |
+| Mean step time over the ten inputs (ms) | 74.8 | 88.2 | 101.1 | 117.3 |
+
+The step time is linear in the depth (about 13.5 ms per draft depth on this pair: 7.4 ms of verification in the target's MoE for one more row, 6.1 ms of draft, most of it the BF16 `lm_head`). A depth pays only where the per-position acceptance holds up: counting keeps 0.84 at the fifth position, code 0.46, prose 0.08. So prose is fastest at k=2, code at k=3, counting at k=5, and the two columns in which k=3 loses most (the short counting prompt and the tuning tool input) are inputs whose k=3 completion is a different, longer-drafting text.
+
+**Decision (2026-09-21):** one depth for both checkpoints, **k=3**. It is the best or within 8% of the best fixed depth on eight of the ten inputs, it is the template's depth, and holding two depths across two checkpoints was not worth its operating cost. The reference pair serves k=3 with the requantized checkpoint from this date ([serving profile](benchmarks.md#the-reference-pairs-serving-profile)). Operators whose workload is Japanese prose alone may set 2; counting-like generation gains from 4 or 5.
+
+## Beyond a fixed depth (2026-09-21)
+
+Everything below was measured on the reference pair on the same ten inputs, kept in private records, and is **not adopted**; none of it is in the code that ships.
+
+- **Depth chosen from the request's own acceptance history** (a moving estimate of the per-position acceptance, depth raised or lowered between steps): 4 to 13% below the best fixed depth on every input, 4 to 6% below k=4 on code. Acceptance is two-humped on code and tool text (a step either passes all five drafts or fails at the first) and a running estimate cannot tell the humps apart.
+- **A confidence gate on the draft** (stop drafting at the first depth whose top-1 probability is at or under a threshold; the draft's own probability predicts acceptance with AUC 0.89 at every depth): the mechanism works as designed, but every stop is a host synchronisation, and on two hosts under TP=2 each one costs about 1.3 ms in the next collectives while the ranks fall back into step, about 5 ms per step in all. That is the whole projected gain. vLLM's own proposals of the same rule ([#36657](https://github.com/vllm-project/vllm/issues/36657), [#48202](https://github.com/vllm-project/vllm/issues/48202)) were closed without a wall-clock gain either.
+- **Not sharing the first depth's sparse top-k across draft depths** (`index_share_for_mtp_iteration = false`): acceptance equal or lower on every input, 2 to 3 ms per step slower. The checkpoint's setting is right.
+- **Reducing the draft's logits on each rank instead of all-gathering them** (`use_local_argmax_reduction`): same completions and acceptance, same step time; the all-gather is 0.2 ms per depth.
+- **Decode CUDA Graphs** on the full model: 7 to 9 ms per step slower than eager on every input with identical completions ([overview](optimization-overview.md#decode)).
+
+Two facts from this work carry over to any later change on the draft side: a draft-side change that alters which candidates are drafted **alters the completions**, so it is judged by acceptance and teacher-forced NLL rather than by equal text; and the per-step cost of a depth is per row of verification and per draft forward, so any scheme that drafts fewer rows must also verify fewer rows to pay.

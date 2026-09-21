@@ -47,7 +47,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 - **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。評価全体の検収は未了です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
-速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。深さ1〜5を測定済みです。3は、数え上げ・散文・コードのどれでも最下位にならない深さで、4が効くのは、手元で再量子化したattention projectionと組にした時だけです（[深さ1〜5](docs/speculative-decoding.ja.md#深さ152026-09-1920)）。配布用の起動テンプレートもこの直列最適化構成を有効にします。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定)を確認してください。
+速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**しました。深さ1〜5を10入力で測定済みです。散文だけなら2、数え上げに近い文なら4か5が得ですが、両方のcheckpointに共通の深さとして3を採ります（[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。配布用の起動テンプレートは固定の重みでこの直列最適化構成を有効にします。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定)を確認してください。日本語散文向けには、attention projectionと `lm_head` をW4A16 NVFP4に再パックした公開の任意設定があり、decodeの全stepが短くなる代わりにlosslessではありません（[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)）。
 
 業務利用に適するかは検収によって判断します。BIZの語を認定済みの意味にはせず、確認済みの範囲と残る条件を以下と各検証文書に示します。
 
@@ -55,9 +55,9 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** [リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)に従来の速度・tool-evalの結果とSafety Gate未達を保持し、現在の既定の確認は[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)にまとめています。
 
-### 主要な測定値（1.6.0）
+### 主要な測定値（1.7.0）
 
-GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 GiB・MTP k=3・APC・chunk 2048・prefillはFA2・expert内のtoken順を固定・indexerのtop-kの同点を決定）、同時1系列です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)にあります。長い入力の行は、同点の規則を書く前日に、それを含まないprofileで測ったものです。
+GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 GiB・MTP k=3・APC・chunk 2048・prefillはFA2・expert内のtoken順を固定・indexerのtop-kの同点を決定）、同時1系列です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)と[1.7.0での測定](docs/benchmarks.ja.md#170での測定)にあります。
 
 | 測定 | 結果 |
 |---|---|
@@ -70,18 +70,18 @@ GB10×2、TP=2、配布既定の構成（256K・画像入力・FP8 KV各rank 3 G
 | 3か所参照（256K） | 枠を明示したpromptで3回とも正答。1.5.0から報告していた不安定さは、旧いpromptの曖昧さが原因でした |
 | 256Kでの最小空きメモリ | head 6.08 GiB |
 
-**基準の2台が配信に使っている、任意の設定二つを足した場合**（attention projectionを手元でW4A16 NVFP4に再量子化して `runtime.derived_checkpoint` で配信、MTPの深さは4。再量子化した重みは運用者が自分で作るもので、ここでは配布しません）：
+**基準の2台が配信に使っている、公開した任意設定を足した場合**（attention projectionと `lm_head` をW4A16 NVFP4に再量子化して `runtime.derived_checkpoint` で配信、MTPの深さはテンプレートと同じ3。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）：
 
 | 測定 | 結果 |
 |---|---|
-| decode（2,048 tokenのpromptの後）、予測しやすい文（数え上げ） | **45.4 tok/s**（既定では32.5） |
-| 同、コード／散文 | 34.8／24.3 tok/s（既定では28.3／21.0） |
-| decode（固定の短いpromptの後の512 token） | 38.3 tok/s（既定では27.2） |
-| 199,652 token入力、中央の合言葉1個 | 169.1 s、正答 |
-| rankあたりの重み／headの最小空き | 91.8 GiB／10.1 GiB（既定では95.8／6.3） |
-| 代価 | 教師強制のNLLが4文のうち3文で4〜6%上がる。同一要求のbit一致の反復は保たれる |
+| decode（2,048 tokenのpromptの後）、予測しやすい文（数え上げ） | **46.2 tok/s**（既定では32.5） |
+| 同、コード／散文 | 38.2／28.8 tok/s（既定では28.3／21.0） |
+| 深さ3のdecode step、10入力の平均 | 78 ms（attentionだけの再パックでは88 ms） |
+| 199,652 token入力、中央の合言葉1個 | 169.9 s、正答 |
+| 261,461 tokenの3か所参照 | 235.1 s、3つとも正答 |
+| 代価 | 教師強制のNLLが既定より4文のうち3文で4〜6%上がる。同一要求のbit一致の反復は保たれる |
 
-MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは45 tok/s、散文は24 tok/sです。数値は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profile)と[深さ1〜5](docs/speculative-decoding.ja.md#深さ152026-09-1920)にあります。
+MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは46 tok/s、散文は29 tok/sです。数値は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)と[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)にあります。
 
 [起動設定の一括管理](docs/server-configuration.ja.md)：コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定を一つのTOMLにまとめ、ランチャーと専用クライアントから使えます。
 
@@ -100,8 +100,9 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | ZCode／Claude Codeのハーネス連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode DesktopとClaude Codeのクライアント試験は**未実施**。ケース別の状態は[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | temperature 0での同一要求・同時実行1 | bit一致で反復する（三つのpromptで9回中9回、log確率の移動0、NLLは小数4桁まで同じ）。原因を二つ直した結果で、expert内のtoken順と、indexerのtop-kの同点。基準の2台のprofileは3回の起動で同じcompletionを返した。4層fixtureでは起動が二つの数値の状態に分かれるので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | prefillのFA2（`runtime.fa2_attention`）・同時実行1 | 採用し、テンプレートでon。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
-| BF16 draftのMTP 深さ1〜5・同時実行1 | 数え上げ・散文・コード・短いpromptで測定済み。テンプレートはk=3のまま。[深さ1〜5](docs/speculative-decoding.ja.md#深さ152026-09-1920) |
-| 手元で再量子化したattention projection（`runtime.derived_checkpoint`、P23） | 任意で、テンプレートには無い。基準の2台でMTPの深さ4と組にして試験採用中。decodeは+22〜29%、rankあたり4.0 GiB減、NLLは4文のうち3文で4〜6%上がる。shared expertsを足す変種は測って不採用。[施策台帳](docs/optimization-catalog.ja.md) |
+| BF16 draftのMTP 深さ1〜5・同時実行1 | 両方のcheckpointで10入力を測定済み。k=3を両方に採用。採択履歴による深さ、draftの確信度の関門、draft側の設定二つ、decodeのCUDA Graphsは全モデルで測って不採用。[投機デコード](docs/speculative-decoding.ja.md#固定の深さの先2026-09-21) |
+| 再量子化したattention projectionと `lm_head`（`runtime.derived_checkpoint`、P23）・同時実行1 | 任意で、テンプレートには無い。基準の2台がk=3で配信し、重みは公開済み。decodeのstepは12〜13 ms短く、rankあたりの重みはattentionの再パックだけで測って4.0 GiB減、NLLは固定の重みより4文のうち3文で4〜6%上がる。shared expertsを足す変種は測って不採用。[配信profile](docs/benchmarks.ja.md#基準の2台の配信profile)／[施策台帳](docs/optimization-catalog.ja.md) |
+| 層間のindexer再利用（CSA2、P16） | コストの門で中止。indexerはfixtureでprefillの1%未満、全モデルの射影で200Kでも約4%。[設計と結果](docs/indexer-reuse.ja.md) |
 | Prefix caching（APC）・同時実行1 | 実測した直列の長文prefix再利用の実験用途で受入。起動テンプレートで有効。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | APC優先LPA（P22）・同時実行1 | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。LPA自体は配布テンプレートで無効（バッチ用opt-in）。[契約](docs/apc-lpa-design.ja.md) |
 | checkpoint保持・同時実行1 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |

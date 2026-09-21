@@ -655,7 +655,7 @@ The tie rule adds a check to every prefill chunk. On the serving profile below i
 
 ### The reference pair's serving profile
 
-The pair itself serves two further settings that a fresh installation does not have, because the first needs a checkpoint made locally: the attention projections requantized to W4A16 NVFP4 (`runtime.derived_checkpoint`, [P23](optimization-catalog.md)) and MTP depth 4 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). Fingerprint `9de4b4f73570…`, measured on 2026-09-19 and 20.
+From 2026-09-19 to 21 the pair served two settings that a fresh installation did not have: the attention projections requantized to W4A16 NVFP4 (`runtime.derived_checkpoint`, [P23](optimization-catalog.md)) and MTP depth 4 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). Fingerprint `9de4b4f73570…`, measured on 2026-09-19 and 20. **Since 2026-09-21 the pair serves the attention and `lm_head` repack with depth 3; that profile is measured under [measurements on 1.7.0](#measurements-on-170).** The table below is the profile as it was served in between.
 
 | Measure | Serving profile | 1.6.0 defaults |
 |---|---|---|
@@ -671,3 +671,39 @@ The pair itself serves two further settings that a fresh installation does not h
 Three launches of this profile, with launches of other profiles between them, produced the same three completions (equal hashes) and the same NLL to four decimals. On the four-layer fixture two launches out of three differed from the third in their numbers from the first layer's linear-attention kernel on, while repeats inside a launch were identical; whether a given launch of the full model reproduces the last one is therefore a measurement to repeat, not a guarantee.
 
 The 1.6.0 requantization and depth comparisons used one prompt per task type. An unchanged-before/after control repeated its completions and teacher-forced values, but candidate arms generally produced different completions. Their decode rates include that change in draft acceptance. Dividing the decode rate by the recorded acceptance length estimates steps/s: at the same depth (k=3), requantization raised it from 9.20 / 9.21 / 9.68 to 11.18 / 11.07 / 11.79 on the count / code / prose prompts, +20–22% on all three, while acceptance length moved by +6%, +5% and 0%. Most of that gain is therefore per-step speed, not the path the completion took. The estimate does not compare depths, whose verification cost per step differs. Rechecking the saved decode windows found matching client/server output-token totals, but no independent completed-request counters were saved. The measured values and configuration decisions remain unchanged within that scope; apply the [comparison procedure](validation.md#comparing-a-candidate-with-an-unchanged-control) to new workloads.
+
+## Measurements on 1.7.0
+
+On 2026-09-21 (Asia/Tokyo) the reference pair ran the 1.7.0 runtime: the guarded image `b3f6e18c…` (slot-mapping guard, MoE order marker 2, `TRITON_CACHE_AUTOTUNING=1`), FA2 prefill, the fixed expert order and settled indexer ties, one active sequence. The distributed defaults themselves were not re-measured; their numbers are those [measured on 1.6.0](#measurements-on-160), and the long-input series of 2026-09-20 already ran on an image with the marker-2 build. What 1.7.0 adds is the pair's new serving profile, a full-model reading of decode Graphs, and the ten-input depth sweep, which [speculative decoding](speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) owns.
+
+### The reference pair's serving profile: attention and `lm_head` repacked, depth 3
+
+The profile is the distributed template with `runtime.derived_checkpoint` pointing at the published attention and `lm_head` W4A16 repack (`requant_target = "l"`, [P23](optimization-catalog.md)) and `mtp.num_speculative_tokens = 3`; fingerprint `70d01dbf82ca…`, launched from the 1.7.0 checkout on 2026-09-21 23:39. Decode is nine samples of 512 tokens after a fixed 2,048-token prompt (median tok/s, mean acceptance length in brackets, one distinct completion each); the earlier columns are the profiles this one replaced.
+
+| Measure | Repack `l`, k=3 (serving) | Repack `g`, k=4 (served 2026-09-19 to 21) | 1.6.0 defaults, k=3 |
+|---|---|---|---|
+| Decode: counting / prose / code (tok/s) | 46.20 (3.68) / 28.79 (2.16) / 38.18 (3.04) | 45.43 / 24.33 / 34.75 | 32.50 / 21.00 / 28.30 |
+| NLL: Japanese / English / code / mathematics | 1.6645 / 2.0024 / 1.0031 / 0.6279 | 1.6600 / 2.0020 / 1.0040 / 0.6184 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
+| Agreement with the saved reference, mojibake check | passed, 0 errors (twice); passed | passed | passed |
+| 199,652-token input, one passphrase at the midpoint | 169.9 s, correct | 169.1 s, correct | 167.7 s, correct |
+| 261,461-token three-position reference, explicit prompt | 235.1 s, correct 3 of 3 | 235.8 s, correct 3 of 3 | 233.5 s, correct 3 of 3 |
+
+The two long-input rows come from a relaunch of the same profile (fingerprint unchanged) later the same night: the first launch's head was stopped by its memory-reserve supervisor during the passphrase request while an unrelated process with an 11 GiB resident set was running on the same host. The relaunch repeated the decode completions of the first launch, answered both long requests, and left the head with 10.6 GiB available after the passphrase request. Do not run memory-heavy work on a serving host.
+
+On the ten-input set (three repeats each, median tok/s, mean acceptance length; the same inputs and tool as the [depth sweep](speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21)), against the attention-only repack at the same depth:
+
+| Input | Repack `l`, k=3 | Repack `g`, k=3 |
+|---|---|---|
+| Counting, 2,048-token prompt / short prompt | 46.16 (3.68) / 38.44 (3.04) | 42.24 (3.79) / 27.82 (2.47) |
+| Prose, 2,048-token prompt | 28.78 (2.16) | 25.15 (2.15) |
+| Japanese prose, tuning / evaluation | 30.16 (2.22) / 31.30 (2.37) | 26.68 / 28.94 |
+| Code, 2,048-token prompt | 38.13 (3.04) | 34.77 (3.15) |
+| Code, tuning / evaluation | 41.18 (3.28) / 40.02 (3.24) | 36.60 / 36.19 |
+| Tool round-trip, tuning / evaluation | 35.44 (2.80) / 34.62 (2.74) | 28.75 / 30.77 |
+| Mean step time over the ten inputs (ms) | 78.0 | 88.2 |
+
+The step is 10 ms shorter at the same depth on every input; where tok/s rises by more than that, the completion changed with the `lm_head` repack and drafted longer (the short counting prompt and the tuning tool input, whose k=3 completions on repack `g` had been the short-drafting variants). Teacher-forced NLL is the same to four decimals as on 2026-09-21 morning at depth 4, as it must be: the depth does not enter it.
+
+### Decode Graphs on the full model
+
+`runtime.decode_graphs = true` on the profile served on 2026-09-21 morning (repack `g`, depth 4, `enforce_eager = false`; the launcher captures decode at size 5, and the pinned runtime auto-enabled its breakable-graph mode): every one of the ten inputs decoded slower than eager, by 7.2 to 8.5 ms per step (mean 109.3 against 101.1 ms), with identical completions and acceptance; the three decode prompts gave 22.59 / 42.19 / 32.33 tok/s against 24.01 / 45.13 / 34.85. Two eager launches of the same profile the same day differed by 0.9 ms per step. Not adopted; the option stays off ([P06](optimization-overview.md#decode)).

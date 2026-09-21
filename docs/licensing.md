@@ -41,6 +41,8 @@ The pinned NVIDIA snapshot has no standalone LICENSE file; its README states MIT
 
 When redistributing weights, attach the model card and upstream MIT notice, identify the source/quantization/revision, and account for any additional code or training data you used. Place notices outside the exact Hugging Face snapshot so its official checksum/extra-file check remains reproducible. MIT does not guarantee output ownership, non-infringement or rights to your input data.
 
+This project applied those rules once: the attention and `lm_head` W4A16 repack that the reference pair serves is published as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) under MIT, with NVIDIA's model card kept beside it as `README.nvidia.md`, the Z.AI notice referenced, the source revision, tool commit and target recorded in its card and in `config.json`, and no training data added (weight-only conversion). The conversion tool's Apache-2.0 terms apply to the tool, not to the weights.
+
 ## LPA projector
 
 The independently fitted [LPA cut32 auxiliary weights](lpa.md#download-the-trained-projector) are offered under **Apache-2.0**, to the extent of the maintainer's rights. The Release package includes LICENSE, NOTICE, teacher provenance and training-data attribution. This does not relicense NVIDIA's checkpoint or the training dataset.

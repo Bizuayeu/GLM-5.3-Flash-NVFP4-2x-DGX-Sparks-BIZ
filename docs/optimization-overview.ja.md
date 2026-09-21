@@ -46,9 +46,9 @@ flowchart LR
 
 | 施策 | 仕組み | 採否 | 既定 | 代表値と条件 | 正典 |
 |---|---|---|---|---|---|
-| P01 MTP k=3 | checkpoint同梱のBF16 draftを別メタデータviewで読み、3 token先読み。外部draftモデルなし | 選定（次の実験ではk=3を優先。k=2／k≥4は未試験） | on（`mtp.enabled=true`、`num_speculative_tokens=3`） | 短文decodeはk=1→k=3で24.1 → 30.3 token/s、その前のoff→k=1で14.3 → 24.1（1系列、別実行の比較）。長文の全体throughputはほぼ不変、TTFTは微増、約7 GiB/rank追加 | [k=3](speculative-decoding.ja.md#k3の比較結果)／[k=1](speculative-decoding.ja.md#k1の実測結果) |
+| P01 MTP k=3 | checkpoint同梱のBF16 draftを別メタデータviewで読み、3 token先読み。外部draftモデルなし | 選定：配布のcheckpointでも再量子化した複製でもk=3（深さ1〜5を10入力で実測。散文だけなら2、数え上げに近い文なら4〜5が得）。採択の履歴による深さ、draftの確信度の関門、draft側の設定二つは測って不採用 | on（`mtp.enabled=true`、`num_speculative_tokens=3`） | 短文decodeはk=1→k=3で24.1 → 30.3 token/s、その前のoff→k=1で14.3 → 24.1（1系列、別実行の比較）。基準の2台ではstepが1段あたり約13.5 ms増えるので、位置別の採択率が持つ所でだけ深さが払う | [両方のcheckpointで深さ3](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)／[固定の深さの先](speculative-decoding.ja.md#固定の深さの先2026-09-21) |
 | P08 非同期index検査 | 範囲検査を省かずGPU assertへ移す。tokenあたりCPU同期は各rankで約22回、copyは両rank合計で約22回減り、GPU kernelは11回増える | 受入（独立opt-in） | async（`runtime.index_checks`） | 128出力で約0.7〜2.5%の小幅改善、短文ほど大きい | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
-| P06 CUDA Graphs | decodeのみcapture／replay | 保留（全モデル未検収。小層fixtureの2K分岐はexpert順の揺れで、固定後は消えた） | off（`runtime.decode_graphs=false`） | — | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価) |
+| P06 CUDA Graphs | decodeのみcapture／replay | 不採用：全モデルで実測（2026-09-21）、10入力すべてでeagerより1 stepあたり7〜9 ms遅く、completionは同一。選択肢としては残し、後のruntimeで測り直す | off（`runtime.decode_graphs=false`） | 深さ4で平均step 109.3 ms（eager 101.1） | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価)／[全モデル](benchmarks.ja.md#170での測定) |
 
 ### 並列・throughput
 
@@ -65,7 +65,7 @@ flowchart LR
 |---|---|---|---|---|
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
 | P05 SM121 backend選定 | 既存kernelへの候補幅適合 | SM120の直接差し替えは不採用（幅の上限2,048、候補の少ない行が許容範囲外）。SM90 FA2 wrapperは部品として数値的に使え、512行で参照の約20倍速い。KVはBF16のみ | —（参照attentionを維持） | [SM120の試験](component-validation.ja.md#padding付きnative-attentionの直接試験)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験) |
-| P16 CSA2 | 層間の候補再利用・限定再採点 | 保留（部品保持、serving適用なし） | —（未統合） | [CSA2](indexer-reuse.ja.md) |
+| P16 CSA2 | 層間の候補再利用・限定再採点 | 第一の門で中止（2026-09-21）：4層fixtureでindexerはprefillの0.1〜0.5%（2K〜32K）、全モデルの射影で200Kでも約4%で、再利用が削れるのはそのうち採点だけ。部品は保持 | —（未統合） | [CSA2](indexer-reuse.ja.md) |
 | 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：新規ビルドの参照imageで有効なruntime共通の修正。上記の初期比較は変更前。正規化後の全モデル併用回帰と[256Kの実測](benchmarks.ja.md#256kでの実入力確認)は別に記録。再ビルドしたruntimeにも検収が要る | on（新規ビルドの参照image） | [候補順序](candidate-order.ja.md) |
 
 ### 運用（性能施策ではない）
@@ -86,7 +86,9 @@ flowchart LR
 
 | 用途 | 構成 | 根拠 | 注意 |
 |---|---|---|---|
-| 生成重視・直列 | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | 1系列・eager。LPAはバッチ用opt-in（テンプレートではoff）で、共有prefixの再利用を失う。業務検収・ハーネスは未了 |
+| 生成重視・直列（コード。テンプレート） | 配布のcheckpoint、MTP k=3、unpack融合、非同期検査、FA2 prefill、APC | 1.6.0・1.7.0の既定 | 1系列・eager。固定の重みに対してlossless。業務検収・ハーネスは未了 |
+| 日本語散文・直列 | 公開したattention＋`lm_head` のW4A16再パックを `runtime.derived_checkpoint`（`requant_target = "l"`）で、MTP k=3、他はテンプレートどおり | [配信profile](benchmarks.ja.md#基準の2台の配信profile) | decodeのstepが12〜13 ms短い。教師強制NLLは固定の重みより日本語・コード・数学で4〜6%高い。losslessではないのでテンプレートにしない |
+| 長い入力のバッチprefill | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、APCは任意 | P18／P22最終併用 | LPAはバッチ用opt-in（テンプレートではoff）で近似、FA2 prefillと排他、共有prefixの再利用を失う |
 | prefix再利用重視 | APC＋LPA（P22、B=128）＋`dense`保持、MTPなし | 同一入力再利用・途中編集のA/B/A | 通常primingで共有cacheを育てる。cold処理は小幅悪化 |
 | throughput | 2系列、LPAなし、chunk 512（停止延長を許容するなら1024以上） | P13／P11 | LPAは1系列限定。4系列以上は未検収 |
 | 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 常用検収は未了 |
@@ -137,11 +139,9 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 
 ## 次の候補
 
-次の版では、[expertのtoken順の固定](server-configuration.ja.md#コマンド)で得たbit再現の基準の上で、効果が起動間のばらつきより小さくて見送った施策を測り直します。順序はdecode Graph→MTPの深さ→prefill向けのSM90 FA2 attention経路→attention射影のW4A16（P23）→再び深さで、各段はまず一致（同じtoken・不合格条件なし）を、次に速さを読み、fixture合格を全モデルの採否に格上げしません。
+1.5.0で効果が起動間のばらつきより小さくて見送った施策は、bit再現の基準の上で1.6.0と1.7.0にすべて測り直しました。FA2 prefillは採用、attentionと `lm_head` の再パックは公開した任意設定、深さは3のまま、decode Graphs・適応や関門による深さ・draft側の設定・CSA2は測って不採用です（[投機デコード](speculative-decoding.ja.md#固定の深さの先2026-09-21)、[P06](#decode)、[P16](#attention-backendindexer)）。残るのはdecode stepの外にあります：
 
-- P06 Graphs：expert順を固定した4層MTP fixtureでeagerとGraphは一致（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。全モデルA/Bはdecodeを固定9標本で読み、位置別採択率が1.00に張り付いていない（vllm#53030の兆候でない）ことを門にする。LPAはeagerのまま
-- P05 SM90 FA2のserving経路：部品は全候補幅で合格し、512行で参照の約20倍速いのでprefillの候補。切り替えはpacked FP8 cacheを保ったまま候補行をBF16に展開してカーネルへ渡し（FlashInfer 0.6.18はSM90以外のFP8 MLA KVを拒否）、P03・P19・候補順序・長文検査を再検収する。LPAとの併用は拒否
 - P24 要求単位のprefix cache無登録：単体では無害な15,025 tokenのレーン4本が80,024 tokenの会話の復元分を全て消したため、[台帳](optimization-catalog.ja.md#性能施策一覧)へ起票
-- P23 BF16のまま残る射影（`self_attn*`・`shared_experts*`・`lm_head`）のFP8 weight-only：[台帳](optimization-catalog.ja.md#性能施策一覧)に候補として起票、品質が門、未着手
 - Euryale：本リポジトリ外の投機draft研究（非公開・独立プロジェクト）。標準MTP k=3との同条件比較で品質・性能・メモリ・復旧のゲートを通した場合に限り、既定の投機経路を置き換える候補。全モデルの教師採取・学習は未着手
 - P09 FP8／BF16 KVのA/B、P20 indexer workspace、256Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA
+- 固定版vLLM：slot対応付けのguardと、MoE順・indexer top-kのpatchは、上流の修正を含む新しい固定版へ移る時に外す。その移行は上の施策すべての再検収を伴う

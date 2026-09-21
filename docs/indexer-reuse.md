@@ -2,7 +2,7 @@
 
 [日本語](indexer-reuse.ja.md)
 
-**Experimental components; not integrated into model serving.** It complements the [launch/throughput investigation](performance-investigation.md), but savings and quality effects are not assumed additive with LPA.
+**Experimental components; not integrated into model serving, and stopped at the first gate below on 2026-09-21.** On the verified four-layer fixture (one indexer layer, eager, chunk 512, one token generated) the indexer's own operations took 0.43 ms of a 501 ms prefill at 2,048 tokens, 6.26 of 1,999 ms at 8,192 and 40.2 of 8,077 ms at 32,768: 0.09%, 0.31% and 0.50%, growing about as n^1.5 while the prefill grows linearly. The full model has eleven indexer layers of the same shape, which puts the whole indexer at about 1.7% of a 32K prefill and about 4% at 200K, and the scoring and selection that reuse could remove at about half of that; the compressed-key writes and tail updates stay. That is below any improvement worth the reuse machinery, so no reuse was built. It complements the [launch/throughput investigation](performance-investigation.md), but savings and quality effects are not assumed additive with LPA.
 
 ## Contracts verified in the pinned GLM
 

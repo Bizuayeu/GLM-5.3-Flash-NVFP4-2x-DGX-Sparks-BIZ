@@ -15,6 +15,14 @@
 
 - 参照imageは、固定しているvLLMのslot対応付けのkernelにpatchを当て、block tableを行の中だけで読むようにします（marker `GLM53_SLOT_MAPPING_GUARD=1`。issue #53982に対するvLLMのpull request #54296と同じguardで、執筆時点で上流は未マージです）。これがないと、kernelはindexerのtailのscratchを置くKV groupの32要素の行を、position 128から先で1 tokenごとに1 byteずつ遠くまで読み、未割り当てのメモリに届いた時に失敗します。基準の2台の配信profileでは、約25万tokenを超える要求がすべて、両rankのCUDA illegal memory accessに終わっていました（248,954 tokenは完走、252,958 tokenは失敗、261,461 tokenは4回中4回失敗）。配布している既定は、同じ読み込みをしながら失敗していませんでした。guardを入れると、fixtureではcompute-sanitizerの不正な読み込みが0件になり、log確率はguardのないimageとbyte単位で一致します。配信profileは252,914 tokenと261,461 tokenを正答で完走し、decodeの完了文は1.6.0と一致しました。参照imageを作り直して `reference_image` を更新してください。このmarkerを要求する検査はありません。固定しているvLLMが上流の修正より先へ進んだら、patchは外します。
 
+### Documentation
+
+- MTPの深さ：配布のcheckpointにも再量子化した複製にも、一つの深さk=3を使います（ユーザー判断、2026-09-21）。深さ2〜5を基準の2台で、調整用・評価用に分けた10入力で測りました。深さはほとんどのcompletionも変えるので、表にはその旨を書いています。2026-09-19から再量子化したattention projectionを深さ4で配信していた基準の2台は、この版からk=3で配信します（[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。
+- 再量子化したcheckpoint：attention projectionと `lm_head` をW4A16 NVFP4に再パックしたもの（route l）が、attentionだけの再パック（route g）に代わって日本語散文向けの任意設定になりました。decodeのstepは全入力で12〜13 ms短く、教師強制NLLはroute gから最大1.5%（数学）しか動かず、200Kの合言葉と261,461 tokenの3か所参照は正答です。重みはNVIDIAのモデルカードを添えてMITでHugging Faceに公開しています（[台帳P23](docs/optimization-catalog.ja.md)、[ライセンス](docs/licensing.ja.md#重みのmit通知)、[起動設定](docs/server-configuration.ja.md)）。losslessではないので、テンプレートは固定の重みのままです。
+- 全モデルで測って採らなかったもの（数字は各文書に）：decodeのCUDA Graphs（eagerより1 stepあたり7〜9 ms遅い。`runtime.decode_graphs` はoffのまま）、要求の採択履歴から決める深さ、draftの確信度の関門（2台ではhostの同期の費用が得と同じだけになる）、1段目のsparse top-kをdraftの段で使い回さない設定、rank内のdraft argmax、CSA2のindexer再利用（コストの門で中止。indexerはfixtureでprefillの1%未満、全モデルの射影で200Kでも約4%）。これらの設定は配布するコードに入っていません。
+- 検証：このstackではdraft側の変更はcompletionを変えると見込みます（draftする候補が変わると、targetのBF16 logitsの同点が別の側に倒れる）。そうした変更は採択とNLLで判定し、文章の一致では判定しません。
+- README：主要な測定値の見出しから版数を外し、数字を持つbenchmarksの節を指すようにしました。確認済みの表にCSA2の行を足し、公開した任意設定を記述しています。最適化概要の「次の候補」から1.6.0と1.7.0で測った項目を外し、用途別の構成の表にコードの既定・散文向けの任意設定・バッチprefillの任意設定を並べました。
+
 ## 1.6.2 — 2026-09-20
 
 ### Fixed

@@ -30,7 +30,8 @@ vLLMは[既定での再現性を保証していません](https://github.com/vll
 - 実行物を特定します。モデル／tokenizerのrevision、image ID、sourceと読み込まれたoverlay、実効設定、対象kernelのdispatchを確認し、意図した実装が動いた証拠のない比較は無効にします。起動の識別子、sampling／thinking、入出力長、同時数、warmup、APC履歴も結果と保存します。
 - cold prefillとAPC hitを分けます。coldの入力長の梯子では各要求の早い位置に固有nonceを置き、短い入力が次の入力のprefixになるのを避け、tokenizerかusageで長さを測ります。共通system／tool部分はヒットし得るためcached-token数とサーバーログを照合し、証拠の欠落は不明のままにします。
 - 同一出力を前提とする速度比較ではcompletion hashを比べます。異なるcompletionは別条件として扱い、性能・品質の結果や失敗を残し、同一出力での改善という主張へ混ぜません。
-- 重み・量子化・投機の深さを変える場合は種類ごとに複数promptを使い、調整用と評価用の入力を分けます。種類ごとに3つ以上を仮の出発点とし、無改変armのprompt間のばらつきから数の根拠を決めます。tok/sと採択長、step/sの目安（decode tok/s÷採択長）を並べます。completionが変わると、演算自体の速さが変わらなくてもdraftの採択が変わるためです。step/sを比べるのは同じ深さのarmどうしに限ります。深いdraftは1 stepで検証する位置が多いためです。1.6.0のroute gと深さの掃引は種類ごとに1 promptで、結論もその経路の範囲に限ります。
+- 重み・量子化・投機の深さを変える場合は種類ごとに複数promptを使い、調整用と評価用の入力を分けます。種類ごとに3つ以上を仮の出発点とし、無改変armのprompt間のばらつきから数の根拠を決めます。tok/sと採択長、step/sの目安（decode tok/s÷採択長）を並べます。completionが変わると、演算自体の速さが変わらなくてもdraftの採択が変わるためです。step/sを比べるのは同じ深さのarmどうしに限ります。深いdraftは1 stepで検証する位置が多いためです。1.6.0のroute gと深さの掃引は種類ごとに1 promptで、1.7.0の掃引は調整用・評価用に分けた10入力です（[両方のcheckpointで深さ3](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。
+- draft側の変更はcompletionを変えるものと見込みます。このstackではdraftした候補が検証のbatchに入り、targetのBF16 logitsの同点が別の側に倒れるため、同じ深さでもdraftを変えると（top-kの使い回し、関門、再量子化した `lm_head`）ほとんどの入力で文章が変わり、無改変のarmは自分の文章を反復しました。そうした変更は採択と教師強制NLLで判定し、文章の一致は要件ではなく余得として扱います。
 - 同じ計測窓の送信／完了要求数・出力token数とサーバーcounter差分を照合します。背景要求の混入や説明できない不一致がある窓は制御比較から除き、値と理由を残します。counterのない既存記録は、隔離を確認できた範囲を明示します。Mia PR #139の独立TP2報告がこの区別の実例です。同報告のadaptive policy・graph範囲・scratchサイズ変更は合算で測られています。
 - 採択率の分母を明示します。生成draft数・検証候補数・実採択draft数（bonusを除く）は異なります。検証prefixを短くすれば、固定深さでの予測能力が改善しなくても率が上がり得ます（Mia PR #235）。DFlash2の結果を標準MTPへ、greedyの結果をsamplingへ転用しません。
 

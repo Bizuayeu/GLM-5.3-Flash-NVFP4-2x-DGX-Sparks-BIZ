@@ -47,7 +47,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
 - **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
 
-For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. Depths one to five have been measured: three is never the slowest on counting, prose or code, and four pays only together with locally requantized attention projections ([depths one to five](docs/speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). The distributed server template enables this serial optimized profile; see [server defaults and required assets](docs/server-configuration.md#distributed-defaults).
+For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. Depths one to five have been measured on ten inputs: prose alone would prefer two and counting-like text four or five, and three is the one depth kept for both checkpoints ([depth three for both](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21)). The distributed server template enables this serial optimized profile on the pinned weights; see [server defaults and required assets](docs/server-configuration.md#distributed-defaults). For Japanese prose there is a published option, the attention projections and `lm_head` repacked to W4A16 NVFP4, which shortens every decode step and is not lossless ([profiles by workload](docs/optimization-overview.md#profiles-by-workload)).
 
 Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified below and in the linked validation documents.
 
@@ -55,9 +55,9 @@ Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. 
 
 **Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) record the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
 
-### Headline measurements (1.6.0)
+### Headline measurements (1.7.0)
 
-Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 KV 3 GiB per rank, MTP k=3, APC, chunk 2048, FA2 prefill, one token order inside each expert, indexer top-k ties settled), one active sequence. Three-run or nine-run medians; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), which owns these numbers. The long-input rows were measured the day before the tie rule was written, on the profile without it.
+Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 KV 3 GiB per rank, MTP k=3, APC, chunk 2048, FA2 prefill, one token order inside each expert, indexer top-k ties settled), one active sequence. Three-run or nine-run medians; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers.
 
 | Measure | Result |
 |---|---|
@@ -70,18 +70,18 @@ Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 
 | Three-position reference at 256K | correct 3 of 3 with an explicit prompt; the instability reported since 1.5.0 was the old prompt's ambiguity |
 | Lowest available memory at 256K | head 6.08 GiB |
 
-**With the two optional settings the reference pair serves** (attention projections requantized locally to W4A16 NVFP4 through `runtime.derived_checkpoint`, and MTP depth 4; the requantized weights are built by the operator and not distributed here):
+**With the published option the reference pair serves** (the attention projections and `lm_head` requantized to W4A16 NVFP4, served through `runtime.derived_checkpoint`; MTP depth 3 as in the template; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)):
 
 | Measure | Result |
 |---|---|
-| Decode after a 2,048-token prompt, predictable text (counting) | **45.4 tok/s** (32.5 on the defaults) |
-| same, code / prose | 34.8 / 24.3 tok/s (28.3 / 21.0 on the defaults) |
-| Decode, 512 tokens after a fixed short prompt | 38.3 tok/s (27.2 on the defaults) |
-| 199,652-token input, one passphrase at the midpoint | 169.1 s, correct |
-| Weights per rank / lowest available memory, head | 91.8 GiB / 10.1 GiB (95.8 / 6.3 on the defaults) |
-| Cost | teacher-forced NLL 4 to 6% higher on three of four texts; identical requests still repeat bit for bit |
+| Decode after a 2,048-token prompt, predictable text (counting) | **46.2 tok/s** (32.5 on the defaults) |
+| same, code / prose | 38.2 / 28.8 tok/s (28.3 / 21.0 on the defaults) |
+| Decode step at depth 3, mean over ten inputs | 78 ms (88 ms with the attention repack alone) |
+| 199,652-token input, one passphrase at the midpoint | 169.9 s, correct |
+| 261,461-token three-position reference | 235.1 s, correct 3 of 3 |
+| Cost | teacher-forced NLL 4 to 6% higher than the defaults on three of four texts; identical requests still repeat bit for bit |
 
-How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 24 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile) and [depths one to five](docs/speculative-decoding.md#depths-one-to-five-2026-09-19-and-20) hold the numbers.
+How fast MTP decodes depends on how predictable the text is: the same profile gives 46 tok/s on counting and 29 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) and [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) hold the numbers.
 
 [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
 
@@ -100,8 +100,9 @@ How fast MTP decodes depends on how predictable the text is: the same profile gi
 | ZCode / Claude Code harness integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
 | Identical requests at temperature 0, one active sequence | Repeat bit for bit (nine of nine on three prompts, zero log-probability movement, the same NLL to four decimals) since two causes were fixed: the token order inside each expert and ties in the indexer's top-k. Three launches of the reference pair's profile produced the same completions; on the four-layer fixture launches fall into two numerical states, so a new launch is checked, not assumed; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
 | FA2 prefill (`runtime.fa2_attention`), one active sequence | Adopted and on in the template: prefill 2.2 times 1.5.0, decode on the reference path, excludes LPA; [measurements](docs/benchmarks.md#measurements-on-160) |
-| MTP depths 1 to 5 with BF16 draft, one active sequence | Measured on counting, prose, code and short prompts; the template keeps k=3; [depths one to five](docs/speculative-decoding.md#depths-one-to-five-2026-09-19-and-20) |
-| Locally requantized attention projections (`runtime.derived_checkpoint`, P23) | Optional and absent from the template. In trial use on the reference pair with MTP depth 4: decode +22 to 29%, 4.0 GiB less per rank, NLL 4 to 6% higher on three of four texts; adding the shared experts was measured and not adopted; [catalog](docs/optimization-catalog.md) |
+| MTP depths 1 to 5 with BF16 draft, one active sequence | Measured on ten inputs on both checkpoints; k=3 kept for both. Depth from acceptance history, a confidence gate on the draft, two draft-side settings and decode CUDA Graphs were measured on the full model and not adopted; [speculative decoding](docs/speculative-decoding.md#beyond-a-fixed-depth-2026-09-21) |
+| Requantized attention projections and `lm_head` (`runtime.derived_checkpoint`, P23), one active sequence | Optional and absent from the template; the reference pair serves it with k=3 and the weights are published. Decode step 12–13 ms shorter, 4.0 GiB less per rank measured on the attention repack alone, NLL 4 to 6% higher than the pinned weights on three of four texts; adding the shared experts was measured and not adopted; [serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile) / [catalog](docs/optimization-catalog.md) |
+| Cross-layer indexer reuse (CSA2, P16) | Stopped at its cost gate: the indexer is under 1% of prefill on the fixture and about 4% projected at 200K on the full model; [design and result](docs/indexer-reuse.md) |
 | Prefix caching (APC), one active sequence | Accepted for the measured serial long-prefix reuse workload (experimental); enabled in the server template; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
 | APC-first LPA (P22), one active sequence | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; LPA itself ships disabled as a batch opt-in; [contract](docs/apc-lpa-design.md) |
 | Checkpoint retention, one active sequence | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and its final combined integration is qualified separately; [contracts](docs/launch-safety.md) |

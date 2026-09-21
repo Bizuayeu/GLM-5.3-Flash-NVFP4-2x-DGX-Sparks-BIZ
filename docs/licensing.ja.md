@@ -45,6 +45,8 @@
 
 重みを再配布する場合は、モデルカードと上流MIT通知を配布物に添え、元モデル・量子化元・revisionを示してください。追加学習や変換に別のコード・データを用いた場合、その条件も別途適用されます。通知用ファイルは配布用の外側に添え、公式checksum対象のHugging Face snapshotへ追加して検証条件を壊さないでください。
 
+本プロジェクトはこの規則を一度適用しました。基準の2台が配信するattentionと `lm_head` のW4A16再パックを[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)としてMITで公開し、NVIDIAのモデルカードを `README.nvidia.md` として同梱、Z.AIの通知を参照し、元のrevision・toolのcommit・targetをカードと `config.json` に記録、学習データは足していません（weight-onlyの変換）。変換toolのApache-2.0はtoolに掛かり、重みには及びません。
+
 MITは、生成物の著作権帰属、第三者権利の非侵害、入力データの利用権を保証しません。
 
 ## LPA projector
