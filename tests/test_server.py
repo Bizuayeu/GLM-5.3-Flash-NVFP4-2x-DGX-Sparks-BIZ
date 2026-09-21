@@ -495,6 +495,38 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(q)
 
+    def test_mtp_depth_trace_is_optional_and_lands_in_a_directory_of_the_launch(self):
+        self.profile["mtp"]["enabled"] = True
+        self.assertNotIn("GLM53_DEPTH_TRACE", config.environment(self.profile, 0))
+        bare = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertNotIn(
+            "depth_trace_support", server.image_capability_checks(self.profile, bare)
+        )
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["depth_trace"] = True
+        config.validate(p)
+        # The scheduler runs on rank 0 only.
+        self.assertEqual(
+            config.environment(p, 0)["GLM53_DEPTH_TRACE"], "/depth-trace/trace.jsonl"
+        )
+        self.assertNotIn("GLM53_DEPTH_TRACE", config.environment(p, 1))
+        self.assertIs(
+            server.image_capability_checks(p, bare)["depth_trace_support"], False
+        )
+        traced = {
+            "Config": {"Env": [*bare["Config"]["Env"], "GLM53_DEPTH_TRACE_API=1"]}
+        }
+        self.assertIs(
+            server.image_capability_checks(p, traced)["depth_trace_support"], True
+        )
+        p["mtp"]["depth_trace"] = "yes"
+        with self.assertRaises(ValueError):
+            config.validate(p)
+        p["mtp"]["depth_trace"] = True
+        p["mtp"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            config.validate(p)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.
@@ -885,6 +917,17 @@ class ServerConfigTests(unittest.TestCase):
             args,
         )
         self.assertEqual(args[args.index("--memory") + 1], "112g")
+        self.assertFalse([arg for arg in args if "depth-trace" in arg])
+        self.profile["mtp"]["depth_trace"] = True
+        mount = f"{ROOT / 'records/depth-trace/test-container'}:/depth-trace"
+        for rank, mounted in ((0, True), (1, False)):
+            traced = server.command(
+                self.profile, path, rank, "test-container", ROOT / "state/test-hf"
+            )
+            self.assertEqual(mount in traced, mounted)
+            self.assertEqual(
+                "GLM53_DEPTH_TRACE=/depth-trace/trace.jsonl" in traced, mounted
+            )
         self.assertNotIn("--rm", args)
         self.assertNotIn("--privileged", args)
 

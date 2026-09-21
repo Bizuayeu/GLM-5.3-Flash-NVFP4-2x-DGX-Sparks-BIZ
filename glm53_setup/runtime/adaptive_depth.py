@@ -15,11 +15,21 @@ drafts the full depth.
 Off unless ``GLM53_ADAPTIVE_DEPTH=1``. This module imports nothing from vLLM: the pinned scheduler
 calls ``batch_depth`` while it builds a step and ``observe`` where it counts accepted drafts
 (``patch_adaptive_depth.py``).
+
+``band`` and ``probe`` are candidates for the replay on recorded step sequences
+(``glm53_setup/validation/depth_replay.py``); their defaults are the policy as it ran on the
+reference pair, and the environment does not reach them.
+
+With ``GLM53_DEPTH_TRACE=<file>`` the scheduler also appends one line per verification step
+(``trace``), whatever the policy switch says: a fixed-depth trace is what a policy is replayed on.
 """
 
+import atexit
 import itertools
+import json
 import math
 import os
+import time
 
 # Step-time fit on the reference pair (2026-09-21, records Track B stage 0): a decode step is
 # about 47 ms plus 13.5 ms per draft depth, k = 2..5.
@@ -68,8 +78,12 @@ def settings():
     }
 
 
-def worthwhile_depth(shares, base_ms, step_ms, floor=1):
-    """Deepest depth reached by climbing from the floor while the next draft pays for itself."""
+def worthwhile_depth(shares, base_ms, step_ms, floor=1, current=None, band=0.0):
+    """Deepest depth reached by climbing from the floor while the next draft pays for itself.
+
+    With a band, a depth already in use (``index < current``) is kept down to ``1 - band`` of its
+    threshold and a new one is taken only above ``1 + band`` of it.
+    """
     # S_i cannot exceed S_(i-1). A position past the current depth keeps its old estimate while
     # the shallower ones fall, so each share is read through the running minimum; otherwise an
     # untouched 1.0 behind a fallen S_(i-1) sends the depth back up without any evidence.
@@ -78,7 +92,8 @@ def worthwhile_depth(shares, base_ms, step_ms, floor=1):
     expected_tokens = 1.0 + sum(shares[:depth])
     for index in range(depth, len(shares)):
         step_time = base_ms + step_ms * index
-        if shares[index] * step_time <= step_ms * expected_tokens:
+        margin = 1.0 - band if current is not None and index < current else 1.0 + band
+        if shares[index] * step_time <= step_ms * expected_tokens * margin:
             break
         depth = index + 1
         expected_tokens += shares[index]
@@ -94,15 +109,24 @@ class DepthPolicy:
         alpha=ALPHA,
         probe_every=PROBE_EVERY,
         floor=1,
+        band=0.0,
+        probe="ceiling",
     ):
         if ceiling < 1:
             raise ValueError("The depth ceiling must be at least 1")
+        if probe not in ("ceiling", "next"):
+            raise ValueError("probe must be ceiling or next")
+        if not 0.0 <= band < 1.0:
+            raise ValueError("band must be in [0, 1)")
         self.ceiling = ceiling
         self.base_ms = base_ms
         self.step_ms = step_ms
         self.alpha = alpha
         self.probe_every = probe_every
         self.floor = floor
+        self.band = band
+        self.probe = probe
+        self.depth = ceiling
         self.shares = [1.0] * ceiling
         self.steps = 0
 
@@ -114,9 +138,15 @@ class DepthPolicy:
 
     def next_depth(self):
         self.steps += 1
+        self.depth = worthwhile_depth(
+            self.shares, self.base_ms, self.step_ms, self.floor, self.depth, self.band
+        )
         if self.probe_every and self.steps % self.probe_every == 0:
-            return self.ceiling
-        return worthwhile_depth(self.shares, self.base_ms, self.step_ms, self.floor)
+            # "next" tries one draft more than the depth in use instead of the full depth.
+            if self.probe == "ceiling":
+                return self.ceiling
+            return min(self.depth + 1, self.ceiling)
+        return self.depth
 
 
 def _policy(request, ceiling):
@@ -139,3 +169,43 @@ def batch_depth(requests, ceiling):
 
 def observe(request, ceiling, drafted, accepted):
     _policy(request, ceiling).observe(drafted, accepted)
+
+
+# One line per verification step, as a JSON array:
+#   [request id, step of the request, output tokens before the step, drafted, accepted,
+#    depth asked for the next step, monotonic nanoseconds]
+# A step at output position p with a accepted drafts emits tokens p+1..p+a+1, so the next step of
+# the request starts at p+a+1 and the positions tie the steps to the text.
+TRACE_FLUSH_SECONDS = 1.0
+_trace = None
+
+
+def trace_enabled():
+    return bool(os.environ.get("GLM53_DEPTH_TRACE"))
+
+
+def _close_trace():
+    if _trace is not None:
+        _trace["file"].close()
+
+
+def trace(request, position, drafted, accepted, next_depth):
+    """Append one step. Python buffers the writes; the buffer goes to disk at most once a second.
+
+    The cost is one formatted write per step beside a step of tens of milliseconds. What can be
+    lost when the container is killed is the last second of the last request.
+    """
+    global _trace
+    if _trace is None:
+        path = os.environ["GLM53_DEPTH_TRACE"]
+        _trace = {"file": open(path, "a", encoding="utf-8"), "flushed": 0.0}
+        atexit.register(_close_trace)
+    step = getattr(request, "glm53_trace_step", 0)
+    request.glm53_trace_step = step + 1
+    now = time.monotonic_ns()
+    _trace["file"].write(
+        f"[{json.dumps(request.request_id)},{step},{position},{drafted},{accepted},{next_depth},{now}]\n"
+    )
+    if now - _trace["flushed"] >= TRACE_FLUSH_SECONDS * 1e9:
+        _trace["file"].flush()
+        _trace["flushed"] = now

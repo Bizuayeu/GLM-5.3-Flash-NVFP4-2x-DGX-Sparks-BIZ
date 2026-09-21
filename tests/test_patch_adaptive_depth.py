@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from glm53_setup.runtime import adaptive_depth
 from glm53_setup.runtime import patch_adaptive_depth as patch
 
 # The lines of vLLM 385dce36 that the patch touches, arranged so each excerpt still runs.
@@ -28,7 +30,9 @@ class Scheduler:
 
         return num_spec_tokens_to_schedule
 
-    def update_from_output(self, request, scheduled_spec_token_ids, generated):
+    def update_from_output(
+        self, request, scheduled_spec_token_ids, generated, scheduler_output=None
+    ):
         if scheduled_spec_token_ids:
             if generated:
                 num_draft_tokens = len(scheduled_spec_token_ids)
@@ -168,6 +172,34 @@ class SchedulerPatchTests(unittest.TestCase):
             # A request without evidence still asks for the ceiling; the step takes the deepest.
             self.assertEqual(patched.schedule({"a": 2, "b": 6}), 5)
             self.assertEqual(patched.schedule({}), 5)
+
+    def test_the_trace_is_written_with_the_policy_off_and_only_when_asked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trace.jsonl"
+            request = SimpleNamespace(request_id="r-1", num_output_tokens=7)
+            output = SimpleNamespace(num_spec_tokens_to_schedule=5)
+            with mock.patch.dict(os.environ, clear=True):
+                quiet = scheduler(requests={"a": request})
+                quiet.update_from_output(request, [-1] * 5, [11, 12, 13], output)
+                self.assertFalse(path.exists())
+            with (
+                mock.patch.dict(
+                    os.environ, {"GLM53_DEPTH_TRACE": str(path)}, clear=True
+                ),
+                mock.patch.object(adaptive_depth, "_trace", None),
+            ):
+                traced = scheduler(requests={"a": request})
+                self.assertFalse(traced._glm53_adaptive_depth)
+                traced.update_from_output(request, [-1] * 5, [11, 12, 13], output)
+                request.num_output_tokens = 10
+                traced.update_from_output(request, [-1] * 5, [14], output)
+                adaptive_depth._trace["file"].close()
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual(
+                [row[:6] for row in rows],
+                [["r-1", 0, 7, 5, 2, 5], ["r-1", 1, 10, 5, 0, 5]],
+            )
+            self.assertLessEqual(rows[0][6], rows[1][6])
 
     def test_a_single_draft_depth_has_nothing_to_adapt(self):
         with mock.patch.dict(os.environ, {"GLM53_ADAPTIVE_DEPTH": "1"}, clear=True):

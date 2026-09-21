@@ -9,7 +9,9 @@ adds the reader together with CUDA-graph support this deployment does not use). 
 
 - ``scheduler.py``: with ``GLM53_ADAPTIVE_DEPTH=1`` the step's depth comes from
   ``adaptive_depth.batch_depth`` and every counted verification feeds ``adaptive_depth.observe``.
-  Without the variable the scheduler emits the configured depth, as before.
+  Without the variable the scheduler emits the configured depth, as before. With
+  ``GLM53_DEPTH_TRACE=<file>`` every counted verification is also appended to that file
+  (``adaptive_depth.trace``), with the policy on or off.
 - ``model_runner.py``: the depth travels with ``ExecuteModelState`` to the draft call, and the
   synchronous scheduler gets that many placeholders back.
 - ``autoregressive/speculator.py``: the draft loops stop at that depth. The draft buffer keeps its
@@ -53,7 +55,8 @@ SCHEDULER_EDITS = (
         "        self.num_lookahead_tokens = vllm_config.num_lookahead_tokens\n"
         "        self._glm53_adaptive_depth = (\n"
         "            self.num_spec_tokens > 1 and _glm53_adaptive_depth.enabled()\n"
-        "        )\n",
+        "        )\n"
+        "        self._glm53_depth_trace = _glm53_adaptive_depth.trace_enabled()\n",
     ),
     (
         "            num_spec_tokens_to_schedule = self.dynamic_sd_lookup[\n"
@@ -77,6 +80,14 @@ SCHEDULER_EDITS = (
         "                if self._glm53_adaptive_depth:\n"
         "                    _glm53_adaptive_depth.observe(\n"
         "                        request, self.num_spec_tokens, num_draft_tokens, num_accepted\n"
+        "                    )\n"
+        "                if self._glm53_depth_trace:\n"
+        "                    _glm53_adaptive_depth.trace(\n"
+        "                        request,\n"
+        "                        request.num_output_tokens,\n"
+        "                        num_draft_tokens,\n"
+        "                        num_accepted,\n"
+        "                        scheduler_output.num_spec_tokens_to_schedule,\n"
         "                    )\n",
     ),
 )

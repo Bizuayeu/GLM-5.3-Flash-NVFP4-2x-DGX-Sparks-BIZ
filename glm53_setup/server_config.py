@@ -50,6 +50,8 @@ def decode_graphs(profile):
 
 # Keys a profile may omit, per category. The shipped example file is the
 # schema; these are the entries whose absence is not a typo.
+# Rank 0 writes it; server.command mounts records/depth-trace/<container name> at its directory.
+DEPTH_TRACE_FILE = "/depth-trace/trace.jsonl"
 OPTIONAL_KEYS = {
     "server.runtime": frozenset(
         {
@@ -64,7 +66,9 @@ OPTIONAL_KEYS = {
             "fa2_attention",
         }
     ),
-    "server.mtp": frozenset({"local_argmax_reduction", "adaptive_depth"}),
+    "server.mtp": frozenset(
+        {"local_argmax_reduction", "adaptive_depth", "depth_trace"}
+    ),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
@@ -311,6 +315,10 @@ def check_speculation(profile):
         raise ValueError("mtp.local_argmax_reduction must be true or false")
     if type(profile["mtp"].get("adaptive_depth", False)) is not bool:
         raise ValueError("mtp.adaptive_depth must be true or false")
+    if type(profile["mtp"].get("depth_trace", False)) is not bool:
+        raise ValueError("mtp.depth_trace must be true or false")
+    if profile["mtp"].get("depth_trace") and not profile["mtp"]["enabled"]:
+        raise ValueError("mtp.depth_trace needs mtp.enabled")
     if profile["mtp"].get("adaptive_depth"):
         if not profile["mtp"]["enabled"]:
             raise ValueError("mtp.adaptive_depth needs mtp.enabled")
@@ -491,6 +499,9 @@ def environment(profile, rank):
     if "adaptive_depth" in profile["mtp"]:
         # The scheduler reads it; absent, the depth is the configured one on every step.
         result["GLM53_ADAPTIVE_DEPTH"] = str(int(profile["mtp"]["adaptive_depth"]))
+    if profile["mtp"].get("depth_trace") and rank == 0:
+        # The scheduler lives on rank 0; server.command mounts a per-launch directory there.
+        result["GLM53_DEPTH_TRACE"] = DEPTH_TRACE_FILE
     if "stable_indexer_topk" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_STABLE_INDEXER_TOPK"] = str(

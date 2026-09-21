@@ -11,7 +11,7 @@ import subprocess
 import time
 from collections import namedtuple
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import agreement, capacity, host, model_http, mojibake, warmup
 from . import server_config as settings
@@ -123,6 +123,9 @@ def command(profile, config_path, rank, name, cache=None):
         ]
     if profile["profiling"]["enabled"]:
         args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
+    if profile["mtp"].get("depth_trace") and rank == 0:
+        target = str(PurePosixPath(settings.DEPTH_TRACE_FILE).parent)
+        args += ["-v", f"{ROOT / 'records/depth-trace' / name}:{target}"]
     for key, value in settings.environment(profile, rank).items():
         args += ["-e", f"{key}={value}"]
     return args + [
@@ -196,6 +199,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             "adaptive_depth_support",
             "GLM53_ADAPTIVE_DEPTH_API=1",
             profile["mtp"].get("adaptive_depth", False),
+        ),
+        (
+            "depth_trace_support",
+            "GLM53_DEPTH_TRACE_API=1",
+            profile["mtp"].get("depth_trace", False),
         ),
         (
             "indexer_topk_support",
@@ -815,6 +823,8 @@ def start_rank(cli, args, profile, result):
     (ROOT / "state/tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
     if profile["profiling"]["enabled"]:
         (ROOT / "records/profiles" / name).mkdir(parents=True)
+    if profile["mtp"].get("depth_trace") and args.rank == 0:
+        (ROOT / "records/depth-trace" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)
     write_json(record / "preflight.json", result)
     write_json(record / "settings.json", profile)
