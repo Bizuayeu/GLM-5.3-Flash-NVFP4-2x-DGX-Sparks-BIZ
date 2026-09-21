@@ -75,6 +75,13 @@ class StopTests(unittest.TestCase):
             self.run_gate(self.speculator({2: [0.9, 0.9, 0.9, 0.9]}), 1), 5
         )
 
+    def test_the_two_ends_the_fixture_uses(self):
+        # 1 stops even a softmax saturated at exactly 1.0; 0 never stops.
+        sure = self.speculator({2: [1.0, 1.0, 1.0, 1.0]})
+        self.assertEqual(self.run_gate(sure, 1, threshold=1.0), 1)
+        unsure = self.speculator({2: [1e-6] * 4})
+        self.assertEqual(self.run_gate(unsure, 1, threshold=0.0), 5)
+
     def test_a_batch_drafts_as_deep_as_its_most_confident_request(self):
         speculator = self.speculator(
             {2: [0.3, 0.2, 0.1, 0.1], 0: [0.9, 0.85, 0.5, 0.9]}

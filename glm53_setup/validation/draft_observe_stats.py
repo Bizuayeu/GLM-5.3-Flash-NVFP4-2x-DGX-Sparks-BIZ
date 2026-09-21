@@ -123,7 +123,7 @@ def gated_depth(row, tau):
     Its forward is already paid when its confidence is known, so the rule stops *after* it.
     """
     for index, probability in enumerate(row["dp"]):
-        if probability < tau:
+        if probability <= tau:
             return index + 1
     return len(row["dp"])
 

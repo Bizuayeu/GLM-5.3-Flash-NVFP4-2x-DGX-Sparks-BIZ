@@ -2,7 +2,7 @@
 
 On the reference pair the draft's own top-1 probability predicts whether its token holds (AUC
 0.89 at every depth, 2026-09-21). After each draft depth the patched speculator asks ``stop``:
-when the top-1 probability of the depth just drafted is under ``tau`` for every request of the
+when the top-1 probability of the depth just drafted is at or under ``tau`` for every request of the
 batch, drafting ends there. That draft is kept, its forward is already paid. The first depth is
 always drafted. With several requests the batch drafts as deep as its most confident request.
 
@@ -52,7 +52,8 @@ def stop(speculator, num_reqs, drafted):
     if buffers is None:
         return False
     rows = speculator.idx_mapping[:num_reqs].long()
-    flag = (buffers[0][rows, drafted - 1, 0].max() < threshold).int()
+    # At or under: a float32 softmax saturates at exactly 1.0, and tau = 1 must always stop.
+    flag = (buffers[0][rows, drafted - 1, 0].max() <= threshold).int()
     flag = _broadcast(flag)
     if not flag.item():
         return False
