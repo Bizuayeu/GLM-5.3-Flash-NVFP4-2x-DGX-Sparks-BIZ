@@ -572,6 +572,25 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(q)
 
+    def test_mtp_index_share_is_optional_and_passed_through(self):
+        # The checkpoint's config says the draft reuses its first step's sparse top-k on later
+        # steps. Absent, vLLM follows the checkpoint and the speculative config is unchanged.
+        self.profile["mtp"]["enabled"] = True
+        args = config.serve_args(self.profile, 0, "/hf/mtp-view")
+        spec = json.loads(args[args.index("--speculative-config") + 1])
+        self.assertNotIn("index_share_for_mtp_iteration", spec)
+        for value in (True, False):
+            p = copy.deepcopy(self.profile)
+            p["mtp"]["index_share"] = value
+            config.validate(p)
+            args = config.serve_args(p, 0, "/hf/mtp-view")
+            spec = json.loads(args[args.index("--speculative-config") + 1])
+            self.assertIs(spec["index_share_for_mtp_iteration"], value)
+        p = copy.deepcopy(self.profile)
+        p["mtp"]["index_share"] = 0
+        with self.assertRaises(ValueError):
+            config.validate(p)
+
     def test_decode_graphs_is_the_positive_switch(self):
         # One-stop true/false in the profile; enforce_eager stays readable as the
         # legacy spelling and may not contradict it.

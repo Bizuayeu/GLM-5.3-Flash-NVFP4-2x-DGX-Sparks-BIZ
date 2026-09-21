@@ -69,7 +69,13 @@ OPTIONAL_KEYS = {
         }
     ),
     "server.mtp": frozenset(
-        {"local_argmax_reduction", "adaptive_depth", "depth_trace", "draft_observe"}
+        {
+            "local_argmax_reduction",
+            "adaptive_depth",
+            "depth_trace",
+            "draft_observe",
+            "index_share",
+        }
     ),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
@@ -315,6 +321,8 @@ def check_speculation(profile):
         raise ValueError("MTP depth must be an integer from 1 to 5")
     if type(profile["mtp"].get("local_argmax_reduction", False)) is not bool:
         raise ValueError("mtp.local_argmax_reduction must be true or false")
+    if type(profile["mtp"].get("index_share", True)) is not bool:
+        raise ValueError("mtp.index_share must be true or false")
     if type(profile["mtp"].get("adaptive_depth", False)) is not bool:
         raise ValueError("mtp.adaptive_depth must be true or false")
     if type(profile["mtp"].get("depth_trace", False)) is not bool:
@@ -669,6 +677,10 @@ def apply_speculation(args, profile):
         # all-gathers the full logits on every draft step before the argmax; this
         # takes the maximum on each rank and gathers only those.
         spec["use_local_argmax_reduction"] = profile["mtp"]["local_argmax_reduction"]
+    if "index_share" in profile["mtp"]:
+        # The checkpoint sets index_share_for_mtp_iteration: draft steps after the first
+        # reuse the first step's sparse top-k. false makes every draft step select its own.
+        spec["index_share_for_mtp_iteration"] = profile["mtp"]["index_share"]
     args += ["--speculative-config", json.dumps(spec)]
 
 
