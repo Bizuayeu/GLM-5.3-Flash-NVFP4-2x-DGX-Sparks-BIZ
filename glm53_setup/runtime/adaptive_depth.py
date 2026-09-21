@@ -17,6 +17,7 @@ calls ``batch_depth`` while it builds a step and ``observe`` where it counts acc
 (``patch_adaptive_depth.py``).
 """
 
+import itertools
 import math
 import os
 
@@ -69,6 +70,10 @@ def settings():
 
 def worthwhile_depth(shares, base_ms, step_ms, floor=1):
     """Deepest depth reached by climbing from the floor while the next draft pays for itself."""
+    # S_i cannot exceed S_(i-1). A position past the current depth keeps its old estimate while
+    # the shallower ones fall, so each share is read through the running minimum; otherwise an
+    # untouched 1.0 behind a fallen S_(i-1) sends the depth back up without any evidence.
+    shares = list(itertools.accumulate(shares, min))
     depth = min(floor, len(shares))
     expected_tokens = 1.0 + sum(shares[:depth])
     for index in range(depth, len(shares)):

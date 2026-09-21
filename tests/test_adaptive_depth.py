@@ -40,6 +40,20 @@ class ThresholdTests(unittest.TestCase):
     def test_the_climb_stops_at_the_first_depth_that_does_not_pay(self):
         self.assertEqual(worthwhile_depth([0.9, 0.1, 0.9, 0.9], 47.0, 13.5), 1)
 
+    def test_an_untouched_deep_estimate_is_read_through_the_shallower_ones(self):
+        # Fixture run 2026-09-21: pinned at 2 with a prohibitive draft cost, S_1 + S_2 fell
+        # below 1 while S_3..S_5 still held their initial 1.0, and the climb went to 5.
+        shares = [0.3, 0.1, 1.0, 1.0, 1.0]
+        self.assertEqual(worthwhile_depth(shares, 47.0, 1e9, floor=2), 2)
+        self.assertEqual(worthwhile_depth(shares, 47.0, 13.5), 1)
+        self.assertEqual(shares, [0.3, 0.1, 1.0, 1.0, 1.0])
+
+    def test_a_pinned_floor_holds_whatever_is_observed(self):
+        policy = DepthPolicy(5, step_ms=1e9, probe_every=0, floor=2)
+        for accepted in [0, 0, 2, 0, 1, 0, 0, 0, 2, 0] * 40:
+            self.assertEqual(policy.next_depth(), 2)
+            policy.observe(2, accepted)
+
     def test_free_drafts_go_to_the_ceiling_and_costly_ones_stay_at_the_floor(self):
         self.assertEqual(worthwhile_depth(PROSE[:4] + [0.01], 47.0, 0.0), 5)
         self.assertEqual(worthwhile_depth(COUNT, 47.0, 1e9), 1)
