@@ -16,122 +16,32 @@ The stack is **Z.ai's original model → NVIDIA's distributed NVFP4 checkpoint �
 |---|---|
 | Original model | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
 | Checkpoint and download source | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4); [runtime.lock.json](config/runtime.lock.json) owns the fixed revision |
-| This distribution's role | Acquire and verify weights, adapt the runtime for GB10, launch and evaluate performance/quality. The distributed defaults serve NVIDIA's base checkpoint as it is, without project-specific requantization or fine-tuning. Serving a locally requantized copy is an [optional setting](docs/server-configuration.md#distributed-defaults) that an operator builds and enables; nothing requantized is distributed here |
+| This distribution's role | Acquire and verify weights, adapt the runtime for GB10, launch and evaluate performance/quality. The distributed defaults serve NVIDIA's base checkpoint as it is, without project-specific requantization or fine-tuning. Serving a requantized copy is an [optional setting](docs/server-configuration.md#distributed-defaults) that an operator enables; nothing requantized is bundled in this repository |
 | Hardware | Two Linux ARM64 systems, each with GB10, 128 GB-class unified memory and NVIDIA GPU-enabled Docker. TP=2 partitions the model over a QSFP/RoCE connection |
 | Tested scope | Published measurements are from MSI EdgeXpert. Other DGX Spark-compatible systems require driver/GPU/memory/fabric checks in the [setup runbook](SETUP.md#1-collect-inputs-and-inspect-both-hosts); a product name alone does not qualify them. Windows supports management/CPU checks; inference runs on the Linux hosts |
 | Storage | Weights live in each Linux host's Hugging Face cache. Reserve approximately 205 GB of disk per host plus images and working space. Each host stores the complete checkpoint even with TP=2; partitioning happens at load time. [Paths and verification](docs/operations.md#artifact-storage-and-paths) |
+| Server configuration | [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client. The distributed template enables the serial optimized profile on the pinned weights; [server defaults and required assets](docs/server-configuration.md#distributed-defaults) |
 
 The source checkout contains code, pinned references and build instructions. The base checkpoint and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; the trained LPA auxiliary projector is available as a separate [GitHub Release asset](docs/lpa.md#download-the-trained-projector). See [artifact roles, package contents and storage](docs/operations.md#artifact-storage-and-paths).
 
 NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe. See [precision and validation scope](docs/validation.md).
 
-Licensing at a glance. Each artifact keeps its own terms; obligations and the rationale are in the [licensing guide](docs/licensing.md), provenance in the [third-party notices](THIRD_PARTY_NOTICES.md).
+[LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed server template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path; its quality/speed acceptance is separate from the verified scope below.
+
+### Licensing at a glance
+
+Each artifact keeps its own terms; obligations and the rationale are in the [licensing guide](docs/licensing.md), provenance in the [third-party notices](THIRD_PARTY_NOTICES.md).
 
 | Artifact | License | Where it comes from |
 |---|---|---|
 | Original setup code and documents | **Apache-2.0** | This repository |
 | GLM-5.3-Flash NVFP4 weights | **MIT** (stated in the pinned NVIDIA model card; upstream Z.ai model is MIT) | Downloaded by the operator; not bundled |
+| Attention and `lm_head` W4A16 repack (the published option) | **MIT**, with NVIDIA's model card beside it | Optional [Hugging Face weights](docs/licensing.md#weight-notices); outside Git |
 | LPA cut32 auxiliary projector | **Apache-2.0**; training-data notices retained separately | Optional [Release asset](docs/lpa.md#download-the-trained-projector); outside Git |
 | Built container image | Per bundled component (CUDA, Torch, NCCL and others); not treated as one blanket license | Built by the operator from the pinned official base image |
 | ZCode / Claude Code harnesses | Each product's own terms | Installed separately; nothing is relicensed here |
 
-Distributing this repository as source, pinned references and build steps requires Apache-2.0 compliance plus retention of the copyright and license notices of the adapted third-party code (MIT and Apache). Redistributing weights or built images adds those artifacts' conditions. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution.
-
-See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact. [Harness integration](docs/harnesses.md) covers official ZCode and experimental Claude Code connectivity; both are required acceptance targets, and that document is the single source for their run status.
-
-## Business-use objectives (BIZ)
-
-This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems easier to evaluate, adapt and operate for business use**. Its engineering work covers three connected concerns:
-
-- **License and provenance selection:** prefer commercially usable MIT/Apache components, pin their origin and preserve notices. The [licensing guide](docs/licensing.md) distinguishes the terms for code, weights, containers and harnesses.
-- **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
-- **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
-
-For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model. Depths one to five have been measured on ten inputs: prose alone would prefer two and counting-like text four or five, and three is the one depth kept for both checkpoints ([depth three for both](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21)). The distributed server template enables this serial optimized profile on the pinned weights; see [server defaults and required assets](docs/server-configuration.md#distributed-defaults). For Japanese prose there is a published option, the attention projections and `lm_head` repacked to W4A16 NVFP4, which shortens every decode step and is not lossless ([profiles by workload](docs/optimization-overview.md#profiles-by-workload)).
-
-Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified below and in the linked validation documents.
-
-## What has been verified
-
-**Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** See [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) for the earlier speed/tool-eval results, including the unmet Safety Gate; [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) record the checks behind the current defaults, and [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative.
-
-### Headline measurements (1.7.0)
-
-Two GB10 systems, TP=2, the distributed default profile (256K, image input, FP8 KV 3 GiB per rank, MTP k=3, APC, chunk 2048, FA2 prefill, one token order inside each expert, indexer top-k ties settled), one active sequence. Three-run or nine-run medians; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers.
-
-| Measure | Result |
-|---|---|
-| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement (prose, counting, code) |
-| Prefill, 38,962-token prompt | 1,271.6 tok/s (569.8 on 1.5.0) |
-| Decode, 512 tokens after a fixed short prompt | 27.17 tok/s (27.14–27.69) |
-| Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s |
-| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct (462.8 s on 1.5.0) |
-| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs |
-| Three-position reference at 256K | correct 3 of 3 with an explicit prompt; the instability reported since 1.5.0 was the old prompt's ambiguity |
-| Lowest available memory at 256K | head 6.08 GiB |
-
-**With the published option the reference pair serves** (the attention projections and `lm_head` requantized to W4A16 NVFP4, served through `runtime.derived_checkpoint`; MTP depth 3 as in the template; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)):
-
-| Measure | Result |
-|---|---|
-| Decode after a 2,048-token prompt, predictable text (counting) | **46.2 tok/s** (32.5 on the defaults) |
-| same, code / prose | 38.2 / 28.8 tok/s (28.3 / 21.0 on the defaults) |
-| Decode step at depth 3, mean over ten inputs | 78 ms (88 ms with the attention repack alone) |
-| 199,652-token input, one passphrase at the midpoint | 169.9 s, correct |
-| 261,461-token three-position reference | 235.1 s, correct 3 of 3 |
-| Cost | teacher-forced NLL 4 to 6% higher than the defaults on three of four texts; identical requests still repeat bit for bit |
-
-How fast MTP decodes depends on how predictable the text is: the same profile gives 46 tok/s on counting and 29 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) and [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) hold the numbers.
-
-[One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client.
-
-[LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed server template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path. Its quality/speed acceptance is separate from the baseline below.
-
-| Scope | Status |
-|---|---|
-| Pinned checkpoint download and official checksum verification | Implemented |
-| Official ARM64 image preparation and reference-image build | Implemented |
-| Candidate-preserving NoPE reference attention | GPU-tested |
-| Four-layer, single-GB10 fixture with Marlin W4A16 | Tested generation and state comparisons passed, including an 8,705-token input |
-| Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria were not met |
-| Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
-| Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [measured conditions and limits](docs/nccl-validation.md) |
-| Full 45-layer TP=2 reference profile, one active sequence | Loaded; basic API text/tools checked; [initial benchmarks](docs/benchmarks.md) measured |
-| ZCode / Claude Code harness integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run** — status per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status) |
-| Identical requests at temperature 0, one active sequence | Repeat bit for bit (nine of nine on three prompts, zero log-probability movement, the same NLL to four decimals) since two causes were fixed: the token order inside each expert and ties in the indexer's top-k. Three launches of the reference pair's profile produced the same completions; on the four-layer fixture launches fall into two numerical states, so a new launch is checked, not assumed; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
-| FA2 prefill (`runtime.fa2_attention`), one active sequence | Adopted and on in the template: prefill 2.2 times 1.5.0, decode on the reference path, excludes LPA; [measurements](docs/benchmarks.md#measurements-on-160) |
-| MTP depths 1 to 5 with BF16 draft, one active sequence | Measured on ten inputs on both checkpoints; k=3 kept for both. Depth from acceptance history, a confidence gate on the draft, two draft-side settings and decode CUDA Graphs were measured on the full model and not adopted; [speculative decoding](docs/speculative-decoding.md#beyond-a-fixed-depth-2026-09-21) |
-| Requantized attention projections and `lm_head` (`runtime.derived_checkpoint`, P23), one active sequence | Optional and absent from the template; the reference pair serves it with k=3 and the weights are published. Decode step 12–13 ms shorter, 4.0 GiB less per rank measured on the attention repack alone, NLL 4 to 6% higher than the pinned weights on three of four texts; adding the shared experts was measured and not adopted; [serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile) / [catalog](docs/optimization-catalog.md) |
-| Cross-layer indexer reuse (CSA2, P16) | Stopped at its cost gate: the indexer is under 1% of prefill on the fixture and about 4% projected at 200K on the full model; [design and result](docs/indexer-reuse.md) |
-| Prefix caching (APC), one active sequence | Accepted for the measured serial long-prefix reuse workload (experimental); enabled in the server template; [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
-| APC-first LPA (P22), one active sequence | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; LPA itself ships disabled as a batch opt-in; [contract](docs/apc-lpa-design.md) |
-| Checkpoint retention, one active sequence | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and its final combined integration is qualified separately; [contracts](docs/launch-safety.md) |
-| Two-active-sequence batching, Expert Parallel, PP2, fused unpack, async index checks | Independently measured; two sequences and async checks accepted within scope, EP and PP2 not adopted, fused unpack enabled in the server template; [overview](docs/optimization-overview.md) |
-| Image input (vision) at 200K and 256K, one active sequence | One synthetic image answered correctly at both lengths, text/tool regressions passed, video rejected; one image read through a ZCode tool call described correctly; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
-| Long Japanese and Korean output, one active sequence | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
-| Video input, full application quality, production reliability and maximum performance | **Not validated** |
-
-The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
-
-[Canonical sparse candidate ordering](docs/candidate-order.md) is a shared GLM runtime change, enabled by default in newly built reference images. Updating source requires a rebuild; existing images and containers do not acquire the patch automatically. The [setup runbook](SETUP.md#4-prepare-images-and-test-the-reference-implementation) makes this an explicit installation step. The initial optimization comparisons used pre-change images. The candidate-order guide above records the subsequent full-model combined regression; [release measurements](docs/benchmarks.md#release-candidate-measurements) cover the earlier 200K combination; [image input at 200K](docs/vision.md) covers the current context/KV defaults and [256K checks](docs/benchmarks.md#real-input-checks-at-256k) the text-only alternative. A runtime rebuilt at another site still needs qualification.
-
-## Related research outside this repository
-
-**Euryale** is a separate, unpublished research project that proposes several draft tokens from a frozen model's intermediate representations with a light auxiliary proposer, taking GLM-5.3-Flash on two GB10 hosts as its first target. It is not part of this distribution and, beyond the canonical candidate ordering described above, changes nothing in this repository's checkpoint, runtime or defaults. Its speed, quality and memory advantage over the checkpoint's standard MTP is unproven: a four-layer fixture has been checked at effective draft widths 5–12, while full-model teacher capture, proposer training and same-condition comparison have not started. The canonical candidate ordering above is a shared runtime change that came out of that work. Euryale would replace MTP k=3 as the default speculation path only after a same-condition comparison passes its quality, performance, memory and recovery gates, judged with the [catalog's separation](docs/optimization-catalog.md#functional-acceptance-and-defaults) of functional acceptance, performance adoption, defaults and combined-mode acceptance; until then MTP k=3 remains the measured candidate.
-
-### Other GLM-5.3-Flash recipes for DGX Spark systems
-
-Several public recipes serve the same model on the same class of hardware with different engines, quantization and trade-offs. They are worth comparing before choosing one. This table owns their links, their licenses as read on 2026-09-18 (0xSero on 2026-09-20) and what this repository took from each; other documents cite them by name and pull request only. Code that was adapted carries its notice in [third-party notices](THIRD_PARTY_NOTICES.md).
-
-| Recipe | License | What this repository took from it |
-|---|---|---|
-| [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster), preserving the kingjones30 recipe | Apache-2.0 / MIT | **Code adapted:** the NoPE zero-padding patch structure and recipe |
-| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node) and the [Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0 (code), MIT (weights) | No code, and no requantized weights are distributed here. Its W4A16 NVFP4 requantization of the BF16 attention projections was evaluated as P23: not adopted on the first full-model reading, measured again once identical requests repeated, and in trial use on the reference pair since 2026-09-19 through `runtime.derived_checkpoint`; the measurements are in the [optimization catalog](docs/optimization-catalog.md) |
-| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | No code. Mechanisms and measurements: warmup ladder, stall detection, KV capacity readout, the NCCL channel setting, launch-safety requirements, field runbooks |
-| [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | No code. The SM90 attention path and the foreign-container launch guard as reference points |
-| [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | No code. Its zero-RoPE shim and reduced `index_topk` as a comparison for the attention probes |
-| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results |
-| [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark) and the [EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT (repository code), MIT (model card for the separate weights) | No code or weights adopted. Reference for the mosaic quality panel, cold/warm measurements and verification that an overlay was actually loaded. The single-Spark mcg MTP recipe and the mul1 mosaic use different artifacts and runtimes; their speed, quality and MTP results must not be combined |
+Distributing this repository as source, pinned references and build steps requires Apache-2.0 compliance plus retention of the copyright and license notices of the adapted third-party code (MIT and Apache). Redistributing weights or built images adds those artifacts' conditions. The setup does not require EXL3/TR3 weights, DFlash2 weights, or Mia's current AGPL distribution. See [commercial use, modification and redistribution](docs/licensing.md) for permissions and obligations by artifact.
 
 ## Prerequisites
 
@@ -153,7 +63,7 @@ python -m glm53_setup --help
 python -m glm53_setup --version
 ~~~
 
-This repository is a checkout-based operator toolkit, not a published PyPI package.
+This repository is a checkout-based operator toolkit, not a published PyPI package. The ordered deployment gates, from host inspection to acceptance, are in the [setup runbook](SETUP.md).
 
 ### Prepare assets
 
@@ -166,13 +76,102 @@ python -m glm53_setup build-reference
 
 Downloads reuse the Hugging Face cache. A process lock prevents overlapping downloads; status is written atomically. A paused download causes the verification wait to exit instead of resuming it. These commands explicitly start work: do not run another download while transferring the same cache.
 
-The fixed model revision, base-image digest and local reference tag are in [config/runtime.lock.json](config/runtime.lock.json). Building the reference image does not start inference or qualify TP=2.
+The fixed model revision, base-image digest and local reference tag are in [config/runtime.lock.json](config/runtime.lock.json). Building the reference image does not start inference or qualify TP=2. [Canonical sparse candidate ordering](docs/candidate-order.md) and the other runtime patches live in the image: updating source requires a rebuild, and a runtime rebuilt at another site still needs qualification.
 
 ### Validate before serving
 
 Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
 The TP=2 reference profile is **measured but not accepted for routine use**. `server preflight` checks assets, fabric, image identity, exclusive use of the GPU and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for the acceptance items that remain open.
+
+## What has been verified
+
+**Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** The checks behind these defaults are [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160); [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative, and [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) keep the earlier speed/tool-eval results, including the unmet Safety Gate.
+
+### Headline measurements (1.7.0)
+
+Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers. Task types are always listed counting / prose / code.
+
+| Measure | Distributed defaults | Published option |
+|---|---|---|
+| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; a relaunch repeated the first launch's completions |
+| Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s | **46.20 / 28.79 / 38.18 tok/s** |
+| Prefill, 38,962-token prompt | 1,271.6 tok/s | not measured on the option |
+| 199,652-token input, one passphrase at the midpoint | 167.7 s, correct | 169.9 s, correct |
+| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | not measured on the option |
+| 261,461-token three-position reference, explicit prompt | 233.5 s, correct 3 of 3 | 235.1 s, correct 3 of 3 |
+| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | not measured on the option |
+| Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 |
+| Lowest available memory, head | 6.08 GiB over the 256K series | 10.6 GiB after the 200K request |
+
+| | Distributed defaults | Published option |
+|---|---|---|
+| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download. Every capacity check above ran on it | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Identical requests still repeat bit for bit |
+| **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
+| **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
+
+How fast MTP decodes depends on how predictable the text is: the same profile gives 46 tok/s on counting and 29 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.
+
+### Status by scope
+
+Each row states the status and the document that owns the evidence; the narrative lives there. One active sequence unless stated otherwise.
+
+| Group | Scope | Status |
+|---|---|---|
+| Tooling | Pinned checkpoint download and official checksum verification; official ARM64 image preparation and reference-image build | Implemented |
+| Fixture | Candidate-preserving NoPE reference attention | GPU-tested |
+| Fixture | Four-layer, single-GB10 fixture with Marlin W4A16 | Generation and state comparisons passed, including an 8,705-token input; [validation](docs/validation.md) |
+| Fixture | Default CUTLASS W4A4 fixture | Generation completed; tested numerical-invariance criteria not met |
+| Fixture | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
+| Full model | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [conditions and limits](docs/nccl-validation.md) |
+| Full model | 45-layer TP=2 reference profile | Loaded; basic API text/tools checked; [benchmarks](docs/benchmarks.md) |
+| Full model | Identical requests at temperature 0 | Repeat bit for bit after two fixes, the token order inside each expert and ties in the indexer's top-k. On the four-layer fixture launches fall into two numerical states, so a new launch is checked, not assumed; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
+| Full model | Image input (vision) at 200K and 256K | One synthetic image answered correctly at both lengths, text/tool regressions passed, video rejected; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
+| Full model | Long Japanese and Korean output | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
+| Harness | ZCode / Claude Code integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run**; [acceptance matrix](docs/harnesses.md#acceptance-matrix-and-status) |
+| In the template | FA2 prefill (`runtime.fa2_attention`) | Adopted: prefill 2.2 times 1.5.0, decode on the reference path, excludes LPA; [measurements](docs/benchmarks.md#measurements-on-160) |
+| In the template | MTP k=3 with the BF16 draft | Depths 1 to 5 measured on ten inputs on both checkpoints; k=3 kept for both; [speculative decoding](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) |
+| In the template | Prefix caching (APC) | Accepted for the measured serial long-prefix reuse workload (experimental); [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |
+| In the template | Checkpoint retention | Adopted for the exact-primed mid-edit workload after history and A/B/A tests at the native interval 4,352; the block-independent `dense` setting is equivalent in the measured layout and the final combined integration is qualified separately; [contracts](docs/launch-safety.md) |
+| In the template | Fused unpack, async index checks | Independently measured and enabled; [overview](docs/optimization-overview.md) |
+| Optional, off | Requantized attention projections and `lm_head` (`runtime.derived_checkpoint`, P23) | The published option above; adding the shared experts was measured and not adopted; [serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile) / [catalog](docs/optimization-catalog.md) |
+| Optional, off | APC-first LPA (P22) | Calibrated, combined with MTP/fusion/async checks and checked on held-out documents; a batch opt-in; [contract](docs/apc-lpa-design.md) |
+| Optional, off | Two-active-sequence batching | Accepted within scope; [overview](docs/optimization-overview.md) |
+| Measured, not adopted | Expert Parallel, PP2, decode CUDA Graphs, a draft depth from acceptance history, a confidence gate on the draft, two draft-side settings | Each measured on the full model with its number in the owner document; [overview](docs/optimization-overview.md), [speculative decoding](docs/speculative-decoding.md#beyond-a-fixed-depth-2026-09-21) |
+| Measured, not adopted | Cross-layer indexer reuse (CSA2, P16) | Stopped at its cost gate: the indexer is under 1% of prefill on the fixture and about 4% projected at 200K; [design and result](docs/indexer-reuse.md) |
+| Not validated | Video input, full application quality, production reliability, maximum performance | **Not validated** |
+
+The fixture keeps the original widths, experts and selected tensor bytes, but is a truncated model. It is not a language-quality benchmark. Marlin W4A16 is a different arithmetic profile from NVIDIA's W4A4 recipe. See [the evidence and limits](docs/validation.md).
+
+## Business-use objectives (BIZ)
+
+This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems easier to evaluate, adapt and operate for business use**. Its engineering work covers three connected concerns:
+
+- **License and provenance selection:** prefer commercially usable MIT/Apache components, pin their origin and preserve notices. The [licensing guide](docs/licensing.md) distinguishes the terms for code, weights, containers and harnesses.
+- **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Full evaluation is still pending.
+- **Measured performance tuning:** investigate MTP, LPA, prefix caching, CUDA fusion, batching and parallel execution while checking task quality, memory and recovery. The [optimization overview](docs/optimization-overview.md) shows where each measure acts and which profile fits which workload; the [performance and quality catalog](docs/optimization-catalog.md) records candidates, evidence and deferred work as a comparison baseline for future GLM versions.
+
+For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model, and one depth for both checkpoints; the reasoning is in [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21).
+
+Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified above and in the linked validation documents.
+
+## Related research outside this repository
+
+**Euryale** is a separate, unpublished research project that proposes several draft tokens from a frozen model's intermediate representations with a light auxiliary proposer, taking GLM-5.3-Flash on two GB10 hosts as its first target. It is not part of this distribution and, beyond the [canonical candidate ordering](docs/candidate-order.md) that came out of it, changes nothing in this repository's checkpoint, runtime or defaults. Its speed, quality and memory advantage over the checkpoint's standard MTP is unproven: a four-layer fixture has been checked at effective draft widths 5–12, while full-model teacher capture, proposer training and same-condition comparison have not started. Euryale would replace MTP k=3 as the default speculation path only after a same-condition comparison passes its quality, performance, memory and recovery gates, judged with the [catalog's separation](docs/optimization-catalog.md#functional-acceptance-and-defaults) of functional acceptance, performance adoption, defaults and combined-mode acceptance; until then MTP k=3 remains the measured candidate.
+
+### Other GLM-5.3-Flash recipes for DGX Spark systems
+
+Several public recipes serve the same model on the same class of hardware with different engines, quantization and trade-offs. They are worth comparing before choosing one. This table owns their links, their licenses as read on 2026-09-18 (0xSero on 2026-09-20) and what this repository took from each; other documents cite them by name and pull request only. Code that was adapted carries its notice in [third-party notices](THIRD_PARTY_NOTICES.md).
+
+| Recipe | License | What this repository took from it |
+|---|---|---|
+| [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster), preserving the kingjones30 recipe | Apache-2.0 / MIT | **Code adapted:** the NoPE zero-padding patch structure and recipe |
+| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node) and the [Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0 (code), MIT (weights) | No code, and none of its weights. Its W4A16 NVFP4 requantization of the BF16 attention projections was evaluated as P23 and grew into the published option above (attention and `lm_head`); the measurements are in the [optimization catalog](docs/optimization-catalog.md) |
+| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | No code. Mechanisms and measurements: warmup ladder, stall detection, KV capacity readout, the NCCL channel setting, launch-safety requirements, field runbooks |
+| [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | No code. The SM90 attention path and the foreign-container launch guard as reference points |
+| [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | No code. Its zero-RoPE shim and reduced `index_topk` as a comparison for the attention probes |
+| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results |
+| [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark) and the [EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT (repository code), MIT (model card for the separate weights) | No code or weights adopted. Reference for the mosaic quality panel, cold/warm measurements and verification that an overlay was actually loaded. The single-Spark mcg MTP recipe and the mul1 mosaic use different artifacts and runtimes; their speed, quality and MTP results must not be combined |
 
 ## Local data and contribution
 

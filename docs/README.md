@@ -8,7 +8,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| README | What is deployed, supported hardware, verified scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
+| README | What is deployed, supported hardware, how to start, the headline comparison of the two served profiles, status by scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) (from 1.6.0) |
@@ -32,7 +32,7 @@ Every document has one role; other documents link to it instead of repeating its
 |---|---|---|---|
 | Validation | Evidence versus production qualification, single-GPU fixture, remaining gates | [EN](validation.md) | [JA](validation.ja.md) |
 | Component validation | CUDA/indexer components, Graph fixture, PP/EP/APC fixtures, history fixtures | [EN](component-validation.md) | [JA](component-validation.ja.md) |
-| Benchmarks | TP=2 benchmark method and the full-model benchmark runs (P08, P11, P13–P15, P17–P19, P21, P22, retention) | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| Benchmarks | TP=2 benchmark method, the independent full-model runs of each initiative, and the measurements of each release | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | Image input | Vision at 256K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | Political-context evaluation: required matrix and preliminary results | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | Harnesses | ZCode and Claude Code connection plans and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
@@ -79,7 +79,8 @@ Every document has one role; other documents link to it instead of repeating its
 ## Conventions
 
 - Change history lives in the [changelog](../CHANGELOG.md) and Git; documents do not accumulate "what changed" notes.
-- A measured number appears once, in its owner document, with image, source and workload conditions. Other pages link to it.
+- A measured number appears once, in its owner document, with image, source and workload conditions. Other pages link to it. The README's headline section is the one permitted copy: `tools/check_publication.py` ties its heading to the newest measured version.
+- Task types are always listed in the order counting / prose / code, and teacher-forced texts in the order Japanese / English / code / mathematics, in every table and sentence that names more than one.
 - The release version is owned by `pyproject.toml` and each version is described in the [Changelog](../CHANGELOG.md); `python tools/check_publication.py` requires a plain semantic version there and rejects links to `records/`, plan files or paths outside the repository.
 - Pushing a `vX.Y.Z` tag publishes the GitHub Release: `.github/workflows/release.yml` takes that version's section from the Changelog (`python tools/release_notes.py X.Y.Z`) and refuses a tag that disagrees with `pyproject.toml` or has no section.
 - Related research outside this repository, such as the Euryale draft-proposer project, is described in the README without links, because it is not part of this distribution; other documents mention it only in passing.

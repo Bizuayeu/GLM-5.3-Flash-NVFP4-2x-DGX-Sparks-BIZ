@@ -8,7 +8,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| README | 導入するもの、対応機体、確認した範囲、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
+| README | 導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md)（1.6.0から） |
@@ -32,7 +32,7 @@
 |---|---|---|---|
 | 検証範囲 | 証拠と本番認定の区別、GPU 1台のfixture、残る検収ゲート | [EN](validation.md) | [JA](validation.ja.md) |
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
-| ベンチマーク | TP=2ベンチの方法と全モデルのベンチ実行（P08、P11、P13〜P15、P17〜P19、P21、P22、保持） | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| ベンチマーク | TP=2ベンチの方法、施策ごとの全モデル独立評価、版ごとの測定 | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | 政治的文脈の評価：必須試験と予備実測 | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | ハーネス | ZCode／Claude Codeの接続方針と受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
@@ -79,7 +79,8 @@
 ## 約束事
 
 - 変更履歴は[Changelog](../CHANGELOG.md)とGitに置き、各文書に「何を直したか」を溜めない。
-- 実測値は正典の文書に一度だけ、image・source・負荷条件とともに書く。他の文書はリンクで参照する。
+- 実測値は正典の文書に一度だけ、image・source・負荷条件とともに書く。他の文書はリンクで参照する。READMEの主要な測定値の節だけは例外として写しを許し、`tools/check_publication.py` がその見出しを最新の測定版に縛る。
+- 文種は常に 数え上げ／散文／コード の順、教師強制の文は 日本語／英語／コード／数学 の順に並べる。複数を並べる表と文のすべてに適用する。
 - 版数は `pyproject.toml` が所有し、版ごとの内容は[Changelog](../CHANGELOG.md)に書く。`python tools/check_publication.py` は素のsemantic versionを必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
 - `vX.Y.Z` のタグをpushするとGitHub Releaseが公開される。`.github/workflows/release.yml` がChangelogのその版の節（`python tools/release_notes.py X.Y.Z`）を本文にし、`pyproject.toml` と食い違うタグや節の無い版は拒否する。
 - 本リポジトリ外の関連研究（Euryaleの投機draft研究など）は配布物に含まれないため、READMEでリンクなしに説明する。他の文書では言及に留める。
