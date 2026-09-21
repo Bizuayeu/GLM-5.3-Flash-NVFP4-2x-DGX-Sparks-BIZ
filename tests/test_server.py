@@ -591,6 +591,41 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate(p)
 
+    def test_runtime_async_scheduling_off_asks_for_the_synchronous_scheduler_alone(
+        self,
+    ):
+        # The gate implies the synchronous scheduler, so its cost and the gate's arrive
+        # together. This key asks for the scheduler without the gate, which separates them.
+        self.profile["mtp"]["enabled"] = True
+        for value in (None, True):
+            p = copy.deepcopy(self.profile)
+            if value is not None:
+                p["runtime"]["async_scheduling"] = value
+            config.validate(p)
+            self.assertNotIn(
+                "--no-async-scheduling", config.serve_args(p, 0, "/hf/model")
+            )
+        p = copy.deepcopy(self.profile)
+        p["runtime"]["async_scheduling"] = False
+        config.validate(p)
+        for rank in (0, 1):
+            args = config.serve_args(p, rank, "/hf/model")
+            self.assertEqual(args.count("--no-async-scheduling"), 1)
+            # It is the scheduler alone: no gate, so no draft-side key and no marker.
+            self.assertNotIn("GLM53_DRAFT_GATE", config.environment(p, rank))
+        # The gate keeps the flag from being emitted twice, and contradicts only true.
+        p["mtp"]["draft_gate"] = 0.85
+        config.validate(p)
+        self.assertEqual(
+            config.serve_args(p, 0, "/hf/model").count("--no-async-scheduling"), 1
+        )
+        p["runtime"]["async_scheduling"] = True
+        with self.assertRaises(ValueError):
+            config.validate(p)
+        p["runtime"]["async_scheduling"] = 0
+        with self.assertRaises(ValueError):
+            config.validate(p)
+
     def test_mtp_draft_gate_runs_on_every_rank_under_the_synchronous_scheduler(self):
         self.profile["mtp"]["enabled"] = True
         self.assertNotIn("GLM53_DRAFT_GATE", config.environment(self.profile, 0))
@@ -627,6 +662,7 @@ class ServerConfigTests(unittest.TestCase):
             ("mtp", "local_argmax_reduction"),
             ("mtp", "adaptive_depth"),
             ("runtime", "decode_graphs"),
+            ("runtime", "async_scheduling"),
         ):
             q = copy.deepcopy(p)
             q["mtp"].pop("draft_observe")

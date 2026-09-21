@@ -66,6 +66,7 @@ OPTIONAL_KEYS = {
             "decode_graphs",
             "enforce_eager",
             "fa2_attention",
+            "async_scheduling",
         }
     ),
     "server.mtp": frozenset(
@@ -159,6 +160,8 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.stable_indexer_topk must be true or false")
     if type(profile["runtime"].get("fa2_attention", False)) is not bool:
         raise ValueError("runtime.fa2_attention must be true or false")
+    if type(profile["runtime"].get("async_scheduling", True)) is not bool:
+        raise ValueError("runtime.async_scheduling must be true or false")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -344,6 +347,9 @@ def check_speculation(profile):
             raise ValueError("mtp.draft_gate excludes mtp.adaptive_depth")
         if decode_graphs(profile):
             raise ValueError("mtp.draft_gate excludes decode graphs")
+        if profile["runtime"].get("async_scheduling"):
+            # The gate needs the scheduler that schedules what the runner returned.
+            raise ValueError("mtp.draft_gate excludes runtime.async_scheduling")
     if type(profile["mtp"].get("draft_observe", False)) is not bool:
         raise ValueError("mtp.draft_observe must be true or false")
     if profile["mtp"].get("draft_observe"):
@@ -700,10 +706,23 @@ def apply_speculation(args, profile):
         # reuse the first step's sparse top-k. false makes every draft step select its own.
         spec["index_share_for_mtp_iteration"] = profile["mtp"]["index_share"]
     args += ["--speculative-config", json.dumps(spec)]
-    if "draft_gate" in profile["mtp"]:
-        # Only the synchronous scheduler schedules the drafts the runner returned; the
-        # asynchronous one fixes their number before the step runs.
-        args += ["--no-async-scheduling"]
+
+
+def apply_async_scheduling(args, profile):
+    """Schedule the step the runner returned, rather than sizing it in advance.
+
+    Only the synchronous scheduler schedules the drafts the runner handed back; the
+    asynchronous one fixes their number before the step runs, so ``mtp.draft_gate``
+    implies this. ``runtime.async_scheduling = false`` asks for it alone, which
+    separates what the synchronous scheduler costs from what the gate costs.
+
+    cc-defer: a measurement key. Fold it into the gate once the split is decided.
+    """
+    if profile["runtime"].get("async_scheduling", True) and (
+        "draft_gate" not in profile["mtp"]
+    ):
+        return
+    args += ["--no-async-scheduling"]
 
 
 def apply_decode_graphs(args, profile):
@@ -788,6 +807,7 @@ SERVE_STEPS = (
     apply_cache,
     apply_determinism,
     apply_speculation,
+    apply_async_scheduling,
     apply_decode_graphs,
     apply_worker_extension,
     apply_profiling,
