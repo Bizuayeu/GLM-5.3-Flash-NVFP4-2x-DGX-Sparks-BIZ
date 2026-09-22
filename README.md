@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.11.2"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.11.3"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
@@ -99,20 +99,20 @@ The TP=2 reference profile is **measured and accepted for routine use (2026-09-2
 
 Two GB10 systems, TP=2, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint` with the KDA input projection declared split; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). The option's column is the profile the reference pair serves, the [two-sequence AXL profile](examples/server.axl.example.toml), as measured on 2026-09-23 ([measurements on 1.10.4](docs/benchmarks.md#measurements-on-1104)); a row that night did not re-measure keeps the value of the last night that did, dated. The defaults' column is the 2026-09-22 night. Medians of three or nine runs; ranges, conditions and every earlier version are in [benchmarks](docs/benchmarks.md). Task types are always listed counting / prose / code.
 
-| Measure | Distributed defaults (NVFP4 BIZ on the pinned weights; 2026-09-22 unless dated) | Published option (NVFP4 BIZ AXL, the served two-sequence profile; 2026-09-23 unless dated) |
-|---|---|---|
-| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same, for a request alone (three of three, every launch); a launch's numerical state is checked after every switch, three states seen and their difference named in [validation](docs/validation.md#full-model-tp2-experimental-scope); with two requests in flight completions differ from a request alone |
-| Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.04 / 28.16 / 37.67 tok/s** (32.09 / 21.81 for counting and prose while the other runs) |
-| Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** (2026-09-22) |
-| Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** (2026-09-22) |
-| ~200K-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct (199,652 tokens) | **165.7 s, correct** (199,649 tokens); two such requests together: 330.2 s, both correct, no preemption |
-| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct (2026-09-22) |
-| 261,461-token three-position reference, explicit prompt | 235.9 s, correct 3 of 3 | **227.2 s, correct 3 of 3** (2026-09-22) |
-| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs (2026-09-22) |
-| Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 (2026-09-22) |
-| Lowest available memory on the head during the bench | 5.53 GiB (3 GiB of KV) | 6.46 GiB during two 200K requests, 7.24 GiB during sparkDash (6 GiB of KV) |
-| sparkDash DecodeBench, 128 tokens: structured / prose / code / json | 36.24 / 26.68 / 31.67 / 26.25 tok/s (1.5.0) | **48.23 / 31.38 / 41.28 / 34.88 tok/s** |
-| tool-eval-bench, 69 standard scenarios | 90/100 (1.0.0, 2026-09-14) | 88/100, the same three failures, Safety Gate not passed |
+| Category | Measure | Distributed defaults (NVFP4 BIZ on the pinned weights; 2026-09-22 unless dated) | Published option (NVFP4 BIZ AXL, the served two-sequence profile; 2026-09-23 unless dated) |
+|---|---|---|---|
+| Prefill | Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** (2026-09-22) |
+| Decode | Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.04 / 28.16 / 37.67 tok/s** (32.09 / 21.81 for counting and prose while the other runs) |
+| Decode | Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** (2026-09-22) |
+| Decode | sparkDash DecodeBench, 128 tokens: structured / prose / code / json | 36.24 / 26.68 / 31.67 / 26.25 tok/s (1.5.0) | **48.23 / 31.38 / 41.28 / 34.88 tok/s** |
+| Long input | ~200K-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct (199,652 tokens) | **165.7 s, correct** (199,649 tokens); two such requests together: 330.2 s, both correct, no preemption |
+| Long input | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct (2026-09-22) |
+| Long input | 261,461-token three-position reference, explicit prompt | 235.9 s, correct 3 of 3 | **227.2 s, correct 3 of 3** (2026-09-22) |
+| Long input | Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs (2026-09-22) |
+| Quality | Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 (2026-09-22) |
+| Quality | tool-eval-bench, 69 standard scenarios | 90/100 (1.0.0, 2026-09-14) | 88/100, the same three failures, Safety Gate not passed |
+| Repeatability | Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same, for a request alone (three of three, every launch); a launch's numerical state is checked after every switch, three states seen and their difference named in [validation](docs/validation.md#full-model-tp2-experimental-scope); with two requests in flight completions differ from a request alone |
+| Memory | Lowest available memory on the head during the bench | 5.53 GiB (3 GiB of KV) | 6.46 GiB during two 200K requests, 7.24 GiB during sparkDash (6 GiB of KV) |
 
 | | Distributed defaults | Published option |
 |---|---|---|
@@ -134,7 +134,7 @@ Each row states the status and the document that owns the evidence; the narrativ
 | Fixture | Batch-invariant mode with the pinned SM120 sparse MLA backend | Unsupported |
 | Full model | Two-host NCCL collectives on the pinned base | Tested patterns passed over RoCE; [conditions and limits](docs/nccl-validation.md) |
 | Full model | 45-layer TP=2 reference profile | Loaded; basic API text/tools checked; [benchmarks](docs/benchmarks.md) |
-| Full model | Identical requests at temperature 0 | Repeat bit for bit after two fixes, the token order inside each expert and ties in the indexer's top-k. On the four-layer fixture launches fell into two numerical states, and on the pair one launch in six computed in another state with the kernel tables unchanged ([measurements on 1.9.0](docs/benchmarks.md#measurements-on-190)), so a new launch is checked, not assumed; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
+| Full model | Identical requests at temperature 0 | Repeat bit for bit within a launch after two fixes, the token order inside each expert and ties in the indexer's top-k. Across launches the pair falls into one of three numerical states (thirteen launches of the serving image: nine, three and one; three of the five switches of 2026-09-23 changed state), so a new launch is checked, not assumed: the weight digest, the decode check and the kernel hashes after every switch. The states differ in one place, rank 1's copy of the replicated indexer making its key with different bits from the first MLA layer of a prefill; which kernel is still open; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
 | Full model | Image input (vision) at 200K and 256K | One synthetic image answered correctly at both lengths, text/tool regressions passed, video rejected; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
 | Full model | Long Japanese and Korean output | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
 | Concurrency | More than one active sequence | **Not supported** in the distributed defaults (`max_num_seqs = 1`; requests queue). The published option's example serves two sequences from 6 GiB per rank: on one launch two 200K requests together, two tool calls together and an image with a prose request all answered correctly without preemption, at 330 s for the two 200K requests against 166 s alone; completions under two sequences differ from a request alone (batch invariance is off: declared behaviour, a patch under investigation); **accepted for routine use since 2026-09-23** after three launches. Beyond two sequences, more ranks: TP=4 recommended, TP=3 not recommended; neither measured here. [Concurrency scope](docs/validation.md#concurrency-scope) |

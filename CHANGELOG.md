@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.11.3 — 2026-09-23
+
+### Documentation
+
+- README, headline measurements: the table gains a category column and is grouped as prefill, decode, long input, quality, repeatability and memory, each profile's numbers unchanged. The status row on identical requests states what thirteen launches of the serving image showed: bit-for-bit repeats within a launch, three numerical states across launches (nine, three and one; three of the five switches of 2026-09-23 changed state), the checks after every switch, and the one place the states differ.
+- Validation and benchmarks 1.9.0: the Probe5 launch (state 1, the 1.11.1 checkout) agreed across the ranks on all sixteen kernel hashes and on the indexer's key at every call; against the state-2 launch rank 0's prefill is identical and rank 1's key differs from the first MLA layer, so a launch's state is whether rank 1's process makes the indexer's key with the same bits as rank 0, and the deciding reading is the compiled norm's hash in a state-2 launch.
+
 ## 1.11.2 — 2026-09-23
 
 ### Documentation
