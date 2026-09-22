@@ -9,6 +9,12 @@
 - `weight_digest` raised on a 0-dim parameter (a scale): "self.dim() cannot be 0 to view Float as Byte". The fingerprint flattens a tensor before viewing its bytes (`flat_bytes`), which leaves every other tensor's print unchanged. Measured on the reference pair on the first launch with the probe.
 - `tools/weight_digest.py` puts the repository root on `sys.path`, so `python3 tools/weight_digest.py` runs from any directory as the documentation shows.
 
+### Documentation
+
+- README opens with a summary: what the stack is, its acceptance status and scope, the two served profiles, the precision it runs at, the licensing shape and what is not validated, each as a pointer to the owner section; it absorbs the two introductory paragraphs it replaced and carries no measured number or version.
+- Validation states that NVIDIA's model card does not describe this serving: its BF16-versus-NVFP4 table was measured on GB200 through vLLM and SGLang under the card's W4A4 recipe, while this stack runs Marlin W4A16 on GB10; the numbers that describe this serving are named. The README's precision paragraph points there.
+- Document map: the GitHub description and topics restate the README summary without numbers or a version, and are edited with `gh repo edit` when the summary changes.
+
 ## 1.10.0 — 2026-09-23
 
 ### Added

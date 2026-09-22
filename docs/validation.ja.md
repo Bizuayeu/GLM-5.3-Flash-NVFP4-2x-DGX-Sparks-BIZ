@@ -21,6 +21,8 @@
 
 Marlinは演算そのものを変えます。[linear kernel](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/model_executor/kernels/linear/nvfp4/marlin.py)はW4A16で、[MoEのselector](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/model_executor/layers/fused_moe/oracle/nvfp4.py)は汎用の `use_a16` フラグとは独立にMARLIN向けのW4A16を選びます。このフラグだけから精度を推定しないでください。
 
+**NVIDIAのモデルカードはこの配信を記述しません。** [固定したモデルカード](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)は、そのcheckpointについてBF16対NVFP4の精度表を載せています。その数値はNVIDIA GB200上でvLLMとSGLangを通し、temperature 1.0でサンプリングし、カードの事後量子化recipe（`nvfp4_experts_dense_mlp-kv_fp8_cast`、W4A4の経路）で測ったもので、その機体のその経路を記述します。このスタックは同じ重みをGB10上のMarlin W4A16で、独自のprefill・decode・投機の経路で動かすので、カードの表はここでは再現も主張もしません。この配信を記述する数値は、[ベンチマーク](benchmarks.ja.md)の教師強制NLLの行と長い入力の確認、[FreedomBench](freedombench.ja.md)の結果、[ハーネス](harnesses.ja.md)の各ケースで、いずれも測ったimageとprofileを添えています。
+
 vLLMは[既定での再現性を保証していません](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/docs/usage/reproducibility.md)。ただし、これは本リポジトリのアダプタが正しいことの証明にもなりません。W4A4の差は、引き続き調査が必要な観測のままです。
 
 ## 候補と無改変対照の比較

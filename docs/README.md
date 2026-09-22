@@ -8,7 +8,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| README | What is deployed, supported hardware, how to start, the headline comparison of the two served profiles, status by scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
+| README | Summary, what is deployed, supported hardware, how to start, the headline comparison of the two served profiles, status by scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) (from 1.6.0) |
@@ -88,4 +88,5 @@ Every document has one role; other documents link to it instead of repeating its
 - Task types are always listed in the order counting / prose / code, and teacher-forced texts in the order Japanese / English / code / mathematics, in every table and sentence that names more than one.
 - The release version is owned by `pyproject.toml` and each version is described in the [Changelog](../CHANGELOG.md); `python tools/check_publication.py` requires a plain semantic version there and rejects links to `records/`, plan files or paths outside the repository.
 - Pushing a `vX.Y.Z` tag publishes the GitHub Release: `.github/workflows/release.yml` takes that version's section from the Changelog (`python tools/release_notes.py X.Y.Z`) and refuses a tag that disagrees with `pyproject.toml` or has no section.
+- The GitHub repository description and topics restate the README summary with the short name and without any measured number or version, because `tools/check_publication.py` cannot see them; when the summary changes, edit them with `gh repo edit`.
 - Related research outside this repository, such as the Euryale draft-proposer project, is described in the README without links, because it is not part of this distribution; other documents mention it only in passing.

@@ -4,11 +4,16 @@
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
-**A full-model TP=2 reference profile has been tested and measured. It is accepted for routine use since 2026-09-22, for one active sequence, the serving profile; harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
-
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
-A community setup and validation toolkit for NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **two DGX Spark or compatible GB10 systems**. Measurements use **two MSI EdgeXpert (MS-C931) systems**. The focus is commercially usable licensing, pinned artifacts, observable checks, and reversible operations.
+## Summary
+
+- **What it is.** A community setup and validation toolkit that serves NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **two DGX Spark or compatible GB10 systems**, partitioned TP=2 over a QSFP/RoCE link, through a pinned vLLM built into a reference image. Published measurements come from two MSI EdgeXpert (MS-C931) systems. The focus is commercially usable licensing, pinned artifacts, observable checks and reversible operation.
+- **Status.** The serial serving profile is **accepted for routine use since 2026-09-22, for one active sequence**. [SETUP step 6](SETUP.md#6-qualify-the-full-model) records what that acceptance rests on; harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status). Other hardware, more than one active sequence and video input are outside the accepted scope.
+- **Two served profiles.** The **distributed defaults** serve the pinned weights exactly as NVIDIA distributes them. The **published option (NVFP4 BIZ AXL)** repacks the attention projections and `lm_head` to W4A16 for faster decode at a measured quality cost, and is an operator opt-in. [What has been verified](#what-has-been-verified) compares them and lists the status of every scope.
+- **Precision.** Serving runs Marlin W4A16 on GB10. NVIDIA's model card evaluated its checkpoint under a different recipe on different hardware, so its accuracy table does not describe this stack; [validation](docs/validation.md#evidence-not-production-qualification) says which numbers do.
+- **Licensing.** Apache-2.0 code; MIT weights that the operator downloads, not bundled; each artifact keeps its own terms ([licensing at a glance](#licensing-at-a-glance)).
+- **Not validated.** Concurrent serving, video input, full application quality, production reliability and maximum performance ([status by scope](#status-by-scope)).
 
 ## What you deploy and supported hardware
 
@@ -26,7 +31,7 @@ The stack is **Z.ai's original model → NVIDIA's distributed NVFP4 checkpoint �
 
 The source checkout contains code, pinned references and build instructions. The base checkpoint and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; the trained LPA auxiliary projector is available as a separate [GitHub Release asset](docs/lpa.md#download-the-trained-projector). See [artifact roles, package contents and storage](docs/operations.md#artifact-storage-and-paths).
 
-NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe. See [precision and validation scope](docs/validation.md).
+NVFP4 names the downloaded weight format. The tested reference profile executes with Marlin **W4A16**, which differs from NVIDIA's W4A4 recipe; the accuracy table on NVIDIA's model card was measured under that recipe, on other hardware and another engine path, and is not a quality claim for this serving. See [precision and validation scope](docs/validation.md#evidence-not-production-qualification) for what the card's figures describe and which numbers describe this stack.
 
 [LPA (late-prefill approximation)](docs/lpa.md) ships disabled in the distributed server template and is a batch opt-in, because an approximated request publishes nothing to the shared prefix cache. Teacher replay, corpus sampling and projector fitting tools are included for that path; its quality/speed acceptance is separate from the verified scope below.
 

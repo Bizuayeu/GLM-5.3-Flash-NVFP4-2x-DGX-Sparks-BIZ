@@ -11,6 +11,12 @@
 - `weight_digest` が0次元のparameter（scale）で「self.dim() cannot be 0 to view Float as Byte」を出していた。fingerprintはtensorをbyteとして見る前に平らにする（`flat_bytes`）。他のtensorのprintは変わらない。probe付きの最初の起動で参照対にて計測。
 - `tools/weight_digest.py` はリポジトリのrootを `sys.path` に置くので、文書どおり `python3 tools/weight_digest.py` がどのディレクトリからでも走る。
 
+### Documentation
+
+- READMEが要約で始まる：スタックが何か、受け入れの状態と範囲、配信する二つのprofile、動作する精度、ライセンスの形、未検証のもの。それぞれ所有する節へのポインタで、置き換えた導入の二段落を吸収し、実測値と版数を持たない。
+- 検証範囲に、NVIDIAのモデルカードはこの配信を記述しないことを明記：そのBF16対NVFP4の表はGB200上でvLLMとSGLangを通しカードのW4A4 recipeで測ったもので、このスタックはGB10上のMarlin W4A16で動く。この配信を記述する数値を名指しした。READMEの精度の段落はそこを指す。
+- 文書一覧：GitHubのdescriptionとtopicsはREADMEの要約を実測値と版数なしで言い直したもので、要約を変えたら `gh repo edit` で揃える。
+
 ## 1.10.0 — 2026-09-23
 
 ### Added

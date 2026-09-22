@@ -8,7 +8,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| README | 導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
+| README | 要約、導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md)（1.6.0から） |
@@ -88,4 +88,5 @@
 - 文種は常に 数え上げ／散文／コード の順、教師強制の文は 日本語／英語／コード／数学 の順に並べる。複数を並べる表と文のすべてに適用する。
 - 版数は `pyproject.toml` が所有し、版ごとの内容は[Changelog](../CHANGELOG.md)に書く。`python tools/check_publication.py` は素のsemantic versionを必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
 - `vX.Y.Z` のタグをpushするとGitHub Releaseが公開される。`.github/workflows/release.yml` がChangelogのその版の節（`python tools/release_notes.py X.Y.Z`）を本文にし、`pyproject.toml` と食い違うタグや節の無い版は拒否する。
+- GitHubのリポジトリdescriptionとtopicsは、READMEの要約を略称つき・実測値と版数なしで言い直したもの。`tools/check_publication.py` の目が届かないので、要約を変えたら `gh repo edit` で揃える。
 - 本リポジトリ外の関連研究（Euryaleの投機draft研究など）は配布物に含まれないため、READMEでリンクなしに説明する。他の文書では言及に留める。
