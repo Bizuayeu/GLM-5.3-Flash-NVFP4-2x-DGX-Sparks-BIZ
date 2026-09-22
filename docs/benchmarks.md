@@ -792,6 +792,8 @@ How rare the other states are, from the decode records kept on the head since 20
 
 Two more checks on 2026-09-22 narrow the remaining candidates. In the reference image on one GB10, thirteen fresh processes computed the cuBLAS BF16 GEMMs at the pair's per-rank shapes (`lm_head` 4096 to 77,440 at 4 and 2,048 rows, the MTP projection, a square), the KDA chunk and recurrent kernels (32 local heads by 128) and the `lm_head` argmax on fixed inputs: every output bit-identical across the thirteen, including three processes with `CUBLAS_WORKSPACE_CONFIG` and `PYTHONHASHSEED` pinned, which moved nothing. Then the four-layer MTP fixture (stock weights, draft depth 3) was launched TP=2 across the pair twenty times with the production image, fabric and launch flags, production stopped for the hour: the decode check gave the same completions and token ids in all twenty launches for all three task types. The distributed path (two processes over RoCE, sharded sparse-MLA, indexer and Marlin MoE kernels, the draft) reproduced no launch-to-launch difference in twenty tries, so at the pair's observed rate of one launch in six to fifteen the remaining candidates are what only the full-size model does at load and launch.
 
+A launch of 2026-09-23 (the two-sequence profile of [1.10.2](#measurements-on-1102), one restart) then computed in another state and was caught with the probe: the weight digest of both ranks equal to the previous launch's (2,382 tensors each), and the request trace naming the first differing call, the replicated kpool indexer of layer 19 on rank 1 at a decode verification step, in both the prose and the code request, with identical inputs and a different candidate set; in the previous launch that rank's indexer disagreed with rank 0's at exactly that call, in this one the ranks agreed. The counting request traced bit-identical. [Validation](validation.md#full-model-tp2-experimental-scope) states what that names and what remains.
+
 ## Measurements on 1.10.2
 
 ### Two active sequences on the published option (2026-09-23)
@@ -813,3 +815,20 @@ Two 200K requests together took 330 s against 166 s for one alone: the pair's th
 | prose | 28.24 (2.17) | 21.81 |
 
 The acceptance length over the three concurrent runs was 2.79 for both tasks together. The completions are another matter. Alone, each request repeated bit for bit (three samples each, the state-2 hashes `fb15cfc2` and `1462d44f`). Together, both completions differed from the ones alone, two identical prose requests sent together returned two different texts (`25e9240a` and `c5930404`, 20.4 and 20.6 tok/s), and the count-and-prose pair gave one set of completions in runs 1 and 3 and another in run 2: with batch-invariant mode unavailable on this backend ([validation](validation.md#evidence-not-production-qualification)) a token's logits depend on which other rows share its step. The two-sequence profile therefore repeats a request only when that request runs alone.
+
+## Measurements on 1.10.4
+
+### sparkDash and tool-eval-bench on the two-sequence profile (2026-09-23)
+
+The [1.4.0](#measurements-on-140) and [1.5.0](#sparkdash-and-200k-on-150) runs were repeated unchanged on the profile the reference pair serves (the [AXL example's](../examples/server.axl.example.toml) settings with the probe and the dev routes; image `76a1172b…`; the state-1 launch of 02:53 Asia/Tokyo, one sequence in flight), one after the other, nothing else running (`records/20260923-bench-1104/`). All 12 sparkDash streams succeeded with 128 tokens each.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | 1.5.0 decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 48.23 | 48.23 / 48.29 / 47.68 | 282.42 | 36.24 / 355.61 |
+| prose | 31.38 | 30.53 / 31.40 / 31.38 | 225.33 | 26.68 / 369.03 |
+| code | 41.28 | 41.37 / 41.28 / 38.64 | 442.04 | 31.67 / 570.67 |
+| json | 34.88 | 34.80 / 34.94 / 34.88 | 273.00 | 26.25 / 444.05 |
+
+sparkDash's protocol requests thinking off, which the fixed GLM template ignores, so these measure actual generation including reasoning, as before. The gain over 1.5.0 is the serving profile's since then (the repacked attention projections and `lm_head`, FA2 prefill, the split KDA projection, MTP k=3), not this version's; the head kept 7.24 GiB available.
+
+tool-eval-bench `2.6.1.dev52+g81eae0a33`, the same version and settings as the [1.0.0 run](#tool-eval-bench) (all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking, 4,096-token output budget, 600-second timeout, at most eight turns; 10.8 minutes): **88/100 (122/138 points)**, 55 pass, 11 partial, 3 fail, all 69 scored, completion 100%, no exclusion. The three failures are the same three as in 1.0.0 (TC-21 found two of five validation errors, TC-43 called web_search with an empty query, TC-61 did not attempt the analysis script), so the **Safety Gate is still not passed**, on TC-43. The partial results moved from 8 to 11 (unnecessary calculator use, an incomplete chain, an action not taken after a weather check, two injection scenarios answered safely but incompletely). One trial per version, so the two points against 1.0.0 are inside what one trial can move; the failures are stable across the two runs and the profiles between them, which changed the serving path and not the model's choices at temperature 0.

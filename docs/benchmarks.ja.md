@@ -792,6 +792,8 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 
 2026-09-22にさらに二つの検査で残る候補を絞った。参照imageの中でGB10一枚に新しいprocessを13回起こし、対のrankあたりの形でcuBLASのBF16 GEMM（`lm_head` 4096→77,440を4行と2,048行、MTPの射影、正方）、KDAのchunkとrecurrentのkernel（局所32 head×128）、`lm_head` のargmaxを固定入力で計算した：13回とも全出力がbit一致。うち3回は `CUBLAS_WORKSPACE_CONFIG` と `PYTHONHASHSEED` を固定したが何も動かなかった。次に4層のMTP fixture（stock重み、draft深さ3）を本番のimage・fabric・起動flagで対にTP=2で20回起動した（本番は1時間停止）：decode検査のcompletionとtoken idは3課題とも20起動すべてで同一。分散経路（RoCE越しの2 process、shardされたsparse MLA・indexer・Marlin MoEのkernel、draft）は20回で起動ごとの差を再現しなかったので、対で見た1/6〜1/15の頻度を考えると、残る候補はフルサイズのモデルだけがloadと起動でする何かに絞られる。
 
+2026-09-23の起動（[1.10.2](#1102での測定)の同時2系列profile、再起動1回）は別の状態で計算し、probeで捕まえた：両rankの重みのdigestは前の起動と等しく（各2,382 tensor）、要求のtraceは最初に違う呼び出しを名指しした——rank 1のlayer 19の複製されたkpool indexer、decodeの検証step、散文とコードの両要求で、入力は同一で候補集合が違う。前の起動ではそのrankのindexerがまさにその呼び出しでrank 0と食い違い、今回の起動では両rankが一致した。数え上げ要求のtraceはbit一致した。何を名指ししたか・何が残るかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にある。
+
 ## 1.10.2での測定
 
 ### 公開した任意設定での同時2系列（2026-09-23）
@@ -813,3 +815,20 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 | 散文 | 28.24（2.17） | 21.81 |
 
 同時3回の採択長は両課題合わせて2.79。completionは別の話になる。単独では各要求がbit一致で反復した（各3標本、状態2のhash `fb15cfc2`・`1462d44f`）。同時では両方のcompletionが単独時と違い、同じ散文要求2本を同時に送ると別の文章が2つ返り（`25e9240a`・`c5930404`、20.4・20.6 tok/s）、数え上げ＋散文の対は1回目と3回目が同じ組、2回目が別の組だった。このbackendではbatch-invariant modeが使えない（[検証](validation.ja.md#証拠であり本番の検収ではない)）ため、あるtokenのlogitsは同じstepに載る他の行に依存する。よって同時2系列のprofileで要求が反復するのは、その要求が単独で走る時だけである。
+
+## 1.10.4での測定
+
+### 同時2系列profileでのsparkDashとtool-eval-bench（2026-09-23）
+
+[1.4.0](#140での測定)・[1.5.0](#150でのsparkdashと200k)の測定を、参照対が配信するprofile（[AXLの例](../examples/server.axl.example.toml)の設定にprobeとdev経路を足したもの。image `76a1172b…`。02:53（Asia/Tokyo）の状態1の起動、同時1本の要求）で変えずに繰り返した。順に走らせ、他は何も走らせていない（`records/20260923-bench-1104/`）。sparkDashの12 streamはすべて128トークンで成功した。
+
+| prompt | decode（token/s）、中央値 | 3回 | TTFT（ms）、中央値 | 1.5.0のdecode／TTFT |
+|---|---:|---|---:|---|
+| structured | 48.23 | 48.23／48.29／47.68 | 282.42 | 36.24／355.61 |
+| prose | 31.38 | 30.53／31.40／31.38 | 225.33 | 26.68／369.03 |
+| code | 41.28 | 41.37／41.28／38.64 | 442.04 | 31.67／570.67 |
+| json | 34.88 | 34.80／34.94／34.88 | 273.00 | 26.25／444.05 |
+
+sparkDashの手順はthinking offを要求するが固定のGLMテンプレートはそれを無視するので、従来どおり推論を含む実際の生成を測っている。1.5.0からの伸びはそれ以後の配信profile（attention射影と `lm_head` の再パック、FA2 prefill、KDA射影の分割、MTP k=3）のもので、この版のものではない。headの空きは7.24 GiBを保った。
+
+tool-eval-bench `2.6.1.dev52+g81eae0a33`、[1.0.0の測定](#tool-eval-bench)と同じ版・同じ設定（全69標準シナリオ、1試行、parallel 1、seed 42、temperature 0、effort low、clear_thinking、出力上限4,096トークン、timeout 600秒、最大8ターン。10.8分）：**88／100（122／138点）**、55 pass・11 partial・3 fail、69件すべて採点、完了率100%、除外なし。failの3件は1.0.0と同じ3件（TC-21は5つの検証エラーのうち2つしか見つけず、TC-43はweb_searchを空のqueryで呼び、TC-61は分析スクリプトを試みなかった）で、**Safety GateはTC-43で未達のまま**。partialは8件から11件に動いた（不要な電卓、不完全な連鎖、天気確認の後に行動しない、injectionの2件は安全だが不完全）。版ごとに1試行なので、1.0.0との2点差は1試行が動く幅の内側。failの3件は2回の測定とその間のprofileの変更を跨いで安定しており、変更は配信経路であってtemperature 0でのモデルの選択ではない。

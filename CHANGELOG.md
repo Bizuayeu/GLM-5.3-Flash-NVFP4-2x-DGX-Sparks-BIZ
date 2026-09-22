@@ -2,6 +2,14 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.4 — 2026-09-23
+
+### Documentation
+
+- The CUTLASS W4A4 fixture row leaves the README status table and the validation evidence table, and the sentence that called its differences "observations requiring investigation" is gone: that path was tried once on the four-layer fixture in the first week and never served, every profile since runs Marlin W4A16, and a present-tense row read as an open quality defect of the stack. The history stays in the changelog of that week; the precision paragraph and SETUP still say that W4A4 behaviour is not claimed.
+- Validation and benchmarks 1.9.0: the difference between two launch states is named. A launch of 2026-09-23 in another state loaded the same weights (digest equal on both ranks) and its request trace named the first differing call, the replicated kpool indexer of layer 19 on rank 1 at a decode verification step in both the prose and the code request, with identical inputs and a different candidate set; in the earlier launch that rank's indexer had disagreed with rank 0's at exactly that call. The difference between the two launches is one rank's copy of the replicated indexer scoring a near tie differently; the third state is traced only on the counting request, and what differs across processes inside the indexer's scoring or the pool cache it wrote is the next measurement.
+- Benchmarks 1.10.4: sparkDash DecodeBench and tool-eval-bench repeated unchanged on the profile the reference pair serves. sparkDash decode 48.2 / 31.4 / 41.3 / 34.9 tok/s on its four prompts against 36.2 / 26.7 / 31.7 / 26.3 on 1.5.0, the serving profile's gain since then. tool-eval-bench 88/100 (122/138), 55 pass, 11 partial, 3 fail, the same three failures as 1.0.0, so the Safety Gate is still not passed on TC-43. The README headline points at both.
+
 ## 1.10.3 — 2026-09-23
 
 ### Added

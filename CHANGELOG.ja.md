@@ -4,6 +4,14 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.10.4 — 2026-09-23
+
+### Documentation
+
+- CUTLASS W4A4のfixtureの行をREADMEの状態表と検証の証拠の表から外し、その差を「切り分けが必要な観測」と呼んでいた文も消した。この経路は最初の週に4層fixtureで一度試しただけで配信したことはなく、以後のprofileはすべてMarlin W4A16で走る。現在形の行はスタックの品質の未解決の欠陥として読まれていた。経緯はその週の変更履歴に残り、精度の段落とSETUPは引き続きW4A4の挙動を主張しないと言う。
+- 検証とベンチマーク1.9.0：二つの起動状態の差を名指しした。2026-09-23の別の状態の起動は同じ重みをload（digestが両rankで等しい）し、要求のtraceが最初に違う呼び出し——rank 1のlayer 19の複製されたkpool indexer、decodeの検証step、散文とコードの両要求で入力同一・候補集合が違う——を名指しした。前の起動ではそのrankのindexerがまさにその呼び出しでrank 0と食い違っていた。二つの起動の差は複製されたindexerの一方のrankの写しがほぼ同点を違って採点したことで、三つ目の状態は数え上げ要求でしかtraceしていない。processを跨いでindexerの採点の内側か書いたpool cacheの何が違うかが次の測定。
+- ベンチマーク1.10.4：sparkDash DecodeBenchとtool-eval-benchを参照対が配信するprofileで変えずに繰り返した。sparkDashのdecodeは4つのpromptで48.2／31.4／41.3／34.9 tok/s、1.5.0は36.2／26.7／31.7／26.3で、差はそれ以後の配信profileの伸び。tool-eval-benchは88／100（122／138）、55 pass・11 partial・3 failで、failは1.0.0と同じ3件、Safety GateはTC-43で未達のまま。READMEの主要な測定値は両方を指す。
+
 ## 1.10.3 — 2026-09-23
 
 ### Added
