@@ -26,7 +26,7 @@ HEADER = (
 
 
 def patch_text(text):
-    if "common_layout_names" in text:
+    if "from glm53_setup.runtime.pipeline_state import common_layout_names" in text:
         raise ValueError("Pipeline cache-layout patch already applied")
     text = HEADER + replace_once(text, ASSERTION, RECONCILED)
     compile(text, TARGET, "exec")

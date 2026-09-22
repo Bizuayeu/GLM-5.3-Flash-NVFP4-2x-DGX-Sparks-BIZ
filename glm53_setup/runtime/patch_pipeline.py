@@ -29,7 +29,7 @@ def append_method(text, class_name, method):
 
 
 def patch_text(text):
-    if "validate_pipeline" in text:
+    if "from glm53_setup.runtime.pipeline_state import validate_pipeline" in text:
         raise ValueError("Pipeline patch already applied")
     text = replace_once(
         text,
