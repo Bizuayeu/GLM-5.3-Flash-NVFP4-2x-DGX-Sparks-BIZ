@@ -94,7 +94,7 @@ Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside
 
 | Measure | Distributed defaults | Published option |
 |---|---|---|
-| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; a relaunch repeated the first launch's completions |
+| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; on the 1.9.0 night five launches of six repeated one another's completions and one did not (row below) |
 | Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.44 / 30.01 / 37.17 tok/s** |
 | Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** |
 | Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** |

@@ -94,7 +94,7 @@ GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定�
 
 | 測定 | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。再起動が最初の起動のcompletionを反復 |
+| temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。1.9.0の夜は6起動のうち5起動が互いのcompletionを反復し、1起動は違った（下の行） |
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.44／30.01／37.17 tok/s** |
 | prefill（38,962 tokenのprompt） | 1,232.8 tok/s（1.7.1の夜は1,277.0） | **1,294.8 tok/s** |
 | decode（固定の短いpromptの後の512 token） | 26.87〜27.31 tok/s | **41.8 tok/s** |
