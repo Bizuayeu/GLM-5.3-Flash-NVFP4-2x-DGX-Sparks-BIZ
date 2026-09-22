@@ -8,6 +8,29 @@ from types import SimpleNamespace
 from ..runtime.reference_attention import sparse_nope_reference, unpack_latent
 
 
+def case_row(width, error, tolerance, empty_row_zero):
+    """One candidate width: within tolerance, and a row with no candidates is zero."""
+    return {
+        "width": width,
+        "max_abs_error": error,
+        "tolerance": tolerance,
+        "empty_row_zero": empty_row_zero,
+        "passed": error <= tolerance and empty_row_zero,
+    }
+
+
+def verdict(cache_error, cases, sensitivity, integration_error):
+    """The check passes only with an exact cache decode, every width within
+    tolerance, an omitted tail that visibly moves the output, and the installed
+    backend agreeing with the reference to the bit."""
+    return (
+        cache_error == 0
+        and all(c["passed"] for c in cases)
+        and sensitivity > 1.0
+        and integration_error == 0
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -69,15 +92,7 @@ def main(argv=None):
         tolerance = (
             2 * torch.finfo(torch.bfloat16).eps * max(1.0, float(expected.abs().max()))
         )
-        cases.append(
-            {
-                "width": width,
-                "max_abs_error": error,
-                "tolerance": tolerance,
-                "empty_row_zero": bool((actual[2] == 0).all()),
-                "passed": error <= tolerance and bool((actual[2] == 0).all()),
-            }
-        )
+        cases.append(case_row(width, error, tolerance, bool((actual[2] == 0).all())))
     # Sensitivity check: an omitted tail must be detectable, not washed out by tolerance.
     latent.zero_()
     latent[2050, 0] = 16
@@ -118,10 +133,7 @@ def main(argv=None):
         "cases": cases,
         "tail_omission_difference": sensitivity,
         "installed_backend_max_abs_error": integration_error,
-        "passed": cache_error == 0
-        and all(c["passed"] for c in cases)
-        and sensitivity > 1.0
-        and integration_error == 0,
+        "passed": verdict(cache_error, cases, sensitivity, integration_error),
         "full_model_inference_validated": False,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
