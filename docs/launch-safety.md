@@ -48,6 +48,20 @@ The same protection applies while recovering the old profile: `recovery-readines
 
 On the owned two-host test system, an intentionally mismatched projector hash left both live ranks unchanged (`pre-stop-failure-v69`). A later drill set the new profile's minimum available memory to 999 GiB: static checks passed, the old pair stopped, new startup failed its post-stop memory gate, and the old profile returned to API readiness on both ranks (`rollback-fault-v72`, `recovered=true`). The earlier `v70` recovery-observation failure is retained; it prompted the recovery-side observation fix. These are controlled launch/recovery tests, not a long-duration availability guarantee. Single-rail fabric checks and all three allocator environment states also passed on both hosts; multi-rail traffic and the external KV connector remain unqualified.
 
+### After a switch: the decode check
+
+A new launch is checked, not assumed: on the four-layer fixture launches fell into two numerical states, and on the pair one launch in six computed in another state on 2026-09-22 with the kernel tables unchanged ([measurements on 1.9.0](benchmarks.md#six-launches-of-the-new-image-the-same-completions-five-times-different-once)). After every switch, on rank 0, run `tools/decode_check.py` once per task type with `TOKENS_OUT` set, and save both ranks' container logs before the next switch discards them:
+
+```sh
+for kind in prose count code; do
+  PROMPT_KIND=$kind SAMPLES=3 TOKENS_OUT=records/<run>/tokens-$kind.json \
+    python3 tools/decode_check.py > records/<run>/decode-$kind.jsonl
+done
+docker logs <rank0 container> 2>&1 | gzip > records/<run>/logs-rank0.txt.gz   # rank 1 likewise, on its host
+```
+
+Within a launch the three samples must agree (`distinct_completions` 1). Across launches compare `completion_sha256` with the previous launch of the same profile. When they differ, keep the record: `tools/decode_divergence.py` prints the first diverging token between the two `tokens-*.json` files (one tie-break flip late in the text, or an early systematic drift), and the two logs are the only per-launch evidence there is. Speed and acceptance length inside the profile's usual spread say the difference is a tie, not a fault.
+
 ## APC history qualification
 
 Omitting the retention key preserves the pinned runtime default **0**: semantic checkpoints/replay boundaries and shared-prefix junctions; it does not mean dense retention. Optional `cache.prefix_cache_retention_interval` forwards the native flag as an explicit experiment. A positive interval equal to the actual scheduler block retains KDA checkpoints at each such boundary. Full-attention retention stays dense; `KpoolTailManager` remains a private one-block ring with no APC publication. This is checkpoint preservation, not a blanket reduction of all groups. The fixed runtime rejects positive intervals that do not align to its resolved scheduler block. The distributed TOML explicitly selects `dense` following the scoped history, pressure, A/B/A and serial integration evidence. Distinguish [distributed defaults](server-configuration.md#distributed-defaults) from the runtime behavior when the key is absent.

@@ -2,6 +2,17 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.9.2 — 2026-09-22
+
+### Added
+
+- `tools/decode_check.py` and `tools/decode_divergence.py`: the decode check after a switch (512 greedy tokens after a fixed ~2,048-token prompt, three task types, the completion text and token ids kept through `return_token_ids`) and the comparison of two launches at their first diverging token. The same measurement as the decode rows of the benchmarks since 1.6.0, now in the repository instead of a records directory.
+
+### Documentation
+
+- Launch safety: "After a switch: the decode check", the routine the 1.9.0 launch-state finding calls for (three samples agree within a launch; hashes compared with the previous launch of the profile; token ids and both ranks' container logs kept when they differ).
+- Benchmarks 1.9.0: how rare the other states are in the decode records since 2026-09-18 (one profile's completions recur across days; the two states seen once recur nowhere), and that vLLM's batch-invariant mode sets `CUBLAS_WORKSPACE_CONFIG` itself, which this stack leaves unset until a launch in another state points at the BF16 GEMMs.
+
 ## 1.9.1 — 2026-09-22
 
 ### Documentation

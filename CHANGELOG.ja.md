@@ -4,6 +4,17 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.9.2 — 2026-09-22
+
+### Added
+
+- `tools/decode_check.py` と `tools/decode_divergence.py`：切替の後のdecode検査（固定の約2,048トークンのpromptの後にgreedyで512トークン、課題3種、`return_token_ids` でcompletionの本文とtoken idを残す）と、二つの起動を最初に分岐したtokenで比べる道具。1.6.0からのbenchmarksのdecode行と同じ測定を、recordsディレクトリでなくリポジトリに置いた。
+
+### Documentation
+
+- 起動の安全：「切替の後のdecode検査」。1.9.0の起動状態の発見が求める定型（起動の中で3標本が一致、hashは同じprofileの前の起動と比べる、違ったらtoken idと両rankのcontainer logを残す）。
+- benchmarks 1.9.0：2026-09-18からのdecode記録で見た別の状態の稀さ（一つのprofileのcompletionは日を跨いで繰り返し、一度しか見ていない二つの状態はどこにも再出しない）と、vLLMのbatch-invariantモードが `CUBLAS_WORKSPACE_CONFIG` を自分で設定すること。このスタックは別の状態の起動がBF16 GEMMを指すまで未設定のまま。
+
 ## 1.9.1 — 2026-09-22
 
 ### Documentation

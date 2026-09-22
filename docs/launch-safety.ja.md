@@ -48,6 +48,20 @@ python -m glm53_setup cluster switch --config state/server.toml \
 
 所有する2台での実機検査では、projector hashを故意に不一致にしても稼働中の両rankが維持されました（`pre-stop-failure-v69`）。続いて新profileの起動前空き条件を999 GiBにした試験では、静的検査の後に旧rankを停止し、新しい起動はメモリ条件で失敗、その後に旧profileの両rankがAPI準備完了まで復帰しました（`rollback-fault-v72`、`recovered=true`）。先行する`v70`の復旧確認失敗も残し、復旧側の通信確認を修正する根拠にしています。制御した起動・復旧試験であり、長時間の可用性保証ではありません。単一レールの実検査とallocatorの3状態伝達も両hostで通過しました。複数レール実通信と外部KV connectorは未検収です。
 
+### 切替の後のdecode検査
+
+新しい起動は仮定せずに確かめます。4層fixtureでは起動が二つの数値の状態に分かれ、対では2026-09-22に、kernelの表が不変のまま6起動中1起動が別の状態で計算しました（[1.9.0での測定](benchmarks.ja.md#新imageの6起動5回は同じcompletion1回は違うcompletion)）。切替のたびに、rank 0で `tools/decode_check.py` を課題ごとに `TOKENS_OUT` 付きで走らせ、次の切替が消す前に両rankのcontainer logを保存します：
+
+```sh
+for kind in prose count code; do
+  PROMPT_KIND=$kind SAMPLES=3 TOKENS_OUT=records/<run>/tokens-$kind.json \
+    python3 tools/decode_check.py > records/<run>/decode-$kind.jsonl
+done
+docker logs <rank0のcontainer> 2>&1 | gzip > records/<run>/logs-rank0.txt.gz   # rank 1も同様に、そのhostで
+```
+
+起動の中では3標本が一致すること（`distinct_completions` が1）。起動を跨いでは `completion_sha256` を同じprofileの前の起動と比べます。違ったら記録を残す：`tools/decode_divergence.py` が二つの `tokens-*.json` の最初に分岐したtokenを出し（本文の後ろでの一回の同点割れか、早くからの系統的なずれか）、二つのlogが起動ごとの唯一の証拠です。速さと採択長がそのprofileのいつもの幅の中なら、違いは同点であって故障ではありません。
+
 ## APCの履歴検証
 
 固定runtimeはキー省略時に **0** を使い、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を明示できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す設定です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。配布用TOMLは、履歴・保持圧力・A/B/Aと直列併用の実測を踏まえ `dense` を明示します。[配布既定](server-configuration.ja.md#配布用の既定設定)とruntimeの省略時挙動を区別してください。
