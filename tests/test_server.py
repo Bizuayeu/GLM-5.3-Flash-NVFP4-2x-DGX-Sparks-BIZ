@@ -346,6 +346,42 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
+    def test_prefix_page_dedup_is_off_unless_set_and_needs_the_image_marker(self):
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertNotIn("prefix_page_dedup", distributed["runtime"])
+        self.assertNotIn("GLM53_PREFIX_PAGE_DEDUP", config.environment(distributed, 0))
+        self.assertNotIn(
+            "prefix_dedup_support",
+            server.image_capability_checks(
+                distributed, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+            ),
+        )
+        self.profile["runtime"]["prefix_page_dedup"] = True
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 1)["GLM53_PREFIX_PAGE_DEDUP"], "1"
+        )
+        image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertIs(
+            server.image_capability_checks(self.profile, image)["prefix_dedup_support"],
+            False,
+        )
+        image["Config"]["Env"].append("GLM53_PREFIX_DEDUP_API=1")
+        self.assertIs(
+            server.image_capability_checks(self.profile, image)["prefix_dedup_support"],
+            True,
+        )
+        self.profile["runtime"]["prefix_page_dedup"] = False
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 1)["GLM53_PREFIX_PAGE_DEDUP"], "0"
+        )
+        for bad in (1, 0, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["prefix_page_dedup"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)
         config.validate(self.profile)

@@ -62,6 +62,7 @@ OPTIONAL_KEYS = {
             "decode_graphs",
             "enforce_eager",
             "fa2_attention",
+            "prefix_page_dedup",
         }
     ),
     "server.cache": frozenset(
@@ -145,6 +146,8 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.stable_indexer_topk must be true or false")
     if type(profile["runtime"].get("fa2_attention", False)) is not bool:
         raise ValueError("runtime.fa2_attention must be true or false")
+    if type(profile["runtime"].get("prefix_page_dedup", False)) is not bool:
+        raise ValueError("runtime.prefix_page_dedup must be true or false")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -481,6 +484,11 @@ def environment(profile, rank):
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_STABLE_INDEXER_TOPK"] = str(
             int(profile["runtime"]["stable_indexer_topk"])
+        )
+    if "prefix_page_dedup" in profile["runtime"]:
+        # Absent: off, as the pinned pool behaves.
+        result["GLM53_PREFIX_PAGE_DEDUP"] = str(
+            int(profile["runtime"]["prefix_page_dedup"])
         )
     if (
         profile["lpa"]["enabled"]

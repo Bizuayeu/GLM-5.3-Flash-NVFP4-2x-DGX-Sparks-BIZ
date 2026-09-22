@@ -197,6 +197,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_INDEXER_TOPK_API=1",
             runtime.get("stable_indexer_topk", False),
         ),
+        (
+            "prefix_dedup_support",
+            "GLM53_PREFIX_DEDUP_API=1",
+            runtime.get("prefix_page_dedup", False),
+        ),
     ]
     env = image["Config"].get("Env") or []
     return {
