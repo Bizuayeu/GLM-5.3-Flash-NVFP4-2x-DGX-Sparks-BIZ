@@ -4,12 +4,17 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
-## Unreleased
+## 1.11.1 — 2026-09-23
+
+### Added
+
+- `kernel_hashes` が、indexerの射影とopの間の段階を一つの層の実際の重みでもhashする：compileされたlayer norm（`_fused_indexer_k_norm`）とそのeager fp32の参照、indexerのrotary embeddingのqueryとkey、keyの射影（`layer`、既定19）。1.11.0の起動（状態2）は固定入力のkernelで両rankが一致し、入力まで取った3段のtraceは同じ射影の出力から両rankの複製されたindexerが8つのMLA層のprefillで違うkeyを受け取ることを示した。keyが作られるのがこれらの段階である。この部分の失敗はmethod全体を失敗させず、答えの中で名乗る。
 
 ### Documentation
 
 - セットアップ手順書（冒頭の状態と手順6の判定）と運用手順が、READMEと検証範囲と同じ言い方で同時実行を述べる：配布既定では同時1系列が受け入れた範囲、公開した任意設定の同時2系列profileは1起動でタスク単位の検査を通し、通常運用は起動の積み上がりを待つ。正典は[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)。
 - ベンチマークと検証範囲の日本語版で、「証拠であり、本番認定ではない」節を指すアンカー2件が見出しと違う文言（本番の検収）だった。見出しに合わせた。
+- 検証とベンチマーク1.9.0：Probe4の起動と深いtrace、残る二つの候補（Inductorのlayer norm kernel、rotaryのkey側）。
 
 ## 1.11.0 — 2026-09-23
 

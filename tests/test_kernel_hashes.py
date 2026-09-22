@@ -81,9 +81,87 @@ class DifferenceTests(unittest.TestCase):
         self.assertEqual(row["rank"], 1)
         self.assertEqual(row["seed"], 7)
         self.assertEqual(row["sms"], 48)
-        self.assertEqual(row["hashes"], HASHES)
+        kernels = {k: v for k, v in row["hashes"].items() if not k.startswith("layer")}
+        self.assertEqual(kernels, HASHES)
+        # Without the attention module the layer stages name their failure.
+        self.assertIn("ImportError", row["hashes"]["layer19_error"])
         self.assertEqual(seen, {"sms": 48, "seed": 7, "kpool": kpool, "dg": dg})
         json.dumps(row)
+
+    def test_the_layer_stages_join_the_hashes_and_a_failure_names_itself(self):
+        worker = MemoryProbeWorker()
+        worker.rank = 0
+        worker.get_model = lambda: "model"
+        fake_torch = SimpleNamespace(
+            cuda=SimpleNamespace(
+                get_device_properties=lambda i: SimpleNamespace(
+                    multi_processor_count=48
+                )
+            )
+        )
+        attention = SimpleNamespace()
+        modules = {
+            "torch": fake_torch,
+            "vllm": SimpleNamespace(),
+            "vllm.models": SimpleNamespace(),
+            "vllm.models.glm5next": SimpleNamespace(),
+            "vllm.models.glm5next.nvidia": SimpleNamespace(attention=attention),
+            "vllm.models.glm5next.nvidia.attention": attention,
+            "vllm.models.glm5next.nvidia.ops": SimpleNamespace(
+                kpool_compress=SimpleNamespace()
+            ),
+            "vllm.models.glm5next.nvidia.ops.kpool_compress": SimpleNamespace(),
+            "vllm.utils": SimpleNamespace(deep_gemm=SimpleNamespace()),
+            "vllm.utils.deep_gemm": SimpleNamespace(),
+        }
+        seen = {}
+
+        def stages(torch, glm_attention, model, layer, seed):
+            seen.update(model=model, layer=layer, seed=seed, att=glm_attention)
+            return {"k_norm_compiled": "kn", "rope_k": "rk"}
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.object(
+                memory_probe, "indexer_kernel_hashes", lambda *a: dict(HASHES)
+            ),
+            patch.object(memory_probe, "indexer_stage_hashes", stages),
+        ):
+            row = worker.kernel_hashes(layer=7)
+        self.assertEqual(
+            seen, {"model": "model", "layer": 7, "seed": 0, "att": attention}
+        )
+        self.assertEqual(row["hashes"]["layer7_k_norm_compiled"], "kn")
+        self.assertEqual(row["hashes"]["layer7_rope_k"], "rk")
+        self.assertEqual(row["hashes"]["paged_mqa_logits"], "bb")
+
+        def failing(*args):
+            raise KeyError("no module named *.layers.7.self_attn.indexer")
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.object(
+                memory_probe, "indexer_kernel_hashes", lambda *a: dict(HASHES)
+            ),
+            patch.object(memory_probe, "indexer_stage_hashes", failing),
+        ):
+            row = worker.kernel_hashes(layer=7)
+        self.assertIn("no module named", row["hashes"]["layer7_error"])
+        self.assertEqual(row["hashes"]["paged_mqa_logits"], "bb")
+
+    def test_indexer_layer_finds_the_module_and_its_owner_by_suffix(self):
+        indexer = SimpleNamespace()
+        owner = SimpleNamespace(indexer=indexer)
+        model = SimpleNamespace(
+            named_modules=lambda: [
+                ("language_model.model.layers.19.self_attn", owner),
+                ("language_model.model.layers.19.self_attn.indexer", indexer),
+                ("language_model.model.layers.23.self_attn.indexer", SimpleNamespace()),
+            ]
+        )
+        self.assertEqual(memory_probe.indexer_layer(model, 19), (indexer, owner))
+        with self.assertRaises(KeyError):
+            memory_probe.indexer_layer(model, 5)
 
     def test_the_kernel_shapes_are_the_served_indexers(self):
         # index_n_heads 32 x 128, kpool 4, 512 of 540 pools, a 64-pool block

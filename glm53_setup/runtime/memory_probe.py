@@ -491,6 +491,72 @@ def indexer_kernel_hashes(
     return hashes
 
 
+def indexer_layer(model, layer):
+    """The kpool indexer of one MLA layer and the attention that owns it, by name."""
+    suffix = f"layers.{layer}.self_attn.indexer"
+    for name, module in model.named_modules():
+        if name.endswith(suffix):
+            owner = dict(model.named_modules())[name[: -len(".indexer")]]
+            return module, owner
+    raise KeyError(f"no module named *.{suffix}")
+
+
+def indexer_stage_hashes(torch, glm_attention, model, layer, seed=0, rows=2048):
+    """Hash the stages between the indexer's projections and its op, with the layer's own weights.
+
+    The deep trace of 2026-09-23 (Probe4, state 2) showed the two ranks' copies
+    of the replicated indexer agreeing on every projection output and on the
+    fp8 query, the head gate and the hidden state, and disagreeing on the key
+    handed to the indexer op at prefill in eight of the eleven MLA layers.
+    Between the projection and the op stand the compiled layer norm
+    (``_fused_indexer_k_norm``, an Inductor kernel) and the indexer's rotary
+    embedding; this runs both on fixed inputs with the layer's weights, the norm
+    also in eager fp32 as the reference.
+    """
+    indexer, owner = indexer_layer(model, layer)
+    dim = indexer.head_dim
+    dev = indexer.k_norm.weight.device
+
+    def bf16(*shape, seed):
+        g = torch.Generator().manual_seed(seed)
+        return torch.randn(*shape, generator=g).to(torch.bfloat16).to(dev)
+
+    x = bf16(rows, dim, seed=seed + 41)
+    hashes = {}
+    hashes["k_norm_compiled"] = bytes_digest(
+        glm_attention._fused_indexer_k_norm(
+            x, indexer.k_norm.weight, indexer.k_norm.bias, dim, indexer.k_norm.eps
+        ),
+        torch,
+    )
+    hashes["k_norm_eager_fp32"] = bytes_digest(
+        torch.nn.functional.layer_norm(
+            x.float(),
+            (dim,),
+            indexer.k_norm.weight,
+            indexer.k_norm.bias,
+            indexer.k_norm.eps,
+        ).type_as(x),
+        torch,
+    )
+    rope = getattr(owner, "indexer_rope_emb", None) or getattr(
+        owner, "rotary_emb", None
+    )
+    if rope is not None and indexer.rope_dim > 0:
+        positions = torch.arange(rows, device=dev)
+        q_pe = bf16(rows, indexer.n_head, indexer.rope_dim, seed=seed + 42)
+        k_pe = bf16(rows, 1, indexer.rope_dim, seed=seed + 43)
+        q_out, k_out = rope(positions, q_pe, k_pe)
+        hashes["rope_q"] = bytes_digest(q_out, torch)
+        hashes["rope_k"] = bytes_digest(k_out, torch)
+    kw, _ = indexer.wk_weights_proj(
+        bf16(rows, indexer.wk_weights_proj.weight.shape[1], seed=seed + 44)
+    )
+    hashes["wk_weights_proj"] = bytes_digest(kw, torch)
+    torch.cuda.synchronize()
+    return hashes
+
+
 def kernel_hash_differences(ranks):
     """Which hashes differ between the ranks of one launch (each row ``{"rank", "hashes"}``)."""
     keys = sorted({k for row in ranks for k in row["hashes"]})
@@ -714,7 +780,7 @@ class MemoryProbeWorker:
         row["rank"] = self.rank
         return row
 
-    def kernel_hashes(self, seed=0):
+    def kernel_hashes(self, seed=0, layer=19):
         """The indexer's computations on fixed inputs, hashed inside this worker.
 
         Compared across the ranks of one launch (``kernel_hash_differences``)
@@ -726,11 +792,16 @@ class MemoryProbeWorker:
         from vllm.utils import deep_gemm
 
         sms = torch.cuda.get_device_properties(0).multi_processor_count
-        return {
-            "rank": self.rank,
-            "seed": seed,
-            "sms": sms,
-            "hashes": indexer_kernel_hashes(
-                torch, kpool_compress, deep_gemm, sms, seed
-            ),
-        }
+        hashes = indexer_kernel_hashes(torch, kpool_compress, deep_gemm, sms, seed)
+        # 1.11.1: the stages of one real layer, with its weights. A failure here
+        # names itself instead of failing the whole answer.
+        try:
+            from vllm.models.glm5next.nvidia import attention as glm_attention
+
+            stages = indexer_stage_hashes(
+                torch, glm_attention, self.get_model(), layer, seed
+            )
+            hashes.update({f"layer{layer}_{k}": v for k, v in stages.items()})
+        except Exception as error:  # noqa: BLE001
+            hashes[f"layer{layer}_error"] = repr(error)[:300]
+        return {"rank": self.rank, "seed": seed, "sms": sms, "hashes": hashes}

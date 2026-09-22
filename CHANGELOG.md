@@ -2,12 +2,17 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased
+## 1.11.1 — 2026-09-23
+
+### Added
+
+- `kernel_hashes` also hashes the stages between the indexer's projections and its op with one layer's own weights: the compiled layer norm (`_fused_indexer_k_norm`) and its eager fp32 reference, the indexer's rotary embedding on query and key, and the key projection (`layer`, default 19). The 1.11.0 launch (state 2) agreed across the ranks on every fixed-input kernel, while a trace three levels deep with inputs showed the ranks' replicated indexers receiving different keys at prefill in eight MLA layers from identical projection outputs; those stages are where the key is made. A failure in this part names itself in the answer instead of failing the method.
 
 ### Documentation
 
 - The setup runbook (its opening status and the step 6 verdict) and the operations page state concurrency the way the README and validation already do: one active sequence is the accepted scope on the distributed defaults; the published option's two-sequence profile is checked at task level on one launch and waits on more launches for routine use, with [concurrency scope](docs/validation.md#concurrency-scope) as the owner.
 - Two anchors in the Japanese benchmarks and validation pages named the "evidence, not production qualification" section by another wording and did not resolve; they now match the heading.
+- Validation and benchmarks 1.9.0: the Probe4 launch and the deep trace, and the two candidates they leave (the Inductor layer-norm kernel, the key side of the rotary).
 
 ## 1.11.0 — 2026-09-23
 
