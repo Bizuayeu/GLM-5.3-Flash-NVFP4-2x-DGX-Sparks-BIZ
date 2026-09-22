@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.8.1 — 2026-09-22
+
+### Fixed
+
+- **lockは全ての起動fingerprintの一部で、1.8.0がそれを編集していた。** `config/runtime.lock.json` は各profileのfingerprintにhashとして含まれるため、1.8.0での `status` と `full_model_inference_validated` の変更は全profileのfingerprintを変えていた。1.8.0のcheckoutは配信profileに、その対が起動した値と別のfingerprintを出し、`cluster switch` はその対を扱えなかった（「Frozen launch manifest no longer matches this checkout/lock」）。lockを1.7.1の内容に戻し、fingerprintは公開した値に戻る（配信profileは `948613031b31…`）。1.8.0の通常運用としての受け入れは、README・SETUP §6・ハーネスの受け入れ試験一覧に記録したままで、それが本来の置き場所。次の編集がCHANGELOGの項を伴う意図的なものになるよう、lockのhashを固定する単体テストを足した。
+
 ## 1.8.0 — 2026-09-22
 
 ### Changed

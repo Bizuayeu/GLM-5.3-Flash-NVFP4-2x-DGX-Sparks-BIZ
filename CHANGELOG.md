@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.8.1 — 2026-09-22
+
+### Fixed
+
+- **The lock is part of every launch fingerprint, and 1.8.0 had edited it.** `config/runtime.lock.json` is hashed into the fingerprint of every profile, so the 1.8.0 change of its `status` and `full_model_inference_validated` fields changed every profile's fingerprint: a checkout at 1.8.0 computed a different value for the serving profile than the one its pair was launched with, and `cluster switch` refused to address that pair ("Frozen launch manifest no longer matches this checkout/lock"). The lock returns to its 1.7.1 content and fingerprints return to their published values (the serving profile `948613031b31…`); the routine-use acceptance of 1.8.0 stays recorded in the README, SETUP §6 and the harness matrix, which is where it belongs. A unit test now pins the lock's hash so that the next edit is a deliberate one with a CHANGELOG entry.
+
 ## 1.8.0 — 2026-09-22
 
 ### Changed

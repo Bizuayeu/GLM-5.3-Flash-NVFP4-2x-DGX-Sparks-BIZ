@@ -3,15 +3,13 @@
   "source_tag": "glm53-flash-arm64-cu130",
   "platform": "linux/arm64",
   "source_commit": "385dce36bcee42309924a5ece951a96db3dce7f2",
-  "status": "reference_profile_accepted",
+  "status": "candidate_native_nope_blocked",
   "model": "nvidia/GLM-5.3-Flash-NVFP4",
   "revision": "423acf37583782c51c142d145aef733d72943d93",
   "patches": [],
   "reference_candidate": {
     "tag": "glm53-enterprise:reference",
     "validation": "single_node_four_layer_marlin_with_mla_boundary",
-    "full_model_inference_validated": true,
-    "validated_on": "2026-09-22",
-    "acceptance": "routine use on two GB10 (TP=2) accepted 2026-09-22; evidence in docs/validation.md and docs/benchmarks.md"
+    "full_model_inference_validated": false
   }
 }
