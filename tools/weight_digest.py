@@ -15,7 +15,11 @@ import json
 import sys
 from pathlib import Path
 
-from glm53_setup import server, server_config
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1])
+)  # run as a script from any directory
+
+from glm53_setup import server, server_config  # noqa: E402
 from glm53_setup.config import ROOT
 from glm53_setup.runtime.memory_probe import digest_differences
 

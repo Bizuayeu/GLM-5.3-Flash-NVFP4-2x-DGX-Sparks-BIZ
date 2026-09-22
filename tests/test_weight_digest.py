@@ -141,6 +141,21 @@ class DigestTests(unittest.TestCase):
         self.assertEqual(short["summary"], full["summary"])
         json.dumps(full)  # the RPC answer must serialise
 
+    def test_flat_bytes_flattens_before_viewing_so_scalars_work(self):
+        # A 0-dim parameter (a scale) cannot be viewed as bytes; reshape(-1) first.
+        # Measured on the reference pair, 2026-09-23: the first weight_digest raised
+        # "self.dim() cannot be 0 to view Float as Byte".
+        from unittest.mock import MagicMock, call
+
+        from glm53_setup.runtime.memory_probe import flat_bytes
+
+        tensor = MagicMock()
+        fake_torch = SimpleNamespace(uint8="uint8")
+        flat_bytes(tensor, fake_torch)
+        chain = tensor.detach.return_value.contiguous.return_value
+        chain.reshape.assert_called_once_with(-1)
+        self.assertEqual(chain.reshape.return_value.view.call_args, call("uint8"))
+
     def test_trace_end_can_export_its_rows_for_a_later_launch(self):
         worker = MemoryProbeWorker()
         worker.rank = 0

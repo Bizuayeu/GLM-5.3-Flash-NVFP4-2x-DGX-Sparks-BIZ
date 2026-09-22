@@ -259,11 +259,16 @@ def whole_words(nbytes):
     return nbytes - nbytes % 8
 
 
+def flat_bytes(tensor, torch):
+    """A tensor's bytes as one row; flattened first, so a scalar (0-dim) can be viewed."""
+    return tensor.detach().contiguous().reshape(-1).view(torch.uint8)
+
+
 def tensor_fingerprint(tensor):
     """Two byte sums of a tensor, kept on its device; equal bits give equal prints."""
     import torch
 
-    data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
+    data = flat_bytes(tensor, torch)
     if data.storage_offset() % 8:
         # A view as int64 needs an aligned offset; a copy (one times the
         # tensor) keeps the fingerprint independent of where it sat.

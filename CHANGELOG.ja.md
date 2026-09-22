@@ -4,6 +4,13 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.10.1 — 2026-09-23
+
+### Fixed
+
+- `weight_digest` が0次元のparameter（scale）で「self.dim() cannot be 0 to view Float as Byte」を出していた。fingerprintはtensorをbyteとして見る前に平らにする（`flat_bytes`）。他のtensorのprintは変わらない。probe付きの最初の起動で参照対にて計測。
+- `tools/weight_digest.py` はリポジトリのrootを `sys.path` に置くので、文書どおり `python3 tools/weight_digest.py` がどのディレクトリからでも走る。
+
 ## 1.10.0 — 2026-09-23
 
 ### Added

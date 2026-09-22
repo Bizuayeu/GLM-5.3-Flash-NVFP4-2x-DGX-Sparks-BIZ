@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.1 — 2026-09-23
+
+### Fixed
+
+- `weight_digest` raised on a 0-dim parameter (a scale): "self.dim() cannot be 0 to view Float as Byte". The fingerprint flattens a tensor before viewing its bytes (`flat_bytes`), which leaves every other tensor's print unchanged. Measured on the reference pair on the first launch with the probe.
+- `tools/weight_digest.py` puts the repository root on `sys.path`, so `python3 tools/weight_digest.py` runs from any directory as the documentation shows.
+
 ## 1.10.0 — 2026-09-23
 
 ### Added
