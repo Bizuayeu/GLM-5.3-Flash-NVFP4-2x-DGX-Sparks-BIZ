@@ -129,6 +129,7 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、bit一致で反復する。4層fixtureでは起動が二つの数値の状態に分かれるので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
+| 同時実行 | 同時2系列以上 | 受け入れたprofileでは**非対応**（`max_num_seqs = 1`。要求は順番待ち）。同時配信には系列ごとのKVが要り、rankを増やす：TP=4を推奨、TP=3は非推奨。どちらも未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 深さ1〜5を両方のcheckpointで10入力で測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |

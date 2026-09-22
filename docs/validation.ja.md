@@ -85,9 +85,15 @@ CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供しま�
 
 [2台でのNCCL通信検証](nccl-validation.ja.md)は、固定したbase imageで試験したcollectiveのパターンに合格しています。その範囲はtransportと合成データの正当性であり、参照Attentionやフルモデルとは別です。
 
-[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。より広いフルモデルの数値・品質評価、持続的な混在負荷、本番復旧、batchingの組合せは未検証のままです。MTPの深さ1〜5とdecodeのGraphsには、[投機的デコーディング](speculative-decoding.ja.md)と[施策台帳](optimization-catalog.ja.md)が所有する限定した比較がありますが、これは実測であって本番の検収ではありません。画像入力には[画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、無制限の `tp2-kernel-validation` 証跡に変えないでください。
+[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。これは範囲を限った実測で、同時2系列以上は受け入れた範囲の外です（[同時実行の範囲](#同時実行の範囲)）。持続的な混在負荷とbatchingの組合せは未検証のままです。制御された停止・再起動と対の復旧は、[起動安全](launch-safety.ja.md)と[ベンチマーク](benchmarks.ja.md)に記録した `cluster switch` の演習で確認しています。MTPの深さ1〜5とdecodeのGraphsには、[投機的デコーディング](speculative-decoding.ja.md)と[施策台帳](optimization-catalog.ja.md)が所有する限定した比較がありますが、これは実測であって本番の検収ではありません。画像入力には[画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、無制限の `tp2-kernel-validation` 証跡に変えないでください。
 
 ## フルモデルTP=2の実験範囲
+
+**状態（2026-09-22）。** 基準の2台の配信profile——TP=2、同時1系列、256K context、[起動設定](server-configuration.ja.md)の設定——は、[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)、[ベンチマーク](benchmarks.ja.md)、[ハーネスの受け入れ試験一覧](harnesses.ja.md#受け入れ試験一覧と実施状態)に記録した証拠で**通常運用として受け入れ済み**です。以下の段落は、その証拠を集めた順に書いた経緯です。「検収を確立しない」「未検証のまま」と書いてある箇所は、その結果単体では確立しなかったという意味で、宣言した範囲の外（他のハードウェア、同時2系列以上、動画入力、未対応の要求設定）は何も検収していません。READMEの状態表と本節は同じことを言っています。食い違ったら[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)が記録です。
+
+### 同時実行の範囲
+
+受け入れたprofileは**同時1系列**（`max_num_seqs = 1`）で配信します。それを超える要求は順番待ちになり、これが宣言した挙動です。**同時2系列以上はこのprofileでは非対応**です。KV予算（rankあたり3 GiB）は256Kの1系列向けで、上の同時2系列の評価は16K×2・rankあたり1 GiBでの実測であって検収ではありません。同時実行には系列ごとにKVを確保する必要があり、このハードウェアではそれは2台で予算を増やすことではなくrankを増やすことです。**同時配信にはTP=4（GB10×4）を推奨**します。TP=3は推奨しません。モデルの幾何（KDAの64 headほか、shardする幅は2と4で割れて3で割れない）のため、測る前に広範な調整が要ります。どちらの構成もここでは測っていません。
 
 reference imageは、2台のGB10ホストで45層の言語層すべてを、Marlin W4A16、eager実行、同時1系列、context 16,384、rankあたり1 GiBのKVでロードしました。直列TP=2の4層fixtureは、既存の状態検査をすべて通過しました。fixtureを同時2系列にした場合、greedy経路の1本がほぼ同値の箇所で分岐しました。この生の診断は失敗のままであり、課題水準の受け入れとは別です。
 
@@ -99,7 +105,7 @@ reference imageは、2台のGB10ホストで45層の言語層すべてを、Marl
 
 **indexerのtop-kの同点。** expert内の順序を固定した後も、割れの出所がもう一つ残っていました。基準の2台でMTPの深さを4にすると（attention projectionを再量子化、prefillはFA2）、同じprose要求の9回の反復が割れました。log確率は位置298から最大0.178動き、tokenは位置320で分かれます。countとcodeの要求、および深さ3の3種は、bit一致で反復しました。稼働中のworkerの中でmoduleの指紋をtraceすると、最初に食い違う呼び出しは毎回同じで、5行の検証stepにおける2つ目のMLA層の出力projectionでした（16回中3回）。原因はその上流にあります。kpool indexerはquery行ごとに512 poolを選びますが、固定しているvLLMの `persistent_topk`（decode）と `top_k_per_row_prefill` は、512位の境界にpoolの同点があると、同じ入力から違う集合を返します。GB10 1台では、decodeのkernelが同一の呼び出し1,200回に3通り、prefillのkernelが18,000行に4通りの集合を返しました。4層のMTP fixtureでは、同一要求48本のうち17本が同じindexerの呼び出しで最初に食い違い、同点を低いpool indexに決めると36本中0本でした。同じ設定でも、ある起動では12本中0本、別の起動では24本中12本でした。割れが見えないことは、割れが無いことの証拠になりません。投機の深さは、completionがどの位置を通るかを決めるだけです。割れる起動の一つで、その瞬間を捕まえました。540 poolの行で513個が512位の値に届いており、kernelが要求の間で入れ替えた二つのpool（214と274）のscoreはbit単位で同じでした。その呼び出しまで、有効な列のlogitsは要求の間で同一でした。`runtime.stable_indexer_topk`（[サーバー設定](server-configuration.ja.md#配布用の既定設定)）がこの同点の規則を入れます。基準の2台（image `1b7dc6fa…`、深さ4）では、prose・count・codeが9回中9回、log確率の移動0で反復しました。decodeはproseで24.68 tok/s、countで45.99（修正前は24.28と45.13）、prefillは38,962 tokenで1,248.1 tok/s（修正前1,255.5）、199,652 tokenの合言葉要求は169.1 sで正答（修正前164.3 s）、その間のheadの空きは10.09 GiB以上でした。同じprofile・同じimageの二回目の起動（間に別のprofileの起動を三回挟んだ後）でも、proseとcountのcompletionは一回目と同じでした（hashが一致、各9回中9回）。翌朝の三回目の起動も同じで、コードのcompletionも一致しました。標本は3起動です。上流では、vLLM pull request #55122（決定的な `persistent_topk`）の著者が2026-09-21に目的を言い直しました：そのプロジェクト自身のトラフィックでは16K文脈の6,192行に512位の同点が一つも無く、kernelの契約は集合の一致だけとされ、pull requestは性能を主張し決定性は副次と位置づけています。このstackはそれに当たりません。上記の同点はkernelで再現し、実際のprose要求でも捕まえたので、同点の規則は維持します。そのkernelがここで規則の代わりになるかは別の問いで、変更の前にfixtureで測ります。
 
-[vLLM公式の合成ベンチマーク](benchmarks.ja.md)は、計画した計測要求をすべて完了しました。試験containerはその後停止しました。これらの結果は、アプリケーション全体の品質を示すものでも、本番デプロイを認定するものでもありません。
+[vLLM公式の合成ベンチマーク](benchmarks.ja.md)は、計画した計測要求をすべて完了しました。試験containerはその後停止しました。これらの結果は、アプリケーション全体の品質を示すものでも、本番デプロイを認定するものでもありません。宣言した範囲での通常運用としての受け入れは、その後の2026-09-22に、本節冒頭に挙げた証拠で成立しました。
 
 その後、[MTP k=1の候補](speculative-decoding.ja.md)は、小規模なロードfixture、同条件のフルモデルベンチ5ケースすべて、同じ11項目の基礎API検査に合格しました。別のメタデータviewは、元のcheckpointを保ったまま、そのBF16 MTP層を全体のNVFP4から除外します。手順書には、draftの受理率、追加メモリ、負荷に依存する改善、未解決の分散停止の制約を記載しています。実際のZCode・Claude Codeの受け入れは、引き続き別扱いです。
 

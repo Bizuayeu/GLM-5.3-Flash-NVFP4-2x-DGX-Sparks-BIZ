@@ -6,6 +6,10 @@
 
 ## 1.8.1 — 2026-09-22
 
+### Documentation
+
+- 検証：フルモデルの範囲の節を2026-09-22の通常運用の状態から書き起こし、古い「検収を確立しない」の文は経緯として読む。同時実行の範囲の小節を足し、受け入れたprofileでは同時2系列以上は非対応で、同時配信には系列ごとのKV＝rankの追加（TP=4推奨、TP=3非推奨）が要ると明記。READMEの状態表にも同じ行。
+
 ### Fixed
 
 - **lockは全ての起動fingerprintの一部で、1.8.0がそれを編集していた。** `config/runtime.lock.json` は各profileのfingerprintにhashとして含まれるため、1.8.0での `status` と `full_model_inference_validated` の変更は全profileのfingerprintを変えていた。1.8.0のcheckoutは配信profileに、その対が起動した値と別のfingerprintを出し、`cluster switch` はその対を扱えなかった（「Frozen launch manifest no longer matches this checkout/lock」）。lockを1.7.1の内容に戻し、fingerprintは公開した値に戻る（配信profileは `948613031b31…`）。1.8.0の通常運用としての受け入れは、README・SETUP §6・ハーネスの受け入れ試験一覧に記録したままで、それが本来の置き場所。次の編集がCHANGELOGの項を伴う意図的なものになるよう、lockのhashを固定する単体テストを足した。
