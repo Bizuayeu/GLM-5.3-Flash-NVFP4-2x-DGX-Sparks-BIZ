@@ -9,6 +9,14 @@ from pathlib import Path
 
 from ..config import REVISION, TEACHER_PRECISION
 from ..io import write_json
+from .run_fixture import read_fixture
+
+# The synthetic LPA configuration under test: no cut, a 512-token exact tail,
+# and approximation only when more than 1024 tokens would be omitted.
+TAIL = 512
+BREAK_EVEN = 1024
+MAX_MODEL_LEN = 32768
+OUTPUT_TOKENS = 16
 
 
 def parser():
@@ -43,7 +51,7 @@ def engine_kwargs(args):
         "enable_prefix_caching": True,
         "enable_chunked_prefill": True,
         "async_scheduling": args.async_scheduling,
-        "max_model_len": 32768,
+        "max_model_len": MAX_MODEL_LEN,
         "max_num_seqs": 1,
         "max_num_batched_tokens": 512,
         "block_size": 256,
@@ -74,18 +82,97 @@ def engine_kwargs(args):
     }
 
 
+def lpa_config(projector, digest):
+    """The GLM53_APC_LPA_CONFIG the workers read; the projector is the synthetic one."""
+    return json.dumps(
+        {
+            "cut": 0,
+            "tail": TAIL,
+            "break_even": BREAK_EVEN,
+            "projector_path": str(projector),
+            "projector_sha256": digest,
+            "skip_mla_queries": True,
+        }
+    )
+
+
+def write_synthetic_projector(path, width):
+    """A format-2 projector with fixed, visibly non-teacher weights for four layers."""
+    import torch
+
+    torch.save(
+        {
+            "format_version": 2,
+            "teacher_revision": REVISION,
+            "teacher_precision": TEACHER_PRECISION,
+            "cut": 0,
+            "layers": 4,
+            "test_fixture_only": True,
+            "weights": {
+                i: {
+                    "mean": torch.zeros(width),
+                    "down": torch.zeros(width, 1),
+                    "up": torch.zeros(1, width),
+                    "scale": torch.full((width,), 0.5),
+                    "bias": torch.linspace(-0.25, 0.25, width),
+                }
+                for i in range(1, 4)
+            },
+        },
+        path,
+    )
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def assert_policy(row, hit, expected):
+    """Every worker saw the same hit H, and omitted exactly the expected queries."""
+    if row["cached_tokens"] != hit:
+        raise ValueError("Unexpected actual cache hit")
+    for worker in row["workers"]:
+        policy = worker["policy"]["policy"]
+        if policy["cached_tokens"] != hit:
+            raise ValueError("Worker H differs from cache lookup")
+        counts = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
+        if counts != ({3: expected} if expected else {}):
+            raise ValueError(("Incorrect actual query omission", counts, expected))
+
+
+def first_distribution_delta(teacher, altered):
+    """Largest logprob gap at the first position, over the tokens both reported."""
+    common = teacher["logprobs"][0].keys() & altered["logprobs"][0].keys()
+    return max(
+        (abs(teacher["logprobs"][0][k] - altered["logprobs"][0][k]) for k in common),
+        default=0,
+    )
+
+
+def history_positions(block, length):
+    """Edit positions: the first tokens, around the block boundary, and along the prompt."""
+    return sorted(
+        {
+            3,
+            4,
+            5,
+            block - 1,
+            block,
+            block + 1,
+            length // 10,
+            length // 2,
+            length * 9 // 10,
+        }
+    )
+
+
+def expected_omission(prompt_tokens, hit):
+    """Queries the policy omits for a prompt with hit H: the eligible span past the break-even."""
+    eligible = max(0, prompt_tokens - min(TAIL, prompt_tokens) - hit)
+    return eligible if eligible > BREAK_EVEN else 0
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
-    configuration = json.loads((args.fixture / "config.json").read_text())
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
+    configuration, _ = read_fixture(args.fixture)
     model = configuration["text_config"]
-    if (
-        not configuration.get("_test_fixture_only")
-        or model["num_hidden_layers"] != 4
-        or status["status"] != "complete"
-        or not status["all_tensor_bytes_verified"]
-    ):
-        raise ValueError("A byte-verified four-layer fixture is required")
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "loading",
@@ -102,48 +189,15 @@ def main(argv=None):
 
     save()
     try:
-        import torch
-
-        width = model["hidden_size"]
         projector = args.output / "synthetic-projector.pt"
-        torch.save(
-            {
-                "format_version": 2,
-                "teacher_revision": REVISION,
-                "teacher_precision": TEACHER_PRECISION,
-                "cut": 0,
-                "layers": 4,
-                "test_fixture_only": True,
-                "weights": {
-                    i: {
-                        "mean": torch.zeros(width),
-                        "down": torch.zeros(width, 1),
-                        "up": torch.zeros(1, width),
-                        "scale": torch.full((width,), 0.5),
-                        "bias": torch.linspace(-0.25, 0.25, width),
-                    }
-                    for i in range(1, 4)
-                },
-            },
-            projector,
-        )
-        digest = hashlib.sha256(projector.read_bytes()).hexdigest()
+        digest = write_synthetic_projector(projector, model["hidden_size"])
         report["synthetic_projector_sha256"] = digest
         os.environ.update(
             VLLM_ENABLE_V1_MULTIPROCESSING="0",
             NVIDIA_TF32_OVERRIDE="0",
             GLM53_FUSED_UNPACK=str(int(args.fused_unpack)),
             GLM53_ASYNC_INDEX_CHECKS=str(int(args.async_index_checks)),
-            GLM53_APC_LPA_CONFIG=json.dumps(
-                {
-                    "cut": 0,
-                    "tail": 512,
-                    "break_even": 1024,
-                    "projector_path": str(projector.resolve()),
-                    "projector_sha256": digest,
-                    "skip_mla_queries": True,
-                }
-            ),
+            GLM53_APC_LPA_CONFIG=lpa_config(projector.resolve(), digest),
             GLM53_APC_LPA_AUDIT=str((args.output / "cache-audit.jsonl").resolve()),
         )
         from vllm import LLM, SamplingParams
@@ -163,7 +217,7 @@ def main(argv=None):
         replay_margin = block if manager.coordinator.eagle_group_ids else 0
         prime_length = block + replay_margin + 1
         length = 2 * block + replay_margin + 1024
-        if block < 1 or length + 16 > 32768:
+        if block < 1 or length + OUTPUT_TOKENS > MAX_MODEL_LEN:
             raise ValueError("Fixture must cross two actual shared-cache blocks")
         base = llm.get_tokenizer().encode(
             "The archive contains numbered records. Preserve the code and continue the sequence. ",
@@ -182,7 +236,7 @@ def main(argv=None):
             params = SamplingParams(
                 temperature=0,
                 seed=42,
-                max_tokens=16,
+                max_tokens=OUTPUT_TOKENS,
                 ignore_eos=True,
                 logprobs=10,
                 detokenize=False,
@@ -199,7 +253,7 @@ def main(argv=None):
             }
             if (
                 not result.finished
-                or len(row["output"]["token_ids"]) != 16
+                or len(row["output"]["token_ids"]) != OUTPUT_TOKENS
                 or not all(
                     math.isfinite(x)
                     for values in row["output"]["logprobs"]
@@ -227,22 +281,14 @@ def main(argv=None):
             ]
             return hit, physical
 
-        def assert_policy(row, hit, expected):
-            if row["cached_tokens"] != hit:
-                raise ValueError("Unexpected actual cache hit")
-            for worker in row["workers"]:
-                policy = worker["policy"]["policy"]
-                if policy["cached_tokens"] != hit:
-                    raise ValueError("Worker H differs from cache lookup")
-                counts = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
-                if counts != ({3: expected} if expected else {}):
-                    raise ValueError(
-                        ("Incorrect actual query omission", counts, expected)
-                    )
+        def cache_hashes(physical):
+            return llm.collective_rpc(
+                "apc_fixture_cache_hashes", kwargs={"block_ids": physical}
+            )
 
         assert llm.reset_prefix_cache()
         no_hit = generate("cold-approximate", ids, "auto")
-        assert_policy(no_hit, 0, length - 512)
+        assert_policy(no_hit, 0, length - TAIL)
         if lookup()[0] != 0:
             raise ValueError("A cold approximate request populated shared cache")
 
@@ -259,18 +305,14 @@ def main(argv=None):
                         block,
                     )
                 )
-            before = llm.collective_rpc(
-                "apc_fixture_cache_hashes", kwargs={"block_ids": physical}
-            )
+            before = cache_hashes(physical)
             if label == "trial":
                 approximate = generate("partial-hit-approximate", ids, "auto")
-                assert_policy(approximate, block, length - 512 - block)
+                assert_policy(approximate, block, length - TAIL - block)
                 after_hit, after_blocks = lookup()
                 if after_hit != block:
                     raise ValueError("Approximate suffix entered shared APC")
-                after = llm.collective_rpc(
-                    "apc_fixture_cache_hashes", kwargs={"block_ids": after_blocks}
-                )
+                after = cache_hashes(after_blocks)
                 report["shared_prefix_hashes"] = {"before": before, "after": after}
                 if before != after:
                     raise ValueError("Approximation changed shared exact-prefix bytes")
@@ -286,14 +328,7 @@ def main(argv=None):
         )
         teacher = controls[1]["output"]
         altered = approximate["output"]
-        common = teacher["logprobs"][0].keys() & altered["logprobs"][0].keys()
-        delta = max(
-            (
-                abs(teacher["logprobs"][0][k] - altered["logprobs"][0][k])
-                for k in common
-            ),
-            default=0,
-        )
+        delta = first_distribution_delta(teacher, altered)
         report["synthetic_state_distinguished"] = (
             teacher["token_ids"] != altered["token_ids"] or delta > 1e-4
         )
@@ -301,27 +336,12 @@ def main(argv=None):
         if args.history:
             report["cache_layout"] = llm.collective_rpc("apc_cache_layout")
             report["history"] = []
-            for position in sorted(
-                {
-                    3,
-                    4,
-                    5,
-                    block - 1,
-                    block,
-                    block + 1,
-                    length // 10,
-                    length // 2,
-                    length * 9 // 10,
-                }
-            ):
+            for position in history_positions(block, length):
                 for branch in (False, True):
                     assert llm.reset_prefix_cache()
                     generate(f"history-prime-{position}-{branch}", ids, "off")
                     original_hit, original_blocks = lookup()
-                    original_hashes = llm.collective_rpc(
-                        "apc_fixture_cache_hashes",
-                        kwargs={"block_ids": original_blocks},
-                    )
+                    original_hashes = cache_hashes(original_blocks)
                     edited = list(ids)
                     edited[position] = next(
                         token for token in base if token != ids[position]
@@ -336,12 +356,9 @@ def main(argv=None):
                     row = generate(
                         f"history-approximate-{position}-{branch}", edited, "auto"
                     )
-                    eligible = max(0, len(edited) - min(512, len(edited)) - hit)
-                    assert_policy(row, hit, eligible if eligible > 1024 else 0)
+                    assert_policy(row, hit, expected_omission(len(edited), hit))
                     after_hit, after_blocks = lookup()
-                    after_hashes = llm.collective_rpc(
-                        "apc_fixture_cache_hashes", kwargs={"block_ids": after_blocks}
-                    )
+                    after_hashes = cache_hashes(after_blocks)
                     if after_hit != original_hit or original_hashes != after_hashes:
                         raise ValueError(
                             "Edited/branched request changed the original shared prefix"
