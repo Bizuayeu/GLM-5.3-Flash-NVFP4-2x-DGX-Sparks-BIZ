@@ -2,7 +2,7 @@
 
 [English](freedombench.md) · [検証一覧](validation.ja.md)
 
-**業務利用向けの必須評価。英語原版の併用構成と長文付きpilotは実測済み、全体検収は未了。** 以下の必須構成・独自拡張と、これらの限定結果を区別する。
+**配信profileで2026-09-22に完了：固定の英語原版60問が初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問、いずれも参照対が配信しているprofileで。** 以下の4構成の一覧とLPAの項目は配信profileが一つになる前の設計で、それとともに退役した。日本語訳・対立的な言い回し・長距離の証拠配置は未実施で、そう記す。以前の実測は元の条件のまま下に残す。
 
 ## 予備実測
 
@@ -26,6 +26,12 @@
 
 temperature0、effort low、clear_thinking=true、上流互換の出力上限8,192を使用。全入力がtail512内に収まり、LPA近似は作動していません。この結果は現行併用1構成の原版全問評価です。下記の4構成比較、日本語拡張、長い業務文脈、人手・出典監査の完了とは扱いません。
 
+## 配信profileでの完了（2026-09-22）
+
+2026-09-22（23:58〜23:59 JST）、リポジトリのrunnerで固定の英語原版60問を参照対の配信profile（分割KDA射影のroute l、MTP k=3、FA2 prefill、`runtime.prefix_page_dedup`、image `76a1172b…`、fingerprint `945965bf…`）に対して走らせた：**計画60問中60問正解、全問が初回で回答、上流の `refused` ゼロ、エラーゼロ**。出力予算は上流の8,192トークン、採点は固定の分類器（記録 `records/20260922-freedombench/serving-full`）。続く長文付きpilotは、2026-09-13と同じ日本語の検証用テキスト約6,000文字を最初の6問に前置し（入力4,810〜4,838トークン＝prefix全体が問いの前に入る）、通常のchat endpointで**6問中6問**正解（記録 `long-pilot-serving`）。
+
+これで閉じるもの。参照対が配信するprofileは一つで、LPAはその中に無い。よって4構成の一覧はそのprofile一つに縮み、FB-05（近似が実際に走ること）はLPAのprofileを再び配信する日まで対象がない。人手の拒否審査は審査対象が空（拒否も解析不能もゼロ）。出典監査は `config/freedombench.lock.json` の固定revisionとhash。閉じないもの：日本語訳の本体、対立的な政治的言い回し、prefixの位置以外の証拠配置は未実施。以前の3回（2026-09-12〜14）は各自のimageとprofileでの記録として残す。
+
 ## 対象と出典
 
 [FreedomBench](https://github.com/Lore-Hex/FreedomBench/tree/cc037ac7b286ba4f910309162367d856cbd25d58) のrevision `cc037ac7b286ba4f910309162367d856cbd25d58`（パッケージ版 `1.0.2`）を使う。その[設問集](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/questions.py)は中国関連の12分野・英語60問の選択式評価で、著者が設定した正答との一致を測る。一般的な政治的中立性や学習データの由来を証明する試験ではなく、業務文脈の汚染は追加試験で扱う。
@@ -33,6 +39,8 @@ temperature0、effort low、clear_thinking=true、上流互換の出力上限8,1
 実行前に各設問の文言・出典・時点を確認し、争点や曖昧さを別記する。公式設問や正答を無断で差し替えない。誤答だけで「特定政府の主張への同調」や検閲の原因を断定しない。公開ランキングのホスト型GLMと手元のNVIDIA版では重み・量子化・テンプレート・配信経路が異なるため、順位や点数を転用しない。
 
 上流の[ライセンス](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE)はApache-2.0。ローカルアダプターでは回答抽出・promptと選択肢の構築を改変利用し、NOTICEに出所と変更を記録する。設問データは別途取得し、[benchmark lock](../config/freedombench.lock.json)のhashを検証する。
+
+以下の項目は、4構成（LPAとMTPのon/off）が候補だった時に書いた。2026-09-22以降はLPAなしの一つのprofileを配信しているので、FB-02はそのprofileで満たし、FB-05はLPAのprofileを配信するまで対象外。他の行は状態を保つ。
 
 ## 必須試験項目
 

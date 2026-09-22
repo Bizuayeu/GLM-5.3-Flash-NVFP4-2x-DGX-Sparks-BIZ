@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.9.5 — 2026-09-23
+
+### Documentation
+
+- FreedomBench closed for the serving profile: on 2026-09-22 the pinned English suite answered 60 of 60 on the first attempt with no refusal and the long-prefix pilot 6 of 6, both on the profile the reference pair serves; the four-profile matrix and the LPA case retired with the single served profile, and what was not run (Japanese translation, opposed framings, evidence placement) is listed. Validation says the same in one sentence.
+- Benchmarks 1.9.0: two checks that narrow the launch-state question — thirteen fresh processes computing the pair's GEMM and KDA kernels bit-identically (pins included), and the four-layer MTP fixture launched TP=2 across the pair twenty times with identical completions — leave the full-size model's load and launch as the remaining candidates.
+
 ## 1.9.4 — 2026-09-22
 
 ### Changed

@@ -2,7 +2,7 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
-**Required business-use evaluation — original-English integration profiles and a long-prefix pilot measured; full acceptance pending.** The required matrix and extensions below remain separate from these limited results.
+**Closed for the serving profile on 2026-09-22: the full pinned English suite 60 of 60 on the first attempt with no refusal, and the long-prefix pilot 6 of 6, both on the profile the reference pair serves.** The four-profile matrix and the LPA case below predate the single serving profile and are retired with it; the Japanese translation of the suite, opposed framings and long-range evidence placement were not run and are listed as such. Earlier measurements keep their original conditions below.
 
 ## Preliminary measured result
 
@@ -26,6 +26,12 @@ On 2026-09-14 (Asia/Tokyo), `release-200k-reserve 4` ran all 60 original-English
 
 Settings were temperature 0, effort low, clear_thinking=true and the upstream 8,192-token output budget. Every input fit inside tail 512, so LPA approximation did not run. This is the full original suite on one combined candidate; the four-profile matrix, Japanese extensions, long business contexts and human/source audits below remain separate work.
 
+## Closure on the serving profile (2026-09-22)
+
+On 2026-09-22 (23:58 to 23:59, Asia/Tokyo) the repository runner ran all 60 pinned original-English questions against the reference pair on its serving profile (route l with the split KDA projection, MTP k=3, FA2 prefill, `runtime.prefix_page_dedup`, image `76a1172b…`, fingerprint `945965bf…`): **60 correct of 60 planned, every question on the first attempt, zero upstream `refused`, zero errors**, with the upstream 8,192-token output budget and the pinned classifier (record `records/20260922-freedombench/serving-full`). The long-prefix pilot then prepended the same 6,000-character Japanese validation-text excerpt as on 2026-09-13 to the first six questions (inputs 4,810–4,838 tokens, so the whole prefix sits before the question) and answered **6 of 6** through the ordinary chat endpoint (record `long-pilot-serving`).
+
+What closes with it. The reference pair serves one profile, and LPA is not part of it, so the four-profile matrix collapses to that profile and FB-05 (approximation exercised) has nothing to exercise until an LPA profile is served again. The human refusal review has an empty set to review: no answer was refused or unparseable. The source audit is the pinned revision and hashes in `config/freedombench.lock.json`. What does not close: the suite was not translated into Japanese, opposed political framings were not written, and evidence placement beyond the prefix position was not tested; the three earlier runs (2026-09-12 to 14) stand as recorded, on their own images and profiles.
+
 ## Scope and fixed source
 
 Use [FreedomBench](https://github.com/Lore-Hex/FreedomBench/tree/cc037ac7b286ba4f910309162367d856cbd25d58), revision `cc037ac7b286ba4f910309162367d856cbd25d58` (package metadata: `1.0.2`). Its [question set](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/questions.py) contains 60 English multiple-choice items in 12 China-related topics. It tests agreement with the authors' selected answer key on those items. It does not establish general political neutrality, explain a model's training data, or by itself measure contamination of business context.
@@ -33,6 +39,8 @@ Use [FreedomBench](https://github.com/Lore-Hex/FreedomBench/tree/cc037ac7b286ba4
 Review each item's wording, cited source and date before evaluation. Record disputed/ambiguous items separately without silently changing the official question set or answer key. A wrong answer alone does not establish state-aligned framing or a cause of censorship. Published hosted-model scores cannot be assigned to this local NVIDIA checkpoint; model, quantization, template and serving provider can differ.
 
 The [license](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE) is Apache-2.0. The local adapter adapts choice extraction and prompt/option construction, with attribution and modifications recorded in NOTICE. Question data is acquired separately and verified against [the benchmark lock](../config/freedombench.lock.json).
+
+The cases below were written when four profiles (LPA and MTP on or off) were candidates. Since 2026-09-22 one profile is served without LPA, so FB-02 is met for that profile and FB-05 does not apply until an LPA profile is served; the other rows keep their status.
 
 ## Required cases
 

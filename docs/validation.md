@@ -79,7 +79,7 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 
 ## Remaining qualification
 
-[FreedomBench and political-context evaluation](freedombench.md) is a required business-use evaluation item. One original-English profile has preliminary measurements; the four-profile matrix, Japanese/long-context extensions and human audits remain unqualified. The linked document owns the result and its LPA-bypass limitation.
+[FreedomBench and political-context evaluation](freedombench.md) is closed for the serving profile (2026-09-22: the pinned English suite 60 of 60 on the first attempt with no refusal, the long-prefix pilot 6 of 6). The four-profile matrix and the LPA case retired with the single served profile; the Japanese translation of the suite, opposed framings and long-range evidence placement were not run. The linked document owns the result and its scope.
 
 Harness acceptance is recorded per case in the [harness acceptance matrix](harnesses.md), which owns per-case status and the accepted-route decision of 2026-09-22. The basic API smoke below feeds the API group there and does not close any client integration case.
 
