@@ -4,6 +4,17 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.9.0 — 2026-09-22
+
+### Changed
+
+- **hashが既にcacheにあるprefix cacheのpageを二重に登録しない（`runtime.prefix_page_dedup`）。** 固定のblock poolは、同じhashのblockが既にcacheにあっても、満杯になった全blockをそのhashで登録する。draft（MTP）の下ではprefixの検索が最後に一致したblockを落として計算し直すため、同じ履歴を再送するたびにKV cache group数（ここでは3）のblockが、既にblockを持つhashでLRU queueに積まれていた。4層fixture（深さ3、dense retention）では再送ごとに3つ増え、この設定を入れると0になり、cacheされたtoken数とcompletionは固定のpoolと同一（27本中27本）、要求時間も同じ。参照対では、KDAの状態checkpointが長い履歴ほぼ一つ分の余地しか残さないので、この重複が効く：57Kトークンの履歴を15回再送すると、設定offでは28Kトークンの履歴が追い出され、onでは残る。変更はsource-pinnedのpatch（`glm53_setup/runtime/patch_prefix_dedup.py`。image buildで `vllm/v1/core/block_pool.py` に当て、`patch_prefix_dedup --check` が固定fileを検証する）で、`_insert_block_hash` に一問を足す：`GLM53_PREFIX_PAGE_DEDUP=1` のとき、hashが既にcache済みのblockを持つblockはhashを持たず、要求の終了時にfree queueの先頭へ戻る。block idとfree queueの順序はそれ以外変えず、hitは先にcacheされたcopyが担う。profile key（任意。省略＝off＝固定のpoolの挙動。テンプレートは書かない）は両rankに環境変数を書き、このcheckoutからbuildしたimage（marker `GLM53_PREFIX_DEDUP_API=1`）を要する。`server preflight` は `prefix_dedup_support` を報告する。参照対の配信profileはこれを設定する。設定したprofileのfingerprintは変わり、設定しないprofileはfingerprintを保って以前のimageで動く。
+
+### Documentation
+
+- benchmarks：参照対での再送プローブ（57K／28Kの履歴、再送15回、offとon、同じ夜・同じimage）と、採用の裏付けにした起動跨ぎの確認：新imageの6起動（一つのprofileは4回起動）のうち5起動が同じcompletionを出し、1起動が別のものを出した。設定にもprofileにも依らない。imageの中身・起動引数・runtime cache・Tritonのautotune表を比べて原因ではないと確かめ、残る候補は痕跡を残さないので、次にそうなった起動はcompletionのtoken idと両rankのcontainer logで捕まえる。README：反復の行がそう述べ、`server_config.py` の起動時の注記はautotuneの固定が全ての原因を消すとは言わなくなった。
+- 施策台帳P25（この変更）と起動設定（`runtime.prefix_page_dedup`）。
+
 ## 1.8.1 — 2026-09-22
 
 ### Documentation

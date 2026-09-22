@@ -756,3 +756,34 @@ On 2026-09-22 (13:10 to 14:22, Asia/Tokyo) the reference pair ran three arms bac
 **The split option prefills 2.6% faster than the fused option on 38,962 tokens, 3.2% faster on the 199,652-token request and 3.1% faster on the 261,461-token request, the same size as the penalty [1.7.1](#measurements-on-171) measured: the penalty is gone**, and the option is now ahead of the defaults on prefill as well. The defaults were 3 to 4% slower that night than on the 1.7.1 night on every prefill row, a launch-to-launch difference: their decode completions hashed the same as on the 1.7.1 night. Decode after the short prompt is 9% faster than on the fused option; after the 2,048-token prompts the differences follow the acceptance lengths (counting −1.5% at 3.66 against 3.68, prose +5.2% at 2.28 against 2.16, code −2.6% at 2.97 against 3.04), with no regression. The fused option and the defaults hashed identically to the 1.7.1 night on all three task types, each a sample that crosses both a launch and a night. The split option's completions differ, the three GEMMs rounding differently in BF16, and its three samples per task type are identical; on the four-layer fixture the split and the fused path agree at a mean full-vocabulary KL of 1e-4 and Jaccard 0.986 on the layer-3 candidate sets, the agreement of two launches of one fixture, where the repack itself sits at KL 1.6e-2 and Jaccard 0.950 against the unmodified fixture. Memory is unchanged.
 
 Why the split helps, from a kernel measurement on one GB10 in the pinned image: at 2,048-row chunks the W4A16 Marlin GEMM costs 1.6 to 1.8 times a BF16 GEMM at every fused width tried (12,288 to 12,800, aligned or not), while three 4,096-wide GEMMs plus the 288-wide tail cost 1.14 times, 1.3 with the `q|k|v` concatenation the layer needs. The cost is the width, not the padding. At decode rows (M=8) the split adds about 0.5 ms per step over 34 layers, which the full-model decode did not show.
+
+## Measurements on 1.9.0
+
+### Re-sent histories under MTP: the duplicate pages and the option that stops them
+
+On the four-layer MTP fixture (depth 3, dense retention) every re-send of a cached history registered three more blocks under hashes that already had one (one per KV cache group), because the draft's prefix lookup drops the last matching block and recomputes it; without a draft there were none. With `runtime.prefix_page_dedup` the copies are zero on all 27 requests, the cached-token counts, the completions (token ids) and the request times are the same as with the pinned pool, and an agreement run off and on is byte-identical.
+
+On the reference pair (2026-09-22, 17:00 to 20:17, Asia/Tokyo; serving profile of 1.8.0 on the image built from this checkout, `76a1172b…`) two histories were sent, then history A was re-sent and history B checked, with the option off and on, same night and image:
+
+| Histories (tokens) | Re-sends of A | Option off | Option on |
+|---|---|---|---|
+| A 98,031 / B 57,296 | 5 | only the history sent immediately before hits (92,160 cached tokens); B misses | not run: two histories of this size do not coexist in the 3 GiB KV budget ("maximum concurrency 1.15x") |
+| A 57,258 / B 28,350 | 5 | A hits from its second send (50,688), B hits after A (23,040) | same |
+| A 57,258 / B 28,350 | **15** | A hits every time; **B is evicted (0 cached tokens)** | A hits every time; **B still hits (23,040)** |
+
+The KDA state checkpoints (dense retention) take most of the KV budget, so about one 100K-token history fits; where two histories coexist, the copies that fifteen re-sends accumulate (15 × 3 blocks of 4,608 tokens) fill the LRU queue and push the older history out. With the option on they do not exist, and the older history stays. Decode and prefill speed are unchanged (below).
+
+### Six launches of the new image: the same completions five times, different once
+
+Each launch that night ran the decode check after a 2,048-token prompt (512 greedy tokens, three samples per task, prompt below one 4,608-token block so the prefix cache and the patch are not involved). Within every launch the three samples agreed. Across launches:
+
+| Launch | Option | Counting / prose / code (tok/s, acceptance length) | Completions |
+|---|---|---|---|
+| 1 | on | 45.81 (3.70) / 28.08 (2.15) / 38.44 (3.10) | state 1 |
+| 2 | off | 46.09 (3.70) / 28.49 (2.17) / 37.16 (3.00) | **state 2** |
+| 3 | on | 45.73 (3.70) / 27.99 (2.15) / 37.88 (3.10) | state 1 |
+| 4 | on | 45.68 (3.70) / 28.27 (2.15) / 38.38 (3.10) | state 1 |
+| 5 | off | 45.79 (3.70) / 28.31 (2.15) / 38.45 (3.10) | state 1 |
+| 6 | on | 45.62 (3.70) / 28.32 (2.15) / 38.49 (3.10) | state 1 |
+
+The earlier image (1.8.0, one launch that night) computed in a third state. The option is not the axis: launch 5 with it off repeated launch 1 with it on, and launch 2 with it off did not. Speed and acceptance length are inside one launch's spread in every state, so the states differ in how greedy ties fall, not in quality or speed. What was compared and is not the cause: the two images (every Python and shared-library file hashed; only the patched `block_pool.py` and this repository's own files differ), the launch arguments (only the environment variable and the container name), the shared runtime cache on both ranks (no kernel or autotune table written during the six launches) and Triton's autotune tables (kept since 2026-09-15 for every autotuned kernel the path compiles; the per-launch JIT kernels are not autotuned). On the four-layer fixture (TP=1, in-process) six launches across both images and both settings were bit-identical. The remaining candidates decide at launch and leave no trace (the BF16 GEMMs cuBLAS serves, the FlashInfer plan, uninitialised memory, hash-seed-dependent ordering on the distributed path), so a launch is checked rather than assumed, and the decode check now keeps the completion token ids and both ranks' container logs so that the next launch in another state can be compared at its first diverging token.

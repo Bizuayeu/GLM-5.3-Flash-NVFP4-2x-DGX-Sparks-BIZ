@@ -461,9 +461,12 @@ def environment(profile, rank):
         TRITON_CACHE_DIR="/root/.cache/triton",
         TILELANG_CACHE_DIR="/root/.cache/tilelang",
         TORCHINDUCTOR_CACHE_DIR="/root/.cache/torchinductor",
-        # Triton keeps compiled kernels there but tunes again on every launch, and
-        # the KDA inverse kernel's pick (num_warps 2 or 4) decides which of two
-        # numerical states a launch computes in. Kept, the first pick stays.
+        # Triton keeps compiled kernels there but tunes again on every launch; on
+        # the four-layer fixture the KDA inverse kernel's pick (num_warps 2 or 4)
+        # decided which of two numerical states a launch computed in. Kept, the
+        # first pick stays. The pair still lands in another state now and then
+        # with the tables untouched (1 of 6 launches on 2026-09-22), so this pin
+        # removes one cause, not every one: a new launch is checked, not assumed.
         TRITON_CACHE_AUTOTUNING="1",
     )
     if "cuda_allocator_conf" in profile["runtime"]:

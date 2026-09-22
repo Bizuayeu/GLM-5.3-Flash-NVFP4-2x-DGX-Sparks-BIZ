@@ -2,6 +2,17 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.9.0 — 2026-09-22
+
+### Changed
+
+- **A prefix-cache page whose hash is already cached is not registered again (`runtime.prefix_page_dedup`).** The pinned block pool registers every full block under its hash even when another block with the same hash is already in the cache, and under a draft (MTP) the prefix lookup drops the last matching block and recomputes it, so every re-sent history added one block per KV cache group (three here) to the LRU queue under a hash that already had one. On the four-layer fixture with depth 3 and dense retention the copies grew by three per re-send; with the option on they are zero, the cached-token counts and the completions are identical to the pinned pool (27 of 27), and the request times are the same. On the reference pair the copies matter because the KDA state checkpoints leave room for about one long history: a 57K-token history re-sent fifteen times evicted a 28K-token one with the option off, and left it cached with it on. The change is a source-pinned patch (`glm53_setup/runtime/patch_prefix_dedup.py`, applied to `vllm/v1/core/block_pool.py` at image build; `patch_prefix_dedup --check` verifies the pinned file) that asks one question in `_insert_block_hash`: with `GLM53_PREFIX_PAGE_DEDUP=1` a block whose hash already has a cached block keeps no hash and returns to the front of the free queue when its request ends. Block ids and the free-queue order are otherwise unchanged; hits are served by the copy cached first. The profile key (optional; absent = off, as the pinned pool behaves; the template does not set it) writes the environment variable on both ranks and needs an image built from this checkout, marked `GLM53_PREFIX_DEDUP_API=1`; `server preflight` reports `prefix_dedup_support`. The serving profile of the reference pair sets it. The fingerprint of a profile that sets it changes; a profile without it keeps its fingerprint and runs on the earlier images.
+
+### Documentation
+
+- Benchmarks: the re-send probe on the reference pair (57K/28K histories, fifteen re-sends, off and on, same night and image) and the launch-to-launch check behind the adoption: six launches of the new image, one profile relaunched four times, gave the same completions in five launches and a different one in one, independent of the option and of the profile. The image, the launch arguments, the runtime caches and Triton's autotune tables were compared and are not the cause; the remaining candidates leave no trace, so the next such launch is caught with the completion token ids and both ranks' container logs. README: the repeatability row says so, and the launch note in `server_config.py` no longer claims the autotune pin removes every cause.
+- Optimization catalog P25 (this change) and server configuration (`runtime.prefix_page_dedup`).
+
 ## 1.8.1 — 2026-09-22
 
 ### Documentation

@@ -88,9 +88,9 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.8.0）
+### 主要な測定値（1.9.0）
 
-GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)にあります。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)、[1.9.0](docs/benchmarks.ja.md#190での測定)にあります。1.9.0の夜（同じ配信profileに `runtime.prefix_page_dedup` を入れた6起動）のdecodeはこの幅の中にあり、再送の下でも古い履歴がcacheに残りました。下の数値は1.8.0の夜のものです。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 測定 | 配布既定 | 公開した任意設定 |
 |---|---|---|
@@ -126,7 +126,7 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、bit一致で反復する。4層fixtureでは起動が二つの数値の状態に分かれるので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
+| 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、bit一致で反復する。4層fixtureでは起動が二つの数値の状態に分かれ、対ではkernelの表が不変のまま6起動中1起動が別の状態で計算した（[1.9.0での測定](docs/benchmarks.ja.md#190での測定)）ので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 同時実行 | 同時2系列以上 | 受け入れたprofileでは**非対応**（`max_num_seqs = 1`。要求は順番待ち）。同時配信には系列ごとのKVが要り、rankを増やす：TP=4を推奨、TP=3は非推奨。どちらも未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
