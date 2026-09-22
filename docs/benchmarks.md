@@ -715,8 +715,25 @@ On 2026-09-22 (08:07 to 08:38, Asia/Tokyo) the same profile, still fingerprint `
 | Three-position reference (261,595 tokens), explicit prompt, three runs, the third after 300 s idle | correct 3 of 3 (236.9, 237.2 and 237.4 s) | correct 3 of 3 (232.7, 233.7 and 233.5 s) |
 | Lowest available memory over the series, head / peer | 10.17 / 12.62 GiB | 6.08 / 8.03 GiB |
 
-Prefill is unchanged within the spread, as expected: the repack shortens the decode step, and prefill of this length is dominated by the experts. Every 256K request completed on the guarded image, three to five seconds later than on the defaults, and the head kept about 4 GiB more available, the weights being smaller per rank.
+Read on 2026-09-22 morning, prefill looked unchanged within the spread; the two columns are launches on different nights, and the [same-night pair measured later that day](#measurements-on-171) puts the option 1.8% behind on this prompt and 3.4% behind on the 261K reference. Every 256K request completed on the guarded image, three to five seconds later than on the defaults, and the head kept about 4 GiB more available, the weights being smaller per rank.
 
 ### Decode Graphs on the full model
 
 `runtime.decode_graphs = true` on the profile served on 2026-09-21 morning (repack `g`, depth 4, `enforce_eager = false`; the launcher captures decode at size 5, and the pinned runtime auto-enabled its breakable-graph mode): every one of the ten inputs decoded slower than eager, by 7.2 to 8.5 ms per step (mean 109.3 against 101.1 ms), with identical completions and acceptance; the three decode prompts gave 22.59 / 42.19 / 32.33 tok/s against 24.01 / 45.13 / 34.85. Two eager launches of the same profile the same day differed by 0.9 ms per step. Not adopted; the option stays off ([P06](optimization-overview.md#decode)).
+
+## Measurements on 1.7.1
+
+### The published option against the distributed defaults, same night
+
+On 2026-09-22 (08:59 to 10:12, Asia/Tokyo) the reference pair ran the two profiles back to back from the 1.7.0 checkout on the guarded image `b3f6e18c…`: the served option (repack `l`, depth 3, fingerprint `70d01dbf82ca…`), then the distributed defaults as the same profile with `runtime.derived_checkpoint` disabled and nothing else changed (fingerprint `c337c08dd19c…`), then the option again, two `cluster switch` runs with their warmup ladders. Each arm ran the 38,962-token prefill and the short-prompt decode three times (`glm_bench.py`), the 199,652-token passphrase request twice and the 261,461-token three-position reference once, each after a prefix-cache reset, and three decode samples per task type. The monitoring dashboard was stopped during the arms. The question was the cost of the repack on prefill: a kernel measurement had put the W4A16 Marlin path of the fused KDA input projection at 1.5 times a BF16 GEMM for 2,048-row chunks, predicting about 2.4% on a 200K request ([P23](optimization-catalog.md)).
+
+| Measure | Option, before | Distributed defaults | Option, after |
+|---|---|---|---|
+| Prefill, 38,962-token prompt (tok/s) | 1,256.9 (1,255.5–1,259.3) | **1,277.0 (1,275.8–1,280.8)** | 1,251.2 (1,249.0–1,256.5) |
+| 199,652-token input, one passphrase at the midpoint, twice | 169.4 and 169.6 s, correct | **168.1 and 166.4 s, correct** | 169.2 and 168.9 s, correct |
+| 261,461-token three-position reference, explicit prompt | 234.3 s, correct 3 of 3 | **226.7 s, correct 3 of 3** | 234.6 s, correct 3 of 3 |
+| Decode, 512 tokens after a fixed short prompt (tok/s) | 38.44 | 27.29 | 38.21 |
+| Decode after a 2,048-token prompt: counting / prose / code (tok/s) | 46.28 / 28.80 / 37.57 | 32.58 / 20.64 / 27.42 | 45.81 / 28.48 / 38.13 |
+| Weights per rank / lowest available memory on the head during the bench | 91.38 GiB / 10.22 GiB | 95.76 GiB / 6.20 GiB | 91.38 GiB / 10.15 GiB |
+
+The two option launches agree within 0.45% on prefill and 0.2% on the long requests, and their decode completions hash the same on all three task types, so the gap to the defaults is not launch-to-launch variation: **the repack costs 1.8% of prefill on the 38,962-token prompt, 1.2% on the 199,652-token request and 3.4% on the 261,461-token request.** The 200K figure understates the prefill difference, because the defaults answered that request with 100 completion tokens (89 of reasoning) against 20 for the option, about three seconds of decode; on prefill alone the gap is nearer 2.5%. The numbers of the defaults agree with the [1.6.0 table](#prefill-and-decode-on-160) within their spread (1,277.0 against 1,271.6 tok/s, 167.3 against 167.7 s), so the 1.7.0 runtime did not move them. The cost sits where the kernel measurement placed it, in the fused KDA input projection at prefill widths, and it is the price of the decode gain the same repack buys; the serving profile is unchanged, and the description of the option carries the number.

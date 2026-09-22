@@ -88,19 +88,19 @@ The TP=2 reference profile is **measured but not accepted for routine use**. `se
 
 **Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** The checks behind these defaults are [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160); [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative, and [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) keep the earlier speed/tool-eval results, including the unmet Safety Gate.
 
-### Headline measurements (1.7.0)
+### Headline measurements (1.7.1)
 
-Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160) and [measurements on 1.7.0](docs/benchmarks.md#measurements-on-170), which own these numbers; the option's prefill and 256K series were measured on 2026-09-22 and are in the latter. Task types are always listed counting / prose / code.
+Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), [1.7.0](docs/benchmarks.md#measurements-on-170) and [1.7.1](docs/benchmarks.md#measurements-on-171), which own these numbers. The prefill, 199,652-token, 261,461-token, short-prompt and 2,048-token decode rows come from the same-night pair of 2026-09-22 on the 1.7.0 runtime; the 255,950-token, capacity and NLL rows are the earlier series. Task types are always listed counting / prose / code.
 
 | Measure | Distributed defaults | Published option |
 |---|---|---|
 | Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; a relaunch repeated the first launch's completions |
-| Decode after a 2,048-token prompt: counting / prose / code | 32.50 / 21.00 / 28.30 tok/s | **46.20 / 28.79 / 38.18 tok/s** |
-| Prefill, 38,962-token prompt | 1,271.6 tok/s | 1,268.4 tok/s |
-| Decode, 512 tokens after a fixed short prompt | 27.17 tok/s | 37.82 tok/s |
-| 199,652-token input, one passphrase at the midpoint | 167.7 s, correct | 169.9 s, correct |
+| Decode after a 2,048-token prompt: counting / prose / code | 32.58 / 20.64 / 27.42 tok/s | **46.28 / 28.80 / 37.57 tok/s** |
+| Prefill, 38,962-token prompt | **1,277.0 tok/s** | 1,256.9 tok/s (1.8% slower; 1,251.2 on a second launch) |
+| Decode, 512 tokens after a fixed short prompt | 27.29 tok/s | 38.44 tok/s |
+| 199,652-token input, one passphrase at the midpoint | **168.1 and 166.4 s, correct** | 169.4 and 169.6 s, correct |
 | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct |
-| 261,461-token three-position reference, explicit prompt | 233.5 s, correct 3 of 3 | 235.1 s, correct 3 of 3 |
+| 261,461-token three-position reference, explicit prompt | **226.7 s, correct 3 of 3** | 234.3 s, correct 3 of 3 (3.4% slower) |
 | Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs |
 | Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 |
 | Lowest available memory over the 256K series, head | 6.08 GiB | 10.17 GiB |
@@ -108,7 +108,7 @@ Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside
 | | Distributed defaults | Published option |
 |---|---|---|
 | **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download. Every 256K request completes a few seconds sooner | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Identical requests still repeat bit for bit, and the head keeps about 4 GiB more available at 256K |
-| **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
+| **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Prefill 2 to 3% slower (the repacked KDA input projection runs W4A16 Marlin at prefill widths). Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
 | **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
 
 How fast MTP decodes depends on how predictable the text is: the same profile gives 46 tok/s on counting and 29 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.

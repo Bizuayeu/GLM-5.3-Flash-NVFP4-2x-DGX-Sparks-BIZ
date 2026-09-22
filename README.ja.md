@@ -88,19 +88,19 @@ TP=2の参照profileは**実測済みだが通常運用としては未受け入�
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.7.0）
+### 主要な測定値（1.7.1）
 
-GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)と[1.7.0での測定](docs/benchmarks.ja.md#170での測定)にあります。任意設定のprefillと256Kの一連は2026-09-22に測り、後者の節にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)にあります。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecodeの行は、1.7.0のruntimeで2026-09-22の同じ夜に対で測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 測定 | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。再起動が最初の起動のcompletionを反復 |
-| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.50／21.00／28.30 tok/s | **46.20／28.79／38.18 tok/s** |
-| prefill（38,962 tokenのprompt） | 1,271.6 tok/s | 1,268.4 tok/s |
-| decode（固定の短いpromptの後の512 token） | 27.17 tok/s | 37.82 tok/s |
-| 199,652 token入力、中央の合言葉1個 | 167.7 s、正答 | 169.9 s、正答 |
+| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.58／20.64／27.42 tok/s | **46.28／28.80／37.57 tok/s** |
+| prefill（38,962 tokenのprompt） | **1,277.0 tok/s** | 1,256.9 tok/s（1.8%遅い。二つ目の起動では1,251.2） |
+| decode（固定の短いpromptの後の512 token） | 27.29 tok/s | 38.44 tok/s |
+| 199,652 token入力、中央の合言葉1個 | **168.1 sと166.4 s、正答** | 169.4 sと169.6 s、正答 |
 | 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答 |
-| 261,461 tokenの3か所参照、枠を明示したprompt | 233.5 s、3つとも正答 | 235.1 s、3つとも正答 |
+| 261,461 tokenの3か所参照、枠を明示したprompt | **226.7 s、3つとも正答** | 234.3 s、3つとも正答（3.4%遅い） |
 | 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限 |
 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6645／2.0024／1.0031／0.6279 |
 | 256Kの一連でのheadの最小空きメモリ | 6.08 GiB | 10.17 GiB |
@@ -108,7 +108,7 @@ GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定�
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない。256Kの要求はどれも数秒早く終わる | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
-| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
+| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。prefillが2〜3%遅い（再パックしたKDAのinput projectionがprefillの幅でW4A16 Marlinを通る）。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
 MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは46 tok/s、散文は29 tok/sです。数値と選定は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)、[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)、[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。

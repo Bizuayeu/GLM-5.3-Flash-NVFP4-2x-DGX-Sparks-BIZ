@@ -2,12 +2,14 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased (1.7.1)
+## 1.7.1 — 2026-09-22
 
 ### Documentation
 
 - Optimization catalog and README: tonyd2wild's 2026-09-20 note reached the same attention/MLP projection set as P23 independently (TP=4, quality unmeasured, no code adopted).
 - Validation: vLLM pull request #55122 restated itself on 2026-09-21 as a performance change whose determinism is a side benefit, after a census on its own traffic found no boundary ties; this stack reproduced and caught them, so `runtime.stable_indexer_topk` stays.
+- Benchmarks: the published option and the distributed defaults measured back to back on the same night and image (1.7.0 runtime): the repack prefills 1.8% slower on 38,962 tokens, 1.2% on the 199,652-token request and 3.4% on the 261,461-token request, against a 0.45% launch-to-launch spread; a kernel measurement places the cost in the fused KDA input projection under W4A16 Marlin at prefill widths. The reading added to the 1.7.0 section on the morning of 2026-09-22, that prefill was unchanged within the spread, compared launches on different nights and is annotated. The defaults on the 1.7.0 runtime match their 1.6.0 numbers.
+- README: the headline table carries the same-night pair, and the cons of the option name the prefill cost.
 
 ## 1.7.0 — 2026-09-22
 

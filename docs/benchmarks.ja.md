@@ -715,8 +715,25 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 | 3か所参照（261,595 token）、枠を明示したprompt、3回（3回目は300 s待機の後） | 3回とも正答（236.9・237.2・237.4 s） | 3回とも正答（232.7・233.7・233.5 s） |
 | 一連の最小空きメモリ、head／peer | 10.17／12.62 GiB | 6.08／8.03 GiB |
 
-prefillは幅の内側で変わらず、予想どおりです。再パックが縮めるのはdecodeのstepで、この長さのprefillはexpertsが支配します。256Kの要求はすべてguard入りのimageで完走し、既定より3〜5秒遅く、headの空きはrankあたりの重みが小さい分だけ約4 GiB多く残りました。
+2026-09-22朝の読みでは、prefillは幅の内側で変わらないように見えました。ただし二つの列は別の夜の起動で、[同じ夜に対で測った1.7.1の測定](#171での測定)では、任意設定はこのpromptで1.8%、261Kの参照で3.4%遅れます。256Kの要求はすべてguard入りのimageで完走し、既定より3〜5秒遅く、headの空きはrankあたりの重みが小さい分だけ約4 GiB多く残りました。
 
 ### 全モデルでのdecode Graphs
 
 2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-overview.ja.md#decode)）。
+
+## 1.7.1での測定
+
+### 公開した任意設定と配布既定、同じ夜の対
+
+2026-09-22（08:59〜10:12 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、二つのprofileを続けて動かしました。配信中の任意設定（再パック `l`、深さ3、fingerprint `70d01dbf82ca…`）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そして再び任意設定で、`cluster switch` を2回（それぞれwarmup ladder付き）。各armで、38,962 tokenのprefillと短いpromptのdecodeを3回（`glm_bench.py`）、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、文種ごとにdecodeを3標本取りました。監視dashboardはarmの間は止めています。問いは再パックのprefillの代価です。kernelの測定では、KDAの融合したinput projectionのW4A16 Marlinが2,048行のchunkでBF16 GEMMの1.5倍で、200Kの要求で約2.4%と予測していました（[P23](optimization-catalog.ja.md)）。
+
+| 項目 | 任意設定（前） | 配布既定 | 任意設定（後） |
+|---|---|---|---|
+| prefill（38,962 tokenのprompt、tok/s） | 1,256.9（1,255.5〜1,259.3） | **1,277.0（1,275.8〜1,280.8）** | 1,251.2（1,249.0〜1,256.5） |
+| 199,652 token入力、中央の合言葉1個、2回 | 169.4 sと169.6 s、正答 | **168.1 sと166.4 s、正答** | 169.2 sと168.9 s、正答 |
+| 261,461 tokenの3か所参照、枠を明示したprompt | 234.3 s、3つとも正答 | **226.7 s、3つとも正答** | 234.6 s、3つとも正答 |
+| decode（固定の短いpromptの後の512 token、tok/s） | 38.44 | 27.29 | 38.21 |
+| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード（tok/s） | 46.28／28.80／37.57 | 32.58／20.64／27.42 | 45.81／28.48／38.13 |
+| rankあたりの重み／bench中のheadの最小空き | 91.38 GiB／10.22 GiB | 95.76 GiB／6.20 GiB | 91.38 GiB／10.15 GiB |
+
+任意設定の二つの起動はprefillで0.45%、長い要求で0.2%の内側で一致し、decodeのcompletionは3文種ともhashが同じです。既定との差は起動間のゆらぎではありません。**再パックのprefillの代価は、38,962 tokenのpromptで1.8%、199,652 tokenの要求で1.2%、261,461 tokenの要求で3.4%です。**200Kの数字はprefillの差を小さく見せています。既定はこの要求にcompletionを100 token（うちreasoning 89）返し、任意設定は20 tokenで、約3秒のdecodeの差があるためで、prefillだけなら2.5%に近い値です。既定の数字は[1.6.0の表](#160でのprefillとdecode)の幅の内側です（1,277.0対1,271.6 tok/s、167.3対167.7 s）。1.7.0のruntimeは既定を動かしていません。代価の所在はkernelの測定が指したところ、prefillの幅でのKDAの融合input projectionにあり、同じ再パックが買うdecodeの利得の値札です。配信profileは変えず、任意設定の説明にこの数字を持たせます。
