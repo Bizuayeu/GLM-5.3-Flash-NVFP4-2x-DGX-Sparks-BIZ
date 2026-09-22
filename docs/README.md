@@ -59,7 +59,7 @@ Every document has one role; other documents link to it instead of repeating its
 |---|---|
 | Model ID, pinned revision, base-image digest, local reference tag, pinned vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | Distributed LPA projector URL, file hash, format, teacher and training provenance | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json); package layout in [operations](operations.md#artifact-storage-and-paths) |
-| Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml), explained in [server configuration](server-configuration.md) |
+| Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml) (the distributed defaults) and [examples/server.axl.example.toml](../examples/server.axl.example.toml) (the published option: repacked weights, two sequences, 6 GiB KV), explained in [server configuration](server-configuration.md) |
 | MTP speculative configuration examples | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |

@@ -2,7 +2,7 @@
 
 [English](server-configuration.md)
 
-[コメント付きTOML](../examples/server.example.toml)を `state/server.toml` にコピーし、両Linuxノードに同じ内容を置きます。このファイルをランチャーと専用送信コマンドが共通で読みます。
+[コメント付きTOML](../examples/server.example.toml)を `state/server.toml` にコピーし、両Linuxノードに同じ内容を置きます。このファイルをランチャーと専用送信コマンドが共通で読みます。公開した任意設定には専用の例 [server.axl.example.toml](../examples/server.axl.example.toml) があります：同じprofileに、再パックした重み（NVFP4 BIZ AXL）と同梱のoverlayの `runtime.derived_checkpoint` 表、`runtime.prefix_page_dedup`、同時2系列、rankあたり6 GiBのKVを足したものです。ランチャーは再パックしたcheckpointなしで3 GiBを超えるKVを拒みます：参照対では固定の重みがKV 3 GiBでheadに5.5 GiBを残し（保護は3 GiB）、再パックした重みは10.5 GiBを残します。
 
 | カテゴリ | 管理するもの |
 |---|---|

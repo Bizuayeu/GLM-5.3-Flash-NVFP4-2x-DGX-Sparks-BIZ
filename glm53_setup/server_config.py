@@ -349,6 +349,25 @@ def check_identifiers(profile):
 
 # Order is part of the contract: the first raise is the sentence the operator
 # reads, so a profile with two faults must report the one it met first.
+# The KV budget the pinned weights leave room for on the reference pair (GB10, 121 GB
+# shared): they load 95.76 GiB per rank and leave the head 5.5 GiB at 3 GiB of KV; the
+# repacked ones load 91.34 GiB and leave 10.5 GiB. Twice the KV crosses the 3 GiB reserve
+# on the pinned weights and stays above it on the repacked ones (2026-09-22).
+KV_BYTES_WITHOUT_DERIVED = 3 * 2**30
+
+
+def check_kv_budget(profile):
+    """More KV than the pinned weights leave room for needs the repacked checkpoint."""
+    if profile["cache"]["kv_cache_memory_bytes"] > KV_BYTES_WITHOUT_DERIVED and (
+        derived_checkpoint(profile) is None
+    ):
+        raise ValueError(
+            "cache.kv_cache_memory_bytes above 3 GiB needs runtime.derived_checkpoint: "
+            "the pinned weights leave the head 5.5 GiB at 3 GiB of KV and the reserve "
+            "is 3 GiB; the repacked checkpoint loads 4.4 GiB less per rank"
+        )
+
+
 VALIDATORS = (
     check_schema,
     check_optional_shapes,
@@ -358,6 +377,7 @@ VALIDATORS = (
     check_parallelism,
     check_worker_exclusivity,
     check_generation,
+    check_kv_budget,
     check_speculation,
     check_lpa,
     check_graph_scope,

@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.2 — 2026-09-23
+
+### Added
+
+- **`examples/server.axl.example.toml`, the profile of the published option.** The distributed defaults keep `examples/server.example.toml`; the option's example adds the `runtime.derived_checkpoint` table for the repacked weights (NVFP4 BIZ AXL) with the overlays the repository ships, `runtime.prefix_page_dedup`, two active sequences (`max_num_seqs = 2`) and 6 GiB of KV per rank, which the repacked weights pay for: they load 4.4 GiB less per rank than the pinned ones. First launched on the reference pair on 2026-09-23: 606,881 tokens of KV, 2.32 times a 256K request by the engine's count, warmup passed, two concurrent requests served (counting 32.2 and prose 22.3 tok/s while both ran). A test keeps both examples valid and their shared sections equal.
+- **The launcher refuses more than 3 GiB of KV without the derived checkpoint** (`check_kv_budget`). On the reference pair the pinned weights leave the head 5.5 GiB at 3 GiB of KV against a 3 GiB reserve, so twice the KV would stop the container; the repacked weights leave 10.5 GiB. The message says so.
+
 ## 1.10.1 — 2026-09-23
 
 ### Fixed

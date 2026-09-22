@@ -2,7 +2,7 @@
 
 [日本語](server-configuration.ja.md)
 
-Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml` and put the same file on both Linux hosts. This controls the launcher and its serial chat client.
+Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml` and put the same file on both Linux hosts. This controls the launcher and its serial chat client. The published option has its own example, [server.axl.example.toml](../examples/server.axl.example.toml): the same profile with the `runtime.derived_checkpoint` table for the repacked weights (NVFP4 BIZ AXL) and the shipped overlays, `runtime.prefix_page_dedup`, two active sequences and 6 GiB of KV per rank. The launcher refuses more than 3 GiB of KV without the derived checkpoint: on the reference pair the pinned weights leave the head 5.5 GiB at 3 GiB of KV against a 3 GiB reserve, the repacked ones 10.5 GiB.
 
 | Category | Controls |
 |---|---|

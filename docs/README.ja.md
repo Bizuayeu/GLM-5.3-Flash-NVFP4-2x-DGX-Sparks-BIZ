@@ -58,7 +58,7 @@
 | 事実 | 正典 |
 |---|---|
 | モデルID、固定revision、base image digest、ローカル参照タグ、固定vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
-| 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)。説明は[起動設定](server-configuration.ja.md) |
+| 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)（配布既定）と [examples/server.axl.example.toml](../examples/server.axl.example.toml)（公開した任意設定：再パックした重み・同時2系列・KV 6 GiB）。説明は[起動設定](server-configuration.ja.md) |
 | MTPの投機設定例 | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |

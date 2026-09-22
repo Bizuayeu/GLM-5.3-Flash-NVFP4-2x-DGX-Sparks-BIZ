@@ -4,6 +4,13 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.10.2 — 2026-09-23
+
+### Added
+
+- **`examples/server.axl.example.toml`、公開した任意設定のprofile。** 配布既定は `examples/server.example.toml` のまま。任意設定の例は、再パックした重み（NVFP4 BIZ AXL）とリポジトリ同梱のoverlayの `runtime.derived_checkpoint` 表、`runtime.prefix_page_dedup`、同時2系列（`max_num_seqs = 2`）、rankあたり6 GiBのKVを足す。再パックした重みは固定の重みよりrankあたり4.4 GiB軽く、それが2系列目の財布になる。2026-09-23に参照対で初起動：KV 606,881トークン（engineの数えで256K要求の2.32倍）、warmup合格、同時2要求を配信（両方走行中でcounting 32.2・prose 22.3 tok/s）。testが両方の例を有効に保ち、共通の節が等しいことを固定する。
+- **ランチャーは再パックしたcheckpointなしで3 GiBを超えるKVを拒む**（`check_kv_budget`）。参照対では固定の重みがKV 3 GiBでheadに5.5 GiBを残し保護は3 GiBなので、KVを倍にするとcontainerが止まる。再パックした重みは10.5 GiBを残す。拒否の文がそう言う。
+
 ## 1.10.1 — 2026-09-23
 
 ### Fixed

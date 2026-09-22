@@ -1,0 +1,192 @@
+# GLM server profile for the published option, NVFP4 BIZ AXL / 公開した任意設定（NVFP4 BIZ AXL）向けのGLM起動設定（両ノードに同じ内容を配置）
+# The distributed defaults are examples/server.example.toml. This profile serves the repacked checkpoint
+# (attention projections and lm_head in W4A16, KDA input projection split; docs/server-configuration.md,
+# runtime.derived_checkpoint) with prefix-page dedup, two active sequences and twice the KV: the repacked
+# weights load 4.4 GiB less per rank than the pinned ones, which is what pays for the second sequence.
+# Copy to state/server.toml. Paths are relative to THIS FILE, or absolute. Model/revision stay pinned by
+# config/runtime.lock.json. Supply image IDs, the checkpoint and overlay paths, MTP view, LPA projector/hash and nodes.
+# 配布既定は examples/server.example.toml。本profileは再パックしたcheckpoint（attention射影と lm_head をW4A16に、KDA入力射影は分割宣言）を
+# prefix pageの重複排除・同時2系列・2倍のKVで配信する。再パックした重みはrankあたり4.4 GiB軽く、それが2系列目の財布になる。
+# state/server.toml にコピー。相対パスはこのファイルの位置が基準。image ID・checkpointとoverlayのパス・MTP view・LPA補助器/hash・機体情報を準備する。
+schema_version = 1
+
+[runtime]
+canonical_moe_order = true # One token order inside each expert; needs an image with GLM53_MOE_ORDER_API (1 or 2)
+# Without it identical requests do not repeat exactly: the align kernel orders an expert's tokens by
+# thread scheduling and the Marlin MoE result depends on it (docs/validation.md). false = comparison arm;
+# omitted = whatever the image defaults to. 同一要求の反復を一致させるexpert内token順の固定。
+stable_indexer_topk = true # Indexer top-k ties go to the lower pool index; needs an image with GLM53_INDEXER_TOPK_API=1
+# The pinned kernels pick a different candidate set for the same input when pools tie across rank k, and
+# one such tie forks a completion (docs/server-configuration.md). false = comparison arm; omitted = the image's default.
+# indexerのtop-kで同点のpoolを低いindexに決める。同点があると同じ入力から違う候補集合が出て、completionが割れるため。
+fa2_attention = true # Prefill-sized NoPE attention through FlashInfer FA2; decode steps stay on the reference path
+# Prefill of 38,962 tokens went from 572-577 to 1,242-1,272 tok/s on the reference pair and identical requests
+# still repeat bit for bit (docs/server-configuration.md). Excludes LPA. false or omitted = the reference path.
+# prefillの大きさのNoPE attentionをFlashInfer FA2へ。decodeのstepは参照経路のまま。LPAとは排他。
+prefix_page_dedup = true # A page whose hash is already cached is not registered again; needs an image with GLM53_PREFIX_DEDUP_API=1
+# Under the draft every re-sent history added one block per KV cache group under an existing hash and pushed older
+# histories out (docs/server-configuration.md). false or omitted = the pinned pool. 同hashのpageを二重登録しない。
+# The derived checkpoint is the [runtime.derived_checkpoint] table at the end of this section.
+# 再パックしたcheckpointはこの節の末尾の [runtime.derived_checkpoint] 表。
+# Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
+# cuda_allocator_conf = "expandable_segments:True"
+nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses (64 on the reference pair)
+# 8 returned about 3 GiB per rank against 64 with no prefill loss (docs/nccl-validation.md#channel-count).
+# 両rankのNCCLチャネル数（MIN=MAX）。未指定はNCCL任せ（参照機では64）。8で各rank約3 GiB戻り、prefillは落ちない。
+# 起動元の環境変数を使う場合は server freeze で一度解決し、同じ --launch を両rankへ。
+# Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
+# 両ノードで確認したイメージID。LPA有効時のみ lpa_image を選択。
+reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+lpa_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+decode_graphs = false
+# true: full decode Graphs (uncompiled prefill; one sequence, no LPA; MTP and prefix caching allowed).
+# trueでdecodeのみGraph化。対応イメージが必要。同時1シーケンス・LPAなし、MTP・prefix cacheは併用可。
+index_checks = "async" # auto: sync in eager, async in Graphs; sync also allowed
+# 範囲検査は常に実施。asyncはdevice assertで失敗し得る。
+expert_parallel = false # Independent TP2/DP1 EP experiment; needs matching image
+# EP単体比較用。MTP/LPA/fusion/Graphs/APCとの併用は別検収。
+pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
+pipeline_split_layer = 24 # PP2 stage0 layers [0,24), stage1 [24,45)
+# PP2は各stageにMLAが必要。24/21層は各21 MoE層を配置する候補で、容量保証ではない。
+seed = 42
+vision = true # Loads the vision tower for IMAGE input; omitted = false (text/tools only)
+# true also sets --limit-mm-per-prompt {"video": 0}: video input is rejected.
+# The 256K text-only alternative: false, with max_model_len 262144 and KV 3 GiB.
+# 視覚塔を読み込み画像入力を受ける。未指定はfalse（テキスト・ツール専用）。
+# trueでも動画入力は受けない（--limit-mm-per-prompt {"video": 0} を付ける）。
+# 256Kテキスト専用の代替：false、max_model_len 262144、KV 3 GiB。
+# Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
+# Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
+
+# The repacked checkpoint (Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16 on Hugging Face, NVFP4 BIZ AXL) and the two
+# source overlays the repository ships in overlays/ (their hashes are fixed; only the paths are yours to set).
+# enabled = false serves the pinned checkpoint from this profile unchanged, which then needs KV back at 3 GiB.
+# 再パックしたcheckpoint（Hugging Faceの Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16、NVFP4 BIZ AXL）と、リポジトリの overlays/ にある
+# 2枚のsource overlay（hashは固定。設定するのはパスだけ）。enabled = false にすると固定のcheckpointを配信し、その時はKVを3 GiBに戻す。
+[runtime.derived_checkpoint]
+enabled = true
+path = "/srv/glm53/weights/GLM-5.3-Flash-NVFP4-l-split"
+requant_target = "l"
+overlays = [
+  { target = "kda.py", source = "/srv/glm53/source/overlays/kda-quant-split.py", sha256 = "144a835faa57c56f5257c05a5cf6742102a21e38a92d39c2a1e26cd4ada680fd", base_sha256 = "99cfc24678c0a99f2c813c20e3dcc30c8bfac4f55ec4299737689d5d51f472cd", marker = "kda-quant-overlay" },
+  { target = "model.py", source = "/srv/glm53/source/overlays/mla-quant-split.py", sha256 = "a9b1ea5ce05983973bc79954147809a17e0e5aa0f96eae47c6011306f51b533d", base_sha256 = "48f60a65afab1afd737b282d109c6c11f97d881d3ec774442e174fab09c2f525", marker = "mla-quant-overlay" },
+]
+
+[context]
+max_model_len = 262144 # Input + generated tokens / 入出力合計の上限
+max_num_seqs = 2 # Two active sequences; the KV below is sized for them on the repacked weights
+# Concurrency limit, not a reservation: the launcher does not check max_model_len * max_num_seqs. By the
+# engine's own count 6 GiB holds 606,881 tokens on the reference pair, 2.32 times a 256K request, so two
+# full-length requests fit; two concurrent requests were served on 2026-09-23 (docs/validation.md, concurrency scope).
+# 同時2系列。最大長×同時数のKV容量をランチャーは検査しない。engineの数えでは6 GiBは参照対で606,881トークン＝256K要求の2.32倍で、
+# 全長2本が入る。2026-09-23に同時2要求を配信した（docs/validation.ja.md）。
+max_num_batched_tokens = 2048
+chunked_prefill = true
+
+[profiling]
+enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
+# カーネル計測用。通常の速度比較はfalseで実行する。
+
+[validation]
+component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP integration
+expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
+# memory_probe = true # Optional: dev /collective_rpc method allocator_stats (torch reserved/allocated, retries); excludes LPA and the other workers
+
+[cache]
+# Native checkpoint retention. Omission preserves the runtime default (0).
+# "dense" keeps every checkpoint and adapts when MTP changes the block width.
+# Numeric intervals must align to the actual scheduler block; no auto guessing.
+prefix_cache_retention_interval = "dense"
+# KDA checkpointを保持。denseならMTP切替時のblock値再指定は不要。
+mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM default 4)
+# Head-only image preprocessing cache (API and engine processes each hold one).
+# runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
+fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
+kv_cache_memory_bytes = 6442450944 # 6 GiB per rank, twice the defaults; the launcher refuses this without the derived checkpoint
+# Fixed shared pool per rank, NOT per request; does not grow with context/batch. Measured on the reference pair:
+# the pinned weights leave the head 5.5 GiB at 3 GiB of KV, the repacked ones 10.5 GiB, and the reserve is 3 GiB.
+# 各rankで共有する固定KV枠（既定の2倍）。再パックしたcheckpointなしでは起動を拒む。context・同時数に合わせて自動増額しない。
+# 参照対の実測：固定の重みはKV 3 GiBでheadの空き5.5 GiB、再パックした重みは10.5 GiB、保護は3 GiB。
+block_size = 256 # Requested size; runtime may align it / 実行時に整列される
+prefix_caching = true
+gpu_memory_utilization = 0.80
+# Explicit kv_cache_memory_bytes overrides utilization-based KV sizing.
+# 上のKVバイト数指定が優先される。この比率をRAM全体の保護上限とは扱わない。
+
+[mtp]
+enabled = true # LPA併用には対応イメージが必要 / Combined use needs a compatible image
+num_speculative_tokens = 3 # Measured: 1 to 5. 3 is the default for the pinned checkpoint; 4 pays with runtime.derived_checkpoint (route g), see docs/speculative-decoding.md
+# Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
+# HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
+view = "local-views/glm53-mtp-compatible"
+
+[lpa]
+break_even_tokens = 128 # Conservative measured cutoff; recheck after changing the workload
+# APC復元後の適用可能長がこの値を超える場合だけLPA。校正済みの保守的な候補値。負荷を変えたら再確認。
+enabled = false # Turning it on needs runtime.fa2_attention = false: the FA2 path excludes LPA / 有効にする時は runtime.fa2_attention を false に（FA2経路とLPAは排他）
+# Batch opt-in only. An approximated request publishes nothing to the shared
+# prefix cache, so enabling this makes every later request re-prefill in full.
+# バッチ用のopt-in。近似した要求は共有prefix cacheへ登録されないため、
+# 有効にすると以後の要求は毎回フルprefillに戻る。
+cut = 32 # Zero-based first approximated layer / 近似開始層、0始まり
+tail = 512 # Last prompt tokens stay exact / 末尾の通常計算を残すトークン数
+skip_mla_queries = true
+# Projector must match cut/model; store outside Git. Mounted read-only.
+# cut・モデルに対応する学習済みprojectorを指定（Git対象外）。
+projector = "projector.pt"
+projector_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[api]
+port = 8893 # Loopback only / 127.0.0.1 にのみ公開
+master_port = 29554
+served_model_name = "glm-5.3-flash-nvidia"
+reasoning_parser = "glm45"
+tool_call_parser = "glm47"
+auto_tool_choice = true
+prompt_tokens_details = true # Report usage.prompt_tokens_details.cached_tokens (harness cache display) / prefix cache hit数をusageで返す
+dev_endpoints = false # true mounts vLLM's dev routes on the loopback API (/reset_prefix_cache, /collective_rpc, /sleep …); omitted = false
+# Needed to reset the prefix cache without a restart (benchmarks, warmup cleanup). Off by default: the routes have no authentication.
+# 再起動なしで prefix cache を消す（ベンチ・warmup 後始末）ために立てる。dev 経路は無認証なので既定は off。
+
+[generation]
+# Defaults used by `server ask`; these are request options, not vLLM flags.
+# server ask の既定値。サーバー起動フラグではなくリクエスト設定。
+temperature = 0.0
+max_tokens = 4096 # Thinking counts against this; a one-line answer at low effort used about 600 / 思考も含む。low の一行回答で約600
+reasoning_effort = "low"
+clear_thinking = true
+timeout_seconds = 600 # Same timeout as the measured experiment client
+warmup = true # cluster switch runs `server warmup` on rank 0 after readiness; omitted = false
+warmup_long_tokens = 0 # Long-prefill rung in prompt tokens; 0 = no long rung. Must leave room for max_tokens.
+# A new prompt shape can still compile kernels while serving (docs/vision.md); the
+# 200K request compiled one TileLang shape. Set this to the longest prompt you will
+# serve and pay its prefill once per start (262,144 tokens measured about 490 s at chunk 2048).
+# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（256K・chunk 2048 で約 490 秒の実測）。
+
+[resources]
+# Existing experimental memory budgets; larger workloads need new measurement.
+# 実験時の予算を継承。規模を増やす場合は再計測。
+container_memory_gib = 112
+minimum_available_gib = 108
+reserve_gib = 3.0 # GiB of MemAvailable; fractions allowed / 小数可
+run_seconds = 0 # No time limit; positive seconds INCLUDE load
+# ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
+stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metrics signal moves this long; 0 = off
+# Same value as generation.timeout_seconds; the longest measured request (256K, 493 s at chunk 2048) fits.
+# KV usage counts as progress, so a long prefill is not a stall. /health stays 200 while the engine is wedged.
+# rank 0 だけ。要求が running なのに /metrics の信号（生成・prompt token 計数、KV 使用率、running 数）がこの秒数動かなければ停止。
+# KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。
+
+[[nodes]]
+# Optional extra RoCE rails. All must use the primary rail's GID index.
+# additional_rails = [{ hca = "roce1", port = 1, interface = "fabric1", local_ip = "10.54.0.1", gid_index = 3 }]
+local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)
+interface = "fabric0"
+hca = "roce0"
+gid_index = 3
+
+[[nodes]]
+local_ip = "10.53.0.2" # Rank 1 / worker; replace with measured values
+interface = "fabric0"
+hca = "roce0"
+gid_index = 3
