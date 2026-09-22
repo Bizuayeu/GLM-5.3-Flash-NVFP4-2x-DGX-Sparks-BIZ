@@ -1,5 +1,7 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.9.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
 **全モデルTP=2の参照profileを試験・実測済みです。2026-09-22に、同時1系列・配信profileの範囲で通常運用としての受け入れが成立しました。ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
@@ -92,7 +94,7 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)、[1.9.0](docs/benchmarks.ja.md#190での測定)にあります。1.9.0の夜（同じ配信profileに `runtime.prefix_page_dedup` を入れた6起動）のdecodeはこの幅の中にあり、再送の下でも古い履歴がcacheに残りました。下の数値は1.8.0の夜のものです。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
 
-| 測定 | 配布既定 | 公開した任意設定 |
+| 測定 | 配布既定（固定の重みでのNVFP4 BIZ） | 公開した任意設定（NVFP4 BIZ AXL） |
 |---|---|---|
 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。1.9.0の夜は6起動のうち5起動が互いのcompletionを反復し、1起動は違った（下の行） |
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.44／30.01／37.17 tok/s** |

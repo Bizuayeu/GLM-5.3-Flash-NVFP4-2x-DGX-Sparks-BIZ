@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.9.1 — 2026-09-22
+
+### Documentation
+
+- 略称。スタックと公開した重みをそれぞれ一語で引用できるようにした：**NVFP4 BIZ** はこの配信スタック（引用は「NVFP4 BIZ 1.9.1」）、**NVFP4 BIZ AXL** は公開した任意設定の重み（attention projectionと `lm_head` をW4A16にしたもの）。README・GitHubのdescription・Hugging Faceのmodel cardに載せた。リポジトリ名・パッケージ名・本文の用語（配布既定、公開した任意設定）は変えない。
+
 ## 1.9.0 — 2026-09-22
 
 ### Changed

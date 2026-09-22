@@ -1,5 +1,7 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.9.1"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
 **A full-model TP=2 reference profile has been tested and measured. It is accepted for routine use since 2026-09-22, for one active sequence, the serving profile; harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
@@ -92,7 +94,7 @@ The TP=2 reference profile is **measured and accepted for routine use (2026-09-2
 
 Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Since 1.8.0 the option declares that checkpoint's KDA input projection split into `q_proj` / `k_proj` / `v_proj` and a merged `b` / `f_a` / `g_a` tail, the same weight bytes read a different way (profile tag `attn-lmhead-w4a16-splitkda`). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), [1.7.0](docs/benchmarks.md#measurements-on-170), [1.7.1](docs/benchmarks.md#measurements-on-171), [1.8.0](docs/benchmarks.md#measurements-on-180) and [1.9.0](docs/benchmarks.md#measurements-on-190), which own these numbers. The 1.9.0 night (the same serving profile with `runtime.prefix_page_dedup`, six launches) decoded inside these ranges and kept older histories cached under re-sends; the numbers below are the 1.8.0 night's. The prefill, 199,652-token, 261,461-token, short-prompt, 2,048-token decode and memory rows come from the same-night three-arm run of 2026-09-22 on the 1.7.0 runtime; the 255,950-token, capacity and NLL rows are the earlier series. Task types are always listed counting / prose / code.
 
-| Measure | Distributed defaults | Published option |
+| Measure | Distributed defaults (NVFP4 BIZ on the pinned weights) | Published option (NVFP4 BIZ AXL) |
 |---|---|---|
 | Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; on the 1.9.0 night five launches of six repeated one another's completions and one did not (row below) |
 | Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.44 / 30.01 / 37.17 tok/s** |

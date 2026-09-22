@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.9.1 — 2026-09-22
+
+### Documentation
+
+- Short names, so that the stack and the published weights can be cited in one word each: **NVFP4 BIZ** is this serving stack (cite as "NVFP4 BIZ 1.9.1") and **NVFP4 BIZ AXL** is the published option's weights (attention projections and `lm_head` in W4A16). README, the GitHub description and the Hugging Face model card carry them; the repository names, the package name and the body terms (distributed defaults, published option) are unchanged.
+
 ## 1.9.0 — 2026-09-22
 
 ### Changed
