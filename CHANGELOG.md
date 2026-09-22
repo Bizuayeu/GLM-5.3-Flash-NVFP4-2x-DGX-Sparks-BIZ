@@ -2,9 +2,11 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased
+## 1.9.4 — 2026-09-22
 
 ### Changed
+
+- The source-pinned vLLM patches applied at image build share one skeleton, `glm53_setup/runtime/pinned_patch.py` (the hash gate on the pinned file, the `--package`/`--check` command, the record written beside the package); each `patch_*` module states only its target, its pin and its anchors as a pure `patch_text(text)`, so all seven can be tested on an excerpt of the pinned file (three could not be before). The entry points the Dockerfile runs, the flags, the printed hashes and the record files are unchanged, and a contract test reads the Dockerfile to keep them so.
 
 - `apc-lpa-fixture` reads its fixture through the same gate as `fixture-run` (`run_fixture.read_fixture`). A fixture that is not a byte-verified four-layer test fixture is refused with that gate's sentence, "Only a byte-verified four-layer test fixture is allowed", and `all_tensor_bytes_verified` must be `true` rather than merely truthy. Engine settings, the measurement terms and the report are unchanged.
 

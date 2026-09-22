@@ -4,9 +4,11 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
-## Unreleased
+## 1.9.4 — 2026-09-22
 
 ### Changed
+
+- image buildで当てるsource固定のvLLM patch群が一つの骨格 `glm53_setup/runtime/pinned_patch.py`（固定fileのhash検査、`--package`／`--check` コマンド、package脇に書くrecord）を共有するようになった。各 `patch_*` moduleは対象・pin・anchorだけを純粋関数 `patch_text(text)` として述べるので、7本すべてが固定fileの抜粋でテストできる（以前は3本ができなかった）。Dockerfileが走らせる入口・旗・印字するhash・recordファイルは変わらず、契約テストがDockerfileを読んでそれを固定する。
 
 - `apc-lpa-fixture` がfixtureを `fixture-run` と同じ門（`run_fixture.read_fixture`）で読むようになった。byte検証済みの4層test fixtureでないものは、その門の一文 "Only a byte-verified four-layer test fixture is allowed" で拒み、`all_tensor_bytes_verified` は真らしい値でなく `true` そのものを要求する。engine設定・測定の条件・報告は変わらない。
 
