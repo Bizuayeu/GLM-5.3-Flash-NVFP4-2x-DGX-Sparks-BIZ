@@ -1,6 +1,7 @@
 """Audit checkout/public-export contents without displaying matched sensitive text."""
 
 import argparse
+import fnmatch
 import json
 import re
 import subprocess
@@ -116,6 +117,90 @@ def recipe_problems(readme, documents):
     return problems
 
 
+# The README cites the stack by short name and version; pyproject.toml owns the version.
+CITATIONS = {
+    "README.md": rf'cite as "NVFP4 BIZ {VERSION}"',
+    "README.ja.md": rf"引用は「NVFP4 BIZ {VERSION}」",
+}
+
+
+def citation_problems(name, readme, version):
+    """The short-name citation in a README carries the released version."""
+    shown = re.search(CITATIONS[name], readme)
+    if shown is None:
+        return [f"missing short-name citation: {name}"]
+    if shown[1] != version:
+        return [
+            f"stale short-name citation: {name} cites {shown[1]}, version is {version}"
+        ]
+    return []
+
+
+# The document map lists every public page of its language; an unlisted page is lost.
+MAPS = {"docs/README.md": False, "docs/README.ja.md": True}
+
+
+def map_problems(map_name, map_text, documents):
+    """Every docs/*.md of the map's language is a link target of the map."""
+    japanese = MAPS[map_name]
+    linked = {target.strip() for target in re.findall(r"\]\(([^)#]+)", map_text)}
+    problems = []
+    for name in sorted(documents):
+        if name in MAPS or not name.startswith("docs/") or name.count("/") != 1:
+            continue
+        if name.endswith(".ja.md") != japanese:
+            continue
+        if name.removeprefix("docs/") not in linked:
+            problems.append(f"document missing from {map_name}: {name}")
+    return problems
+
+
+# Architecture names every module, by file name or by a pattern such as benchmark_*.py.
+MODULE_DIRS = (
+    "glm53_setup/",
+    "glm53_setup/runtime/",
+    "glm53_setup/validation/",
+    "tools/",
+)
+
+
+def architecture_problems(architecture, modules):
+    """Every module is matched by a backticked name or pattern in the architecture page."""
+    patterns = re.findall(r"`([\w*/.-]+\.py)`", architecture)
+    problems = []
+    for name in sorted(modules):
+        base = name.rsplit("/", 1)[-1]
+        if base == "__init__.py":
+            continue
+        if not any(
+            fnmatch.fnmatchcase(name, pattern) or fnmatch.fnmatchcase(base, pattern)
+            for pattern in patterns
+        ):
+            problems.append(f"module not in architecture: {name}")
+    return problems
+
+
+def prose(content):
+    """Markdown without its fenced blocks; fenced examples are not links."""
+    return re.sub(r"(?ms)^(```|~~~).*?^\1[^\n]*$", "", content)
+
+
+def plan_link_problems(root):
+    """Relative links in the untracked plans resolve to something on disk."""
+    problems = []
+    for path in sorted((root / "docs/plans").glob("*.md")):
+        text = prose(path.read_text(encoding="utf-8"))
+        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
+            url = urlsplit(target.strip().strip("<>"))
+            if url.scheme or not url.path:
+                continue
+            if not (path.parent / unquote(url.path)).exists():
+                problems.append(
+                    f"broken plan link: docs/plans/{path.name} -> {url.path}"
+                )
+    return problems
+
+
 def public_files(root, export_tree=False):
     if export_tree:
         return {
@@ -174,9 +259,8 @@ def audit(root, files):
             problems.append(f"sensitive-text candidate: {name}")
         if path.suffix.lower() != ".md":
             continue
-        # The repository uses inline Markdown links. Fenced examples are not links.
-        prose = re.sub(r"(?ms)^(```|~~~).*?^\1[^\n]*$", "", content)
-        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", prose):
+        # The repository uses inline Markdown links.
+        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", prose(content)):
             target = target.strip().strip("<>")
             url = urlsplit(target)
             if url.scheme or not url.path:
@@ -201,10 +285,33 @@ def main():
         action="store_true",
         help="Inspect an exported tree without Git",
     )
+    parser.add_argument(
+        "--plans",
+        action="store_true",
+        help="Also check the relative links of the untracked docs/plans/",
+    )
     args = parser.parse_args()
     root = args.root.resolve()
     files = public_files(root, args.export_tree)
     problems = audit(root, files)
+    documents = {name for name in files if name.endswith(".md")}
+    for map_name in MAPS:
+        if map_name in files:
+            problems += map_problems(
+                map_name, (root / map_name).read_text(encoding="utf-8"), documents
+            )
+    modules = {
+        name
+        for name in files
+        if name.endswith(".py") and name.rsplit("/", 1)[0] + "/" in MODULE_DIRS
+    }
+    for name in ("docs/architecture.md", "docs/architecture.ja.md"):
+        if name in files:
+            problems += architecture_problems(
+                (root / name).read_text(encoding="utf-8"), modules
+            )
+    if args.plans:
+        problems += plan_link_problems(root)
     if "config/runtime.lock.json" in files:
         lock = json.loads(
             (root / "config/runtime.lock.json").read_text(encoding="utf-8")
@@ -237,6 +344,11 @@ def main():
             problems.append("expected release version")
         if project["license"] != "Apache-2.0":
             problems.append("unexpected project license")
+        for name in CITATIONS:
+            if name in files:
+                problems += citation_problems(
+                    name, (root / name).read_text(encoding="utf-8"), project["version"]
+                )
     for problem in problems:
         print(problem)
     print(f"Publication audit: {len(files)} files, {len(problems)} issues")

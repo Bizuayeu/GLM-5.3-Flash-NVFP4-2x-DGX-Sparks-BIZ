@@ -81,11 +81,11 @@ CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供しま�
 
 [FreedomBench・政治的文脈の評価](freedombench.ja.md)は、業務利用向けの必須評価項目です。英語原版の1構成には予備実測がありますが、4構成の一覧、日本語・長文への拡張、人手監査は未検収のままです。結果とそのLPA迂回の制約は、リンク先の文書が正典です。
 
-公式ZCodeとClaude Code CLIは、[ハーネス受け入れ一覧](harnesses.ja.md)における別々の必須対象で、ケース別の状態はその一覧が正典です。後述の基礎APIスモークは一覧のAPI群に反映され、クライアント連携のケースを終わらせません。
+ハーネスの受け入れはケース別に[ハーネス受け入れ一覧](harnesses.ja.md)に記録し、ケース別の状態と2026-09-22の受け入れ経路の判断はその一覧が正典です。後述の基礎APIスモークは一覧のAPI群に反映され、クライアント連携のケースを終わらせません。
 
 [2台でのNCCL通信検証](nccl-validation.ja.md)は、固定したbase imageで試験したcollectiveのパターンに合格しています。その範囲はtransportと合成データの正当性であり、参照Attentionやフルモデルとは別です。
 
-[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。これは範囲を限った実測で、同時2系列以上は受け入れた範囲の外です（[同時実行の範囲](#同時実行の範囲)）。持続的な混在負荷とbatchingの組合せは未検証のままです。制御された停止・再起動と対の復旧は、[起動安全](launch-safety.ja.md)と[ベンチマーク](benchmarks.ja.md)に記録した `cluster switch` の演習で確認しています。MTPの深さ1〜5とdecodeのGraphsには、[投機的デコーディング](speculative-decoding.ja.md)と[施策台帳](optimization-catalog.ja.md)が所有する限定した比較がありますが、これは実測であって本番の検収ではありません。画像入力には[画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、無制限の `tp2-kernel-validation` 証跡に変えないでください。
+[同時2系列の独立評価](benchmarks.ja.md#標準batchingの独立評価)には、限定した課題・throughput・16K×2容量の結果があります。これは範囲を限った実測で、同時2系列以上は受け入れた範囲の外です（[同時実行の範囲](#同時実行の範囲)）。持続的な混在負荷とbatchingの組合せは未検証のままです。制御された停止・再起動と対の復旧は、[起動安全](launch-safety.ja.md)と[ベンチマーク](benchmarks.ja.md)に記録した `cluster switch` の演習で確認しています。MTPの深さ1〜5とdecodeのGraphsには、[投機的デコーディング](speculative-decoding.ja.md)と[施策台帳](optimization-catalog.ja.md)が所有する限定した比較がありますが、これは実測であって本番の検収ではありません。画像入力には[画像入力](vision.ja.md)の限定した証拠しかありません。prefix cachingには[範囲を限定した独立の結果](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)があり、APC／LPAとMTPの併用は別の[P22の契約](apc-lpa-design.ja.md)に従います。fixture、APIスモーク、collectiveの結果を、[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)の受け入れが宣言していない範囲の証拠に変えないでください。
 
 ## フルモデルTP=2の実験範囲
 

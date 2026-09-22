@@ -2,6 +2,15 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.9.3 — 2026-09-22
+
+### Documentation
+
+- Statements the routine-use acceptance of 2026-09-22 had overtaken: the repository instructions (`AGENTS.md`), the operations page and the validation page no longer say that TP=2 is unqualified or that ZCode Desktop and Claude Code are required targets; they point at SETUP step 6, the record of the acceptance and of where each item's evidence is, and at the harness decision. The setup checklist and its suggested AI task no longer ask for the "receipt workflow" that the removed `service` launcher once gated on; they ask for the step 6 items and their evidence paths. Operations and validation read the same way in Japanese.
+- Architecture: the module table names every module of `glm53_setup/`, `glm53_setup/runtime/`, `glm53_setup/validation/` and `tools/` (the source-pinned patches of 1.7.0–1.9.0, the FA2 path, the agreement and requantization checks, the decode tools, `release_notes.py`), and the `overlays/` and `.github/workflows/` directories; the sentence that counted "two vLLM source files" now describes every build-time patch and the launch-time overlay check.
+- Document map: the overlay manifest (English-only, as a provenance record) and the ZCode guard hook setup (now an English/Japanese pair) have rows; the catalog row no longer enumerates initiative IDs; the decode check after a switch and the routine-use acceptance have owners in the single-source table.
+- `tools/check_publication.py` gains four checks, each with a unit test: the README's short-name citation must carry the version in `pyproject.toml`; each document map must link every `docs/*.md` of its language; every module of `glm53_setup/` and `tools/` must be named in the architecture page, by file name or by a pattern such as `benchmark_*.py`; and `--plans` checks that the relative links of the untracked `docs/plans/` resolve on disk. The audit passes on this tree.
+
 ## 1.9.2 — 2026-09-22
 
 ### Added

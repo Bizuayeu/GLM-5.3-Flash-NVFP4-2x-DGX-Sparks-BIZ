@@ -1,5 +1,7 @@
 # ZCode PreToolUse guard
 
+[日本語](README.ja.md)
+
 A hook that lets ZCode run in `yolo` while still asking before it changes
 something that already exists. Facts about the permission chain, the model
 limits and the measurements behind this are in

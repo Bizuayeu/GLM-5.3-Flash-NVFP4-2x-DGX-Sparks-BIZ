@@ -4,6 +4,15 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.9.3 — 2026-09-22
+
+### Documentation
+
+- 2026-09-22の通常運用の受け入れが追い越していた記述：リポジトリ指示（`AGENTS.md`）、運用手順、検証範囲は、TP=2が未検収であるとも、ZCode DesktopとClaude Codeが必須対象であるとも言わなくなった。受け入れと各項目の証拠の所在の記録であるSETUP手順6と、ハーネスの判断を指す。セットアップのチェックリストとAIへの依頼例は、撤去した `service` launcherがかつて門にしていた「証跡生成手順」を求めず、手順6の項目とその証跡パスを求める。運用手順と検証範囲は日本語でも同じ読みになる。
+- 構成：モジュール表が `glm53_setup/`、`glm53_setup/runtime/`、`glm53_setup/validation/`、`tools/` の全モジュール（1.7.0〜1.9.0のsource固定patch、FA2経路、一致・再量子化の検査、decodeの道具、`release_notes.py`）と、`overlays/`・`.github/workflows/` のディレクトリに名前を持つ。「vLLMのソース2ファイル」と数えていた文は、build時patchの全部と起動時のoverlay照合を述べる。
+- 文書一覧：overlayの台帳（出所記録として英語のみ）とZCodeガードhookの導入手順（英日の対になった）に行がある。施策台帳の行は施策IDを列挙しない。切替の後のdecode検査と通常運用の受け入れは、正典の所在の表に所有者を持つ。
+- `tools/check_publication.py` に検査4件（それぞれ単体テストつき）：READMEの略称の引用は `pyproject.toml` の版を持つこと、各文書一覧は自分の言語の `docs/*.md` を全部リンクすること、`glm53_setup/` と `tools/` の全モジュールが構成の頁にファイル名か `benchmark_*.py` のような型で名前を持つこと、`--plans` で追跡外の `docs/plans/` の相対リンクが実在すること。このtreeでは監査は通る。
+
 ## 1.9.2 — 2026-09-22
 
 ### Added

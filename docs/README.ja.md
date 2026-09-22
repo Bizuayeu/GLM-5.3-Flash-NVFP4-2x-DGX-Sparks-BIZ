@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-文書ごとに役割を一つ決め、他の文書は内容を複製せずリンクで参照します。利用者向けの文書はすべて英日の対（`name.md`／`name.ja.md`）です。エージェント向け指示・ライセンスと通知の本文だけは意図して英語のみとします。Changelogは1.6.0から英日の対です。正典は英語版で、GitHub Releaseは英語版から作られ、それ以前の版は英語版にしかありません。利用者に見える手順を変える際は両方を更新します（[Contributing](../CONTRIBUTING.ja.md)）。
+文書ごとに役割を一つ決め、他の文書は内容を複製せずリンクで参照します。利用者向けの文書はすべて英日の対（`name.md`／`name.ja.md`）です。エージェント向け指示・ライセンスと通知の本文・overlayの台帳（hashの所有者を一つにする出所記録）だけは意図して英語のみとします。Changelogは1.6.0から英日の対です。正典は英語版で、GitHub Releaseは英語版から作られ、それ以前の版は英語版にしかありません。利用者に見える手順を変える際は両方を更新します（[Contributing](../CONTRIBUTING.ja.md)）。
 
 ## 入口
 
@@ -24,7 +24,8 @@
 | QSFPネットワーク | QSFP直結とNetworkManagerの永続profile | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL検証 | 2台のcollective診断とその限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | 起動契約 | APIクライアント認証、allocator伝達、全レール検査、両rank切替と復旧、APC履歴検証 | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
-| 構成 | パッケージ配置と検証境界 | [EN](architecture.md) | [JA](architecture.ja.md) |
+| 構成 | パッケージ配置（`glm53_setup/` と `tools/` の全モジュールに行がある）と検証境界 | [EN](architecture.md) | [JA](architecture.ja.md) |
+| overlayの台帳 | 公開した任意設定が要するvLLM source overlay 2件：対象、SHA-256、base hash、marker、配置 | [EN](../overlays/README.md) | — |
 
 ## 検証・受け入れ
 
@@ -36,6 +37,7 @@
 | 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | 政治的文脈の評価：必須試験と予備実測 | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | ハーネス | ZCode／Claude Codeの接続方針と受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| ZCodeガードhook | PreToolUseの既存ファイルガードの導入：hookである理由、導入、確認、限界 | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |
 
 ## 最適化
@@ -43,7 +45,7 @@
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
 | 推論最適化の全体像 | 各施策が効く段階、採用した構成、用途別の構成 | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
-| 施策台帳 | 施策ID P01〜P24／E01〜E03、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
+| 施策台帳 | 施策ID（P系列・E系列）、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | 性能調査 | 計測手順：launch・同期、タスクbatch、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | 投機的デコーディング | MTPのメタデータview、深さ1〜5の実測、テンプレートがk=3のままである理由 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | 後段Prefill近似：projector取得・モデルカード、起動profileでの有効化、仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |
@@ -63,6 +65,8 @@
 | 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md) |
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
+| 切替の後のdecode検査：その定型と道具2件 | [起動契約](launch-safety.ja.md#切替の後のdecode検査)。`tools/decode_check.py`、`tools/decode_divergence.py` |
+| 配信profileの通常運用の受け入れ：その範囲と各項目の証拠の所在 | [セットアップ手順書の手順6](../SETUP.ja.md#6-フルモデルの検証)。READMEの状態表と[検証範囲](validation.ja.md#フルモデルtp2の実験範囲)はそこを指す |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
 | 配布LPA projectorのURL、hash、形式、教師・学習来歴 | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json)。配布ファイル構成は[運用手順](operations.ja.md#資材の保管場所とパス) |
 | `server preflight` が起動前に検査すること、保証しないこと | [運用手順](operations.ja.md#フルモデルの起動検査) |
@@ -80,6 +84,7 @@
 
 - 変更履歴は[Changelog](../CHANGELOG.md)とGitに置き、各文書に「何を直したか」を溜めない。
 - 実測値は正典の文書に一度だけ、image・source・負荷条件とともに書く。他の文書はリンクで参照する。READMEの主要な測定値の節だけは例外として写しを許し、`tools/check_publication.py` がその見出しを最新の測定版に縛る。
+- `tools/check_publication.py` は本書と構成の頁を実体に合わせて保つ：READMEの略称の引用は `pyproject.toml` の版を持ち、`docs/*.md` はすべて本書のリンク先であり（日本語の頁は日本語の本書）、`glm53_setup/` と `tools/` の全モジュールは[構成](architecture.ja.md)にファイル名か `benchmark_*.py` のような型で名前がある。
 - 文種は常に 数え上げ／散文／コード の順、教師強制の文は 日本語／英語／コード／数学 の順に並べる。複数を並べる表と文のすべてに適用する。
 - 版数は `pyproject.toml` が所有し、版ごとの内容は[Changelog](../CHANGELOG.md)に書く。`python tools/check_publication.py` は素のsemantic versionを必須とし、`records/`・計画書・リポジトリ外へのリンクを拒否する。
 - `vX.Y.Z` のタグをpushするとGitHub Releaseが公開される。`.github/workflows/release.yml` がChangelogのその版の節（`python tools/release_notes.py X.Y.Z`）を本文にし、`pyproject.toml` と食い違うタグや節の無い版は拒否する。

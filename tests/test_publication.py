@@ -2,7 +2,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_publication import audit, headline_problems, recipe_problems
+from tools.check_publication import (
+    architecture_problems,
+    audit,
+    citation_problems,
+    headline_problems,
+    map_problems,
+    plan_link_problems,
+    recipe_problems,
+)
 
 
 class PublicationTests(unittest.TestCase):
@@ -106,3 +114,87 @@ class RecipeCitationTests(unittest.TestCase):
             "dependency. vLLM is Apache-2.0 (pinned, unchanged).\n"
         }
         self.assertEqual(recipe_problems(self.README, docs), [])
+
+
+class CitationTests(unittest.TestCase):
+    def test_short_name_citation_carries_the_project_version(self):
+        self.assertEqual(
+            citation_problems("README.md", 'cite as "NVFP4 BIZ 1.9.2"', "1.9.2"), []
+        )
+        self.assertEqual(
+            citation_problems(
+                "README.ja.md", "（引用は「NVFP4 BIZ 1.9.1」の形）", "1.9.2"
+            ),
+            ["stale short-name citation: README.ja.md cites 1.9.1, version is 1.9.2"],
+        )
+        self.assertEqual(
+            citation_problems("README.md", "# Title\n", "1.9.2"),
+            ["missing short-name citation: README.md"],
+        )
+
+
+class DocumentMapTests(unittest.TestCase):
+    DOCUMENTS = {
+        "docs/README.md",
+        "docs/README.ja.md",
+        "docs/a.md",
+        "docs/a.ja.md",
+        "docs/b.md",
+        "docs/plans/PLAN.md",
+        "README.md",
+    }
+
+    def test_each_map_lists_every_page_of_its_language(self):
+        english = "[EN](a.md) | [JA](a.ja.md)\n[EN](b.md)\n"
+        self.assertEqual(map_problems("docs/README.md", english, self.DOCUMENTS), [])
+        self.assertEqual(
+            map_problems("docs/README.ja.md", "[EN](a.md)\n", self.DOCUMENTS),
+            ["document missing from docs/README.ja.md: docs/a.ja.md"],
+        )
+        self.assertEqual(
+            map_problems(
+                "docs/README.md", "[EN](a.md#x) [JA](a.ja.md)", self.DOCUMENTS
+            ),
+            ["document missing from docs/README.md: docs/b.md"],
+        )
+
+
+class ArchitectureTests(unittest.TestCase):
+    ARCHITECTURE = (
+        "| `glm53_setup/server.py`, `io.py` | launcher |\n"
+        "| `glm53_setup/validation/benchmark_*.py` | benches |\n"
+        "| `tools/` | `check_publication.py` |\n"
+    )
+
+    def test_every_module_is_named_or_matched(self):
+        modules = {
+            "glm53_setup/__init__.py",
+            "glm53_setup/server.py",
+            "glm53_setup/io.py",
+            "glm53_setup/validation/benchmark_unpack.py",
+            "tools/check_publication.py",
+        }
+        self.assertEqual(architecture_problems(self.ARCHITECTURE, modules), [])
+        self.assertEqual(
+            architecture_problems(self.ARCHITECTURE, modules | {"tools/new_tool.py"}),
+            ["module not in architecture: tools/new_tool.py"],
+        )
+
+
+class PlanLinkTests(unittest.TestCase):
+    def test_plan_links_must_resolve_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs/plans").mkdir(parents=True)
+            (root / "docs/other.md").write_text("x", encoding="utf-8")
+            (root / "docs/plans/A_PLAN.md").write_text(
+                "[ok](../other.md#top) [gone](../../records/run/REPORT.md) "
+                "[web](https://example.org)\n```\n[fenced](missing.md)\n```\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                plan_link_problems(root),
+                [
+                    "broken plan link: docs/plans/A_PLAN.md -> ../../records/run/REPORT.md"
+                ],
+            )

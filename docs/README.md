@@ -2,7 +2,7 @@
 
 [日本語](README.ja.md)
 
-Every document has one role; other documents link to it instead of repeating its content. Every user-facing page comes as an English/Japanese pair (`name.md` / `name.ja.md`); only the agent instructions and the license/notice texts are English-only by design. The changelog is a pair from 1.6.0 on: the English file is canonical, the GitHub Release is made from it, and earlier versions exist in English only. Update both when user-visible instructions change ([Contributing](../CONTRIBUTING.md)).
+Every document has one role; other documents link to it instead of repeating its content. Every user-facing page comes as an English/Japanese pair (`name.md` / `name.ja.md`); only the agent instructions, the license/notice texts and the overlay manifest (a provenance record whose hashes have one owner) are English-only by design. The changelog is a pair from 1.6.0 on: the English file is canonical, the GitHub Release is made from it, and earlier versions exist in English only. Update both when user-visible instructions change ([Contributing](../CONTRIBUTING.md)).
 
 ## Entry points
 
@@ -24,7 +24,8 @@ Every document has one role; other documents link to it instead of repeating its
 | QSFP network | Direct QSFP connection and persistent NetworkManager profiles | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL validation | Two-host collective diagnostic and its limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | Launch contracts | API client authentication, allocator propagation, all-rail checks, two-rank switch and recovery, APC history qualification | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
-| Architecture | Package layout and validation boundaries | [EN](architecture.md) | [JA](architecture.ja.md) |
+| Architecture | Package layout (every module of `glm53_setup/` and `tools/` has a row) and validation boundaries | [EN](architecture.md) | [JA](architecture.ja.md) |
+| Overlay manifest | The two vLLM source overlays the published option needs: targets, SHA-256, base hashes, markers, placement | [EN](../overlays/README.md) | — |
 
 ## Validate and accept
 
@@ -36,6 +37,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Image input | Vision at 256K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | Political-context evaluation: required matrix and preliminary results | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | Harnesses | ZCode and Claude Code connection plans and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| ZCode guard hook | Setup of the PreToolUse existing-file guard: why a hook, install, verify, limits | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | Licensing guide | Commercial use, modification and redistribution by artifact | [EN](licensing.md) | [JA](licensing.ja.md) |
 
 ## Optimize
@@ -43,7 +45,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Document | Role | EN | JA |
 |---|---|---|---|
 | Optimization overview | Where each measure acts, adopted stack, profiles by workload | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
-| Optimization catalog | Initiative IDs P01–P24 / E01–E03, decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
+| Optimization catalog | Initiative IDs (the P and E series), decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
 | Performance investigation | Measurement procedures: launches and synchronization, task grouping, EP, TP versus PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | Speculative decoding | MTP metadata view, depths one to five, why the template keeps k=3 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | Late-prefill approximation: projector download/model card, enabling it in the server profile, mechanism, scope, reproduction, evidence | [EN](lpa.md) | [JA](lpa.ja.md) |
@@ -64,6 +66,8 @@ Every document has one role; other documents link to it instead of repeating its
 | Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md) |
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
+| The decode check after a switch: its routine and the two tools | [Launch contracts](launch-safety.md#after-a-switch-the-decode-check); `tools/decode_check.py`, `tools/decode_divergence.py` |
+| Routine-use acceptance of the serving profile: its scope and where each item's evidence is recorded | [Setup runbook step 6](../SETUP.md#6-qualify-the-full-model); the README status table and [validation](validation.md#full-model-tp2-experimental-scope) point there |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
 | What `server preflight` checks before a start, and what it does not certify | [Operations](operations.md#full-model-launch-checks) |
 | Host kernel requirement, the `7.0.0-1019-nvidia` RoCE failure and the `kho=off` workaround | [Operations](operations.md#host-kernel-and-multi-node-roce) |
@@ -80,6 +84,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 - Change history lives in the [changelog](../CHANGELOG.md) and Git; documents do not accumulate "what changed" notes.
 - A measured number appears once, in its owner document, with image, source and workload conditions. Other pages link to it. The README's headline section is the one permitted copy: `tools/check_publication.py` ties its heading to the newest measured version.
+- `tools/check_publication.py` also keeps this map and the architecture page in step with the tree: the README's short-name citation must carry the version in `pyproject.toml`, every `docs/*.md` must be a link target of this map (Japanese pages of the Japanese map), and every module of `glm53_setup/` and `tools/` must be named in [architecture](architecture.md), either by file name or by a pattern such as `benchmark_*.py`.
 - Task types are always listed in the order counting / prose / code, and teacher-forced texts in the order Japanese / English / code / mathematics, in every table and sentence that names more than one.
 - The release version is owned by `pyproject.toml` and each version is described in the [Changelog](../CHANGELOG.md); `python tools/check_publication.py` requires a plain semantic version there and rejects links to `records/`, plan files or paths outside the repository.
 - Pushing a `vX.Y.Z` tag publishes the GitHub Release: `.github/workflows/release.yml` takes that version's section from the Changelog (`python tools/release_notes.py X.Y.Z`) and refuses a tag that disagrees with `pyproject.toml` or has no section.

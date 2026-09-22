@@ -2,7 +2,7 @@
 
 [日本語](operations.ja.md)
 
-**Routine TP=2 deployment is not accepted yet.** A serial full-model reference profile has [experimental evidence](validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](benchmarks.md). Whether a profile is experimental or ready for routine use is shown by its recorded acceptance status (the README status table and the [harness acceptance matrix](harnesses.md#acceptance-matrix-and-status)), not by a command name.
+**The serial full-model TP=2 serving profile is accepted for routine use (2026-09-22) within its declared scope**; [SETUP step 6](../SETUP.md#6-qualify-the-full-model) is the record of that acceptance and of where each item's evidence lives. Whether a profile is experimental or ready for routine use is shown by its recorded acceptance status (that record, the README status table and the [harness acceptance matrix](harnesses.md#acceptance-matrix-and-status)), not by a command name; other hardware, more than one active sequence and video input stay outside the accepted scope.
 
 ## One launcher
 
@@ -131,7 +131,7 @@ Images built from this version also carry `GLM53_SLOT_MAPPING_GUARD=1`: the buil
 
 `exclusive_gpu` fails while a running container requests a GPU without this launcher's `glm53.experiment.startup` label, and the result lists those containers under `foreign_gpu_containers`. A container requests a GPU when `HostConfig.DeviceRequests` is non-empty: both `--gpus` and CDI (`--device nvidia.com/gpu=...`) requests appear there, while the GPU device nodes never appear under `Devices`. A pair of this launcher carries the label whatever its fingerprint, so a running old pair does not block the pre-stop checks of `cluster switch`; an empty label value does not count. A container that exits or is removed while the check runs is skipped, and one still listed that cannot be inspected makes the check raise instead of passing. Stop other GPU workloads, such as a component probe or another model, before a start; there is no override. `server assets` runs the same check without the memory reading. Informed by sfxnz PR #12 (no code adopted).
 
-A passing preflight certifies assets and configuration, not quality or availability: the remaining acceptance items for routine use are listed in [the setup runbook](../SETUP.md#6-qualify-the-full-model), and the current status per scope is in the README status table. Do not relax a failing check, truncate attention candidates or silently substitute precision to get past it.
+A passing preflight certifies assets and configuration, not quality or availability: the acceptance items for routine use and where their evidence is recorded are listed in [the setup runbook](../SETUP.md#6-qualify-the-full-model), and the current status per scope is in the README status table. Do not relax a failing check, truncate attention candidates or silently substitute precision to get past it.
 
 Rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous. The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
 

@@ -177,7 +177,7 @@ Use **PASS / FAIL / PENDING / NOT RUN** with an evidence path for every item. Ne
 - [ ] Exact runtime image IDs match; source patch checks and one-GPU diagnostics recorded.
 - [ ] Supported cable connected; per-host IP/interface/HCA/GID/MTU measured and recorded.
 - [ ] Two-rank collective correctness and intended RDMA transport verified.
-- [ ] Full-model TP=2 qualification and matching runtime/receipt workflow completed.
+- [ ] Every acceptance item of [step 6](#6-qualify-the-full-model) verified on this pair, with its evidence path recorded.
 - [ ] Actual API text/tool acceptance, memory, performance and recovery checks passed.
 - [ ] The [accepted harness route](docs/harnesses.md#acceptance-matrix-and-status) completed its required acceptance cases; failures/blockers remain visible.
 - [ ] Access boundary, logs, stop/restart procedure and operator handoff accepted.
@@ -186,4 +186,4 @@ Keep a private `records/<run-id>/REPORT.md` containing: timestamp/timezone; obje
 
 Suggested AI task:
 
-> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the two authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where a physical prerequisite or a piece of the recorded evidence is missing, record the blocker and continue independent preparation. Do not create a passing receipt or declare deployment complete without actual evidence.
+> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the two authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where a physical prerequisite or a piece of the recorded evidence is missing, record the blocker and continue independent preparation. Do not record a PASS or declare deployment complete without actual evidence.
