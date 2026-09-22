@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.9.5」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.10.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
@@ -152,7 +152,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 本プロジェクトは、**`nvidia/GLM-5.3-Flash-NVFP4`をDGX Spark相当の2台構成で、業務で評価・改造・運用しやすくすること**を目的としています。次の三点を一体として整備します。
 
 - **ライセンスと出所の選択：** 商用利用できるMIT/Apache系の構成要素を優先し、採用元・版・通知を固定します。コード・重み・コンテナ・ハーネスそれぞれの条件は[ライセンス整理](docs/licensing.ja.md)に示します。
-- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。評価全体の検収は未了です。
+- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。配信profileでは2026-09-22に完了しています（固定の英語原版60問が初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。日本語訳の本体・対立的な言い回し・証拠配置は未実施です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
 速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**し、両方のcheckpointに共通の深さとしました。理由は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)にあります。

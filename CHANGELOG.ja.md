@@ -4,6 +4,16 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.10.0 — 2026-09-23
+
+### Added
+
+- **memory probeがloadされた重みをfingerprintし（`weight_digest`）、`tools/weight_digest.py` が起動を跨いで記録・比較する。** 配信モデルとdraftの全parameterとbufferを、各rankにloadされたままの姿で、要求traceと同じ二つのbyte和でfingerprintする。記録は行と層ごとのdigestを持ち、後の起動の記録は違うtensorを名指しする。別の数値状態の起動（[1.9.0](#190--2026-09-22)）にまず問うべきこと——同じbitを違う計算で処理したのか、違うbitをloadしたのか——に答える道具。`trace_end` に `export` が加わり、traceの行を返すので `trace_differences` で二つの起動を記録どうしで比べられる。共通のfingerprintとmodel探索はmodule関数に移した。traceの挙動は不変。
+
+### Documentation
+
+- 起動の安全：profileが `validation.memory_probe` を持つときの、切替の後の検査としての重みのdigest。起動設定と構成表がmethodとtoolを載せる。README：FreedomBenchの行は「検収は未了」でなく配信profileで完了と言う。
+
 ## 1.9.5 — 2026-09-23
 
 ### Documentation

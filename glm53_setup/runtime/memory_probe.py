@@ -259,6 +259,92 @@ def whole_words(nbytes):
     return nbytes - nbytes % 8
 
 
+def tensor_fingerprint(tensor):
+    """Two byte sums of a tensor, kept on its device; equal bits give equal prints."""
+    import torch
+
+    data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
+    if data.storage_offset() % 8:
+        # A view as int64 needs an aligned offset; a copy (one times the
+        # tensor) keeps the fingerprint independent of where it sat.
+        data = data.clone()
+    split = whole_words(data.numel())
+    words = data[:split].view(torch.int64)
+    tail = data[split:].to(torch.int64).sum()
+    return words.sum() * 1000003 + words[1::3].sum() + tail
+
+
+LAYER = r"^((?:[A-Za-z_]+:)?(?:[A-Za-z_]+\.)*layers\.\d+)\."
+
+
+def layer_of(name):
+    """The layer a tensor belongs to, or its first component outside the layers."""
+    import re
+
+    match = re.match(LAYER, name)
+    if match:
+        return match.group(1)
+    head = name.split(".")
+    return ".".join(head[:2]) if head[0] == "model" and len(head) > 2 else head[0]
+
+
+def digest_summary(rows):
+    """Per-layer and overall digests of ``[name, elements, fingerprint]`` rows.
+
+    Each digest is the SHA-256 of the sorted ``name:fingerprint`` lines, so the
+    order the tensors were walked in does not matter and one changed tensor
+    changes its layer's digest and the overall one.
+    """
+    import hashlib
+
+    layers = {}
+    for name, _, fingerprint in rows:
+        layers.setdefault(layer_of(name), []).append(f"{name}:{fingerprint}")
+
+    def digest(lines):
+        return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()[:16]
+
+    return {
+        "tensors": len(rows),
+        "elements": sum(int(elements) for _, elements, _ in rows),
+        "layers": {layer: digest(lines) for layer, lines in sorted(layers.items())},
+        "overall": digest([f"{name}:{fingerprint}" for name, _, fingerprint in rows]),
+    }
+
+
+def digest_differences(reference, rows):
+    """Which tensors moved between two digests of the same model, by name."""
+    before = {name: fingerprint for name, _, fingerprint in reference}
+    after = {name: fingerprint for name, _, fingerprint in rows}
+    differing = sorted(n for n in before if n in after and before[n] != after[n])
+    layers = {}
+    for name in differing:
+        layers[layer_of(name)] = layers.get(layer_of(name), 0) + 1
+    return {
+        "differing": differing,
+        "missing": sorted(n for n in before if n not in after),
+        "added": sorted(n for n in after if n not in before),
+        "same": sum(1 for n in before if n in after and before[n] == after[n]),
+        "layers": layers,
+    }
+
+
+def probe_models(worker, module_type):
+    """The main model and every other torch module one attribute deep in the runner.
+
+    The draft model hangs off the runner under a version-dependent name.
+    """
+    main = worker.get_model()
+    models = {"": main}
+    runner = getattr(worker, "model_runner", None)
+    for attribute, holder in vars(runner).items() if runner is not None else ():
+        for candidate in (holder, getattr(holder, "model", None)):
+            if isinstance(candidate, module_type) and candidate is not main:
+                if all(candidate is not known for known in models.values()):
+                    models[f"{attribute}:"] = candidate
+    return models
+
+
 def trace_differences(reference, rows, limit=24):
     """Compare two fingerprint sequences of one request, in execution order.
 
@@ -302,16 +388,7 @@ class MemoryProbeWorker:
         pattern = re.compile(pattern or TRACED)
         state = {"handles": [], "names": [], "rows": [], "prints": [], "patched": []}
 
-        def fingerprint(tensor):
-            data = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
-            if data.storage_offset() % 8:
-                # A view as int64 needs an aligned offset; a copy (one times the
-                # tensor) keeps the fingerprint independent of where it sat.
-                data = data.clone()
-            split = whole_words(data.numel())
-            words = data[:split].view(torch.int64)
-            tail = data[split:].to(torch.int64).sum()
-            return words.sum() * 1000003 + words[1::3].sum() + tail
+        fingerprint = tensor_fingerprint
 
         def note(name, tensor):
             if tensor.numel() == 0 or tensor.is_meta:
@@ -375,16 +452,7 @@ class MemoryProbeWorker:
                         setattr(module, attribute, traced)
                         state["patched"].append((module, attribute, original))
 
-        # The draft model hangs off the runner under a version-dependent name:
-        # take every other torch module reachable one attribute deep.
-        main = self.get_model()
-        models = {"": main}
-        runner = getattr(self, "model_runner", None)
-        for attribute, holder in vars(runner).items() if runner is not None else ():
-            for candidate in (holder, getattr(holder, "model", None)):
-                if isinstance(candidate, torch.nn.Module) and candidate is not main:
-                    if all(candidate is not known for known in models.values()):
-                        models[f"{attribute}:"] = candidate
+        models = probe_models(self, torch.nn.Module)
         for prefix, model in models.items():
             for name, module in model.named_modules():
                 if pattern.search(name):
@@ -399,8 +467,12 @@ class MemoryProbeWorker:
             "models": list(models),
         }
 
-    def trace_end(self, keep=False):
-        """Stop tracing; ``keep`` stores the run as the reference, otherwise compare to it."""
+    def trace_end(self, keep=False, export=False):
+        """Stop tracing; ``keep`` stores the run as the reference, otherwise compare to it.
+
+        ``export`` returns the rows themselves, so a later launch can be compared
+        with ``trace_differences`` against a record instead of this process.
+        """
         import torch
 
         state = self.__dict__.pop("probe_trace")
@@ -415,6 +487,7 @@ class MemoryProbeWorker:
             return {
                 "rank": self.rank,
                 "kept": len(rows),
+                **({"rows": rows} if export else {}),
                 "function_entries": sum(
                     row[0].startswith("sparse_nope:") for row in rows
                 ),
@@ -427,6 +500,38 @@ class MemoryProbeWorker:
                 ),
             }
         return {"rank": self.rank, **trace_differences(self.probe_reference, rows)}
+
+    def weight_digest(self, tensors=False):
+        """Fingerprint every parameter and buffer as loaded, per layer and overall.
+
+        Taken after a launch, it says whether two launches computed from the same
+        bits; ``tensors`` returns the rows, so a later launch's record names the
+        tensors that moved (``digest_differences``). The prints stay on the device
+        until one transfer at the end, as the trace does; ``copied`` lists the
+        tensors whose fingerprint needed a copy (non-contiguous or unaligned).
+        """
+        import torch
+
+        names, elements, prints, copied = [], [], [], []
+        models = probe_models(self, torch.nn.Module)
+        for prefix, model in models.items():
+            for name, tensor in (*model.named_parameters(), *model.named_buffers()):
+                if not tensor.is_contiguous() or tensor.storage_offset() % 8:
+                    copied.append(prefix + name)
+                names.append(prefix + name)
+                elements.append(int(tensor.numel()))
+                prints.append(tensor_fingerprint(tensor))
+        values = torch.stack(prints).cpu().tolist() if prints else []
+        rows = [list(item) for item in zip(names, elements, values)]
+        result = {
+            "rank": self.rank,
+            "models": list(models),
+            "copied": copied,
+            "summary": digest_summary(rows),
+        }
+        if tensors:
+            result["rows"] = rows
+        return result
 
     def zero_moe_scratch(self):
         """Diagnostic: hand the Marlin MoE kernel zeroed scratch buffers on every call.

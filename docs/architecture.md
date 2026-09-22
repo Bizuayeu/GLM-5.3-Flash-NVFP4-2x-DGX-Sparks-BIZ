@@ -52,7 +52,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |
 | `tests/` | CPU contracts |
-| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py` and `decode_divergence.py` (the decode check after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py`, `prepare_mtp_view.py` |
+| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py`, `decode_divergence.py` and `weight_digest.py` (the decode check and the weight digest after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py`, `prepare_mtp_view.py` |
 | `.github/workflows/` | CI (CPU tests, Ruff, publication audit on Linux and Windows) and the tag-driven GitHub Release |
 | `LICENSES/` | Preserved upstream license texts |
 | `state/`, `records/` | Local mutable state and experiment evidence, excluded from distribution |

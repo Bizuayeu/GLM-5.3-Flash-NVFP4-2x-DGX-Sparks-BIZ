@@ -62,6 +62,8 @@ docker logs <rank0のcontainer> 2>&1 | gzip > records/<run>/logs-rank0.txt.gz   
 
 起動の中では3標本が一致すること（`distinct_completions` が1）。起動を跨いでは `completion_sha256` を同じprofileの前の起動と比べます。違ったら記録を残す：`tools/decode_divergence.py` が二つの `tokens-*.json` の最初に分岐したtokenを出し（本文の後ろでの一回の同点割れか、早くからの系統的なずれか）、二つのlogが起動ごとの唯一の証拠です。速さと採択長がそのprofileのいつもの幅の中なら、違いは同点であって故障ではありません。
 
+profileが `validation.memory_probe = true` を持つなら、切替の後、decode検査の前に重みのdigestも取ります：`python3 tools/weight_digest.py --output records/<run>/weights.json --reference records/<前の起動>/weights.json` が両rankのloadされた全parameterとbufferをfingerprintし、前の起動と違うtensorを名指しします（終了状態1）。別の数値状態の起動でdigestが同一なら同じbitから違う計算をした、違うならloadが違い、記録がどこかを言います。
+
 ## APCの履歴検証
 
 固定runtimeはキー省略時に **0** を使い、意味上必要なcheckpoint／replay境界／共有prefixの分岐点を保持します。dense保持とは異なります。任意の `cache.prefix_cache_retention_interval` で、標準機能を明示できます。実scheduler blockと同じ正の間隔なら、その境界ごとにKDA checkpointを保持します。Full attentionのdense保持は変わらず、`KpoolTailManager` はAPCへ登録しない要求専用の1block循環領域を維持します。全group一括削減ではなく、checkpointを残す設定です。正の値が実scheduler blockに整列しなければ、固定runtimeが拒否します。配布用TOMLは、履歴・保持圧力・A/B/Aと直列併用の実測を踏まえ `dense` を明示します。[配布既定](server-configuration.ja.md#配布用の既定設定)とruntimeの省略時挙動を区別してください。

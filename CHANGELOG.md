@@ -2,6 +2,16 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.0 — 2026-09-23
+
+### Added
+
+- **The memory probe fingerprints the loaded weights (`weight_digest`), and `tools/weight_digest.py` records and compares them across launches.** Every parameter and buffer of the served model and the draft, as it sits on each rank after loading, gets the two byte sums the request trace already uses; the record keeps the rows and per-layer digests, and a later launch's record names the tensors that differ. This is the first question a launch in another numerical state ([1.9.0](#190--2026-09-22)) has to answer: same bits computed differently, or different bits loaded. `trace_end` gains `export`, which returns the traced rows so `trace_differences` can compare two launches from records instead of one process. The shared fingerprint and model discovery moved to module functions; the trace behaves as before.
+
+### Documentation
+
+- Launch safety: the weight digest as part of the check after a switch, when the profile carries `validation.memory_probe`. Server configuration and the architecture table name the method and the tool. README: the FreedomBench line says the evaluation is closed for the serving profile instead of pending.
+
 ## 1.9.5 — 2026-09-23
 
 ### Documentation
