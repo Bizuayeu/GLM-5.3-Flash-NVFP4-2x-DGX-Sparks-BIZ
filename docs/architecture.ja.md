@@ -52,7 +52,7 @@
 | `docker/` | imageの構築。base digestはビルドコマンドがロックから渡す |
 | `requirements/` | ホスト側ツールの固定した依存 |
 | `tests/` | CPU契約 |
-| `tools/` | `check_publication.py`（公開監査）、`release_notes.py`（tagが公開するChangelogの節）、`assess_benchmark.py`、`check_prefix_cache.py`、`decode_check.py`・`decode_divergence.py`・`weight_digest.py`（切替の後のdecode検査と重みのdigest、[起動契約](launch-safety.ja.md#切替の後のdecode検査)）、`nccl_probe.py`、`prepare_mtp_view.py` |
+| `tools/` | `check_publication.py`（公開監査）、`release_notes.py`（tagが公開するChangelogの節）、`kernel_hashes.py`（indexerのkernelを両配信workerの中でhash）、`assess_benchmark.py`、`check_prefix_cache.py`、`decode_check.py`・`decode_divergence.py`・`weight_digest.py`（切替の後のdecode検査と重みのdigest、[起動契約](launch-safety.ja.md#切替の後のdecode検査)）、`nccl_probe.py`、`prepare_mtp_view.py` |
 | `.github/workflows/` | CI（LinuxとWindowsでのCPUテスト・Ruff・公開監査）と、tagで起動するGitHub Release |
 | `LICENSES/` | 上流ライセンス原文の保持 |
 | `state/`、`records/` | ローカルの可変状態と実験の証跡。配布対象外 |

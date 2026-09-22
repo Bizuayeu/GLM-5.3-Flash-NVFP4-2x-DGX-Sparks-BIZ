@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.11.0 — 2026-09-23
+
+### Added
+
+- **The memory probe hashes the indexer's kernels inside the serving workers (`kernel_hashes`), and `tools/kernel_hashes.py` compares the ranks and an earlier launch.** On 2026-09-23 one rank's copy of the replicated kpool indexer was the first call to differ between two launches on identical inputs, and thirteen fresh processes on one GB10 computed the indexer's kernels bit-identically, so the difference lives in the serving processes themselves. The method runs the fp32 head gate and bf16 gate score, the fused FWHT quantisation, the pool cache's prefill write and decode tail update, and DeepGEMM's paged MQA logits with the stable top-k, on fixed inputs at the served shapes, and returns a hash of every output; the tool asks both ranks, compares them with each other and with the previous launch's record, and exits 1 on any difference, naming the keys. Taken after every switch beside the weight digest ([launch safety](docs/launch-safety.md#after-a-switch-the-decode-check)), the next launch in another state names the computation on the spot. The probe's other methods are unchanged.
+
 ## 1.10.5 — 2026-09-23
 
 ### Documentation

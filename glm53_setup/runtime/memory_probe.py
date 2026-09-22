@@ -374,6 +374,134 @@ def trace_differences(reference, rows, limit=24):
     }
 
 
+INDEXER_SHAPES = {
+    "heads": 32,
+    "dim": 128,
+    "kpool": 4,
+    "select": 512,
+    "pools": 540,
+    "block": 64,
+}
+
+
+def bytes_digest(tensor, torch):
+    """SHA-256 of a tensor's bytes, 16 hex digits; equal bits give equal digests."""
+    import hashlib
+
+    return hashlib.sha256(
+        flat_bytes(tensor, torch).cpu().numpy().tobytes()
+    ).hexdigest()[:16]
+
+
+def indexer_kernel_hashes(
+    torch, kpool_ops, deep_gemm, sms, seed=0, shapes=INDEXER_SHAPES
+):
+    """Hash the kpool indexer's computations on fixed inputs, inside this process.
+
+    The request trace of 2026-09-23 named one rank's copy of the replicated
+    indexer as the first call that differed between two launches on identical
+    inputs, and thirteen fresh processes on one GB10 computed these same
+    kernels bit-identically. Run on both ranks of a live launch, this says
+    whether the serving processes themselves agree, and which computation does
+    not: the fp32 head gate and bf16 gate score, the fused FWHT quantisation,
+    the pool cache's prefill write and decode tail update, and DeepGEMM's paged
+    MQA logits over that cache with the stable top-k of its rows.
+    """
+    heads, dim, kpool = shapes["heads"], shapes["dim"], shapes["kpool"]
+    select, pools, block = shapes["select"], shapes["pools"], shapes["block"]
+    hidden = 4096
+    dev = torch.device("cuda")
+
+    def bf16(*shape, seed):
+        g = torch.Generator().manual_seed(seed)
+        return torch.randn(*shape, generator=g).to(torch.bfloat16).to(dev)
+
+    def f32(*shape, seed):
+        g = torch.Generator().manual_seed(seed)
+        return torch.randn(*shape, generator=g).to(dev)
+
+    hashes = {}
+    wp = f32(hidden, heads, seed=seed + 21) * 0.02
+    gate = bf16(dim, hidden, seed=seed + 22) * 0.02
+    for rows, s in ((4, 23), (2048, 24)):
+        h = bf16(rows, hidden, seed=seed + s)
+        hashes[f"head_gate_fp32_rows{rows}"] = bytes_digest(
+            torch.mm(h.float(), wp), torch
+        )
+        hashes[f"gate_score_bf16_rows{rows}"] = bytes_digest(
+            torch.nn.functional.linear(h, gate), torch
+        )
+    for rows, s in ((4, 25), (2048, 26)):
+        q_fp8, q_scale = kpool_ops.fwht128_quant_fp8(
+            bf16(rows * heads, dim, seed=seed + s)
+        )
+        hashes[f"fwht_q_fp8_rows{rows}"] = bytes_digest(q_fp8, torch)
+        hashes[f"fwht_q_scale_rows{rows}"] = bytes_digest(q_scale, torch)
+    num_blocks = pools // block + 2
+    cache = torch.zeros(num_blocks, block, dim + 4, dtype=torch.uint8, device=dev)
+    ape = f32(kpool, dim, seed=seed + 27) * 0.1
+    kpool_ops.kpool_compress_and_write_cache(
+        cache,
+        bf16(pools, kpool, dim, seed=seed + 28),
+        bf16(pools, kpool, dim, seed=seed + 29),
+        ape,
+        torch.arange(pools, dtype=torch.int64, device=dev),
+        pool_size=kpool,
+        head_dim=dim,
+        round_scale=True,
+    )
+    hashes["compress_write_prefill"] = bytes_digest(cache, torch)
+    tail = torch.zeros(num_blocks, 2, kpool, dim, dtype=torch.bfloat16, device=dev)
+    int32 = lambda rows: torch.tensor(rows, dtype=torch.int32, device=dev)  # noqa: E731
+    kpool_ops.kpool_decode_update_and_maybe_write_cache_batched(
+        cache,
+        tail,
+        int32([[3, 3, 3, 3]]),
+        bf16(1, 4, dim, seed=seed + 30),
+        bf16(1, 4, dim, seed=seed + 31),
+        ape,
+        int32([[-1, -1, -1, pools]]),
+        int32([[2160, 2161, 2162, 2163]]),
+        kpool,
+        head_dim=dim,
+        round_scale=True,
+    )
+    hashes["decode_update_cache"] = bytes_digest(cache, torch)
+    hashes["decode_update_tail"] = bytes_digest(tail, torch)
+    q_fp8, _ = kpool_ops.fwht128_quant_fp8(bf16(4 * heads, dim, seed=seed + 32))
+    weights = (f32(4, heads, seed=seed + 33) * 0.05).contiguous()
+    context = int32([[pools - 3, pools - 2, pools - 1, pools]])
+    blocks = torch.arange(num_blocks, dtype=torch.int32, device=dev).view(1, -1)
+    meta = deep_gemm.get_paged_mqa_logits_metadata(context, block, sms)
+    logits = deep_gemm.fp8_fp4_paged_mqa_logits(
+        (q_fp8.view(1, 4, heads, dim), None),
+        cache.unsqueeze(-2),
+        weights,
+        context,
+        blocks,
+        meta,
+        block * 1024,
+        clean_logits=False,
+    )
+    valid = logits[:, :pools].float().clone()
+    order = torch.sort(valid, dim=-1, descending=True, stable=True).indices[:, :select]
+    hashes["paged_mqa_logits"] = bytes_digest(valid, torch)
+    hashes["paged_mqa_topk_set"] = bytes_digest(order.sort(dim=-1).values, torch)
+    torch.cuda.synchronize()
+    return hashes
+
+
+def kernel_hash_differences(ranks):
+    """Which hashes differ between the ranks of one launch (each row ``{"rank", "hashes"}``)."""
+    keys = sorted({k for row in ranks for k in row["hashes"]})
+    differing = [k for k in keys if len({row["hashes"].get(k) for row in ranks}) > 1]
+    return {
+        "ranks": [row["rank"] for row in ranks],
+        "agree": not differing,
+        "differing": differing,
+    }
+
+
 class MemoryProbeWorker:
     def trace_begin(self, pattern=None, inputs=False, sync=False, functions=True):
         """Fingerprint what the traced modules take and return in what runs next.
@@ -585,3 +713,24 @@ class MemoryProbeWorker:
         row = summarize(torch.cuda.memory_stats(), torch.cuda.mem_get_info())
         row["rank"] = self.rank
         return row
+
+    def kernel_hashes(self, seed=0):
+        """The indexer's computations on fixed inputs, hashed inside this worker.
+
+        Compared across the ranks of one launch (``kernel_hash_differences``)
+        and with an earlier launch's record, it names the computation that a
+        launch in another numerical state does differently, on the spot.
+        """
+        import torch
+        from vllm.models.glm5next.nvidia.ops import kpool_compress
+        from vllm.utils import deep_gemm
+
+        sms = torch.cuda.get_device_properties(0).multi_processor_count
+        return {
+            "rank": self.rank,
+            "seed": seed,
+            "sms": sms,
+            "hashes": indexer_kernel_hashes(
+                torch, kpool_compress, deep_gemm, sms, seed
+            ),
+        }

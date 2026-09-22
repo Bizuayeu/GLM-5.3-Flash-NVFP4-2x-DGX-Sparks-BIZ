@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.11.0 — 2026-09-23
+
+### Added
+
+- **memory probeが配信workerの中でindexerのkernelをhashし（`kernel_hashes`）、`tools/kernel_hashes.py` が両rankと前の起動を比べる。** 2026-09-23に、複製されたkpool indexerの一方のrankの写しが、同一入力で二つの起動の間で最初に違った呼び出しであり、GB10 1台の新しいprocess 13本ではindexerのkernelがbit一致したので、差は配信processそのものにある。methodはfp32のhead gateとbf16のgate score、融合したFWHT量子化、pool cacheのprefillの書き込みとdecodeのtail update、DeepGEMMのpaged MQA logitsとstable top-kを、配信の形状の固定入力で走らせ、全出力のhashを返す。toolは両rankに問い、互いと前の起動の記録とを比べ、差があれば終了状態1でkeyを名指しする。切替ごとに重みのdigestと並べて取れば（[起動安全](docs/launch-safety.ja.md#切替の後のdecode検査)）、次の別の状態の起動がその場で計算を名指しする。probeの他のmethodは不変。
+
 ## 1.10.5 — 2026-09-23
 
 ### Documentation

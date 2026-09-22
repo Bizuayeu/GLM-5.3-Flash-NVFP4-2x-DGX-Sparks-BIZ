@@ -38,7 +38,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |
 | `glm53_setup/runtime/fused_unpack.py`, `fused_nope*.py`, `graph_policy.py`, `patch_graph_prefill.py` | Fused FP8 unpack kernel, experimental fused NoPE attention prototypes and the decode-Graph policy |
-| `glm53_setup/runtime/indexer_*.py`, `component_worker.py`, `memory_probe.py` | CSA2 indexer observation and reuse components, the exclusive component diagnostics worker and the allocator readout from a serving worker ([indexer reuse](indexer-reuse.md)) |
+| `glm53_setup/runtime/indexer_*.py`, `component_worker.py`, `memory_probe.py` | CSA2 indexer observation and reuse components, the exclusive component diagnostics worker and the probe of a serving worker (allocator readout, weight digest, request trace, indexer kernel hashes) ([indexer reuse](indexer-reuse.md)) |
 | `glm53_setup/runtime/pipeline_state.py`, `patch_pipeline*.py` | PP fixture transport and layout patches (P17) |
 | `glm53_setup/validation/make_fixture.py`, `run_fixture.py`, `summarize_fixture.py`, `inspect_runtime.py`, `probe_attention.py`, `reference_check.py` | Fixture build, run and assessment, in-container inspection, the NoPE dispatch probe and reference attention parity ([validation](validation.md)) |
 | `glm53_setup/validation/run_agreement_fixture.py`, `compare_agreement.py`, `quant_error.py`, `run_repeat_trace.py` | Requantization checks on the fixture and the first module that differs between repeated passes ([validation](validation.md#full-model-tp2-experimental-scope)) |
@@ -52,7 +52,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |
 | `tests/` | CPU contracts |
-| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py`, `decode_divergence.py` and `weight_digest.py` (the decode check and the weight digest after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py`, `prepare_mtp_view.py` |
+| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `kernel_hashes.py` (the indexer's kernels hashed inside both serving workers), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py`, `decode_divergence.py` and `weight_digest.py` (the decode check and the weight digest after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py`, `prepare_mtp_view.py` |
 | `.github/workflows/` | CI (CPU tests, Ruff, publication audit on Linux and Windows) and the tag-driven GitHub Release |
 | `LICENSES/` | Preserved upstream license texts |
 | `state/`, `records/` | Local mutable state and experiment evidence, excluded from distribution |
