@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased
+
+### Changed
+
+- `apc-lpa-fixture` reads its fixture through the same gate as `fixture-run` (`run_fixture.read_fixture`). A fixture that is not a byte-verified four-layer test fixture is refused with that gate's sentence, "Only a byte-verified four-layer test fixture is allowed", and `all_tensor_bytes_verified` must be `true` rather than merely truthy. Engine settings, the measurement terms and the report are unchanged.
+
 ## 1.9.3 — 2026-09-22
 
 ### Documentation

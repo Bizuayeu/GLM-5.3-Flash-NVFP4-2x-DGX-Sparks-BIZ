@@ -12,7 +12,7 @@ Four kinds of code, distinguished by what a test can do with them rather than by
 |---|---|---|
 | **Entry** | The argument interface, and which handler an action reaches | `server.ACTIONS`, `cluster.ACTIONS`, `__main__.COMMANDS` |
 | **Assembly** | The order steps run in, and what a failure rolls back | `switch.switch`, `server.act_launch`, `cluster.act_switch` |
-| **Decision** | Settings validated, arguments built, reports shaped — pure functions | `server_config.VALIDATORS`, `server_config.SERVE_STEPS`, `validation.*.engine_kwargs`, `runtime.apc_policy` |
+| **Decision** | Settings validated, arguments built, reports shaped — pure functions | `server_config.VALIDATORS`, `server_config.SERVE_STEPS`, `validation.*.engine_kwargs`, `runtime.apc_policy`, `runtime.patch_*.patch_text` |
 | **Side effect** | docker, HTTP, subprocess, torch, vLLM | `host.run`, `model_http`, the lazy GPU imports inside each runner |
 
 The decision layer is where the numbers live that make one measurement comparable to the next, so it is the layer kept importable without torch or vLLM: `engine_kwargs(args)` states what a fixture runner launches under, on a host that cannot run it. Entry and assembly take their side effects as arguments, so a test substitutes them; the side-effect layer is the substitution point, not the thing under test.
@@ -28,6 +28,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/download.py`, `verify_download.py`, `images.py`, `build_reference.py` | Asset preparation (pinned download, checksum verification that waits for the downloader, base-image inspection, reference-image build) and guarded local operations |
 | `glm53_setup/cluster.py`, `switch.py`, `launch_assets.py`, `fabric.py` | Two-rank pre-stop checks, owned switch/recovery transaction, read-only launch identities and RoCE rail checks ([launch contracts](launch-safety.md)) |
 | `glm53_setup/model_http.py`, `io.py` | Model-API-scoped HTTP transport that never follows redirects; durable local state helpers |
+| `glm53_setup/runtime/pinned_patch.py`, `patch_*.py` | The source-pinned vLLM patches the image build applies: `pinned_patch` holds what they share (the hash gate on the pinned file, the `--package`/`--check` command, the record written beside the package); each `patch_*` module states its target, its pin and its anchors as a pure `patch_text(text)` that refuses a drifted or already patched source |
 | `glm53_setup/runtime/reference_attention.py`, `patch_nope_reference.py`, `fa2_attention.py` | Candidate-preserving eager NoPE MLA reference, its source-pinned installation, and the FA2 prefill path (`runtime.fa2_attention`) |
 | `glm53_setup/runtime/candidate_order.py` | Canonical logical candidate order at the shared sparse-MLA boundary ([candidate order](candidate-order.md)) |
 | `glm53_setup/runtime/moe_token_order.py`, `patch_moe_order.py` | One token order inside each expert before the Marlin MoE kernel (`runtime.canonical_moe_order`) and its source-pinned patch |

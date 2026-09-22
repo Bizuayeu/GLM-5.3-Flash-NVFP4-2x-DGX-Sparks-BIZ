@@ -12,7 +12,7 @@
 |---|---|---|
 | **入口** | 引数の解釈と、action がどのハンドラに届くか | `server.ACTIONS`、`cluster.ACTIONS`、`__main__.COMMANDS` |
 | **編成** | 手順の順序と、失敗時に何を巻き戻すか | `switch.switch`、`server.act_launch`、`cluster.act_switch` |
-| **判断** | 設定の検査、引数の組み立て、報告の整形——純粋関数 | `server_config.VALIDATORS`、`server_config.SERVE_STEPS`、`validation.*.engine_kwargs`、`runtime.apc_policy` |
+| **判断** | 設定の検査、引数の組み立て、報告の整形——純粋関数 | `server_config.VALIDATORS`、`server_config.SERVE_STEPS`、`validation.*.engine_kwargs`、`runtime.apc_policy`、`runtime.patch_*.patch_text` |
 | **副作用** | docker、HTTP、subprocess、torch、vLLM | `host.run`、`model_http`、各runner内のGPU遅延import |
 
 判断層には「ある測定を次の測定と比較可能にしている数値」が置かれるため、torch・vLLM なしで import できる状態を保ちます。`engine_kwargs(args)` は、実行できないホストの上でも fixture runner の起動設定を述べられます。入口層と編成層は副作用を引数で受け取るのでテストが差し替えられ、副作用層は差し替え点であって検査対象ではありません。
@@ -28,6 +28,7 @@
 | `glm53_setup/download.py`、`verify_download.py`、`images.py`、`build_reference.py` | 資材の準備（固定checkpointの取得、downloaderを待つchecksum検証、base imageの確認、reference imageのbuild）と、ガード付きのローカル操作 |
 | `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 両rankの停止前検査、所有権つきの切替・復旧、読み取り専用の起動識別情報、RoCEレール検査（[起動契約](launch-safety.ja.md)） |
 | `glm53_setup/model_http.py`、`io.py` | モデルAPIに限定しredirectに従わないHTTP transport、ローカル状態の永続化helper |
+| `glm53_setup/runtime/pinned_patch.py`、`patch_*.py` | image buildが当てるsource固定のvLLM patch群。`pinned_patch` が共通部分（固定ファイルのhash検査、`--package`／`--check` コマンド、package脇に書くrecord）を持ち、各 `patch_*` moduleは対象・pin・anchorだけを、逸脱した・適用済みのsourceを拒む純粋関数 `patch_text(text)` として述べる |
 | `glm53_setup/runtime/reference_attention.py`、`patch_nope_reference.py`、`fa2_attention.py` | 候補を保存するeagerなNoPE MLA参照計算、そのsource固定の導入、FA2のprefill経路（`runtime.fa2_attention`） |
 | `glm53_setup/runtime/candidate_order.py` | 共通のsparse-MLA境界での論理候補順序の正規化（[候補順序](candidate-order.ja.md)） |
 | `glm53_setup/runtime/moe_token_order.py`、`patch_moe_order.py` | Marlin MoE kernelの前で各expert内のtoken順を一つに固定（`runtime.canonical_moe_order`）と、そのsource固定patch |
