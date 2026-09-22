@@ -725,7 +725,7 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 
 ### 公開した任意設定と配布既定、同じ夜の対
 
-2026-09-22（08:59〜10:12 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、二つのprofileを続けて動かしました。配信中の任意設定（再パック `l`、深さ3、fingerprint `70d01dbf82ca…`）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そして再び任意設定で、`cluster switch` を2回（それぞれwarmup ladder付き）。各armで、38,962 tokenのprefillと短いpromptのdecodeを3回（`glm_bench.py`）、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、文種ごとにdecodeを3標本取りました。監視dashboardはarmの間は止めています。問いは再パックのprefillの代価です。kernelの測定では、KDAの融合したinput projectionのW4A16 Marlinが2,048行のchunkでBF16 GEMMの1.5倍で、200Kの要求で約2.4%と予測していました（[P23](optimization-catalog.ja.md)）。
+2026-09-22（08:59〜10:12 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、二つのprofileを続けて動かしました。配信中の任意設定（再パック `l`、深さ3、fingerprint `70d01dbf82ca…`）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そして再び任意設定で、`cluster switch` を2回（それぞれwarmup ladder付き）。各armで、38,962 tokenのprefillと短いpromptのdecodeを3回（`glm_bench.py`）、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、文種ごとにdecodeを3標本取りました。監視dashboardはarmの間は止めています。問いは再パックのprefillの代価です。kernelの測定では、KDAの融合したinput projectionのW4A16 Marlinが2,048行のchunkでBF16 GEMMの1.5倍で、200Kの要求で約2.4%と予測していました（[P23](optimization-catalog.ja.md)）。このkernelの測定はrankあたりの幅を12,416列として取ったもので、paddingの後の幅を論理的な幅として渡していました。TP=2での融合したinput projectionの実際のrankあたりの幅は12,576（3×4,096＋32＋128＋128）で、Marlinはこれを12,608に詰めて毎回のforwardで切り戻すため、この数字はその切り戻しの複写（[1.8.0での測定](#180での測定)で2,048行のchunkで1層あたり0.48 ms）を含んでいません。
 
 | 項目 | 任意設定（前） | 配布既定 | 任意設定（後） |
 |---|---|---|---|
@@ -736,4 +736,23 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード（tok/s） | 46.28／28.80／37.57 | 32.58／20.64／27.42 | 45.81／28.48／38.13 |
 | rankあたりの重み／bench中のheadの最小空き | 91.38 GiB／10.22 GiB | 95.76 GiB／6.20 GiB | 91.38 GiB／10.15 GiB |
 
-任意設定の二つの起動はprefillで0.45%、長い要求で0.2%の内側で一致し、decodeのcompletionは3文種ともhashが同じです。既定との差は起動間のゆらぎではありません。**再パックのprefillの代価は、38,962 tokenのpromptで1.8%、199,652 tokenの要求で1.2%、261,461 tokenの要求で3.4%です。**200Kの数字はprefillの差を小さく見せています。既定はこの要求にcompletionを100 token（うちreasoning 89）返し、任意設定は20 tokenで、約3秒のdecodeの差があるためで、prefillだけなら2.5%に近い値です。既定の数字は[1.6.0の表](#160でのprefillとdecode)の幅の内側です（1,277.0対1,271.6 tok/s、167.3対167.7 s）。1.7.0のruntimeは既定を動かしていません。代価の所在はkernelの測定が指したところ、prefillの幅でのKDAの融合input projectionにあり、同じ再パックが買うdecodeの利得の値札です。配信profileは変えず、任意設定の説明にこの数字を持たせます。
+任意設定の二つの起動はprefillで0.45%、長い要求で0.2%の内側で一致し、decodeのcompletionは3文種ともhashが同じです。既定との差は起動間のゆらぎではありません。**再パックのprefillの代価は、38,962 tokenのpromptで1.8%、199,652 tokenの要求で1.2%、261,461 tokenの要求で3.4%です。**（1.8.0は融合したKDA input projectionの分割でこの代価を消した。[1.8.0での測定](#180での測定)。）200Kの数字はprefillの差を小さく見せています。既定はこの要求にcompletionを100 token（うちreasoning 89）返し、任意設定は20 tokenで、約3秒のdecodeの差があるためで、prefillだけなら2.5%に近い値です。既定の数字は[1.6.0の表](#160でのprefillとdecode)の幅の内側です（1,277.0対1,271.6 tok/s、167.3対167.7 s）。1.7.0のruntimeは既定を動かしていません。代価の所在はkernelの測定が指したところ、prefillの幅でのKDAの融合input projectionにあり、同じ再パックが買うdecodeの利得の値札です。配信profileは変えず、任意設定の説明にこの数字を持たせます。
+
+## 1.8.0での測定
+
+### 分割したKDAのinput projectionと融合したもの・配布既定、同じ夜の3本
+
+2026-09-22（13:10〜14:22 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、3本のarmを続けて動かしました。配信中のまま融合したKDAのinput projectionを持つ任意設定（fingerprint `70d01dbf82ca…`、切替なし）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そしてそのprojectionを `q_proj`／`k_proj`／`v_proj` の3本の列並列GEMMと、`b`／`f_a`／`g_a` を1本にまとめたGEMM（`in_proj_bfg_a`）とに分割して宣言した任意設定（fingerprint `948613031b31…`）です。任意設定の3本は重みのbyteが同一で、融合と分割の違いは `config.json`・`hf_quant_config.json` と二つのsource overlayだけです。`cluster switch` は2回とも完走し、復旧はなく、warmup ladderも通りました（長い段は既定で55.8 s、分割した任意設定で52.7 s）。測る項目は[1.7.1](#171での測定)と同じで、38,962 tokenのprefillを3回、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、短いpromptのdecodeを3回、文種ごとにdecodeを3標本です。
+
+| 項目 | 任意設定（融合） | 配布既定 | 任意設定（分割） |
+|---|---|---|---|
+| prefill（38,962 tokenのprompt、tok/s） | 1,261.4（1,259.1〜1,264.8） | 1,232.8（1,231.4〜1,256.2） | **1,294.8（1,293.6〜1,297.6）** |
+| 199,652 token入力、中央の合言葉1個、2回 | 169.1 sと169.3 s、正答 | 173.5 sと173.6 s、正答（completion 100 token、うちreasoning 89） | **163.7 sと163.7 s、正答**（completion 20 token、うちreasoning 9。融合側も同じ） |
+| 261,461 tokenの3か所参照、枠を明示したprompt | 234.4 s、3つとも正答 | 235.9 s、3つとも正答 | **227.2 s、3つとも正答** |
+| decode（固定の短いpromptの後の512 token、tok/s） | 38.02〜38.36 | 26.87〜27.31 | **41.49〜41.84** |
+| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード（tok/s、採択長） | 46.12（3.68）／28.53（2.16）／38.15（3.04） | 32.01（3.57）／20.67（2.15）／26.68（3.00） | 45.44（3.66）／30.01（2.28）／37.17（2.97） |
+| rankあたりの重み／bench中のheadの最小空き | 91.38 GiB／10.35 GiB | 95.76 GiB／5.53 GiB | 91.34 GiB／10.50 GiB |
+
+**分割した任意設定のprefillは、融合したものより38,962 tokenで2.6%、199,652 tokenの要求で3.2%、261,461 tokenの要求で3.1%速く、これは[1.7.1](#171での測定)が測った代価と同じ大きさです。代価は消えました。**この夜は既定より任意設定のprefillが速くもなっています。既定はこの夜、どのprefillの行でも1.7.1の夜より3〜4%遅く、これは起動間の差です（decodeのcompletionは1.7.1の夜とhashが同じでした）。decodeは、短いpromptの後で融合したものより9%速く、2,048 tokenのpromptの後の差は採択長の動きに沿います（数え上げ−1.5%＝3.66対3.68、散文+5.2%＝2.28対2.16、コード−2.6%＝2.97対3.04）。悪化はありません。completionのhashは、融合した任意設定と既定が3文種とも1.7.1の夜と同一で、起動と夜をまたぐ標本がそれぞれ1つ取れました。分割した任意設定のcompletionは異なります（3本のGEMMのBF16での丸めが違うため）。その3標本は文種ごとに同一で、4層fixtureでは分割と融合が全語彙KLの平均1e-4、layer 3の候補集合でJaccard 0.986で一致します。これは同じfixtureの2回の起動と同じ水準で、再パックそのものは無改変fixtureに対してKL 1.6e-2・Jaccard 0.950の位置にあります。メモリは変わりません。
+
+分割が効く理由は、固定のimageでGB10を1台使って測ったkernelの値にあります。2,048行のchunkでは、W4A16 Marlin GEMMは試したどの融合幅（12,288〜12,800、整列の有無を問わず）でもBF16 GEMMの1.6〜1.8倍ですが、4,096幅のGEMM 3本と288幅の残りなら1.14倍（層が必要とする `q|k|v` の連結を含めて1.3倍）です。代価は幅であって、paddingではありません。decodeの行数（M=8）では、分割は34層で1 stepあたり約0.5 ms増やしますが、全モデルのdecodeにその差は出ませんでした。

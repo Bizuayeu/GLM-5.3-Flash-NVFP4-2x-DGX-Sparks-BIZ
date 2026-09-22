@@ -2,7 +2,7 @@
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
-**A full-model TP=2 reference profile has been tested and measured. Acceptance for routine use is still open, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
+**A full-model TP=2 reference profile has been tested and measured. It is accepted for routine use since 2026-09-22, for one active sequence, the serving profile; harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
@@ -82,36 +82,36 @@ The fixed model revision, base-image digest and local reference tag are in [conf
 
 Follow the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture). Its results distinguish completed execution, repeatability, and numerical differences.
 
-The TP=2 reference profile is **measured but not accepted for routine use**. `server preflight` checks assets, fabric, image identity, exclusive use of the GPU and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for the acceptance items that remain open.
+The TP=2 reference profile is **measured and accepted for routine use (2026-09-22)**. `server preflight` checks assets, fabric, image identity, exclusive use of the GPU and memory on each host before a start; it does not certify quality or availability. See [operations](docs/operations.md#full-model-launch-checks) for what the launch checks cover and [the setup runbook](SETUP.md#6-qualify-the-full-model) for where each acceptance item's evidence is recorded.
 
 ## What has been verified
 
 **Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** The checks behind these defaults are [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160); [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative, and [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) keep the earlier speed/tool-eval results, including the unmet Safety Gate.
 
-### Headline measurements (1.7.1)
+### Headline measurements (1.8.0)
 
-Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), [1.7.0](docs/benchmarks.md#measurements-on-170) and [1.7.1](docs/benchmarks.md#measurements-on-171), which own these numbers. The prefill, 199,652-token, 261,461-token, short-prompt and 2,048-token decode rows come from the same-night pair of 2026-09-22 on the 1.7.0 runtime; the 255,950-token, capacity and NLL rows are the earlier series. Task types are always listed counting / prose / code.
+Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Since 1.8.0 the option declares that checkpoint's KDA input projection split into `q_proj` / `k_proj` / `v_proj` and a merged `b` / `f_a` / `g_a` tail, the same weight bytes read a different way (profile tag `attn-lmhead-w4a16-splitkda`). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), [1.7.0](docs/benchmarks.md#measurements-on-170), [1.7.1](docs/benchmarks.md#measurements-on-171) and [1.8.0](docs/benchmarks.md#measurements-on-180), which own these numbers. The prefill, 199,652-token, 261,461-token, short-prompt, 2,048-token decode and memory rows come from the same-night three-arm run of 2026-09-22 on the 1.7.0 runtime; the 255,950-token, capacity and NLL rows are the earlier series. Task types are always listed counting / prose / code.
 
 | Measure | Distributed defaults | Published option |
 |---|---|---|
 | Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; a relaunch repeated the first launch's completions |
-| Decode after a 2,048-token prompt: counting / prose / code | 32.58 / 20.64 / 27.42 tok/s | **46.28 / 28.80 / 37.57 tok/s** |
-| Prefill, 38,962-token prompt | **1,277.0 tok/s** | 1,256.9 tok/s (1.8% slower; 1,251.2 on a second launch) |
-| Decode, 512 tokens after a fixed short prompt | 27.29 tok/s | 38.44 tok/s |
-| 199,652-token input, one passphrase at the midpoint | **168.1 and 166.4 s, correct** | 169.4 and 169.6 s, correct |
+| Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.44 / 30.01 / 37.17 tok/s** |
+| Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** |
+| Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** |
+| 199,652-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct | **163.7 and 163.7 s, correct** |
 | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct |
-| 261,461-token three-position reference, explicit prompt | **226.7 s, correct 3 of 3** | 234.3 s, correct 3 of 3 (3.4% slower) |
+| 261,461-token three-position reference, explicit prompt | 235.9 s, correct 3 of 3 | **227.2 s, correct 3 of 3** |
 | Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs |
 | Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 |
-| Lowest available memory over the 256K series, head | 6.08 GiB | 10.17 GiB |
+| Lowest available memory on the head during the same-night bench | 5.53 GiB | 10.50 GiB |
 
 | | Distributed defaults | Published option |
 |---|---|---|
-| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download. Every 256K request completes a few seconds sooner | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Identical requests still repeat bit for bit, and the head keeps about 4 GiB more available at 256K |
-| **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Prefill 2 to 3% slower (the repacked KDA input projection runs W4A16 Marlin at prefill widths). Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
+| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Prefill 2 to 5% faster than the defaults on the same night, the split projection having removed the earlier penalty. Identical requests still repeat bit for bit, and the head keeps about 4 GiB more available at 256K |
+| **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
 | **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
 
-How fast MTP decodes depends on how predictable the text is: the same profile gives 46 tok/s on counting and 29 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.
+How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 30 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.
 
 ### Status by scope
 
@@ -129,7 +129,7 @@ Each row states the status and the document that owns the evidence; the narrativ
 | Full model | Identical requests at temperature 0 | Repeat bit for bit after two fixes, the token order inside each expert and ties in the indexer's top-k. On the four-layer fixture launches fall into two numerical states, so a new launch is checked, not assumed; [how it was found](docs/validation.md#full-model-tp2-experimental-scope) |
 | Full model | Image input (vision) at 200K and 256K | One synthetic image answered correctly at both lengths, text/tool regressions passed, video rejected; large images and direct attachment in harness user interfaces not checked; [measurements and limits](docs/vision.md) |
 | Full model | Long Japanese and Korean output | Six answers of 852–1,024 characters without broken characters; reasoning text not exercised; [check and limits](docs/validation.md#full-model-tp2-experimental-scope) |
-| Harness | ZCode / Claude Code integration | Basic API group passed; the eleven shared H cases ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL); official ZCode Desktop and Claude Code client cases **not run**; [acceptance matrix](docs/harnesses.md#acceptance-matrix-and-status) |
+| Harness | ZCode / Claude Code integration | Basic API group passed; the common group H-01–H-11 ran once on the npm ZCode CLI (5 PASS, 6 PARTIAL). The official ZCode Desktop is **BLOCKED** (its bundled CLI cannot start interactively, [feedback #270](https://github.com/zai-org/feedback/issues/270)) and Claude Code was **skipped by decision** (its configuration conflicts with an Anthropic subscription setup on the same machine); the accepted harness route is the npm ZCode CLI; [acceptance matrix](docs/harnesses.md#acceptance-matrix-and-status) |
 | In the template | FA2 prefill (`runtime.fa2_attention`) | Adopted: prefill 2.2 times 1.5.0, decode on the reference path, excludes LPA; [measurements](docs/benchmarks.md#measurements-on-160) |
 | In the template | MTP k=3 with the BF16 draft | Depths 1 to 5 measured on ten inputs on both checkpoints; k=3 kept for both; [speculative decoding](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) |
 | In the template | Prefix caching (APC) | Accepted for the measured serial long-prefix reuse workload (experimental); [measurements](docs/benchmarks.md#independent-full-model-prefix-caching-p19) |

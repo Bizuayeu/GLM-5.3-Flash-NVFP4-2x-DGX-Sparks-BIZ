@@ -2,6 +2,20 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased (1.8.0)
+
+### Changed
+
+- **The published option's KDA input projection is split.** The derived checkpoint (attention projections and `lm_head` in W4A16 NVFP4, `requant_target = "l"`) now declares the KDA input projection of the 34 linear-attention layers as `q_proj`, `k_proj`, `v_proj` and one merged `in_proj_bfg_a` (`b`, `f_a`, `g_a`) instead of the pinned six-in-one `in_proj_qkvbfg_a`; the weights are byte-identical, only `config.json`, `hf_quant_config.json` (`producer.in_proj_layout = "split-qkv-bfg"`) and the two source overlays changed. A kernel measurement placed the option's prefill cost in the width of that one W4A16 Marlin GEMM (every fused width from 12,288 to 12,800 columns costs 1.6–1.8 times a BF16 GEMM on 2,048-row chunks; three 4,096-wide GEMMs plus the 288-wide tail cost 1.14, 1.3 with the concatenation), not in its padding. On the reference pair, same night as the fused layout and the distributed defaults, the split option prefills 2.6% faster than the fused one on 38,962 tokens, 3.2% faster on the 199,652-token request and 3.1% faster on the 261,461-token request, the size of the penalty 1.7.1 measured, and faster than the defaults; decode and memory are unchanged, the 200K and 261K requests are answered correctly, and against the fused layout the four-layer fixture agrees at the level of two launches of one fixture (full-vocabulary KL 1e-4, candidate-set Jaccard 0.986). Completions of the option change with the layout (BF16 rounding order) and repeat bit for bit within it. The reference pair serves the split option since 2026-09-22 (fingerprint `948613031b31…`).
+- **The two source overlays ship in `overlays/`** (`kda-quant-split.py` over the pinned `kda.py`, `mla-quant-split.py` over `model.py`, with their SHA-256, base file hashes and markers in `overlays/README.md`). The Hugging Face model card already required them; the repository now provides them. Ruff excludes the directory (vLLM-derived sources).
+
+### Documentation
+
+- Benchmarks and README: measurements on 1.8.0, the three-arm same-night run; the README headline carries the split option. The 1.7.1 kernel figure is annotated: it was taken at a per-rank width of 12,416 columns without the output slice; the real width is 12,576, padded to 12,608, and the slice costs 0.48 ms per layer per chunk.
+- Optimization catalog P23 and server configuration: the split layout, the overlay pairing rule (an overlay pair belongs to one checkpoint revision; a mismatch fails at load) and the corrected width.
+- Routine-use acceptance closed for the serving profile (2026-09-22): the lock's status and `full_model_inference_validated`, the README status sentences, SETUP §6's evidence table and the harness matrix (the npm ZCode CLI is the accepted route; the official Desktop stays BLOCKED on feedback #270; Claude Code is skipped by decision) say so instead of "still open".
+- SETUP: a shortest-path section to a smoke test ahead of the numbered steps.
+
 ## 1.7.1 — 2026-09-22
 
 ### Documentation

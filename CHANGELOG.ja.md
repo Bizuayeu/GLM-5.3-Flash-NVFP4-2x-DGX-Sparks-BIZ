@@ -4,6 +4,20 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## Unreleased (1.8.0)
+
+### Changed
+
+- **公開した任意設定のKDA input projectionを分割した。** 派生checkpoint（attention projectionと `lm_head` をW4A16 NVFP4、`requant_target = "l"`）は、34層のlinear-attention層のKDA input projectionを、固定vLLMの6本融合 `in_proj_qkvbfg_a` ではなく `q_proj`・`k_proj`・`v_proj` と融合1本の `in_proj_bfg_a`（`b`・`f_a`・`g_a`）として宣言する。重みはbyte単位で同一で、変わったのは `config.json`・`hf_quant_config.json`（`producer.in_proj_layout = "split-qkv-bfg"`）と2枚のsource overlayだけ。kernelの実測で、任意設定のprefillの代価はこの1本のW4A16 Marlin GEMMの幅にあった（2,048行のchunkで、融合幅12,288〜12,800のどれもBF16 GEMMの1.6〜1.8倍。4,096幅3本＋288幅のtailは1.14倍、連結込みで1.3倍）。paddingではない。基準の2台で、融合の配置と配布既定と同じ夜に測ると、分割した任意設定は融合より38,962 tokenで2.6%、199,652 tokenの要求で3.2%、261,461 tokenの要求で3.1%速く（1.7.1が測った代価と同じ大きさ）、既定よりも速い。decodeとメモリは不変、200Kと261Kの要求は正答、融合の配置に対する4層fixtureの一致は同じfixtureの2起動と同じ水準（全語彙KL 1e-4、候補集合Jaccard 0.986）。任意設定のcompletionは配置で変わり（BF16の丸め順）、配置の中ではbit単位で反復する。基準の2台は2026-09-22から分割した任意設定を配信している（fingerprint `948613031b31…`）。
+- **2枚のsource overlayを `overlays/` に同梱した**（固定 `kda.py` に重ねる `kda-quant-split.py`、`model.py` に重ねる `mla-quant-split.py`。SHA-256・base fileのhash・markerは `overlays/README.md`）。Hugging Faceのmodel cardは既にこれを要件にしていて、リポジトリが供給するようになった。Ruffはこのディレクトリを除外する（vLLM由来のsource）。
+
+### Documentation
+
+- benchmarksとREADME：1.8.0での測定（同じ夜の3 arm）。READMEの主要な測定値は分割した任意設定を載せる。1.7.1のkernelの数字に注記：rankあたり12,416列、出力のsliceなしで測っていた。実際の幅は12,576で、12,608にpadされ、sliceは層あたりchunkあたり0.48 msかかる。
+- 施策台帳P23と起動設定：分割の配置、overlayの対の規則（overlayの対は一つのcheckpoint revisionに属し、食い違えばloadで失敗する）、訂正した幅。
+- 配信profileの通常運用としての受け入れを閉じた（2026-09-22）：lockの状態と `full_model_inference_validated`、READMEの状態文、SETUP §6の証拠表、ハーネスの受け入れ試験一覧（npm版ZCode CLIが受け入れた経路。公式DesktopはBLOCKED〔feedback #270〕のまま、Claude Codeは判断で見送り）が「未了」の代わりにそう述べる。
+- SETUP：番号付き手順の前に、smokeまでの最短経路の節。
+
 ## 1.7.1 — 2026-09-22
 
 ### Documentation

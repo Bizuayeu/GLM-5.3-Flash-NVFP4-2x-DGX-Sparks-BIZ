@@ -2,7 +2,7 @@
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
-**全モデルTP=2の参照profileを試験・実測済みです。通常運用としての受け入れは未了で、ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
+**全モデルTP=2の参照profileを試験・実測済みです。2026-09-22に、同時1系列・配信profileの範囲で通常運用としての受け入れが成立しました。ハーネスの受け入れ状態はケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。**
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.ja.md) · [検証範囲](docs/validation.ja.md) · [構成](docs/architecture.ja.md) · [文書一覧](docs/README.ja.md)
 
@@ -82,36 +82,36 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2の参照profileは**実測済みだが通常運用としては未受け入れ**です。`server preflight` は起動前に各ホストで資材・fabric・image・GPUの専有・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れまでに残る項目は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
+TP=2の参照profileは**実測済みで、通常運用として受け入れ済み（2026-09-22）**です。`server preflight` は起動前に各ホストで資材・fabric・image・GPUの専有・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れ各項目の証拠の所在は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
 
 ## 確認した範囲
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.7.1）
+### 主要な測定値（1.8.0）
 
-GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)にあります。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecodeの行は、1.7.0のruntimeで2026-09-22の同じ夜に対で測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)にあります。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 測定 | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 同じ。再起動が最初の起動のcompletionを反復 |
-| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.58／20.64／27.42 tok/s | **46.28／28.80／37.57 tok/s** |
-| prefill（38,962 tokenのprompt） | **1,277.0 tok/s** | 1,256.9 tok/s（1.8%遅い。二つ目の起動では1,251.2） |
-| decode（固定の短いpromptの後の512 token） | 27.29 tok/s | 38.44 tok/s |
-| 199,652 token入力、中央の合言葉1個 | **168.1 sと166.4 s、正答** | 169.4 sと169.6 s、正答 |
+| decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.44／30.01／37.17 tok/s** |
+| prefill（38,962 tokenのprompt） | 1,232.8 tok/s（1.7.1の夜は1,277.0） | **1,294.8 tok/s** |
+| decode（固定の短いpromptの後の512 token） | 26.87〜27.31 tok/s | **41.8 tok/s** |
+| 199,652 token入力、中央の合言葉1個 | 173.5 sと173.6 s、正答 | **163.7 sと163.7 s、正答** |
 | 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答 |
-| 261,461 tokenの3か所参照、枠を明示したprompt | **226.7 s、3つとも正答** | 234.3 s、3つとも正答（3.4%遅い） |
+| 261,461 tokenの3か所参照、枠を明示したprompt | 235.9 s、3つとも正答 | **227.2 s、3つとも正答** |
 | 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限 |
 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6645／2.0024／1.0031／0.6279 |
-| 256Kの一連でのheadの最小空きメモリ | 6.08 GiB | 10.17 GiB |
+| 同じ夜のbench中のheadの最小空きメモリ | 5.53 GiB | 10.50 GiB |
 
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない。256Kの要求はどれも数秒早く終わる | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
-| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。prefillが2〜3%遅い（再パックしたKDAのinput projectionがprefillの幅でW4A16 Marlinを通る）。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
+| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。prefillも同じ夜の既定より2〜5%速い（projectionの分割で以前の代価が消えた）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
+| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
-MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは46 tok/s、散文は29 tok/sです。数値と選定は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)、[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)、[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。
+MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは45 tok/s、散文は30 tok/sです。数値と選定は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)、[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)、[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。
 
 ### 範囲ごとの状態
 
@@ -129,7 +129,7 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、bit一致で反復する。4層fixtureでは起動が二つの数値の状態に分かれるので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
-| ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode DesktopとClaude Codeのクライアント試験は**未実施**。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
+| ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 深さ1〜5を両方のcheckpointで10入力で測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
 | テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |

@@ -24,9 +24,9 @@ ZCodeは[公式サイト](https://zcode.z.ai/en)でGLM向けの公式ハーネ�
 
 | 配布形態 | 実体 | 本書での役割 |
 |---|---|---|
-| 公式Desktop GUI | [公式インストーラー](https://zcode.z.ai/en/docs/install)のElectronアプリ。providerはModel Settingsで追加する | 必須の受け入れ対象 |
+| 公式Desktop GUI | [公式インストーラー](https://zcode.z.ai/en/docs/install)のElectronアプリ。providerはModel Settingsで追加する | 利用不可（BLOCKED、[feedback #270](https://github.com/zai-org/feedback/issues/270)）。受け入れ経路ではない |
 | 公式Desktop同梱CLI | Desktopインストール内の`resources/glm/zcode.cjs` | 確認した版では対話起動できない。headlessの`--prompt`は動く（状態欄を参照） |
-| npm `zcode-app-cli` | 非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)。ZCode runtimeを同梱し独自TUIを足す（独自コードはMIT、ZCode本体は上流の条件） | 補助証拠のみ。公式対象のケースを閉じない |
+| npm `zcode-app-cli` | 非公式の[ターミナルラッパー](https://github.com/kingsword09/zcode-cli)。ZCode runtimeを同梱し独自TUIを足す（独自コードはMIT、ZCode本体は上流の条件） | 受け入れた経路（2026-09-22） |
 
 ## 初回接続の候補手順
 
@@ -135,18 +135,20 @@ Get-NetTCPConnection -ErrorAction SilentlyContinue |
 
 状態の値はPASS、PARTIAL（一部の条件のみ合格。内訳を記す）、BLOCKED（実行不能。根拠と代替を記録）、NOT RUN。API群を先に行い、共通群Hは両ハーネスで別々に実リクエストと成果物で判定します。文書・ソースの存在や小型fixtureの合格では代用しません。状態は2026-09-15時点で、run IDは非公開`records/`を指します。
 
-**run `20260915-harness-h-sandbox`（2026-09-15）。** 共通群H-01〜H-11の全11ケースを、npm `zcode-app-cli` 3.11.2-24のTUI（`yolo`＋既存ファイルガードhook、通常・liteともloopbackトンネル先の `glm-5.3-flash-nvidia`、`limit.context` 204800、`limit.output` 32000）で、バグを仕込んだ小さな試験repoとunittestを対象に一巡しました。上記の配布形態の規則により、この結果はその配布形態の証拠に限られ、公式Desktop GUIとClaude CodeはHケースを一つも実行していません。PARTIALの欄には未試験の部分を記します。
+**run `20260915-harness-h-sandbox`（2026-09-15）。** 共通群H-01〜H-11の全11ケースを、npm `zcode-app-cli` 3.11.2-24のTUI（`yolo`＋既存ファイルガードhook、通常・liteともloopbackトンネル先の `glm-5.3-flash-nvidia`、`limit.context` 204800、`limit.output` 32000）で、バグを仕込んだ小さな試験repoとunittestを対象に一巡しました。上記の配布形態の規則により、結果は配布形態ごとに記録したままです。この配布形態が受け入れた経路なので、これは受け入れた経路の結果です。公式Desktop GUIとClaude CodeはHケースを一つも実行していません。PARTIALの欄には未試験の部分を記します。
+
+**判断（2026-09-22）。** 受け入れた経路は、運用者が実際に使っているnpm `zcode-app-cli` 配布です。公式Desktop GUIはBLOCKEDのままで（[feedback #270](https://github.com/zai-org/feedback/issues/270)が立っている限り必須対象にできない）、必須の受け入れ対象から外します。Claude Codeは、同じ機体のサブスクリプション設定と競合するため判断で見送り、CC-01・CC-02とAPI-04の残り項目は「追わない」として閉じます。npm版のPARTIALの行は未試験の小項目を列挙したまま残し、それらは受け入れ範囲の外とします。
 
 | ID | 対象 | 操作と合格条件 | 状態 |
 |---|---|---|---|
 | API-01 | 基礎API | `/v1/models`のserved IDと選択先が一致。短い日本語・英語の要求がローカルモデルから正常応答する | PASS（`api-acceptance-low-local`） |
 | API-02 | 基礎API | Chat Completionsの通常応答とSSE。終端・UTF-8・reasoning／最終回答の区別が壊れない。日本語・韓国語の長い出力は[`server mojibake`](validation.ja.md#フルモデルtp2の実験範囲)で別に監視 | PASS（同run。chatは`reasoning_effort=low`） |
 | API-03 | 基礎API | 無害なツールの要求→JSON引数検証→結果返送→最終回答。複数往復でID対応を維持する | PASS（同run） |
-| API-04 | Anthropic互換API | Messagesの通常応答・SSE・tool_use/tool_result・count_tokensを検査。応答形式・終端・usageを確認する | PARTIAL：Messagesの通常応答とcount_tokensはモデル既定effortで合格。MessagesのSSE、tool_use/tool_result、異常系はNOT RUN |
-| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する | 公式Desktop GUIはNOT RUN。Desktop同梱CLIは対話起動がBLOCKED：`@zcode/tui`パッケージ不在で失敗（[zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)）。headlessの`--prompt`はローカルserved IDへ届く（`20260914-zcode-exists-guard`）が、これはruntimeの証拠でありGUIの証拠ではない。補助証拠としてnpm `zcode-app-cli` 3.11.2-24で、トンネル先のprovider・served IDの選択・日本語の往復・headless promptへのローカルモデル応答を確認 |
-| ZC-02 | ZCode | 宣言した入力（テキスト・ツール・画像、動画なし）を尊重。クラウドの既定モデルへ無断で置換されない | ZC-01と同じ：公式はNOT RUN／BLOCKED。npm配布のスモークでは通常・liteの両方がローカルserved IDに固定され、カタログ更新は無効 |
-| CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない | NOT RUN |
-| CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる | NOT RUN |
+| API-04 | Anthropic互換API | Messagesの通常応答・SSE・tool_use/tool_result・count_tokensを検査。応答形式・終端・usageを確認する | PARTIAL：Messagesの通常応答とcount_tokensはモデル既定effortで合格。MessagesのSSE、tool_use/tool_result、異常系はNOT RUN。残り項目は追わない（Claude Code経路を見送り） |
+| ZC-01 | ZCode | Custom Providerへ登録したモデルが選べ、実際のendpointとmodel IDがローカル設定に一致する | BLOCKED（[feedback #270](https://github.com/zai-org/feedback/issues/270)）。GUIそのものは未実行。Desktop同梱CLIは対話起動がBLOCKED：`@zcode/tui`パッケージ不在で失敗（[zai-org/feedback #270](https://github.com/zai-org/feedback/issues/270)）。headlessの`--prompt`はローカルserved IDへ届く（`20260914-zcode-exists-guard`）が、これはruntimeの証拠でありGUIの証拠ではない。受け入れた経路のnpm `zcode-app-cli` 3.11.2-24では、トンネル先のprovider・served IDの選択・日本語の往復・headless promptへのローカルモデル応答を確認 |
+| ZC-02 | ZCode | 宣言した入力（テキスト・ツール・画像、動画なし）を尊重。クラウドの既定モデルへ無断で置換されない | ZC-01と同じ：公式DesktopはBLOCKED、GUIそのものは未実行。受け入れた経路であるnpm配布のスモークでは、通常・liteの両方がローカルserved IDに固定され、カタログ更新は無効 |
+| CC-01 | Claude Code | 専用設定で起動し、通常・補助の要求が指定served IDに届く。モデル名未解決や認証ループがない | NOT RUN — 判断で見送り（2026-09-22） |
+| CC-02 | Claude Code | Anthropic形式のtool ID、分割JSON、reasoning、stop_reasonを正しく処理し、ツール結果後に会話を継続できる | NOT RUN — 判断で見送り（2026-09-22） |
 | H-01 | 両方 | 小さな試験repoの2ファイルを読み、実内容に基づく説明を返す。未読内容を読んだと報告しない | npm CLI PASS（`20260915-harness-h-sandbox`）：試験repoの2ファイルを実内容どおりに説明。未読のテストファイルは未読と明示。Desktop／Claude CodeはNOT RUN |
 | H-02 | 両方 | 小さなバグを1件修正し、許可したファイルだけに意図したdiffが生じる | npm CLI PASS（同run）：`calc.py` のoff-by-oneを除去。`git diff` はその1ファイルのみ。Desktop／Claude CodeはNOT RUN |
 | H-03 | 両方 | 許可したローカルテストを実行し、終了コードと実ログに一致する成否を報告する | npm CLI PASS（同run）：red（テスト五件中二件失敗、exit 1）→ green（五件合格、exit 0）。報告は実ログと一致。Desktop／Claude CodeはNOT RUN |
@@ -165,4 +167,4 @@ H-08の上限は起動TOMLの実サーバー設定を正典とし、クライア
 
 非公開`records/<run-id>/`に、case ID、harness名・配布形態・版・hash、設定の非秘密部分、サーバーとモデルの固定値、期待結果、実結果、PASS／PARTIAL／FAIL／BLOCKED／NOT RUN、要求ID・ログ・diff・テスト結果の所在を保存します。ケースの状態が変わったら、同じ変更で上表を更新します。
 
-ZCodeとClaude Codeの結果は分けて集計し、ZCodeの中でも配布形態ごとに分けます。片方の合格で他方を完了扱いにしません。非対応・未実装・契約上の制約が判明した場合も必須ケースを消さず、BLOCKEDと根拠・代替案を記録します。API互換性の不足が確認できた場合だけ、上流修正または小さな変換アダプターを検討し、そのライセンスと追加テストを明記します。
+ZCodeとClaude Codeの結果は分けて集計し、ZCodeの中でも配布形態ごとに分けます。片方の合格で他方を完了扱いにしません。必須ケースは受け入れた経路のケースです。非対応・未実装・契約上の制約が判明した場合もそれを消さず、BLOCKEDと根拠・代替案を記録します。API互換性の不足が確認できた場合だけ、上流修正または小さな変換アダプターを検討し、そのライセンスと追加テストを明記します。
