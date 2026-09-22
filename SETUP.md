@@ -4,7 +4,7 @@
 
 The launcher and its client read [one server TOML](docs/server-configuration.md).
 
-**The serial full-model TP=2 reference profile is accepted for routine use (2026-09-22) within its declared scope, on the evidence recorded in [step 6](#6-qualify-the-full-model). Outside that scope — other hardware, multiple active sequences, video input — nothing is qualified, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
+**The serial full-model TP=2 reference profile is accepted for routine use (2026-09-22) within its declared scope, on the evidence recorded in [step 6](#6-qualify-the-full-model). Outside that scope — other hardware, more than one active sequence on the distributed defaults, video input — nothing is qualified; the published option's two-sequence profile is checked at task level on one launch and not yet accepted for routine use ([concurrency scope](docs/validation.md#concurrency-scope)), and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
@@ -157,7 +157,7 @@ Before calling a profile ready for routine use, verify and record at least:
 | Precision/backend, quality, throughput | [validation](docs/validation.md) for W4A16 Marlin, [benchmarks](docs/benchmarks.md) for the teacher-forced NLL table and the throughput baselines. W4A4 behaviour is not claimed |
 | Controlled stop/restart and pair recovery | `cluster switch` with its warmup ladder: two switches on 2026-09-22 completed without recovery ([benchmarks](docs/benchmarks.md)); the recovery path itself was exercised by the earlier drills in [launch safety](docs/launch-safety.md#all-rail-checks-and-two-rank-switch) |
 
-**Verdict:** routine use is accepted from 2026-09-22 for the serving profile. Anything outside the declared scope — multiple active sequences, video input, other hardware — stays outside it.
+**Verdict:** routine use is accepted from 2026-09-22 for the serving profile, one active sequence. Anything outside the declared scope — more than one active sequence on the defaults, video input, other hardware — stays outside it; the published option's two-sequence profile has task-level evidence on one launch and waits on more launches ([concurrency scope](docs/validation.md#concurrency-scope)).
 
 ## 7. Serve and accept — only after step 6 passes
 

@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased
+
+### Documentation
+
+- The setup runbook (its opening status and the step 6 verdict) and the operations page state concurrency the way the README and validation already do: one active sequence is the accepted scope on the distributed defaults; the published option's two-sequence profile is checked at task level on one launch and waits on more launches for routine use, with [concurrency scope](docs/validation.md#concurrency-scope) as the owner.
+- Two anchors in the Japanese benchmarks and validation pages named the "evidence, not production qualification" section by another wording and did not resolve; they now match the heading.
+
 ## 1.11.0 — 2026-09-23
 
 ### Added

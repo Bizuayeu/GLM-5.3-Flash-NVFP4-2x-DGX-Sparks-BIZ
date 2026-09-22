@@ -2,7 +2,7 @@
 
 [日本語](operations.ja.md)
 
-**The serial full-model TP=2 serving profile is accepted for routine use (2026-09-22) within its declared scope**; [SETUP step 6](../SETUP.md#6-qualify-the-full-model) is the record of that acceptance and of where each item's evidence lives. Whether a profile is experimental or ready for routine use is shown by its recorded acceptance status (that record, the README status table and the [harness acceptance matrix](harnesses.md#acceptance-matrix-and-status)), not by a command name; other hardware, more than one active sequence and video input stay outside the accepted scope.
+**The serial full-model TP=2 serving profile is accepted for routine use (2026-09-22) within its declared scope**; [SETUP step 6](../SETUP.md#6-qualify-the-full-model) is the record of that acceptance and of where each item's evidence lives. Whether a profile is experimental or ready for routine use is shown by its recorded acceptance status (that record, the README status table and the [harness acceptance matrix](harnesses.md#acceptance-matrix-and-status)), not by a command name; other hardware, more than one active sequence on the distributed defaults and video input stay outside the accepted scope, and the published option's two-sequence profile is checked at task level but not yet accepted ([concurrency scope](validation.md#concurrency-scope)).
 
 ## One launcher
 
