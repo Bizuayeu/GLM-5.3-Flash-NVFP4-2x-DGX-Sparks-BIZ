@@ -4,7 +4,7 @@
 
 The launcher and its client read [one server TOML](docs/server-configuration.md).
 
-**The serial full-model TP=2 reference profile is accepted for routine use (2026-09-22) within its declared scope, on the evidence recorded in [step 6](#6-qualify-the-full-model). Outside that scope — other hardware, more than one active sequence on the distributed defaults, video input — nothing is qualified; the published option's two-sequence profile is checked at task level on one launch and not yet accepted for routine use ([concurrency scope](docs/validation.md#concurrency-scope)), and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
+**The serial full-model TP=2 reference profile is accepted for routine use (2026-09-22) within its declared scope, on the evidence recorded in [step 6](#6-qualify-the-full-model). Outside that scope — other hardware, more than one active sequence on the distributed defaults, video input — nothing is qualified; the published option's two-sequence profile is accepted since 2026-09-23 within the extent recorded in [step 6](#6-qualify-the-full-model) and [concurrency scope](docs/validation.md#concurrency-scope), and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
@@ -157,7 +157,17 @@ Before calling a profile ready for routine use, verify and record at least:
 | Precision/backend, quality, throughput | [validation](docs/validation.md) for W4A16 Marlin, [benchmarks](docs/benchmarks.md) for the teacher-forced NLL table and the throughput baselines. W4A4 behaviour is not claimed |
 | Controlled stop/restart and pair recovery | `cluster switch` with its warmup ladder: two switches on 2026-09-22 completed without recovery ([benchmarks](docs/benchmarks.md)); the recovery path itself was exercised by the earlier drills in [launch safety](docs/launch-safety.md#all-rail-checks-and-two-rank-switch) |
 
-**Verdict:** routine use is accepted from 2026-09-22 for the serving profile, one active sequence. Anything outside the declared scope — more than one active sequence on the defaults, video input, other hardware — stays outside it; the published option's two-sequence profile has task-level evidence on one launch and waits on more launches ([concurrency scope](docs/validation.md#concurrency-scope)).
+**Recorded evidence for the published option's two-sequence profile (2026-09-23):**
+
+| Item above | Where it is recorded |
+|---|---|
+| Layers, memory, reserve, KV, no OOM | [Measurements on 1.10.2](docs/benchmarks.md#measurements-on-1102): 6 GiB of KV per rank (606,881 tokens), two ~200K requests together without preemption, 6.46 GiB left on the head; 7.24 GiB during the [1.10.4](docs/benchmarks.md#measurements-on-1104) bench |
+| Text, context boundary, repeated requests, cancellation | Two ~200K passphrase requests together both correct; a request alone repeats bit for bit within a launch, and a completion shared with another request differs from the one alone, which is declared behaviour ([concurrency scope](docs/validation.md#concurrency-scope)). Two requests at the boundary together were not measured. Cancellation is [harnesses](docs/harnesses.md#acceptance-matrix-and-status) H-06 PARTIAL, as for the defaults |
+| Tool calls | Two tool-call requests together, both correct ([1.10.2](docs/benchmarks.md#measurements-on-1102)); tool-eval-bench on that profile with the same result as the defaults ([1.10.4](docs/benchmarks.md#measurements-on-1104)) |
+| Precision/backend, quality, throughput | The published option's teacher-forced NLL and decode rows in [benchmarks](docs/benchmarks.md) and the README headline; decode with two sequences in [1.10.2](docs/benchmarks.md#measurements-on-1102) |
+| Controlled stop/restart and pair recovery | Three `cluster switch` runs into that profile on 2026-09-23 completed without recovery, each followed by the weight digest, the decode check and the traces of [launch safety](docs/launch-safety.md#after-a-switch-the-decode-check) |
+
+**Verdict:** routine use is accepted from 2026-09-22 for the serving profile on the distributed defaults, one active sequence, and from 2026-09-23 for the published option's two-sequence profile, two active sequences at up to about 200K tokens each. Anything outside those scopes — more sequences than that, video input, other hardware — stays outside them ([concurrency scope](docs/validation.md#concurrency-scope)).
 
 ## 7. Serve and accept — only after step 6 passes
 

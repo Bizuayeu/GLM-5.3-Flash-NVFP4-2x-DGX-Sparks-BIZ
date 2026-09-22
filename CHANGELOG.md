@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased
+
+### Documentation
+
+- **The published option's two-sequence profile is accepted for routine use (2026-09-23)**, for two active sequences at up to about 200K tokens each, on three launches of that profile that day (states 2, 1 and 2), each with the weight digest, the decode check and the traces after its switch, the third with the kernel hashes on both ranks; the task-level checks ran on the first launch and the sparkDash and tool-eval runs on the second, and the three switches completed without recovery. Validation's concurrency scope owns the verdict and its extent; SETUP step 6 gains the evidence table; the README summary and status row, and the operations page, say the same. The changed completion under two sequences stays declared behaviour, not an accepted defect: whether a source-pinned patch can make a completion independent of the requests it shares a step with is under investigation with the launch-state work.
+
 ## 1.11.1 — 2026-09-23
 
 ### Added
