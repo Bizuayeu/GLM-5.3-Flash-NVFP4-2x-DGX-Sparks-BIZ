@@ -47,6 +47,23 @@ The text-only alternative sets `runtime.vision = false` and keeps the length and
 
 The lifetime is fixed at launch. Apply a changed `run_seconds` to running supervisors by restarting through the [two-rank switch procedure](launch-safety.md#all-rail-checks-and-two-rank-switch). Editing the TOML alone does not cancel the existing deadline. Larger contexts require separate capacity checks and real-request validation below.
 
+## The published option against the defaults
+
+The two examples are one profile with five settings changed; [`tests/test_axl_example.py`](../tests/test_axl_example.py) assembles both docker commands and both environments for each rank with the same image supplied and keeps the difference to these rows and their two consequences.
+
+| Setting in the AXL example | What it adds to the launch |
+|---|---|
+| `runtime.derived_checkpoint` (`path`, `requant_target = "l"`) | one mount, the repacked checkpoint at `/derived`, read-only |
+| `runtime.derived_checkpoint.overlays[0]` (`kda-quant-split.py`) | one mount over the image's `kda.py`, read-only; its hash and the base's are checked at preflight |
+| `runtime.derived_checkpoint.overlays[1]` (`mla-quant-split.py`) | one mount over the image's `model.py`, read-only; same check |
+| `runtime.prefix_page_dedup = true` | one environment variable, `GLM53_PREFIX_PAGE_DEDUP=1` |
+| `context.max_num_seqs = 2` | `--max-num-seqs 2` instead of `1` |
+| `cache.kv_cache_memory_bytes = 6442450944` | `--kv-cache-memory-bytes` 6 GiB instead of 3 GiB |
+
+Two arguments follow from the first row and are not settings of their own: the model argument becomes `/derived` instead of the MTP metadata view under `/hf` (the repacked checkpoint declares the BF16 draft layer itself), and the container label carries the profile's fingerprint, which changes with any key. Nothing else in the command or the environment differs, on either rank: the NCCL, cache, determinism, speculation and vision arguments are the same.
+
+Checked on 2026-09-23 with the AXL example used as its comments say, the placeholders replaced by the reference pair's values (checkpoint and overlay paths, image ID, both nodes): `server freeze` and `server plan` on the Windows checkout; `server preflight` on each rank from the deployed 1.10.1 checkout while the pair was serving. Every check passed (RDMA rails, full model, derived checkpoint, draft layer unquantized, overlays, image ID and its six capability markers, exclusive GPU) except `startup_memory`, which asks for 108 GiB available and cannot hold on a host whose running pair owns 114 GiB; that check belongs to a launch, and the example was not launched. The example with those values differs from the profile the reference pair serves only in `validation.memory_probe` and `api.dev_endpoints` (both on in the served profile, for the checks after a switch), the warmup's long rung (65,536 tokens there, none in the example) and the LPA projector placeholders, which LPA off does not read; their launch arguments differ only in the worker extension and `VLLM_SERVER_DEV_MODE`.
+
 ## Commands
 
 See [launch contracts and operational validation](launch-safety.md) for authenticated clients, allocator unset/empty handling, all-HCA checks and the two-rank pre-stop/switch procedure. These extend P10/P19/P22/E03; implementation does not establish multi-rail traffic or full operational qualification.
@@ -132,7 +149,7 @@ This enables a run without a scheduled stop, not a 24/7 availability guarantee. 
 
 ## KV capacity and RAM requirements
 
-**Retaining B requests simultaneously at their maximum total length C requires capacity for B×C tokens.** `max_model_len` bounds input plus generated tokens per request; `max_num_seqs` limits concurrency. Setting both does not reserve or qualify that worst-case capacity. The accepted two-sequence scope covers up to 2,112 tokens per request; another two-Spark recipe reports two concurrent 25–100K requests falling to about 4 tok/s combined (tonyd2wild #14, no code adopted).
+**Retaining B requests simultaneously at their maximum total length C requires capacity for B×C tokens.** `max_model_len` bounds input plus generated tokens per request; `max_num_seqs` limits concurrency. Setting both does not reserve or qualify that worst-case capacity. The two-sequence evaluation of 2026-09-12 covered up to 2,112 tokens per request; on the published option two ~200K requests were served together on 2026-09-23 ([measurements on 1.10.2](benchmarks.md#measurements-on-1102)); another two-Spark recipe reports two concurrent 25–100K requests falling to about 4 tok/s combined (tonyd2wild #14, no code adopted).
 
 This launcher's `cache.kv_cache_memory_bytes` sets a **fixed KV-pool byte budget shared by requests on each rank**. With a 1 GiB setting, changing concurrency from one to two leaves 1 GiB per rank. It is neither 1 GiB per request nor one freely combined pool across both nodes. Explicit bytes override utilization-based KV sizing; `gpu_memory_utilization` is not a total-RAM safety cap in this mode. [vLLM configuration](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 

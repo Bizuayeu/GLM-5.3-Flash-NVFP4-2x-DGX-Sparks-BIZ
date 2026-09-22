@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.10.2」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.10.3」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
@@ -9,11 +9,11 @@
 ## 要約
 
 - **何であるか。** NVIDIAのGLM-5.3-Flash NVFP4 checkpointを、**DGX SparkおよびGB10を搭載する互換機2台**でQSFP/RoCE越しにTP=2で分割し、reference imageに組み込んだ固定版vLLMで配信するコミュニティ製のセットアップ・検証ツールです。掲載した実測はMSI EdgeXpert（MS-C931）2台のものです。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を軸にします。
-- **状態。** 直列の配信profileは、**2026-09-22から同時1系列の範囲で通常運用として受け入れ済み**です。その受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、同時2系列以上、動画入力は受け入れた範囲の外です。
+- **状態。** 直列の配信profileは、**2026-09-22から同時1系列の範囲で通常運用として受け入れ済み**です。その受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、配布既定での同時2系列以上、動画入力は受け入れた範囲の外です。公開した任意設定の同時2系列は1起動でタスク単位の検査を通しています（[範囲ごとの状態](#範囲ごとの状態)）。
 - **配信する二つのprofile。** **配布既定**はNVIDIA配布の固定の重みをそのまま配信します。**公開した任意設定（NVFP4 BIZ AXL）**はattention projectionと `lm_head` をW4A16に再パックしたもので、decodeが速い代わりに実測した品質の費用があり、運用者が有効にします。[確認した範囲](#確認した範囲)が両者を比較し、範囲ごとの状態を並べています。
 - **精度。** 配信はGB10上のMarlin W4A16で動きます。NVIDIAのモデルカードは別のrecipe・別の機体でcheckpointを評価しているため、その精度表はこのスタックを記述しません。どの数値がこの配信を記述するかは[検証範囲](docs/validation.ja.md#証拠であり本番認定ではない)にあります。
 - **ライセンス。** コードはApache-2.0、重みは運用者が取得するMITで同梱しません。資産ごとに条件が異なります（[ライセンスの早見表](#ライセンスの早見表)）。
-- **未検証。** 同時実行の配信、動画入力、アプリケーション全体の品質、本番の信頼性、最大性能（[範囲ごとの状態](#範囲ごとの状態)）。
+- **未検証。** 公開した任意設定の同時2系列を超える同時実行の配信、動画入力、アプリケーション全体の品質、本番の信頼性、最大性能（[範囲ごとの状態](#範囲ごとの状態)）。
 
 ## 導入するものと対応機体
 
@@ -95,9 +95,9 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.9.0）
+### 主要な測定値（1.10.2）
 
-GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)、[1.9.0](docs/benchmarks.ja.md#190での測定)にあります。1.9.0の夜（同じ配信profileに `runtime.prefix_page_dedup` を入れた6起動）のdecodeはこの幅の中にあり、再送の下でも古い履歴がcacheに残りました。下の数値は1.8.0の夜のものです。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、同時1系列、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofileを比べます。**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）です。1.8.0以降、任意設定はこのcheckpointのKDAのinput projectionを `q_proj`／`k_proj`／`v_proj` と、まとめた `b`／`f_a`／`g_a` とに分割して宣言します（重みのbyteは同じで、読み方が違うだけ。profileのtagは `attn-lmhead-w4a16-splitkda`）。3回または9回の中央値で、幅・条件・旧版との比較は数値の正典である[1.6.0での測定](docs/benchmarks.ja.md#160での測定)・[1.7.0](docs/benchmarks.ja.md#170での測定)・[1.7.1](docs/benchmarks.ja.md#171での測定)・[1.8.0](docs/benchmarks.ja.md#180での測定)、[1.9.0](docs/benchmarks.ja.md#190での測定)にあります。1.9.0の夜（同じ配信profileに `runtime.prefix_page_dedup` を入れた6起動）のdecodeはこの幅の中にあり、再送の下でも古い履歴がcacheに残りました。[1.10.2での測定](docs/benchmarks.ja.md#1102での測定)は2026-09-23の公開した任意設定の同時2系列の検査です（200K 2本同時が330 s・単独166 s、同時2系列のdecodeは32.1／21.8 tok/s・単独45.6／28.2、completionは単独時と一致しない）。下の数値は1.8.0の夜の、同時1系列のものです。prefill・199,652 token・261,461 token・短いpromptと2,048 tokenのdecode・メモリの行は、1.7.0のruntimeで2026-09-22の同じ夜に3本続けて測ったもの、255,950 token・最大容量・NLLの行はそれ以前の一連です。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ） | 公開した任意設定（NVFP4 BIZ AXL） |
 |---|---|---|
@@ -136,7 +136,7 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、bit一致で反復する。4層fixtureでは起動が二つの数値の状態に分かれ、対ではkernelの表が不変のまま6起動中1起動が別の状態で計算した（[1.9.0での測定](docs/benchmarks.ja.md#190での測定)）ので、新しい起動は仮定せずに確かめる。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
-| 同時実行 | 同時2系列以上 | 受け入れたprofileでは**非対応**（`max_num_seqs = 1`。要求は順番待ち）。同時配信には系列ごとのKVが要り、rankを増やす：TP=4を推奨、TP=3は非推奨。どちらも未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
+| 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信する：1起動で200K要求2本の同時、tool呼び出し2本の同時、画像と散文の同時がすべて正答・preemptionなし、200K 2本で330 s（単独166 s）。同時2系列のcompletionは単独時と一致せず（batch invarianceはoff）、通常運用としての受け入れは起動の積み上がりを待つ。2系列を超えるにはrankを増やす：TP=4を推奨、TP=3は非推奨。どちらも未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 深さ1〜5を両方のcheckpointで10入力で測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |

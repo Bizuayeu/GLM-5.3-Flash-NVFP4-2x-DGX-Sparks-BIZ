@@ -791,3 +791,25 @@ The earlier image (1.8.0, one launch that night) computed in a third state. The 
 How rare the other states are, from the decode records kept on the head since 2026-09-18: the completions of one profile recur across days and record sets (the route g profile family with FA2 of 1.6.0, whose draft depth does not change the numerics, gave the same counting, prose and code completions in every record set from 2026-09-19 to 21, fourteen records of the counting hash across several launches), and the two states seen only once (the 1.8.0 image's and launch 2's) recur nowhere. Upstream treats one of the remaining candidates as a determinism setting: vLLM's batch-invariant mode sets `CUBLAS_WORKSPACE_CONFIG` itself (`vllm/model_executor/determinism/batch_invariant.py`), and PyTorch's reproducibility notes name the unset cuBLAS workspace as a run-to-run source; this stack does not set it, and will not until a launch in another state points at the BF16 GEMMs, because the setting changes their algorithm and with it the reference completions.
 
 Two more checks on 2026-09-22 narrow the remaining candidates. In the reference image on one GB10, thirteen fresh processes computed the cuBLAS BF16 GEMMs at the pair's per-rank shapes (`lm_head` 4096 to 77,440 at 4 and 2,048 rows, the MTP projection, a square), the KDA chunk and recurrent kernels (32 local heads by 128) and the `lm_head` argmax on fixed inputs: every output bit-identical across the thirteen, including three processes with `CUBLAS_WORKSPACE_CONFIG` and `PYTHONHASHSEED` pinned, which moved nothing. Then the four-layer MTP fixture (stock weights, draft depth 3) was launched TP=2 across the pair twenty times with the production image, fabric and launch flags, production stopped for the hour: the decode check gave the same completions and token ids in all twenty launches for all three task types. The distributed path (two processes over RoCE, sharded sparse-MLA, indexer and Marlin MoE kernels, the draft) reproduced no launch-to-launch difference in twenty tries, so at the pair's observed rate of one launch in six to fifteen the remaining candidates are what only the full-size model does at load and launch.
+
+## Measurements on 1.10.2
+
+### Two active sequences on the published option (2026-09-23)
+
+The reference pair served the [AXL example's](../examples/server.axl.example.toml) settings (repacked weights, dedup, `max_num_seqs = 2`, 6 GiB of KV per rank; the served profile adds the memory probe and the dev routes), image `76a1172b…`, one launch (state 2 of [1.9.0](#six-launches-of-the-new-image-the-same-completions-five-times-different-once)). Every request below went to the running pair between 02:15 and 02:27 Asia/Tokyo with nothing restarted; a sampler read `/metrics` and the head's `MemAvailable` every two seconds (`records/20260923-two-sequence/`). No preemption occurred in any step.
+
+| Step | Result |
+|---|---|
+| Two ~200K passphrase requests together (199,649 and 199,636 prompt tokens, different ledgers and passphrases, prefix cache reset first) | Both answered correctly; the first in 224.2 s, the second in 330.2 s; KV usage 54.2% at peak; the head kept 6.46 GiB available (7.16 before) |
+| One of them alone, cache reset first | Answered correctly in 165.7 s; KV usage 35.7% at peak; 6.53 GiB available |
+| Two tool-call requests together (time in Tokyo, weather in Osaka) | Both returned the right function with the right city, 1.41 and 1.21 s |
+| An image (solid orange PNG, 288 image tokens) and the prose decode request together | "Orange"; the prose request decoded at 28.41 tok/s |
+
+Two 200K requests together took 330 s against 166 s for one alone: the pair's throughput is conserved, neither gained nor lost. Decode with two sequences, the decode check's prompts (2,048 in, 512 out, three samples, median):
+
+| Task | Alone (tok/s, acceptance length) | Together with the other task (tok/s) |
+|---|---|---|
+| counting | 45.62 (3.70) | 32.09 |
+| prose | 28.24 (2.17) | 21.81 |
+
+The acceptance length over the three concurrent runs was 2.79 for both tasks together. The completions are another matter. Alone, each request repeated bit for bit (three samples each, the state-2 hashes `fb15cfc2` and `1462d44f`). Together, both completions differed from the ones alone, two identical prose requests sent together returned two different texts (`25e9240a` and `c5930404`, 20.4 and 20.6 tok/s), and the count-and-prose pair gave one set of completions in runs 1 and 3 and another in run 2: with batch-invariant mode unavailable on this backend ([validation](validation.md#evidence-not-production-qualification)) a token's logits depend on which other rows share its step. The two-sequence profile therefore repeats a request only when that request runs alone.

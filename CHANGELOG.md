@@ -2,6 +2,17 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.3 — 2026-09-23
+
+### Added
+
+- A test assembles the docker command and the environment of both examples for each rank with the same image supplied and keeps their difference to the five settings of the published option (the derived checkpoint's mount, its two overlay mounts, the dedup variable, the second sequence, twice the KV) and the two arguments that follow from the first (the model argument, the fingerprint label).
+
+### Documentation
+
+- Server configuration: the published option against the defaults, as a table of the five settings and what each adds to the launch, and the check of 2026-09-23 in which the AXL example, its placeholders replaced by the reference pair's values, passed `server freeze` and `server plan` and every preflight check on both ranks but `startup_memory`, which a serving pair cannot satisfy; the example differs from the served profile only in the probe, the dev routes, the warmup's long rung and the unused LPA placeholders.
+- Validation, concurrency scope: the published option's two-sequence profile passed task-level checks on one launch on 2026-09-23 (two ~200K passphrase requests together, two tool calls together, an image with a prose request) without preemption, and its completions under two sequences differ from a request alone because batch-invariant mode is unavailable; routine-use acceptance of that scope waits on more launches. Benchmarks 1.10.2 carry the numbers (330 s for two 200K requests against 166 s alone; decode 32.1 / 21.8 tok/s with two sequences against 45.6 / 28.2 alone; KV 54% at peak). README: the status lines, the concurrency row and the headline paragraph say the same. Launch safety: the decode check after a switch runs with nothing else in flight, for that reason; the KV capacity section no longer calls the 2,112-token evaluation the accepted two-sequence scope.
+
 ## 1.10.2 — 2026-09-23
 
 ### Added

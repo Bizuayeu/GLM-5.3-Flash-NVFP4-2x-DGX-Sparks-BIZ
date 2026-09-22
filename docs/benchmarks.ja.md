@@ -791,3 +791,25 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 別の状態がどれほど稀か、2026-09-18からheadに残るdecode記録で見ると：一つのprofileのcompletionは日と記録集を跨いで繰り返す（1.6.0のroute g＋FA2のprofile族——draftの深さは数値を変えない——は2026-09-19〜21の全記録集で同じcounting・prose・codeのcompletionを出し、countingのhashは複数の起動にわたる14記録に現れる）。一度しか見ていない二つの状態（1.8.0のimageの状態と起動2の状態）はどこにも再出しない。残る候補の一つを上流は決定論の設定として扱っている：vLLMのbatch-invariantモードは自分で `CUBLAS_WORKSPACE_CONFIG` を設定し（`vllm/model_executor/determinism/batch_invariant.py`）、PyTorchの再現性の注記は未設定のcuBLAS workspaceをrun-to-runの非決定源に挙げる。このスタックはこれを設定しない。別の状態の起動がBF16 GEMMを指すまでは入れない——この設定はGEMMのalgorithmを変え、基準のcompletionごと動かすため。
 
 2026-09-22にさらに二つの検査で残る候補を絞った。参照imageの中でGB10一枚に新しいprocessを13回起こし、対のrankあたりの形でcuBLASのBF16 GEMM（`lm_head` 4096→77,440を4行と2,048行、MTPの射影、正方）、KDAのchunkとrecurrentのkernel（局所32 head×128）、`lm_head` のargmaxを固定入力で計算した：13回とも全出力がbit一致。うち3回は `CUBLAS_WORKSPACE_CONFIG` と `PYTHONHASHSEED` を固定したが何も動かなかった。次に4層のMTP fixture（stock重み、draft深さ3）を本番のimage・fabric・起動flagで対にTP=2で20回起動した（本番は1時間停止）：decode検査のcompletionとtoken idは3課題とも20起動すべてで同一。分散経路（RoCE越しの2 process、shardされたsparse MLA・indexer・Marlin MoEのkernel、draft）は20回で起動ごとの差を再現しなかったので、対で見た1/6〜1/15の頻度を考えると、残る候補はフルサイズのモデルだけがloadと起動でする何かに絞られる。
+
+## 1.10.2での測定
+
+### 公開した任意設定での同時2系列（2026-09-23）
+
+参照対は[AXLの例](../examples/server.axl.example.toml)の設定（再パックした重み、dedup、`max_num_seqs = 2`、rankあたりKV 6 GiB。配信profileはこれにmemory probeとdev経路を足したもの）を、image `76a1172b…`、1起動（[1.9.0](#新imageの6起動5回は同じcompletion1回は違うcompletion)の状態2）で配信した。以下の要求はすべて02:15〜02:27（Asia/Tokyo）に稼働中の対へ送り、何も再起動していない。samplerが `/metrics` とheadの `MemAvailable` を2秒ごとに読んだ（`records/20260923-two-sequence/`）。どの段でもpreemptionは起きなかった。
+
+| 段 | 結果 |
+|---|---|
+| 約200Kの合言葉要求2本を同時に（prompt 199,649・199,636トークン、台帳も合言葉も別。prefix cacheを先にreset） | 両方正答。1本目224.2 s、2本目330.2 s。KV使用率の最大54.2%。headの空きは6.46 GiB（開始前7.16） |
+| うち1本を単独で、cache reset後 | 正答、165.7 s。KV使用率の最大35.7%。空き6.53 GiB |
+| tool呼び出し2本を同時に（東京の時刻、大阪の天気） | 両方が正しい関数と都市を返した。1.41 s・1.21 s |
+| 画像（単色オレンジのPNG、画像288トークン）と散文のdecode要求を同時に | 「Orange」。散文は28.41 tok/s |
+
+200K 2本同時が330 s、1本単独が166 s：対のthroughputは保存され、得も損もしない。同時2系列でのdecode（decode検査のprompt、2,048入力・512出力、3標本の中央値）：
+
+| 課題 | 単独（tok/s、採択長） | もう一方の課題と同時（tok/s） |
+|---|---|---|
+| 数え上げ | 45.62（3.70） | 32.09 |
+| 散文 | 28.24（2.17） | 21.81 |
+
+同時3回の採択長は両課題合わせて2.79。completionは別の話になる。単独では各要求がbit一致で反復した（各3標本、状態2のhash `fb15cfc2`・`1462d44f`）。同時では両方のcompletionが単独時と違い、同じ散文要求2本を同時に送ると別の文章が2つ返り（`25e9240a`・`c5930404`、20.4・20.6 tok/s）、数え上げ＋散文の対は1回目と3回目が同じ組、2回目が別の組だった。このbackendではbatch-invariant modeが使えない（[検証](validation.ja.md#証拠であり本番の検収ではない)）ため、あるtokenのlogitsは同じstepに載る他の行に依存する。よって同時2系列のprofileで要求が反復するのは、その要求が単独で走る時だけである。

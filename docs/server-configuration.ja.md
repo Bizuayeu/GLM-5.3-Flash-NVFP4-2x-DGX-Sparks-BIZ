@@ -47,6 +47,23 @@
 
 期限は起動時に固定されます。`run_seconds` の変更を稼働中の監視へ反映するには、[両rankの切替手順](launch-safety.ja.md#全レール検査と両rankの切替)で再起動します。設定ファイルの変更だけでは既存の期限は消えません。コンテキストを拡大するときは、以下の容量条件と実要求を別に検証します。
 
+## 公開した任意設定と配布既定の差
+
+二つの例は、一つのprofileの5設定を変えたものです。[`tests/test_axl_example.py`](../tests/test_axl_example.py)が両方のdocker commandと環境変数をrankごとに同じimageを与えて組み立て、差を次の行とその帰結2点に固定します。
+
+| AXLの例の設定 | 起動に加わるもの |
+|---|---|
+| `runtime.derived_checkpoint`（`path`、`requant_target = "l"`） | mount 1本：再パックしたcheckpointを `/derived` に読み取り専用で |
+| `runtime.derived_checkpoint.overlays[0]`（`kda-quant-split.py`） | mount 1本：imageの `kda.py` の上に読み取り専用で。hashと元のhashはpreflightが検査 |
+| `runtime.derived_checkpoint.overlays[1]`（`mla-quant-split.py`） | mount 1本：imageの `model.py` の上に読み取り専用で。同じ検査 |
+| `runtime.prefix_page_dedup = true` | 環境変数 1つ：`GLM53_PREFIX_PAGE_DEDUP=1` |
+| `context.max_num_seqs = 2` | `--max-num-seqs 2`（既定は `1`） |
+| `cache.kv_cache_memory_bytes = 6442450944` | `--kv-cache-memory-bytes` 6 GiB（既定は3 GiB） |
+
+1行目から2つの引数が従い、独立した設定ではありません。model引数が `/hf` 配下のMTP metadata viewではなく `/derived` になること（再パックしたcheckpointはBF16のdraft層を自分で宣言する）と、containerのlabelがprofileのfingerprintを持つこと（どのkeyでも変われば変わる）です。command・環境変数のそれ以外はどちらのrankでも同じで、NCCL・cache・決定性・投機・視覚の引数は変わりません。
+
+2026-09-23に、AXLの例をコメントどおりに使って確認しました。仮値を参照対の値（checkpointとoverlayのパス、image ID、両機）に置き換え、`server freeze` と `server plan` をWindowsのcheckoutで、`server preflight` を各rankで配布済みの1.10.1のcheckoutから、対が配信中のまま走らせました。検査はすべて合格（RDMAレール、フルモデル、derived checkpoint、draft層が非量子化、overlay、image IDと6つの機能marker、GPUの専有）で、例外は `startup_memory` だけです。これは空き108 GiBを求める検査で、稼働中の対が114 GiBを持つhostでは成り立ちません。起動に属する検査であり、例は起動していません。この値を入れた例と参照対が配信するprofileの差は `validation.memory_probe` と `api.dev_endpoints`（配信profileでは切替後の検査のため両方on）、warmupの長文段（配信profileは65,536トークン、例は無し）、LPA offでは読まれないprojectorの仮値だけで、起動引数の差はworker extensionと `VLLM_SERVER_DEV_MODE` だけです。
+
 ## コマンド
 
 認証クライアント、allocatorの未指定／空文字、全HCA検査、両rankの停止前検査と切替は[起動契約と運用検証](launch-safety.ja.md)を参照してください。P10／P19／P22／E03の追加範囲であり、複数レール実通信などの未検収を機能実装と区別します。
@@ -132,7 +149,7 @@ run_seconds = 0
 
 ## KV容量とRAMの条件
 
-**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。受け入れた2系列の範囲は1要求2,112 tokenまでです。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、コードは採用しない）。
+**最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。2026-09-12の同時2系列の評価は1要求2,112 tokenまでで、公開した任意設定では2026-09-23に約200Kの要求2本を同時に配信しました（[1.10.2での測定](benchmarks.ja.md#1102での測定)）。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、コードは採用しない）。
 
 起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
 
