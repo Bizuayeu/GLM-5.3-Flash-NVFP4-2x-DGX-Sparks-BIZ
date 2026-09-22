@@ -14,6 +14,14 @@ from glm53_setup.io import write_json
 from glm53_setup.validation.indexer_overlap import compare_candidates
 
 
+def parser():
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--config", type=Path, required=True)
+    cli.add_argument("--corpus", type=Path, required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    return cli
+
+
 def complete_tokens(profile, ids, count):
     began = time.perf_counter()
     response = server.post(
@@ -47,15 +55,70 @@ def toggle_profiler(profile, endpoint):
         response.read()
 
 
+def wait_ready(
+    profile,
+    *,
+    open_response=model_http.open_response,
+    sleep=time.sleep,
+    clock=time.monotonic,
+    deadline=1800,
+):
+    """Poll /health until it answers 200; an authentication failure ends the wait."""
+    limit = clock() + deadline
+    while clock() < limit:
+        try:
+            with open_response(
+                f"http://127.0.0.1:{profile['api']['port']}", "/health", timeout=5
+            ) as response:
+                if response.status == 200:
+                    return
+        except model_http.ModelHTTPError as error:
+            if error.code in (401, 403):
+                raise
+            sleep(5)
+        except (urllib.error.URLError, TimeoutError):
+            sleep(5)
+    raise TimeoutError("Model readiness deadline exceeded")
+
+
+def mode_agreement(modes):
+    """Whether every mode produced one completion, and whether the native runs did."""
+    signatures = {
+        name: {tuple(s["response"]["choices"][0]["token_ids"]) for s in row["samples"]}
+        for name, row in modes.items()
+    }
+    return {
+        "tokens_equal": len(set.union(*signatures.values())) == 1,
+        "native_repeatable": len(signatures["off"] | signatures["restored"]) == 1,
+    }
+
+
+def overlap_rows(rows):
+    """Candidate overlap between layers one, two and three apart at each query."""
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["query_position"], {})[row["layer"]] = row
+    overlap = []
+    for layers in grouped.values():
+        order = sorted(layers)
+        for gap in (1, 2, 3):
+            for first, last in zip(order, order[gap:]):
+                overlap.append(
+                    {
+                        "source_layer": first,
+                        "target_layer": last,
+                        **compare_candidates(layers[first], layers[last]),
+                    }
+                )
+    return overlap
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args(argv)
+    cli = parser()
+    args = cli.parse_args(argv)
     profile = server_config.load(args.config)
     if not profile["validation"]["component_worker"]:
-        parser.error("Explicit component worker profile required")
+        cli.error("Explicit component worker profile required")
     args.output.mkdir(parents=True, exist_ok=False)
     complete = partial(complete_tokens, profile)
     profile_toggle = partial(toggle_profiler, profile)
@@ -77,22 +140,7 @@ def main(argv=None):
 
     save()
     try:
-        deadline = time.monotonic() + 1800
-        while time.monotonic() < deadline:
-            try:
-                with model_http.open_response(
-                    f"http://127.0.0.1:{profile['api']['port']}", "/health", timeout=5
-                ) as response:
-                    if response.status == 200:
-                        break
-            except model_http.ModelHTTPError as error:
-                if error.code in (401, 403):
-                    raise
-                time.sleep(5)
-            except (urllib.error.URLError, TimeoutError):
-                time.sleep(5)
-        else:
-            raise TimeoutError("Model readiness deadline exceeded")
+        wait_ready(profile)
         current, info = server.running_head(profile)
         report["image"] = info["Image"]
         report["container"] = current["name"]
@@ -152,17 +200,7 @@ def main(argv=None):
                                 case["modes"][name]["median_seconds"],
                                 flush=True,
                             )
-                        signatures = {
-                            name: {
-                                tuple(s["response"]["choices"][0]["token_ids"])
-                                for s in row["samples"]
-                            }
-                            for name, row in case["modes"].items()
-                        }
-                        case["tokens_equal"] = len(set.union(*signatures.values())) == 1
-                        case["native_repeatable"] = (
-                            len(signatures["off"] | signatures["restored"]) == 1
-                        )
+                        case.update(mode_agreement(case["modes"]))
                         save()
                 if profile["profiling"]["enabled"]:
                     for enabled in (False, True):
@@ -207,25 +245,7 @@ def main(argv=None):
                     complete(ids[:length], 1)
                     case["capture"] = rpc("indexer_capture_finish")
                     for worker in case["capture"]:
-                        grouped = {}
-                        for row in worker["rows"]:
-                            grouped.setdefault(row["query_position"], {})[
-                                row["layer"]
-                            ] = row
-                        worker["overlap"] = []
-                        for position, layers in grouped.items():
-                            order = sorted(layers)
-                            for gap in (1, 2, 3):
-                                for first, last in zip(order, order[gap:]):
-                                    worker["overlap"].append(
-                                        {
-                                            "source_layer": first,
-                                            "target_layer": last,
-                                            **compare_candidates(
-                                                layers[first], layers[last]
-                                            ),
-                                        }
-                                    )
+                        worker["overlap"] = overlap_rows(worker["rows"])
                     save()
                     print("indexer", length, "captured", flush=True)
                 report["status"] = "complete"
