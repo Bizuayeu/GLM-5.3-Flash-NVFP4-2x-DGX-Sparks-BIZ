@@ -12,16 +12,13 @@ this is the same guard on the pinned source, to be dropped when the pin moves pa
 position the row cannot index now reads nothing and gets no slot.
 """
 
-import argparse
-import hashlib
-import json
-import sysconfig
-from pathlib import Path
-
-from .patch_nope_reference import replace_once
+from . import pinned_patch
+from .pinned_patch import replace_once
 
 TARGET = "v1/worker/gpu/block_table.py"
 SOURCE_SHA256 = "61c004315d5af7e7eae4e2a9e6be92ea82c520327690a7f55a73bb9ce95f520a"
+MISMATCH = "block table source hash mismatch"
+RECORD = "glm53-slot-mapping-patch.json"
 READ = (
     "        block_numbers = tl.load(\n"
     "            block_table_ptr + req_state_idx * block_table_stride + block_indices,\n"
@@ -52,30 +49,18 @@ def patch_text(text):
 
 
 def prepare(package):
-    original = (package / TARGET).read_bytes()
-    if hashlib.sha256(original).hexdigest() != SOURCE_SHA256:
-        raise ValueError("block table source hash mismatch")
-    return patch_text(original.decode("utf-8")).encode("utf-8")
+    return pinned_patch.prepare(package, TARGET, SOURCE_SHA256, MISMATCH, patch_text)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", type=Path)
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args(argv)
-    package = args.package or Path(sysconfig.get_paths()["purelib"]) / "vllm"
-    patched = prepare(package)
-    record = {
-        "source_sha256": SOURCE_SHA256,
-        "patched_sha256": hashlib.sha256(patched).hexdigest(),
-        "check_only": args.check,
-    }
-    if not args.check:
-        (package / TARGET).write_bytes(patched)
-        (package.parent / "glm53-slot-mapping-patch.json").write_text(
-            json.dumps(record, indent=2)
-        )
-    print(json.dumps(record))
+    pinned_patch.main(
+        argv,
+        doc=__doc__,
+        target=TARGET,
+        sha256=SOURCE_SHA256,
+        prepare=prepare,
+        record=RECORD,
+    )
 
 
 if __name__ == "__main__":

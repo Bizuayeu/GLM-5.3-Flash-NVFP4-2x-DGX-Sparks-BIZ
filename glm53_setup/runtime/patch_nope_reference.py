@@ -7,19 +7,14 @@ Modified vLLM source retains its Apache-2.0 notices. No top-k entries are remove
 import argparse
 import hashlib
 import json
-import sysconfig
 from pathlib import Path
+
+from .pinned_patch import default_package, replace_once
 
 HASHES = {
     "model_executor/layers/mla.py": "936b06c4671d52fce52ae85bb24b986db17855f32740bf55b226053fc385c4b4",
     "v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py": "a0023f72125cb0d5599b5bf940c86be1f0c9985bd62b0919f243a8fda76f4449",
 }
-
-
-def replace_once(text, old, new):
-    if text.count(old) != 1:
-        raise ValueError("Patch anchor is not unique; refusing source drift")
-    return text.replace(old, new, 1)
 
 
 def add_candidate_order(backend):
@@ -121,7 +116,7 @@ def main(argv=None):
     parser.add_argument("--package", type=Path)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    package = args.package or Path(sysconfig.get_paths()["purelib"]) / "vllm"
+    package = args.package or default_package()
     outputs = prepare(package)
     manifest = {
         name: hashlib.sha256(data).hexdigest() for name, data in outputs.items()

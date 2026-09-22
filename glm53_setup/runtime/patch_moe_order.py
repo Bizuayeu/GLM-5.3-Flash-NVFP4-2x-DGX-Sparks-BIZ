@@ -1,15 +1,12 @@
 """Source-pinned patch: canonical token order inside each expert for Marlin MoE."""
 
-import argparse
-import hashlib
-import json
-import sysconfig
-from pathlib import Path
-
-from .patch_nope_reference import replace_once
+from . import pinned_patch
+from .pinned_patch import replace_once
 
 TARGET = "model_executor/layers/fused_moe/experts/marlin_moe.py"
 SOURCE_SHA256 = "93916b721548e6194dc70cf6cec224b4b1456a0cc0980235e97beba7bf36541d"
+MISMATCH = "Marlin MoE source hash mismatch"
+RECORD = "glm53-moe-order-patch.json"
 ANCHOR = (
     "        expert_map,\n"
     "        ignore_invalid_experts=True,\n"
@@ -49,30 +46,18 @@ def patch_text(text):
 
 
 def prepare(package):
-    original = (package / TARGET).read_bytes()
-    if hashlib.sha256(original).hexdigest() != SOURCE_SHA256:
-        raise ValueError("Marlin MoE source hash mismatch")
-    return patch_text(original.decode("utf-8")).encode("utf-8")
+    return pinned_patch.prepare(package, TARGET, SOURCE_SHA256, MISMATCH, patch_text)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", type=Path)
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args(argv)
-    package = args.package or Path(sysconfig.get_paths()["purelib"]) / "vllm"
-    patched = prepare(package)
-    record = {
-        "source_sha256": SOURCE_SHA256,
-        "patched_sha256": hashlib.sha256(patched).hexdigest(),
-        "check_only": args.check,
-    }
-    if not args.check:
-        (package / TARGET).write_bytes(patched)
-        (package.parent / "glm53-moe-order-patch.json").write_text(
-            json.dumps(record, indent=2)
-        )
-    print(json.dumps(record))
+    pinned_patch.main(
+        argv,
+        doc=__doc__,
+        target=TARGET,
+        sha256=SOURCE_SHA256,
+        prepare=prepare,
+        record=RECORD,
+    )
 
 
 if __name__ == "__main__":

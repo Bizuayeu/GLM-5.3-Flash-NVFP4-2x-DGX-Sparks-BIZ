@@ -4,10 +4,9 @@ import argparse
 import ast
 import hashlib
 import json
-import sysconfig
 from pathlib import Path
 
-from .patch_nope_reference import replace_once
+from .pinned_patch import default_package, replace_once
 
 SOURCES = {
     "v1/core/kv_cache_manager.py": "ef312a280a1746ca4adc8516d87a05b3c8b331a18015e20758513a33efc7421f",
@@ -106,11 +105,7 @@ def prepare(package):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--vllm-package",
-        type=Path,
-        default=Path(sysconfig.get_paths()["purelib"]) / "vllm",
-    )
+    parser.add_argument("--vllm-package", type=Path, default=default_package())
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     patches = prepare(args.vllm_package)

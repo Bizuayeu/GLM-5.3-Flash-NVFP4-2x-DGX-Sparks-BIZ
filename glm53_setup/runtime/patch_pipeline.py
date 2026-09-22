@@ -1,16 +1,15 @@
 """Source-pinned PP fixture patch; retain deferred mHC state at stage boundaries."""
 
-import argparse
 import ast
-import hashlib
-import json
-import sysconfig
-from pathlib import Path
 
-from .patch_nope_reference import replace_once
+from . import pinned_patch
+from .pinned_patch import replace_once
 
 MODEL = "models/glm5next/nvidia/model.py"
 SOURCE_SHA256 = "26c73584381edb16f28b213d7976018d58ddfe8165657e105453d89b4d7e0fe2"
+MISMATCH = "Pipeline model source hash mismatch"
+RECORD = "glm53-pipeline-patch.json"
+HEADER = "# Modified by GLM setup: experimental deferred-state-preserving PP.\n# Original vLLM Apache-2.0 notices below remain applicable.\n"
 
 
 def append_method(text, class_name, method):
@@ -29,11 +28,9 @@ def append_method(text, class_name, method):
     return "".join(lines)
 
 
-def prepare(package):
-    original = (package / MODEL).read_bytes()
-    if hashlib.sha256(original).hexdigest() != SOURCE_SHA256:
-        raise ValueError("Pipeline model source hash mismatch")
-    text = original.decode("utf-8")
+def patch_text(text):
+    if "validate_pipeline" in text:
+        raise ValueError("Pipeline patch already applied")
     text = replace_once(
         text,
         "        config = vllm_config.model_config.hf_config\n        self.config = config\n",
@@ -88,32 +85,24 @@ def prepare(package):
             f"    def make_empty_intermediate_tensors(self, batch_size, dtype, device):\n"
             f"        return self.{target}.make_empty_intermediate_tensors(batch_size, dtype, device)",
         )
-    text = (
-        "# Modified by GLM setup: experimental deferred-state-preserving PP.\n# Original vLLM Apache-2.0 notices below remain applicable.\n"
-        + text
-    )
+    text = HEADER + text
     compile(text, MODEL, "exec")
-    return text.encode("utf-8")
+    return text
+
+
+def prepare(package):
+    return pinned_patch.prepare(package, MODEL, SOURCE_SHA256, MISMATCH, patch_text)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", type=Path)
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args(argv)
-    package = args.package or Path(sysconfig.get_paths()["purelib"]) / "vllm"
-    patched = prepare(package)
-    record = {
-        "source_sha256": SOURCE_SHA256,
-        "patched_sha256": hashlib.sha256(patched).hexdigest(),
-        "check_only": args.check,
-    }
-    if not args.check:
-        (package / MODEL).write_bytes(patched)
-        (package.parent / "glm53-pipeline-patch.json").write_text(
-            json.dumps(record, indent=2)
-        )
-    print(json.dumps(record))
+    pinned_patch.main(
+        argv,
+        doc=__doc__,
+        target=MODEL,
+        sha256=SOURCE_SHA256,
+        prepare=prepare,
+        record=RECORD,
+    )
 
 
 if __name__ == "__main__":
