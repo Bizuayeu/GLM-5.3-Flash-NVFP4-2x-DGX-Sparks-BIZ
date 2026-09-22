@@ -1,6 +1,6 @@
 [project]
 name = "glm53-flash-biz-setup"
-version = "1.7.1"
+version = "1.8.0"
 description = "Setup and validation tools for GLM-5.3-Flash on two DGX Spark-class systems"
 readme = "README.md"
 requires-python = ">=3.11"
