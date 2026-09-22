@@ -792,7 +792,7 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 
 2026-09-22にさらに二つの検査で残る候補を絞った。参照imageの中でGB10一枚に新しいprocessを13回起こし、対のrankあたりの形でcuBLASのBF16 GEMM（`lm_head` 4096→77,440を4行と2,048行、MTPの射影、正方）、KDAのchunkとrecurrentのkernel（局所32 head×128）、`lm_head` のargmaxを固定入力で計算した：13回とも全出力がbit一致。うち3回は `CUBLAS_WORKSPACE_CONFIG` と `PYTHONHASHSEED` を固定したが何も動かなかった。次に4層のMTP fixture（stock重み、draft深さ3）を本番のimage・fabric・起動flagで対にTP=2で20回起動した（本番は1時間停止）：decode検査のcompletionとtoken idは3課題とも20起動すべてで同一。分散経路（RoCE越しの2 process、shardされたsparse MLA・indexer・Marlin MoEのkernel、draft）は20回で起動ごとの差を再現しなかったので、対で見た1/6〜1/15の頻度を考えると、残る候補はフルサイズのモデルだけがloadと起動でする何かに絞られる。
 
-2026-09-23の起動（[1.10.2](#1102での測定)の同時2系列profile、再起動1回）は別の状態で計算し、probeで捕まえた：両rankの重みのdigestは前の起動と等しく（各2,382 tensor）、要求のtraceは最初に違う呼び出しを名指しした——rank 1のlayer 19の複製されたkpool indexer、decodeの検証step、散文とコードの両要求で、入力は同一で候補集合が違う。前の起動ではそのrankのindexerがまさにその呼び出しでrank 0と食い違い、今回の起動では両rankが一致した。数え上げ要求のtraceはbit一致した。何を名指ししたか・何が残るかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にある。
+2026-09-23の起動（[1.10.2](#1102での測定)の同時2系列profile、再起動1回）は別の状態で計算し、probeで捕まえた：両rankの重みのdigestは前の起動と等しく（各2,382 tensor）、要求のtraceは最初に違う呼び出しを名指しした——rank 1のlayer 19の複製されたkpool indexer、decodeの検証step、散文とコードの両要求で、入力は同一で候補集合が違う。前の起動ではそのrankのindexerがまさにその呼び出しでrank 0と食い違い、今回の起動では両rankが一致した。数え上げ要求のtraceはbit一致した。続いてindexer自身の計算（fp32のhead gate、融合したFWHT量子化、pool cacheのcompress-and-writeとdecodeのtail update、DeepGEMMのpaged MQA logitsとstable top-k）をGB10 1台の新しいprocess 13本で配信の形状・固定の入力で回し、全出力がbit一致した（`records/20260922-prefix-dedup/indexer-state/`）。何を名指ししたか・何が残るかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にある。
 
 ## 1.10.2での測定
 

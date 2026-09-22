@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.10.4"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.10.5"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 
@@ -97,20 +97,22 @@ The TP=2 reference profile is **measured and accepted for routine use (2026-09-2
 
 ### Headline measurements (1.10.4)
 
-Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles are compared: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint`; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). Since 1.8.0 the option declares that checkpoint's KDA input projection split into `q_proj` / `k_proj` / `v_proj` and a merged `b` / `f_a` / `g_a` tail, the same weight bytes read a different way (profile tag `attn-lmhead-w4a16-splitkda`). Medians of three or nine runs; ranges, conditions and earlier versions are in [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160), [1.7.0](docs/benchmarks.md#measurements-on-170), [1.7.1](docs/benchmarks.md#measurements-on-171), [1.8.0](docs/benchmarks.md#measurements-on-180) and [1.9.0](docs/benchmarks.md#measurements-on-190), which own these numbers. The 1.9.0 night (the same serving profile with `runtime.prefix_page_dedup`, six launches) decoded inside these ranges and kept older histories cached under re-sends; the [1.10.2 measurements](docs/benchmarks.md#measurements-on-1102) are the published option's two-sequence checks of 2026-09-23 (two 200K requests together in 330 s against 166 s alone, decode 32.1 / 21.8 tok/s with two sequences against 45.6 / 28.2 alone, completions that differ from a request alone); the [1.10.4 measurements](docs/benchmarks.md#measurements-on-1104) are sparkDash and tool-eval-bench on that profile the same night (sparkDash decode 48.2 / 31.4 / 41.3 / 34.9 tok/s on its structured / prose / code / json prompts against 36.2 / 26.7 / 31.7 / 26.3 on 1.5.0; tool-eval 88/100 with the same three failures as 1.0.0 and the Safety Gate still not passed); the numbers below are the 1.8.0 night's, one sequence. The prefill, 199,652-token, 261,461-token, short-prompt, 2,048-token decode and memory rows come from the same-night three-arm run of 2026-09-22 on the 1.7.0 runtime; the 255,950-token, capacity and NLL rows are the earlier series. Task types are always listed counting / prose / code.
+Two GB10 systems, TP=2, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint` with the KDA input projection declared split; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). The option's column is the profile the reference pair serves, the [two-sequence AXL profile](examples/server.axl.example.toml), as measured on 2026-09-23 ([measurements on 1.10.4](docs/benchmarks.md#measurements-on-1104)); a row that night did not re-measure keeps the value of the last night that did, dated. The defaults' column is the 2026-09-22 night. Medians of three or nine runs; ranges, conditions and every earlier version are in [benchmarks](docs/benchmarks.md). Task types are always listed counting / prose / code.
 
-| Measure | Distributed defaults (NVFP4 BIZ on the pinned weights) | Published option (NVFP4 BIZ AXL) |
+| Measure | Distributed defaults (NVFP4 BIZ on the pinned weights; 2026-09-22 unless dated) | Published option (NVFP4 BIZ AXL, the served two-sequence profile; 2026-09-23 unless dated) |
 |---|---|---|
-| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same; on the 1.9.0 night five launches of six repeated one another's completions and one did not (row below) |
-| Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.44 / 30.01 / 37.17 tok/s** |
-| Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** |
-| Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** |
-| 199,652-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct | **163.7 and 163.7 s, correct** |
-| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct |
-| 261,461-token three-position reference, explicit prompt | 235.9 s, correct 3 of 3 | **227.2 s, correct 3 of 3** |
-| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs |
-| Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 |
-| Lowest available memory on the head during the same-night bench | 5.53 GiB | 10.50 GiB |
+| Identical requests at temperature 0 | same completion nine times of nine, zero log-probability movement | same, for a request alone (three of three, every launch); a launch's numerical state is checked after every switch, three states seen and their difference named in [validation](docs/validation.md#full-model-tp2-experimental-scope); with two requests in flight completions differ from a request alone |
+| Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.04 / 28.16 / 37.67 tok/s** (32.09 / 21.81 for counting and prose while the other runs) |
+| Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** (2026-09-22) |
+| Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** (2026-09-22) |
+| ~200K-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct (199,652 tokens) | **165.7 s, correct** (199,649 tokens); two such requests together: 330.2 s, both correct, no preemption |
+| 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct (2026-09-22) |
+| 261,461-token three-position reference, explicit prompt | 235.9 s, correct 3 of 3 | **227.2 s, correct 3 of 3** (2026-09-22) |
+| Maximum capacity, 262,080 input + 64 output tokens | 240.3 s, finite logprobs | 245.7 s, finite logprobs (2026-09-22) |
+| Teacher-forced NLL: Japanese / English / code / mathematics | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6645 / 2.0024 / 1.0031 / 0.6279 (2026-09-22) |
+| Lowest available memory on the head during the bench | 5.53 GiB (3 GiB of KV) | 6.46 GiB during two 200K requests, 7.24 GiB during sparkDash (6 GiB of KV) |
+| sparkDash DecodeBench, 128 tokens: structured / prose / code / json | 36.24 / 26.68 / 31.67 / 26.25 tok/s (1.5.0) | **48.23 / 31.38 / 41.28 / 34.88 tok/s** |
+| tool-eval-bench, 69 standard scenarios | 90/100 (1.0.0, 2026-09-14) | 88/100, the same three failures, Safety Gate not passed |
 
 | | Distributed defaults | Published option |
 |---|---|---|
@@ -118,7 +120,7 @@ Two GB10 systems, TP=2, one active sequence, FA2 prefill, one token order inside
 | **Cons** | The slower decode of the two on every task type | Not lossless: NLL 4 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
 | **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
 
-How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 30 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.
+How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 28 on prose. [The serving profile](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3), [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) hold the numbers and the choice.
 
 ### Status by scope
 

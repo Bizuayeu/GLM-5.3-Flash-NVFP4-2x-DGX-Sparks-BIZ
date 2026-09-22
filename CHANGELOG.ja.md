@@ -4,6 +4,13 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.10.5 — 2026-09-23
+
+### Documentation
+
+- README、主要な測定値：公開した任意設定の列を参照対が配信するprofile＝同時2系列のAXL profileの2026-09-23の測定にした（2,048 token後のdecode 45.04／28.16／37.67 tok/s、約200Kの合言葉165.7 s・2本同時330.2 s、sparkDashとtool-evalの行、KV 6 GiBでのメモリ）。その夜に測り直していない行は最後の測定値を日付つきで残す。段落は旧版を列挙しない。
+- 検証とベンチマーク1.9.0：2026-09-23に名指ししたindexerの四つの計算（fp32のhead gate、融合したFWHT量子化、pool cacheの書き込み経路、DeepGEMMのpaged MQA logitsとstable top-k）をGB10 1台の新しいprocess 13本で配信の形状で回し、bit一致した。よって起動状態の差は配信processそのものの状態に属し、次の測定は稼働中の両rankでそれらを走らせるprobeのmethod。
+
 ## 1.10.4 — 2026-09-23
 
 ### Documentation

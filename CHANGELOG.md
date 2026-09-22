@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.10.5 — 2026-09-23
+
+### Documentation
+
+- README, headline measurements: the published option's column is the profile the reference pair serves, the two-sequence AXL profile as measured on 2026-09-23 (decode 45.04 / 28.16 / 37.67 tok/s after 2,048 tokens, 165.7 s for a ~200K passphrase and 330.2 s for two together, sparkDash and tool-eval rows, memory at 6 GiB of KV); rows that night did not re-measure keep the last measured value, dated; the paragraph no longer lists every earlier version.
+- Validation and benchmarks 1.9.0: the indexer's four computations named on 2026-09-23 (the fp32 head gate, the fused FWHT quantisation, the pool cache's write paths, DeepGEMM's paged MQA logits with the stable top-k) ran in thirteen fresh processes on one GB10 at the served shapes and were bit-identical, so the launch-state difference belongs to the serving process's own state; the next measurement is a probe method that runs them on both ranks of a live launch.
+
 ## 1.10.4 — 2026-09-23
 
 ### Documentation
