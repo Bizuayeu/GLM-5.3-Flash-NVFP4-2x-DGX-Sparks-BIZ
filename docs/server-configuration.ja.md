@@ -16,7 +16,7 @@
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限 |
-| `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID |
+| `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定 |
 
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 
@@ -42,6 +42,18 @@
 | warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に短文・tool・画像の段を流す。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
+
+### CPU配置の任意指定
+
+CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのCPUリストを指定します（例：`"5-9,15-19"`）。
+省略時はDockerの従来の配置を使います。
+高性能コアの番号はホストごとの構成と実測から決めてください。
+コア番号を別のホストへそのまま転用することはできません。
+
+ランチャーは形式の不正な指定、逆順や重複のある範囲を拒否します。
+各ホストの`server preflight`は、指定されたCPUが起動プロセスの利用可能な範囲に含まれるか確認します。
+起動後はDockerの`HostConfig.CpusetCpus`を読み戻し、設定と一致しなければ新しいコンテナを停止します。
+この設定は配置を制御するもので、速度を保証するものではありません。
 
 **導入時はimage ID、両機の接続情報、MTP viewを準備してください。LPA projectorとhashはLPAを有効にするときだけ必要です。** 有効な機能のゼロhashは差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。[学習済みprojectorの取得](lpa.ja.md#学習済みprojectorの取得)により再学習を省けます。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
 

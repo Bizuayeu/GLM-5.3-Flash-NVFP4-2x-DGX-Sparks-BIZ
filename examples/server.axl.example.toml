@@ -178,6 +178,9 @@ stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metric
 # KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。
 
 [[nodes]]
+# Optional, per-host Docker CPU set. Determine suitable cores from this host's
+# topology; do not copy a core range from another GB10 system.
+# cpuset_cpus = "5-9,15-19"
 # Optional extra RoCE rails. All must use the primary rail's GID index.
 # additional_rails = [{ hca = "roce1", port = 1, interface = "fabric1", local_ip = "10.54.0.1", gid_index = 3 }]
 local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)
@@ -186,6 +189,7 @@ hca = "roce0"
 gid_index = 3
 
 [[nodes]]
+# cpuset_cpus = "5-9,15-19" # Set independently for rank 1 after inspecting that host.
 local_ip = "10.53.0.2" # Rank 1 / worker; replace with measured values
 interface = "fabric0"
 hca = "roce0"

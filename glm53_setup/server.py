@@ -90,6 +90,8 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
     ]
+    if profile["nodes"][rank].get("cpuset_cpus") is not None:
+        args += ["--cpuset-cpus", profile["nodes"][rank]["cpuset_cpus"]]
     derived = settings.derived_checkpoint(profile)
     if derived:
         args += ["-v", f"{derived['path']}:/derived:ro"]
@@ -143,6 +145,17 @@ def inspect_owned(name, fingerprint=None):
     if not owner or (fingerprint and owner != fingerprint):
         raise ValueError("Container does not belong to this server profile")
     return info
+
+
+def verify_cpu_set(profile, rank, name):
+    """Read back an explicitly requested Docker placement before recording a start."""
+    requested = profile["nodes"][rank].get("cpuset_cpus")
+    if requested is None:
+        return
+    info = inspect_owned(name, settings.fingerprint(profile))
+    actual = info["HostConfig"].get("CpusetCpus") or ""
+    if actual != requested:
+        raise ValueError("Docker CPU set does not match the configured node")
 
 
 MOE_ORDER_MARKERS = ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2")
@@ -285,6 +298,12 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
     model = model_path(profile, cache)
     metadata = read_json(model / "config.json")
     checks = host.fabric_checks(settings.site(profile, rank))
+    requested_cpus = settings.cpuset_cpus(profile, rank)
+    if requested_cpus is not None:
+        try:
+            checks["cpu_set_available"] = requested_cpus <= os.sched_getaffinity(0)
+        except (AttributeError, OSError):
+            checks["cpu_set_available"] = False
     checks["full_model"] = metadata["text_config"][
         "num_hidden_layers"
     ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
@@ -821,6 +840,7 @@ def start_rank(cli, args, profile, result):
     write_json(record / "command.json", cmd)
     print(host.run(*cmd), flush=True)
     try:
+        verify_cpu_set(profile, args.rank, name)
         write_json(
             state,
             {
@@ -831,7 +851,8 @@ def start_rank(cli, args, profile, result):
             },
         )
     except BaseException:
-        inspect_owned(name)
+        # docker run succeeded with this unique name. Stop it even if the
+        # read-back inspect itself failed, rather than leaving an untracked rank.
         host.run("docker", "stop", name)
         raise
     print(
