@@ -14,6 +14,8 @@ and memory outside malloc can be told apart.
 
 import ctypes
 import json
+import threading
+import traceback
 from pathlib import Path
 
 GIB = 2**30
@@ -652,6 +654,65 @@ INDUCTOR_SETTINGS = (
 )
 
 
+class WatchedOverride:
+    """Stands in for a torch config entry's ``user_override`` ContextVar and records who writes it.
+
+    torch 2.13 keeps each config override in a ContextVar that ``setattr``,
+    ``config.patch`` and ``load_config`` all reach through ``set``/``reset``, so
+    this one seam catches every writer, with its stack.
+    """
+
+    def __init__(self, inner, name, writes, limit):
+        self.inner, self.name, self.writes, self.limit = inner, name, writes, limit
+
+    def _note(self, op, value):
+        if len(self.writes) < self.limit:
+            self.writes.append(
+                {
+                    "name": self.name,
+                    "op": op,
+                    "value": None if op == "reset" else repr(value),
+                    "thread": threading.current_thread().name,
+                    "stack": [
+                        line.strip() for line in traceback.format_stack()[-14:-2]
+                    ],
+                }
+            )
+
+    def get(self, *default):
+        return self.inner.get(*default)
+
+    def set(self, value):
+        self._note("set", value)
+        return self.inner.set(value)
+
+    def reset(self, token):
+        self._note("reset", None)
+        return self.inner.reset(token)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def watch_config_entry(config_module, name, writes, limit=40):
+    """Record every write to one torch config entry (once per entry)."""
+    entry = config_module._config[name]
+    if not isinstance(entry.user_override, WatchedOverride):
+        entry.user_override = WatchedOverride(entry.user_override, name, writes, limit)
+
+
+# Writes to Inductor's deterministic switch in this process, from the moment the
+# worker loads this module (before the model is loaded).
+CONFIG_WRITES = []
+try:
+    import torch._inductor.config as _inductor_config
+
+    for _name in ("deterministic", "batch_invariant"):
+        watch_config_entry(_inductor_config, _name, CONFIG_WRITES)
+except Exception:  # noqa: BLE001 - no torch here (tests), or a torch without _config
+    pass
+
+
 def inductor_state(inductor_config, environ):
     """The Inductor settings codegen reads in this process, next to the TORCHINDUCTOR_* environment.
 
@@ -662,11 +723,23 @@ def inductor_state(inductor_config, environ):
     config = {k: getattr(inductor_config, k, None) for k in INDUCTOR_SETTINGS}
     env = {k: v for k, v in sorted(environ.items()) if k.startswith("TORCHINDUCTOR_")}
     wanted = env.get("TORCHINDUCTOR_DETERMINISTIC") == "1"
-    return {
+    state = {
         "config": config,
         "environ": env,
         "environ_disagrees": wanted != bool(config["deterministic"]),
     }
+    entry = getattr(inductor_config, "_config", {}).get("deterministic")
+    if entry is not None:
+        override = entry.user_override.get()
+        unset = type(override) is object  # torch's _UNSET_SENTINEL
+        state["entry"] = {
+            "default": entry.default,
+            "user_override": None if unset else repr(override),
+            "unset": unset,
+        }
+    if hasattr(inductor_config, "codegen_config"):
+        state["codegen_config"] = inductor_config.codegen_config()[:4000]
+    return state
 
 
 def autotuner_differences(ranks):
@@ -930,6 +1003,7 @@ class MemoryProbeWorker:
 
         row = inductor_state(inductor, os.environ)
         row["rank"] = self.rank
+        row["config_writes"] = list(CONFIG_WRITES)
         try:
             before = {
                 r["file"] for r in autotuner_rows(gc.get_objects(), CachingAutotuner)

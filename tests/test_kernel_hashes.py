@@ -147,6 +147,56 @@ class InductorStateTests(unittest.TestCase):
         json.dumps(state)
 
 
+class ConfigWatchTests(unittest.TestCase):
+    def test_writes_to_a_watched_entry_are_recorded_with_their_caller(self):
+        import contextvars
+
+        sentinel = object()
+        var = contextvars.ContextVar("deterministic", default=sentinel)
+        entry = SimpleNamespace(default=True, user_override=var)
+        config = SimpleNamespace(_config={"deterministic": entry})
+        writes = []
+        memory_probe.watch_config_entry(config, "deterministic", writes, limit=2)
+        # The entry still behaves as the ContextVar it wraps.
+        self.assertIs(entry.user_override.get(), sentinel)
+        token = entry.user_override.set(False)
+        self.assertIs(entry.user_override.get(), False)
+        entry.user_override.reset(token)
+        self.assertIs(entry.user_override.get(), sentinel)
+        entry.user_override.set(True)
+        self.assertEqual(
+            [(w["name"], w["op"], w["value"]) for w in writes],
+            [("deterministic", "set", "False"), ("deterministic", "reset", None)],
+        )  # the limit keeps the third write out
+        self.assertTrue(
+            any("test_kernel_hashes" in line for line in writes[0]["stack"])
+        )
+        self.assertIn("thread", writes[0])
+        json.dumps(writes)
+        # Watching twice does not wrap twice.
+        memory_probe.watch_config_entry(config, "deterministic", writes)
+        self.assertIs(entry.user_override.inner, var)
+
+    def test_state_reports_the_entry_default_and_override(self):
+        import contextvars
+
+        sentinel = object()
+        var = contextvars.ContextVar("deterministic", default=sentinel)
+        entry = SimpleNamespace(default=True, user_override=var)
+        inductor = SimpleNamespace(
+            deterministic=False,
+            _config={"deterministic": entry},
+            codegen_config=lambda: "deterministic = False",
+        )
+        var.set(False)
+        state = memory_probe.inductor_state(inductor, {})
+        self.assertEqual(
+            state["entry"],
+            {"default": True, "user_override": "False", "unset": False},
+        )
+        self.assertEqual(state["codegen_config"], "deterministic = False")
+
+
 class AutotunerTests(unittest.TestCase):
     def test_rows_name_each_kernels_file_configs_and_served_launchers(self):
         class Autotuner:
