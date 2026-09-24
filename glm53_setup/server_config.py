@@ -63,6 +63,7 @@ OPTIONAL_KEYS = {
             "enforce_eager",
             "fa2_attention",
             "prefix_page_dedup",
+            "inductor_deterministic",
         }
     ),
     "server.cache": frozenset(
@@ -146,6 +147,8 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.stable_indexer_topk must be true or false")
     if type(profile["runtime"].get("fa2_attention", False)) is not bool:
         raise ValueError("runtime.fa2_attention must be true or false")
+    if type(profile["runtime"].get("inductor_deterministic", False)) is not bool:
+        raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(profile["runtime"].get("prefix_page_dedup", False)) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
@@ -498,6 +501,12 @@ def environment(profile, rank):
         result["NCCL_MAX_NCHANNELS"] = channels
     if "fa2_attention" in profile["runtime"]:
         result["GLM53_FA2_ATTENTION"] = str(int(profile["runtime"]["fa2_attention"]))
+    if profile["runtime"].get("inductor_deterministic"):
+        # The replicated indexer's compiled key norm chose XBLOCK by timing on
+        # each rank and launch, and two choices differ in bits: one rank's key
+        # forked completions (2026-09-24). This mode picks reduction configs
+        # without timing, the same on every rank. torch reads only "1".
+        result["TORCHINDUCTOR_DETERMINISTIC"] = "1"
     if "canonical_moe_order" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(

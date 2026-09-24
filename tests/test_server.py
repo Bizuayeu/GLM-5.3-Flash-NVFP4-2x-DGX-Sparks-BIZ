@@ -346,6 +346,48 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
+    def test_inductor_deterministic_is_optional_and_sets_the_torch_switch(self):
+        # 2026-09-24: the replicated indexer's compiled key norm picked its
+        # config by timing on each rank, per launch; two picks differ in bits
+        # and one rank's key forked completions (launch state 2). Inductor's
+        # deterministic mode selects that config without timing, on every rank.
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertNotIn("inductor_deterministic", distributed["runtime"])
+        self.assertNotIn(
+            "TORCHINDUCTOR_DETERMINISTIC", config.environment(distributed, 0)
+        )
+        self.profile["runtime"]["inductor_deterministic"] = True
+        config.validate(self.profile)
+        for rank in (0, 1):
+            self.assertEqual(
+                config.environment(self.profile, rank)["TORCHINDUCTOR_DETERMINISTIC"],
+                "1",
+            )
+        # torch reads only "1", so the comparison arm is the variable left unset.
+        self.profile["runtime"]["inductor_deterministic"] = False
+        config.validate(self.profile)
+        self.assertNotIn(
+            "TORCHINDUCTOR_DETERMINISTIC", config.environment(self.profile, 0)
+        )
+        # No image support is needed: the pinned torch reads the variable itself.
+        self.assertNotIn(
+            "inductor_deterministic",
+            json.dumps(
+                server.image_capability_checks(
+                    self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+                )
+            ),
+        )
+        # Adding the key moves the fingerprint; an earlier profile keeps its own.
+        with_key = config.fingerprint(self.profile)
+        self.profile["runtime"].pop("inductor_deterministic")
+        self.assertNotEqual(config.fingerprint(self.profile), with_key)
+        for bad in (1, 0, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["inductor_deterministic"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_prefix_page_dedup_is_off_unless_set_and_needs_the_image_marker(self):
         distributed = config.load(ROOT / "examples/server.example.toml")
         self.assertNotIn("prefix_page_dedup", distributed["runtime"])
