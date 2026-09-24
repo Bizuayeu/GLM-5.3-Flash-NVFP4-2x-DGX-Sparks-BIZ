@@ -182,7 +182,9 @@ class ConfigWatchTests(unittest.TestCase):
 
         sentinel = object()
         var = contextvars.ContextVar("deterministic", default=sentinel)
-        entry = SimpleNamespace(default=True, user_override=var)
+        entry = SimpleNamespace(
+            default=True, user_override=var, env_value_force=sentinel
+        )
         inductor = SimpleNamespace(
             deterministic=False,
             _config={"deterministic": entry},
@@ -192,7 +194,11 @@ class ConfigWatchTests(unittest.TestCase):
         state = memory_probe.inductor_state(inductor, {})
         self.assertEqual(
             state["entry"],
-            {"default": True, "user_override": "False", "unset": False},
+            {"default": True, "user_override": "False", "unset": False, "forced": None},
+        )
+        entry.env_value_force = True  # the pin of glm53-inductor-pin.pth
+        self.assertEqual(
+            memory_probe.inductor_state(inductor, {})["entry"]["forced"], "True"
         )
         self.assertEqual(state["codegen_config"], "deterministic = False")
 

@@ -25,6 +25,8 @@ VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/n
 # Where the reference image installs this package (build-reference); a module
 # newer than the image is bind-mounted there so a worker extension can import it.
 IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
+# The image's site directory; site runs the import lines of .pth files found here.
+SITE_PACKAGES = "/usr/local/lib/python3.12/dist-packages"
 # The backend patch imports the reference attention from this copy.
 IMAGE_REFERENCE = "/usr/local/lib/python3.12/dist-packages/glm53_reference.py"
 
@@ -103,6 +105,17 @@ def command(profile, config_path, rank, name, cache=None):
         # The probe is newer than the image; mount the checkout's copy.
         source = ROOT / "glm53_setup/runtime/memory_probe.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
+    if profile["runtime"].get("inductor_deterministic"):
+        # Keeps TORCHINDUCTOR_DETERMINISTIC on through Dynamo's state restore,
+        # which turns it off after the first compiled frame (torch 2.13). The
+        # .pth runs the module at interpreter start in every container process.
+        runtime = ROOT / "glm53_setup/runtime"
+        args += [
+            "-v",
+            f"{runtime / 'inductor_pin.py'}:{IMAGE_PACKAGE_DIR}/runtime/inductor_pin.py:ro",
+            "-v",
+            f"{runtime / 'inductor_pin_pth.txt'}:{SITE_PACKAGES}/glm53-inductor-pin.pth:ro",
+        ]
     if profile["runtime"].get("fa2_attention"):
         # cc-defer: redundant on images that carry GLM53_FA2_ATTENTION_API=1; drop
         # the mounts once no image without it can be a recovery target.

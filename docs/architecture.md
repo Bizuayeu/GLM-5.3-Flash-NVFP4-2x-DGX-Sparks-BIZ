@@ -35,6 +35,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/runtime/stable_topk.py`, `patch_indexer_topk.py` | The kpool indexer's top-k with ties settled (`runtime.stable_indexer_topk`) and its source-pinned patch |
 | `glm53_setup/runtime/prefix_dedup.py`, `patch_prefix_dedup.py` | One cached prefix page per content (`runtime.prefix_page_dedup`) and its source-pinned patch |
 | `glm53_setup/runtime/patch_slot_mapping.py` | Source-pinned patch: the slot-mapping kernel reads a block table only inside its row |
+| `glm53_setup/runtime/inductor_pin.py`, `inductor_pin_pth.txt` | Keeps Inductor's deterministic mode on through Dynamo's state restore, which turns it off after the first compiled frame (`runtime.inductor_deterministic`); the text file, mounted as `glm53-inductor-pin.pth` in the image's site directory, runs it at interpreter start |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |
 | `glm53_setup/runtime/fused_unpack.py`, `fused_nope*.py`, `graph_policy.py`, `patch_graph_prefill.py` | Fused FP8 unpack kernel, experimental fused NoPE attention prototypes and the decode-Graph policy |

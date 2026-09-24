@@ -736,6 +736,10 @@ def inductor_state(inductor_config, environ):
             "default": entry.default,
             "user_override": None if unset else repr(override),
             "unset": unset,
+            # env_value_force wins over any override: set by inductor_pin.
+            "forced": None
+            if type(entry.env_value_force) is object
+            else repr(entry.env_value_force),
         }
     if hasattr(inductor_config, "codegen_config"):
         state["codegen_config"] = inductor_config.codegen_config()[:4000]
