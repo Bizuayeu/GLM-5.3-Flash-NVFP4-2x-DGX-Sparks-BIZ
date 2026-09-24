@@ -21,6 +21,7 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["canonical_moe_order"] = False
         self.profile["runtime"]["stable_indexer_topk"] = False
         self.profile["runtime"]["fa2_attention"] = False
+        self.profile["runtime"]["inductor_deterministic"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -351,11 +352,14 @@ class ServerConfigTests(unittest.TestCase):
         # config by timing on each rank, per launch; two picks differ in bits
         # and one rank's key forked completions (launch state 2). Inductor's
         # deterministic mode selects that config without timing, on every rank.
-        distributed = config.load(ROOT / "examples/server.example.toml")
-        self.assertNotIn("inductor_deterministic", distributed["runtime"])
-        self.assertNotIn(
-            "TORCHINDUCTOR_DETERMINISTIC", config.environment(distributed, 0)
-        )
+        # On in both templates from 1.12.0; an earlier profile without the key
+        # keeps its fingerprint and the timed choice.
+        for name in ("server.example.toml", "server.axl.example.toml"):
+            template = config.load(ROOT / "examples" / name)
+            self.assertIs(template["runtime"]["inductor_deterministic"], True, name)
+            self.assertEqual(
+                config.environment(template, 1)["TORCHINDUCTOR_DETERMINISTIC"], "1"
+            )
         self.profile["runtime"]["inductor_deterministic"] = True
         config.validate(self.profile)
         for rank in (0, 1):

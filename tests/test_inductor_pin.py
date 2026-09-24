@@ -82,6 +82,7 @@ class PinTests(unittest.TestCase):
 class LaunchTests(unittest.TestCase):
     def test_the_key_mounts_the_pin_and_its_pth_and_nothing_without_it(self):
         profile = config.load(ROOT / "examples/server.example.toml")
+        profile["runtime"]["inductor_deterministic"] = False
         off = server.command(
             profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
         )

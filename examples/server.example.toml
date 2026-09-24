@@ -16,6 +16,11 @@ stable_indexer_topk = true # Indexer top-k ties go to the lower pool index; need
 # The pinned kernels pick a different candidate set for the same input when pools tie across rank k, and
 # one such tie forks a completion (docs/server-configuration.md). false = comparison arm; omitted = the image's default.
 # indexerのtop-kで同点のpoolを低いindexに決める。同点があると同じ入力から違う候補集合が出て、completionが割れるため。
+inductor_deterministic = true # Inductor picks reduction configs without timing, the same on both ranks
+# The indexer's compiled key norm otherwise picks its config by timing on each rank, two picks differ in
+# bits, and a launch then computes in one of three numerical states (docs/validation.md). Also keeps the
+# mode on through torch 2.13's state restore (pytorch/pytorch#198563); compiles into its own cache.
+# false or omitted = the timed choice. indexerのkey正規化のconfigを計測なしで両rank同じに決める（起動ごとの数値状態の原因）。
 fa2_attention = true # Prefill-sized NoPE attention through FlashInfer FA2; decode steps stay on the reference path
 # Prefill of 38,962 tokens went from 572-577 to 1,242-1,272 tok/s on the reference pair and identical requests
 # still repeat bit for bit (docs/server-configuration.md). Excludes LPA. false or omitted = the reference path.

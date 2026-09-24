@@ -4,6 +4,21 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.12.0 — 2026-09-25
+
+### Added
+
+- `runtime.inductor_deterministic`（両方のexample profileでon。未指定か `false` はInductorの計測による選択のまま）：Inductorがreductionのconfigを計測せずに両rankで同じものに決め、専用のcacheにcompileする（`TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor-deterministic`）。複製されたkpool indexerはkeyを候補configが三つの `torch.compile` のleafで正規化する。各rankが起動のたびに計測で一つを選び、そのうち一つは行の足し算の順が違う。両rankが別のclassを引くと、poolが同点になる所でcompletionが分かれていた。keyを付けても、torch 2.13のDynamoは最初にcompileしたframeの後でモードを切ってしまう（[pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)）。そこでlauncherは `glm53_setup/runtime/inductor_pin.py` と一行の `.pth` もmountし、設定を強制値で保つ。imageの対応は要らない。keyを付けた最初の起動ではindexerのleafを作り直す。keyを足すとprofileのfingerprintが変わる。詳細は[サーバー設定](docs/server-configuration.ja.md#配布用の既定設定)。
+- memory probeが、配信中の各workerで実際に何が動いているかを読む：`autotuners`（Inductorの各kernelのファイル・size hint・使っているconfig・それがcacheからかこのprocessでの計測か）と `inductor_state`（Inductorの設定、`TORCHINDUCTOR_*` の環境変数、強制値、決定性スイッチへの書き込みと呼び出し元、その場での一回のcompile）。`tools/kernel_hashes.py` はその両方をhashの前後でrankごとに記録する。indexerのstage hashは配信の呼び出しをstrided viewのまま動かし（`k_norm_served_rows*`）、rotaryをMLAのwrapperからも探す。
+
+### Fixed
+
+- **起動が三つの数値状態のどれかに落ちることがなくなった。** これまで対は起動を跨ぐと三つの状態のどれかで計算していた（状態を確かめた配信imageの16起動で11・3・2）。原因はrankごとに計測されるindexerのcompileされたkey正規化（Addedを参照）。しかもその計測は起動のたびにやり直されていた：永続のInductor cacheには2026-09-15にcontainerの `/tmp/torchinductor_root` から写したgraphがあり、選択をそこに保存し、そこから探していたため。決定性のkeyは新しいgraphを専用のcacheにcompileする。keyを付けた3起動はすべて状態1で同じcompletionになり、decodeの速さは以前の状態1の起動の幅の中だった。 同じ型の問題を [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636) としてvLLMに報告した。
+
+### Documentation
+
+- 検証（起動の数値状態：原因、各状態を再現した介入、修正）、ベンチマーク1.9.0、READMEの反復性の行と引用の版、サーバー設定とアーキテクチャ（`inductor_pin`）。
+
 ## 1.11.3 — 2026-09-23
 
 ### Documentation

@@ -2,6 +2,21 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.12.0 — 2026-09-25
+
+### Added
+
+- `runtime.inductor_deterministic` (on in both example profiles; absent or `false` keeps Inductor's timed choice): Inductor picks the configs of its reductions without timing, the same on both ranks, and compiles into a cache of its own (`TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor-deterministic`). The replicated kpool indexer normalises its key through a `torch.compile` leaf with three candidate configs; each rank picked one by timing at every launch, one of them sums a row in a different order, and when the ranks picked from different classes, completions forked where pools tie. With the key, torch 2.13's Dynamo would still turn the mode off after the first compiled frame ([pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)), so the launcher also mounts `glm53_setup/runtime/inductor_pin.py` and a one-line `.pth` that keep the setting forced. No image support is needed; the first launch with the key compiles the indexer's leaves anew. Adding the key moves a profile's fingerprint. [Server configuration](docs/server-configuration.md#distributed-defaults) has the details.
+- The memory probe reads what each serving worker runs: `autotuners` (each Inductor kernel's file, size hints, the config it serves and whether that came from the cache or a benchmark in this process) and `inductor_state` (Inductor's settings, the `TORCHINDUCTOR_*` environment, the forced value, every write to the deterministic switch with its caller, and one fresh compile). `tools/kernel_hashes.py` records both per rank before and after hashing. The indexer's stage hashes now run the served call on its strided view (`k_norm_served_rows*`) and find the rotary on the MLA wrapper.
+
+### Fixed
+
+- **Launches no longer fall into one of three numerical states.** Until now the pair computed in one of three states across launches (sixteen checked launches of the serving image: eleven, three and two). The cause is the indexer's compiled key norm, timed per rank (see Added). The timing was also redone at every launch: the persistent Inductor cache held graphs copied on 2026-09-15 from a container's `/tmp/torchinductor_root`, which still saved and looked up their choices there. The deterministic key compiles fresh graphs into its own cache. Three launches with the key computed in state 1 with the same completions, decode speed within the spread of the earlier state-1 launches. The same pattern is reported to vLLM as [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636).
+
+### Documentation
+
+- Validation (the launch states: the cause, the intervention that reproduced each state, the fix), benchmarks 1.9.0, the README repeatability rows and citation, server configuration and architecture (`inductor_pin`).
+
 ## 1.11.3 — 2026-09-23
 
 ### Documentation
