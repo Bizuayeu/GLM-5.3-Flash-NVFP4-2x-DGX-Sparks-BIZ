@@ -13,6 +13,8 @@ and memory outside malloc can be told apart.
 """
 
 import ctypes
+import json
+from pathlib import Path
 
 GIB = 2**30
 
@@ -501,6 +503,22 @@ def indexer_layer(model, layer):
     raise KeyError(f"no module named *.{suffix}")
 
 
+def indexer_rope(owner):
+    """The indexer's rotary embedding and where it was found, or ``(None, "none")``.
+
+    The attention module keeps it as ``indexer_rope_emb``; the MLA wrapper it
+    builds keeps the same object as ``indexer_rotary_emb`` (1.11.1 looked on the
+    owner only and recorded no rope hash on the served model).
+    """
+    for path in ("indexer_rope_emb", "mla_attn.indexer_rotary_emb"):
+        found = owner
+        for part in path.split("."):
+            found = getattr(found, part, None)
+        if found is not None:
+            return found, path
+    return None, "none"
+
+
 def indexer_stage_hashes(torch, glm_attention, model, layer, seed=0, rows=2048):
     """Hash the stages between the indexer's projections and its op, with the layer's own weights.
 
@@ -512,36 +530,41 @@ def indexer_stage_hashes(torch, glm_attention, model, layer, seed=0, rows=2048):
     (``_fused_indexer_k_norm``, an Inductor kernel) and the indexer's rotary
     embedding; this runs both on fixed inputs with the layer's weights, the norm
     also in eager fp32 as the reference.
+
+    The served call normalises ``kw[:, :head_dim]``, a strided view of the
+    projection output, and Inductor compiles a strided input into a kernel of
+    its own, autotuned per host (2026-09-24: ``XBLOCK`` 8 on one host and 1 on
+    the other, which differ in bits). ``k_norm_served_rows*`` hash that call at
+    prefill, two-sequence and one-sequence decode widths; ``k_norm_compiled``
+    (a contiguous input, the 1.11.1 key) runs a different kernel and stays for
+    comparison with its records.
     """
     indexer, owner = indexer_layer(model, layer)
     dim = indexer.head_dim
     dev = indexer.k_norm.weight.device
+    norm = indexer.k_norm
+    projection = indexer.wk_weights_proj
+    width = getattr(projection, "input_size", None) or projection.weight.shape[1]
 
     def bf16(*shape, seed):
         g = torch.Generator().manual_seed(seed)
         return torch.randn(*shape, generator=g).to(torch.bfloat16).to(dev)
 
+    def compiled_norm(x):
+        return glm_attention._fused_indexer_k_norm(
+            x, norm.weight, norm.bias, dim, norm.eps
+        )
+
     x = bf16(rows, dim, seed=seed + 41)
     hashes = {}
-    hashes["k_norm_compiled"] = bytes_digest(
-        glm_attention._fused_indexer_k_norm(
-            x, indexer.k_norm.weight, indexer.k_norm.bias, dim, indexer.k_norm.eps
-        ),
-        torch,
-    )
+    hashes["k_norm_compiled"] = bytes_digest(compiled_norm(x), torch)
     hashes["k_norm_eager_fp32"] = bytes_digest(
         torch.nn.functional.layer_norm(
-            x.float(),
-            (dim,),
-            indexer.k_norm.weight,
-            indexer.k_norm.bias,
-            indexer.k_norm.eps,
+            x.float(), (dim,), norm.weight, norm.bias, norm.eps
         ).type_as(x),
         torch,
     )
-    rope = getattr(owner, "indexer_rope_emb", None) or getattr(
-        owner, "rotary_emb", None
-    )
+    rope, hashes["rope_source"] = indexer_rope(owner)
     if rope is not None and indexer.rope_dim > 0:
         positions = torch.arange(rows, device=dev)
         q_pe = bf16(rows, indexer.n_head, indexer.rope_dim, seed=seed + 42)
@@ -549,12 +572,82 @@ def indexer_stage_hashes(torch, glm_attention, model, layer, seed=0, rows=2048):
         q_out, k_out = rope(positions, q_pe, k_pe)
         hashes["rope_q"] = bytes_digest(q_out, torch)
         hashes["rope_k"] = bytes_digest(k_out, torch)
-    kw, _ = indexer.wk_weights_proj(
-        bf16(rows, indexer.wk_weights_proj.weight.shape[1], seed=seed + 44)
-    )
-    hashes["wk_weights_proj"] = bytes_digest(kw, torch)
+    for n in (rows, 8, 4):
+        kw, _ = projection(bf16(n, width, seed=seed + 44))
+        if n == rows:
+            hashes["wk_weights_proj"] = bytes_digest(kw, torch)
+            hashes["k_norm_served_eager_fp32"] = bytes_digest(
+                torch.nn.functional.layer_norm(
+                    kw[:, :dim].float(), (dim,), norm.weight, norm.bias, norm.eps
+                ).type_as(kw),
+                torch,
+            )
+        hashes[f"k_norm_served_rows{n}"] = bytes_digest(
+            compiled_norm(kw[:, :dim]), torch
+        )
     torch.cuda.synchronize()
     return hashes
+
+
+def autotuner_config(config):
+    return {
+        **config.kwargs,
+        "num_warps": config.num_warps,
+        "num_stages": config.num_stages,
+    }
+
+
+def autotuner_rows(objects, autotuner_type, pattern=None):
+    """The Inductor autotuners among ``objects``: each kernel's file, candidate configs and served launchers.
+
+    ``launchers`` is what the process actually runs: after a cached best config
+    or a benchmark, one. ``configs`` is empty once precompiled (torch 2.13 drops
+    the candidates). Read from a live worker, it says which config each rank
+    serves without inferring it from the files on disk.
+    """
+    rows = []
+    for obj in objects:
+        try:
+            if not isinstance(obj, autotuner_type):
+                continue
+        except ReferenceError:  # a weak proxy whose referent is gone
+            continue
+        name = (getattr(obj, "inductor_meta", None) or {}).get("kernel_name", "")
+        if pattern and pattern not in name:
+            continue
+        filename = getattr(obj, "filename", None)
+        hints = getattr(obj, "size_hints", None)
+        rows.append(
+            {
+                "kernel": name,
+                "file": "/".join(Path(filename).parts[-2:]) if filename else None,
+                "size_hints": dict(hints) if hints else None,
+                "configs": [autotuner_config(c) for c in obj.configs or []],
+                "launchers": [
+                    autotuner_config(launcher.config)
+                    for launcher in getattr(obj, "launchers", None) or []
+                ],
+                # "hit" (a saved best config), "miss" (benchmarked in this
+                # process), "only 1 config", or None before any lookup.
+                "cache": (getattr(obj, "autotune_cache_info", None) or {}).get(
+                    "autotune_cache_state"
+                ),
+            }
+        )
+    return sorted(rows, key=lambda r: (r["kernel"], r["file"] or ""))
+
+
+def autotuner_differences(ranks):
+    """Kernel files whose served launchers differ between the ranks (a file one rank lacks counts)."""
+    per_rank = [
+        {
+            r["file"]: json.dumps(r["launchers"], sort_keys=True)
+            for r in row["autotuners"]
+        }
+        for row in ranks
+    ]
+    files = sorted({f for launchers in per_rank for f in launchers})
+    return [f for f in files if len({launchers.get(f) for launchers in per_rank}) > 1]
 
 
 def kernel_hash_differences(ranks):
@@ -780,6 +873,15 @@ class MemoryProbeWorker:
         row["rank"] = self.rank
         return row
 
+    def autotuners(self, pattern=None):
+        """The Inductor autotuners alive in this worker and the configs they serve."""
+        import gc
+
+        from torch._inductor.runtime.triton_heuristics import CachingAutotuner
+
+        rows = autotuner_rows(gc.get_objects(), CachingAutotuner, pattern)
+        return {"rank": self.rank, "autotuners": rows}
+
     def kernel_hashes(self, seed=0, layer=19):
         """The indexer's computations on fixed inputs, hashed inside this worker.
 
@@ -792,16 +894,19 @@ class MemoryProbeWorker:
         from vllm.utils import deep_gemm
 
         sms = torch.cuda.get_device_properties(0).multi_processor_count
-        hashes = indexer_kernel_hashes(torch, kpool_compress, deep_gemm, sms, seed)
-        # 1.11.1: the stages of one real layer, with its weights. A failure here
-        # names itself instead of failing the whole answer.
-        try:
-            from vllm.models.glm5next.nvidia import attention as glm_attention
+        # Served forwards run in inference mode, and Dynamo guards on grad mode:
+        # outside it the compiled leaves would be traced and compiled anew.
+        with torch.inference_mode():
+            hashes = indexer_kernel_hashes(torch, kpool_compress, deep_gemm, sms, seed)
+            # 1.11.1: the stages of one real layer, with its weights. A failure
+            # here names itself instead of failing the whole answer.
+            try:
+                from vllm.models.glm5next.nvidia import attention as glm_attention
 
-            stages = indexer_stage_hashes(
-                torch, glm_attention, self.get_model(), layer, seed
-            )
-            hashes.update({f"layer{layer}_{k}": v for k, v in stages.items()})
-        except Exception as error:  # noqa: BLE001
-            hashes[f"layer{layer}_error"] = repr(error)[:300]
+                stages = indexer_stage_hashes(
+                    torch, glm_attention, self.get_model(), layer, seed
+                )
+                hashes.update({f"layer{layer}_{k}": v for k, v in stages.items()})
+            except Exception as error:  # noqa: BLE001
+                hashes[f"layer{layer}_error"] = repr(error)[:300]
         return {"rank": self.rank, "seed": seed, "sms": sms, "hashes": hashes}
