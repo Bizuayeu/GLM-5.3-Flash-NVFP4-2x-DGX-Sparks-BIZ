@@ -507,6 +507,11 @@ def environment(profile, rank):
         # forked completions (2026-09-24). This mode picks reduction configs
         # without timing, the same on every rank. torch reads only "1".
         result["TORCHINDUCTOR_DETERMINISTIC"] = "1"
+        # A graph compiled without the mode is restored from the cache with its
+        # timed candidates (and, from the 09-15 seeding, the old /tmp paths), so
+        # the switch alone changed nothing on 2026-09-24. The mode compiles into
+        # a cache of its own; the other one stays as it was.
+        result["TORCHINDUCTOR_CACHE_DIR"] = "/root/.cache/torchinductor-deterministic"
     if "canonical_moe_order" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(

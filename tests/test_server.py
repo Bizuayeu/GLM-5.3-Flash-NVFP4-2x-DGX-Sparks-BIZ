@@ -359,15 +359,24 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["inductor_deterministic"] = True
         config.validate(self.profile)
         for rank in (0, 1):
+            env = config.environment(self.profile, rank)
+            self.assertEqual(env["TORCHINDUCTOR_DETERMINISTIC"], "1")
+            # Graphs compiled without the mode are restored from the cache with
+            # their timed candidates and cache paths (Det1, 2026-09-24): the mode
+            # compiles into a cache of its own, and the other stays as it was.
             self.assertEqual(
-                config.environment(self.profile, rank)["TORCHINDUCTOR_DETERMINISTIC"],
-                "1",
+                env["TORCHINDUCTOR_CACHE_DIR"],
+                "/root/.cache/torchinductor-deterministic",
             )
         # torch reads only "1", so the comparison arm is the variable left unset.
         self.profile["runtime"]["inductor_deterministic"] = False
         config.validate(self.profile)
         self.assertNotIn(
             "TORCHINDUCTOR_DETERMINISTIC", config.environment(self.profile, 0)
+        )
+        self.assertEqual(
+            config.environment(self.profile, 0)["TORCHINDUCTOR_CACHE_DIR"],
+            "/root/.cache/torchinductor",
         )
         # No image support is needed: the pinned torch reads the variable itself.
         self.assertNotIn(
