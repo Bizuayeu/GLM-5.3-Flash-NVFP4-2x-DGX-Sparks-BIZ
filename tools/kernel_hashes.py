@@ -61,6 +61,10 @@ def main(argv=None):
     tuned = sorted(
         server.collective_rpc(profile, "autotuners"), key=lambda r: r["rank"]
     )
+    # The settings codegen reads in each worker, and one fresh compile there.
+    inductor = sorted(
+        server.collective_rpc(profile, "inductor_state"), key=lambda r: r["rank"]
+    )
     ranks = sorted(
         server.collective_rpc(profile, "kernel_hashes", seed=args.seed),
         key=lambda r: r["rank"],
@@ -85,7 +89,13 @@ def main(argv=None):
         "autotuners": tuned,
         "autotuners_differing": autotuner_differences(tuned),
         "autotuners_new_after_hashes": new_files,
+        "inductor_state": inductor,
     }
+    for row in inductor:
+        if row.get("environ_disagrees"):
+            print(
+                f"rank {row['rank']}: TORCHINDUCTOR_* environment and Inductor's config disagree"
+            )
     differing = record["autotuners_differing"]
     print(
         "served Inductor configs: "

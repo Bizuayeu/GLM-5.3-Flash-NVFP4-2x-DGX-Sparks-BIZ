@@ -632,9 +632,41 @@ def autotuner_rows(objects, autotuner_type, pattern=None):
                 "cache": (getattr(obj, "autotune_cache_info", None) or {}).get(
                     "autotune_cache_state"
                 ),
+                # What codegen wrote into the kernel: True filters reduction
+                # configs to one before any timing.
+                "deterministic": (getattr(obj, "inductor_meta", None) or {}).get(
+                    "deterministic"
+                ),
             }
         )
     return sorted(rows, key=lambda r: (r["kernel"], r["file"] or ""))
+
+
+INDUCTOR_SETTINGS = (
+    "deterministic",
+    "batch_invariant",
+    "compile_threads",
+    "worker_start_method",
+    "autotune_local_cache",
+    "force_disable_caches",
+)
+
+
+def inductor_state(inductor_config, environ):
+    """The Inductor settings codegen reads in this process, next to the TORCHINDUCTOR_* environment.
+
+    On 2026-09-24 a worker whose environment carried TORCHINDUCTOR_DETERMINISTIC=1
+    generated every kernel with ``'deterministic': False``; this reads both sides
+    in the serving process instead of a fresh one.
+    """
+    config = {k: getattr(inductor_config, k, None) for k in INDUCTOR_SETTINGS}
+    env = {k: v for k, v in sorted(environ.items()) if k.startswith("TORCHINDUCTOR_")}
+    wanted = env.get("TORCHINDUCTOR_DETERMINISTIC") == "1"
+    return {
+        "config": config,
+        "environ": env,
+        "environ_disagrees": wanted != bool(config["deterministic"]),
+    }
 
 
 def autotuner_differences(ranks):
@@ -881,6 +913,49 @@ class MemoryProbeWorker:
 
         rows = autotuner_rows(gc.get_objects(), CachingAutotuner, pattern)
         return {"rank": self.rank, "autotuners": rows}
+
+    def inductor_state(self):
+        """Inductor's settings and TORCHINDUCTOR_* environment in this worker, and one fresh compile.
+
+        The compile (a layer norm 96 wide, a shape the model does not use) shows
+        whether codegen in this process now writes the deterministic mode into
+        the kernels it generates.
+        """
+        import gc
+        import os
+
+        import torch
+        import torch._inductor.config as inductor
+        from torch._inductor.runtime.triton_heuristics import CachingAutotuner
+
+        row = inductor_state(inductor, os.environ)
+        row["rank"] = self.rank
+        try:
+            before = {
+                r["file"] for r in autotuner_rows(gc.get_objects(), CachingAutotuner)
+            }
+
+            def norm(x, w, b):
+                return torch.nn.functional.layer_norm(x.float(), (96,), w, b, 1e-6).to(
+                    x.dtype
+                )
+
+            compiled = torch.compile(norm, dynamic=True)
+            with torch.inference_mode():
+                x = torch.randn(64, 96, device="cuda", dtype=torch.bfloat16)
+                w = torch.ones(96, device="cuda")
+                b = torch.zeros(96, device="cuda")
+                compiled(x, w, b)
+                compiled(x[:32], w, b)
+                torch.cuda.synchronize()
+            row["probe_kernels"] = [
+                r
+                for r in autotuner_rows(gc.get_objects(), CachingAutotuner)
+                if r["file"] not in before
+            ]
+        except Exception as error:  # noqa: BLE001
+            row["probe_error"] = repr(error)[:300]
+        return row
 
     def kernel_hashes(self, seed=0, layer=19):
         """The indexer's computations on fixed inputs, hashed inside this worker.

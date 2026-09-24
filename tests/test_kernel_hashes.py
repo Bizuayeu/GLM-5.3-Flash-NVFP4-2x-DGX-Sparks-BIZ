@@ -104,6 +104,49 @@ def fake_layer(rope_on="owner"):
     return fake_torch, indexer, owner, model
 
 
+class InductorStateTests(unittest.TestCase):
+    def test_reads_the_settings_codegen_uses_and_the_environment(self):
+        inductor = SimpleNamespace(
+            deterministic=False,
+            batch_invariant=False,
+            compile_threads=20,
+            worker_start_method="subprocess",
+            autotune_local_cache=True,
+            force_disable_caches=False,
+        )
+        environ = {
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "TORCHINDUCTOR_CACHE_DIR": "/root/.cache/torchinductor-deterministic",
+            "PATH": "/usr/bin",
+        }
+        state = memory_probe.inductor_state(inductor, environ)
+        self.assertEqual(
+            state["config"],
+            {
+                "deterministic": False,
+                "batch_invariant": False,
+                "compile_threads": 20,
+                "worker_start_method": "subprocess",
+                "autotune_local_cache": True,
+                "force_disable_caches": False,
+            },
+        )
+        self.assertEqual(
+            state["environ"],
+            {
+                "TORCHINDUCTOR_CACHE_DIR": "/root/.cache/torchinductor-deterministic",
+                "TORCHINDUCTOR_DETERMINISTIC": "1",
+            },
+        )
+        # The variable says 1 and the config says False: named, not inferred.
+        self.assertTrue(state["environ_disagrees"])
+        inductor.deterministic = True
+        self.assertFalse(
+            memory_probe.inductor_state(inductor, environ)["environ_disagrees"]
+        )
+        json.dumps(state)
+
+
 class AutotunerTests(unittest.TestCase):
     def test_rows_name_each_kernels_file_configs_and_served_launchers(self):
         class Autotuner:
@@ -126,6 +169,7 @@ class AutotunerTests(unittest.TestCase):
             [config(8, 2)],
         )
         norm.autotune_cache_info = {"autotune_cache_state": "hit", "best_config": ()}
+        norm.inductor_meta["deterministic"] = False
         other = Autotuner("triton_poi_fused_add_0", "/c/zz/czz.py", [], [])
         other.configs = None  # torch 2.13 drops the candidates after precompile
 
@@ -151,6 +195,7 @@ class AutotunerTests(unittest.TestCase):
                     ],
                     "launchers": [{"XBLOCK": 8, "num_warps": 2, "num_stages": 1}],
                     "cache": "hit",
+                    "deterministic": False,
                 }
             ],
         )
@@ -406,9 +451,13 @@ class ToolTests(unittest.TestCase):
                 patch.object(
                     kernel_hashes.server,
                     "collective_rpc",
-                    side_effect=lambda profile, method, **kw: (
-                        autotuners if method == "autotuners" else ranks
-                    ),
+                    side_effect=lambda profile, method, **kw: {
+                        "autotuners": autotuners,
+                        "inductor_state": [
+                            {"rank": 1, "environ_disagrees": True},
+                            {"rank": 0, "environ_disagrees": False},
+                        ],
+                    }.get(method, ranks),
                 ) as rpc,
                 patch.object(
                     kernel_hashes.server_config,
@@ -423,9 +472,9 @@ class ToolTests(unittest.TestCase):
             # The served launchers are read before kernel_hashes runs anything.
             self.assertEqual(
                 [c.args[1] for c in rpc.call_args_list],
-                ["autotuners", "kernel_hashes", "autotuners"],
+                ["autotuners", "inductor_state", "kernel_hashes", "autotuners"],
             )
-            self.assertEqual(rpc.call_args_list[1].kwargs["seed"], 0)
+            self.assertEqual(rpc.call_args_list[2].kwargs["seed"], 0)
             return code, json.loads(output.read_text(encoding="utf-8"))
 
     def test_records_both_ranks_and_compares_them_and_a_reference(self):
@@ -467,6 +516,7 @@ class ToolTests(unittest.TestCase):
         code, record = self.run_tool(ranks, autotuners=tuned)
         self.assertEqual([r["rank"] for r in record["autotuners"]], [0, 1])
         self.assertEqual(record["autotuners_differing"], ["pf/c.py"])
+        self.assertEqual([r["rank"] for r in record["inductor_state"]], [0, 1])
         # Nothing new compiled by the hashes (the same answers before and after).
         self.assertEqual(record["autotuners_new_after_hashes"], {"0": [], "1": []})
         self.assertEqual(code, 0)  # informative: several kernels differ by design
