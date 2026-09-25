@@ -4,7 +4,7 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
-## Unreleased
+## 1.16.0 — 2026-09-26
 
 ### Removed
 
@@ -13,8 +13,8 @@
 ### ドキュメント
 
 - attentionの経路の記述を正した。文書はdecodeが参照経路のままだと書いていたが、参照attentionはquery行が6を超える呼び出しをFA2へ送る。1系列のdecodeのstepは参照経路のままだが、MTPの深さ3では相方がいると検証stepが8行になってFA2を通り、ある行の結果が相方の行数と長さで1 BF16 ulp動く。これは2系列の差の主因ではない：同じ調査で配信中の対のattentionの呼び出しを全部eagerにしても、2系列のcompletion 8本のうち7本が単独のものと違ったままで、容疑者の先頭はMoE。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でもcompletionは反復し、2系列では反復しない（[測定](docs/benchmarks.ja.md#servingでの到達性2026-09-26)）。起動設定・検証・README・施策台帳（P26は退役、P05）・最適化の概観・運用・構成、両方のexampleと `glm53_setup/runtime/fa2_attention.py` の `fa2_attention` のコメント（コメントだけ。このファイルはimageの上にmountする）をそのように直した。
-- benchmarksの1.15.0：参照対でのCPU配置（2026-09-26）。公開しているdecodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちる。`nodes[].cpuset_cpus` で防げる。READMEの見出し表と起動設定からそこを指す。
-- 文書を1.15.0に合わせて更新し、短くし、事実ごとに正典を一つにした。後の版が追い越していた記述を現状に直した：同時2系列profileの受け入れ（2026-09-23）、「検証中」ではなく1.12.0と1.14.0の再現性のスイッチ、任意の実験ではなくテンプレートのMTP k=3、decode GraphsとExpert Parallelは測定して不採用、FreedomBenchは閉じた、ハーネスの経路は決定済み、「この版から作ったimage」はすべて版番号に置き換えた。
+- benchmarksの1.15.0：参照対でのCPU配置（2026-09-26）。公開しているdecodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちる（completionと受理長は同じまま）。`nodes[].cpuset_cpus` で防げる。READMEの見出し表と起動設定からそこを指す。
+- 文書を1.15.0に合わせて更新し、短くし、事実ごとに正典を一つにした。後の版が追い越していた記述を現状に直した：同時2系列profileの受け入れ（2026-09-23）、「検証中」ではなく1.12.0と1.14.0の再現性のスイッチ（後者は上で退役）、任意の実験ではなくテンプレートのMTP k=3、decode GraphsとExpert Parallelは測定して不採用、FreedomBenchは閉じた、ハーネスの経路は決定済み、「この版から作ったimage」はすべて版番号に置き換えた。
 - 起動設定を組み直した：配布既定と公開オプションを先に置き、続いてキーの解説（再現性のスイッチ、attention・cache・checkpoint、並列化、画像入力、APIと診断〔memory probeのmethodは表〕、prefix cacheと併用するLPA）、最後にコマンド。image契約は、すべてのcapability markerについて、preflightがそれを要求する設定と、imageがそれを持つ版を表にし、文書一覧の正典表にも載せた。訂正が二つ：MTPの深さ1〜5を測ったのは再量子化したcheckpointで、固定checkpointは1・3・4（両方で5つすべてではない）。LPAは `runtime.fa2_attention` と両立せず、MTPとは深さ1か3でだけ組める。
 - LPA：有効化の手順で `runtime.fa2_attention = false` を設定するようにした。テンプレートはFA2を有効にしているので、これが無いとlauncherがprofileを拒む。
 - 検証：同時実行の範囲をprofileごとの表にし、証拠と反復性の規則を添えた。フルモデルの節に小節（読み込み・API・ベンチマークの確認、マルチバイト出力、再現性）を足した。起動の三つの数値状態の説明は一段落にし、数値はbenchmarksの1.9.0、探索の手順はこの変更履歴（1.10.0〜1.12.2）に置いた。
