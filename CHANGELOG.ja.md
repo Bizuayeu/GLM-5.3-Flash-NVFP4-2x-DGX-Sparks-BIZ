@@ -4,6 +4,13 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.12.2 — 2026-09-25
+
+### Documentation
+
+- 検証の多バイト文字の段落に、tonyd2wildのcheckpoint guard（`abb38bb`）が、attentionを量子化したModelOptのbuildを多バイト文字が化けるbuildとして拒否することを書き足した。vLLM #54150について、本リポジトリの書くgate／upのscale不一致とは別の読みになる。BIZ AXLはattention射影を量子化している（ModelOptではなく自前のW4A16 repack）が、`server mojibake` に2026-09-21と2026-09-25に合格した（6回答すべて、置換文字・サロゲート・制御文字なし）。6回答では二つの読みのどちらが正しいかは決まらない。
+- 最初にcompileしたframeの後で `TORCHINDUCTOR_DETERMINISTIC` を切るDynamoの状態復元（pytorch/pytorch#198563）は、torch 2.12.1でも起きる。GB10での報告（vllm-project/vllm#58636）があり、PyTorchのissueの再現例でも確認した。サーバー設定と検証の記述をtorch 2.13に固有のものとして書かない形に直した。下の1.12.0の項は、imageが載せているtorchについての記述。
+
 ## 1.12.1 — 2026-09-25
 
 ### Documentation

@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.12.2 — 2026-09-25
+
+### Documentation
+
+- Validation's multibyte paragraph notes that tonyd2wild's checkpoint guard (`abb38bb`) refuses ModelOpt builds that quantize attention as the builds that garble multibyte text, a different reading of vLLM #54150 from the gate/up scale mismatch this repository describes. BIZ AXL quantizes the attention projections (its own W4A16 repack, not ModelOpt) and passed `server mojibake` on 2026-09-21 and again on 2026-09-25 (six of six answers, no replacement, surrogate or control characters); six answers do not decide between the readings.
+- The Dynamo reset that turns `TORCHINDUCTOR_DETERMINISTIC` off after the first compiled frame (pytorch/pytorch#198563) also occurs on torch 2.12.1, as reported on a GB10 in vllm-project/vllm#58636 and reproduced with the PyTorch issue's example. Server configuration and validation no longer present it as specific to torch 2.13; the 1.12.0 entry below describes the torch the image carries.
+
 ## 1.12.1 — 2026-09-25
 
 ### Documentation
