@@ -1,5 +1,7 @@
+import contextlib
 import copy
 import hashlib
+import io
 import json
 import re
 import tempfile
@@ -166,6 +168,30 @@ class ServerConfigTests(unittest.TestCase):
                     server.start_rank(None, args, self.profile, {"passed": True})
             self.assertEqual(run.call_args_list[-1].args[:2], ("docker", "stop"))
             self.assertFalse((temporary_root / "rank.json").exists())
+
+    def test_the_supervision_banner_names_every_stop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            args = SimpleNamespace(rank=0, run_id=None, config=Path("server.toml"))
+            out = io.StringIO()
+            with (
+                patch.object(server, "ROOT", temporary_root),
+                patch.object(
+                    server, "state_path", return_value=temporary_root / "rank.json"
+                ),
+                patch.object(server, "command", return_value=["docker", "run"]),
+                patch.object(server, "verify_cpu_set"),
+                patch.object(server.host, "run", return_value="created"),
+                patch.object(server, "supervise") as supervise,
+                contextlib.redirect_stdout(out),
+            ):
+                server.start_rank(None, args, self.profile, {"passed": True})
+            supervise.assert_called_once()
+        banner = out.getvalue().splitlines()[-1]
+        self.assertTrue(banner.startswith("Supervising in foreground"), banner)
+        # supervise's stop reasons: memory-reserve, run-deadline, engine-stall.
+        for stop in ("Ctrl+C", "low memory", "deadline", "engine stall"):
+            self.assertIn(stop, banner)
 
     def test_jit_caches_live_in_the_mounted_runtime_cache(self):
         for rank in (0, 1):

@@ -1,10 +1,14 @@
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+
+from glm53_setup import server
+from tools import check_prefix_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -62,6 +66,29 @@ class PublicCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("sha256:", result.stdout)
             self.assertIn("Dockerfile.reference", result.stdout)
+
+
+class HelpTextTests(unittest.TestCase):
+    def test_server_help_is_the_launcher_docstring(self):
+        description = server.parser().description
+        self.assertEqual(description, server.__doc__)
+        self.assertTrue(description.startswith("The launcher of the TP=2 serving pair"))
+        self.assertNotIn("experiment", description.lower())
+        for path in re.findall(r"docs/[\w.-]+\.md", description):
+            self.assertTrue((ROOT / path).is_file(), path)
+
+    def test_check_prefix_cache_usage_is_one_command_line(self):
+        # argparse re-wraps --help, so the docstring is where the line lives.
+        lines = [
+            line.strip()
+            for line in check_prefix_cache.__doc__.splitlines()
+            if "tools/check_prefix_cache.py" in line
+        ]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertRegex(
+            lines[0],
+            r"^python tools/check_prefix_cache\.py --base-url \S+ --model \S+$",
+        )
 
 
 if __name__ == "__main__":
