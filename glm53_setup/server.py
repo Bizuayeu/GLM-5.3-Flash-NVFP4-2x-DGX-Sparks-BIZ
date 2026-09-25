@@ -419,11 +419,16 @@ def parse_metrics(text, names):
     return totals
 
 
-def metrics_text(profile, timeout=2):
+def api_origin(profile):
+    """The running head's API as a client on the same host reaches it."""
+    return f"http://127.0.0.1:{profile['api']['port']}"
+
+
+def metrics_text(profile, timeout=2, errors="replace"):
     with model_http.open_response(
-        f"http://127.0.0.1:{profile['api']['port']}", "/metrics", timeout=timeout
+        api_origin(profile), "/metrics", timeout=timeout
     ) as response:
-        return response.read().decode("utf-8", "replace")
+        return response.read().decode("utf-8", errors)
 
 
 def progress_sample(profile):
@@ -507,7 +512,7 @@ def running_head(profile):
 
 def post(profile, path, body):
     return model_http.post_json(
-        f"http://127.0.0.1:{profile['api']['port']}",
+        api_origin(profile),
         path,
         body,
         timeout=profile["generation"]["timeout_seconds"],
@@ -517,6 +522,12 @@ def post(profile, path, body):
 def collective_rpc(profile, method, **kwargs):
     body = {"method": method, "kwargs": kwargs, "timeout": 600}
     return post(profile, "/collective_rpc", body)["results"]
+
+
+def reset_prefix_cache(profile):
+    """Empty the running head's prefix cache; a reset it does not acknowledge fails."""
+    if post(profile, "/reset_prefix_cache", {}) != {"success": True}:
+        raise ValueError("Prefix cache reset was not acknowledged")
 
 
 def container_logs(name):
@@ -548,17 +559,15 @@ def warmup_report(profile, name):
             {"model": profile["api"]["served_model_name"], "prompt": text},
         )["count"]
 
-    def reset():
-        if post(profile, "/reset_prefix_cache", {}) != {"success": True}:
-            raise ValueError("Prefix cache reset was not acknowledged")
-
     return warmup.run(
         profile,
         ask=lambda request: ask(profile, request),
         count_tokens=count_tokens,
         logs=lambda: container_logs(name),
         clock=time.monotonic,
-        reset=reset if settings.dev_mode(profile) else None,
+        reset=(lambda: reset_prefix_cache(profile))
+        if settings.dev_mode(profile)
+        else None,
     )
 
 

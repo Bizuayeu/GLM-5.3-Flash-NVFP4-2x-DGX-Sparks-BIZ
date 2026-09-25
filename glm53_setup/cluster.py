@@ -223,7 +223,7 @@ def rpc(action, rank, value):
                 return {"ready": False}
             try:
                 with model_http.open_response(
-                    f"http://127.0.0.1:{profile['api']['port']}", "/health", timeout=2
+                    server.api_origin(profile), "/health", timeout=2
                 ) as response:
                     return {"ready": response.status == 200}
             except model_http.ModelHTTPError as error:

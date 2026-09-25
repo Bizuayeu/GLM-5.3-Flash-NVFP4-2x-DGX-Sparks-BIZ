@@ -123,11 +123,7 @@ def main(argv=None):
     def post(path, body):
         return server.post(profile, path, body)
 
-    def reset():
-        if post("/reset_prefix_cache", {}) != {"success": True}:
-            raise ValueError(
-                "Cache reset did not complete; do not compare these conditions"
-            )
+    reset = partial(server.reset_prefix_cache, profile)
 
     save()
     try:

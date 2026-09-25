@@ -117,7 +117,7 @@ def stream_chat(profile, body):
     stamps, content, usage, finish = [], [], None, None
     done = False
     with model_http.open_response(
-        f"http://127.0.0.1:{profile['api']['port']}",
+        server.api_origin(profile),
         "/v1/chat/completions",
         body=request,
         timeout=profile["generation"]["timeout_seconds"],
@@ -157,17 +157,8 @@ def stream_chat(profile, body):
 
 
 def read_metrics(profile):
-    """The running head's Prometheus text."""
-    with model_http.open_response(
-        f"http://127.0.0.1:{profile['api']['port']}", "/metrics", timeout=10
-    ) as response:
-        return response.read().decode()
-
-
-def reset_prefix_cache(profile):
-    """Empty the dedicated server's prefix cache between cases."""
-    if server.post(profile, "/reset_prefix_cache", {}) != {"success": True}:
-        raise ValueError("Dedicated server cache reset failed")
+    """The running head's Prometheus text; bytes that are not UTF-8 fail the case."""
+    return server.metrics_text(profile, timeout=10, errors="strict")
 
 
 def encode_prompt(profile, body):
@@ -320,7 +311,7 @@ def main(argv=None):
     post = partial(server.post, profile)
     rpc = partial(server.collective_rpc, profile)
     metrics = partial(read_metrics, profile)
-    reset = partial(reset_prefix_cache, profile)
+    reset = partial(server.reset_prefix_cache, profile)
     encode = partial(encode_prompt, profile)
     check_policy = partial(policy_hits, profile, rpc)
     chat = partial(chat_turn, profile, rpc)

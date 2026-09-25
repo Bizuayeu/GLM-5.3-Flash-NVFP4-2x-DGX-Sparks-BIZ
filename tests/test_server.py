@@ -1565,5 +1565,40 @@ class HostFactOwnerTests(unittest.TestCase):
         self.assertEqual(server.parser().get_default("config"), DEFAULT_PROFILE)
 
 
+class HeadClientTests(unittest.TestCase):
+    """The one spelling of how a host-local client reaches the running head."""
+
+    PROFILE = {"api": {"port": 8123}}
+
+    def test_the_head_is_reached_on_the_loopback_at_the_profile_port(self):
+        self.assertEqual(server.api_origin(self.PROFILE), "http://127.0.0.1:8123")
+
+    def test_a_reset_that_is_not_acknowledged_fails(self):
+        with patch.object(server, "post", return_value={"success": True}) as post:
+            server.reset_prefix_cache(self.PROFILE)
+        post.assert_called_once_with(self.PROFILE, "/reset_prefix_cache", {})
+        for answer in ({}, {"success": False}):
+            with (
+                self.subTest(answer=answer),
+                patch.object(server, "post", return_value=answer),
+                self.assertRaisesRegex(ValueError, "not acknowledged"),
+            ):
+                server.reset_prefix_cache(self.PROFILE)
+
+    def test_metrics_are_decoded_as_each_caller_asks(self):
+        @contextlib.contextmanager
+        def response(origin, path, timeout):
+            self.assertEqual((origin, path), ("http://127.0.0.1:8123", "/metrics"))
+            seen.append(timeout)
+            yield io.BytesIO(b"a \xff")
+
+        seen = []
+        with patch.object(server.model_http, "open_response", response):
+            self.assertEqual(server.metrics_text(self.PROFILE), "a " + chr(0xFFFD))
+            with self.assertRaises(UnicodeDecodeError):
+                server.metrics_text(self.PROFILE, timeout=10, errors="strict")
+        self.assertEqual(seen, [2, 10])
+
+
 if __name__ == "__main__":
     unittest.main()

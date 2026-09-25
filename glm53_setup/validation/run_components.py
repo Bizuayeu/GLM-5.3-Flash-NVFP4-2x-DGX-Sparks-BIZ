@@ -48,7 +48,7 @@ def complete_tokens(profile, ids, count):
 
 def toggle_profiler(profile, endpoint):
     with model_http.open_response(
-        f"http://127.0.0.1:{profile['api']['port']}",
+        server.api_origin(profile),
         "/" + endpoint,
         body={},
     ) as response:
@@ -68,7 +68,7 @@ def wait_ready(
     while clock() < limit:
         try:
             with open_response(
-                f"http://127.0.0.1:{profile['api']['port']}", "/health", timeout=5
+                server.api_origin(profile), "/health", timeout=5
             ) as response:
                 if response.status == 200:
                     return
