@@ -1,10 +1,12 @@
 import copy
+import hashlib
 import unittest
 from difflib import SequenceMatcher
 from pathlib import Path
 
 from glm53_setup import server
 from glm53_setup import server_config as config
+from glm53_setup.config import REVISION
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = ROOT / "examples/server.example.toml"
@@ -93,10 +95,7 @@ class AxlExampleTests(unittest.TestCase):
                         ),
                         ([], ["-e", "GLM53_PREFIX_PAGE_DEDUP=1"]),
                         (
-                            [
-                                "/hf/local-views/glm53-mtp-compatible/"
-                                "423acf37583782c51c142d145aef733d72943d93"
-                            ],
+                            ["/hf/local-views/glm53-mtp-compatible/" + REVISION],
                             ["/derived"],
                         ),
                         (["1"], ["2"]),
@@ -112,6 +111,22 @@ class AxlExampleTests(unittest.TestCase):
                     {"GLM53_PREFIX_PAGE_DEDUP": "1"},
                 )
                 self.assertEqual([k for k in defaults_env if k not in axl_env], [])
+
+    def test_the_overlays_the_example_names_are_the_ones_the_repository_ships(self):
+        # Preflight hashes the mounted bytes and looks for the marker; the files
+        # are checked out with LF (.gitattributes), so these are those bytes.
+        overlays = config.derived_checkpoint(config.load(AXL))["overlays"]
+        for overlay in overlays:
+            with self.subTest(target=overlay["target"]):
+                content = (
+                    ROOT / "overlays" / Path(overlay["source"]).name
+                ).read_bytes()
+                self.assertEqual(hashlib.sha256(content).hexdigest(), overlay["sha256"])
+                self.assertIn(overlay["marker"].encode(), content)
+        self.assertEqual(
+            sorted(Path(o["source"]).name for o in overlays),
+            sorted(path.name for path in (ROOT / "overlays").glob("*.py")),
+        )
 
     def test_a_kv_budget_above_three_gib_needs_the_derived_checkpoint(self):
         # Measured on the reference pair (2026-09-22): the pinned weights load 95.76 GiB
