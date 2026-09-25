@@ -36,6 +36,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/runtime/prefix_dedup.py`, `patch_prefix_dedup.py` | One cached prefix page per content (`runtime.prefix_page_dedup`) and its source-pinned patch |
 | `glm53_setup/runtime/patch_slot_mapping.py` | Source-pinned patch: the slot-mapping kernel reads a block table only inside its row |
 | `glm53_setup/runtime/patch_kpool_seed.py` | Source-pinned patch: the kpool prefill seed addresses tail blocks by the tail's strides (vLLM #57477) |
+| `glm53_setup/runtime/mla_decode_cpb.py`, `patch_mla_decode_cpb.py` | The sparse-MLA decode takes FlashInfer's `chunks_per_block` from the tokens of one sequence (`runtime.mla_decode_cpb`) and its source-pinned patch |
 | `glm53_setup/runtime/inductor_pin.py`, `inductor_pin_pth.txt` | Keeps Inductor's deterministic mode on through Dynamo's state restore, which turns it off after the first compiled frame (`runtime.inductor_deterministic`); the text file, mounted as `glm53-inductor-pin.pth` in the image's site directory, runs it at interpreter start |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |

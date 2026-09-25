@@ -437,6 +437,40 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
+    def test_mla_decode_cpb_is_off_unless_set_and_needs_the_image_marker(self):
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertNotIn("mla_decode_cpb", distributed["runtime"])
+        self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(distributed, 0))
+        self.profile["runtime"]["mla_decode_cpb"] = True
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 0)["GLM53_MLA_DECODE_CPB"], "1"
+        )
+        image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+        self.assertIs(
+            server.image_capability_checks(self.profile, image)[
+                "mla_decode_cpb_support"
+            ],
+            False,
+        )
+        image["Config"]["Env"].append("GLM53_MLA_DECODE_CPB_API=1")
+        self.assertIs(
+            server.image_capability_checks(self.profile, image)[
+                "mla_decode_cpb_support"
+            ],
+            True,
+        )
+        self.profile["runtime"]["mla_decode_cpb"] = False
+        config.validate(self.profile)
+        self.assertEqual(
+            config.environment(self.profile, 1)["GLM53_MLA_DECODE_CPB"], "0"
+        )
+        for bad in (1, 0, "true", None):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["mla_decode_cpb"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)
         config.validate(self.profile)

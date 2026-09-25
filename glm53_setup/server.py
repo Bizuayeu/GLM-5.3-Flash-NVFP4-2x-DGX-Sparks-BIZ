@@ -215,6 +215,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_PREFIX_DEDUP_API=1",
             runtime.get("prefix_page_dedup", False),
         ),
+        (
+            "mla_decode_cpb_support",
+            "GLM53_MLA_DECODE_CPB_API=1",
+            runtime.get("mla_decode_cpb", False),
+        ),
     ]
     env = image["Config"].get("Env") or []
     return {

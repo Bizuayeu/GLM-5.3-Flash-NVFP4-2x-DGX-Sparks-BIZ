@@ -64,6 +64,7 @@ OPTIONAL_KEYS = {
             "fa2_attention",
             "prefix_page_dedup",
             "inductor_deterministic",
+            "mla_decode_cpb",
         }
     ),
     "server.cache": frozenset(
@@ -151,6 +152,8 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(profile["runtime"].get("prefix_page_dedup", False)) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
+    if type(profile["runtime"].get("mla_decode_cpb", False)) is not bool:
+        raise ValueError("runtime.mla_decode_cpb must be true or false")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -527,6 +530,9 @@ def environment(profile, rank):
         result["GLM53_PREFIX_PAGE_DEDUP"] = str(
             int(profile["runtime"]["prefix_page_dedup"])
         )
+    if "mla_decode_cpb" in profile["runtime"]:
+        # Absent: off, FlashInfer picks chunks_per_block per call as pinned.
+        result["GLM53_MLA_DECODE_CPB"] = str(int(profile["runtime"]["mla_decode_cpb"]))
     if (
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]
