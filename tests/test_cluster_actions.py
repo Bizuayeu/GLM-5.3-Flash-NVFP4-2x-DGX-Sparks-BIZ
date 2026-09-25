@@ -176,7 +176,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
             with self.subTest(marker=marker, recovery=recovery):
                 env = [f"GLM53_MOE_ORDER_API={marker}"] if marker else []
                 image = {"Id": "sha256:" + "0" * 64, "Config": {"Env": env}}
-                checks = server.image_capability_checks(
+                checks = config.image_capability_checks(
                     current, image, recovery=recovery
                 )
                 self.assertEqual(checks["moe_order_support"], expected)

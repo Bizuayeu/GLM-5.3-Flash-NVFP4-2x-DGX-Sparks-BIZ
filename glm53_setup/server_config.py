@@ -617,6 +617,105 @@ def environment(profile, rank):
     return result
 
 
+MOE_ORDER_MARKERS = ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2")
+
+
+def image_capability_checks(profile, image, *, recovery=False):
+    """Each enabled feature must find its API marker baked into the image env.
+
+    recovery names the pair a switch leaves: it must stay restartable as it was
+    launched, so it keeps the requirement of its own day.
+    """
+    runtime, validation = profile["runtime"], profile["validation"]
+    required = [
+        (
+            "pipeline_support",
+            "GLM53_PIPELINE_API=1",
+            runtime["pipeline_parallel_size"] == 2,
+        ),
+        (
+            "expert_parallel_support",
+            "GLM53_EXPERT_PARALLEL_API=1",
+            runtime["expert_parallel"] or validation["expert_worker"],
+        ),
+        ("component_worker", "GLM53_COMPONENT_API=1", validation["component_worker"]),
+        (
+            "fused_unpack_support",
+            "GLM53_FUSED_UNPACK_SUPPORTED=1",
+            profile["cache"]["fused_unpack"],
+        ),
+        (
+            "decode_graph_support",
+            "GLM53_DECODE_GRAPH_API=1",
+            decode_graphs(profile),
+        ),
+        (
+            "async_index_check_support",
+            "GLM53_ASYNC_INDEX_CHECK_API=1",
+            asynchronous_index_checks(profile),
+        ),
+        ("lpa_worker", "GLM53_LPA_API=2", profile["lpa"]["enabled"]),
+        ("apc_lpa_support", "GLM53_APC_LPA_API=1", apc_lpa_enabled(profile)),
+        ("reference_attention", "GLM53_REFERENCE_ATTENTION=1", True),
+        (
+            "moe_order_support",
+            # 1 also names the image whose sort mis-sized its buffer (46cd464), so
+            # only an already-launched pair keeps it.
+            MOE_ORDER_MARKERS if recovery else MOE_ORDER_MARKERS[1],
+            runtime.get("canonical_moe_order", False),
+        ),
+        (
+            "indexer_topk_support",
+            "GLM53_INDEXER_TOPK_API=1",
+            runtime.get("stable_indexer_topk", False),
+        ),
+        (
+            "prefix_dedup_support",
+            "GLM53_PREFIX_DEDUP_API=1",
+            optional(profile, "runtime", "prefix_page_dedup"),
+        ),
+        # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the
+        # helper, the Dockerfile RUN/ENV lines and the key's acceptance together in the
+        # next image build.
+        (
+            "mla_decode_cpb_support",
+            "GLM53_MLA_DECODE_CPB_API=1",
+            optional(profile, "runtime", "mla_decode_cpb"),
+        ),
+    ]
+    env = image["Config"].get("Env") or []
+    return {
+        key: any(
+            item in env for item in ((marker,) if isinstance(marker, str) else marker)
+        )
+        for key, marker, enabled in required
+        if enabled
+    }
+
+
+# The key never ran in serving (the reference attention returns before the decode it
+# patched); a profile that carries it can drop it.
+RETIRED_CPB = "mla_decode_cpb_retired"
+
+
+def capability_warnings(profile, image, *, recovery=False):
+    """What a recovery target was allowed that a new launch would be refused, and retired keys."""
+    env = image["Config"].get("Env") or []
+    warnings = []
+    if (
+        recovery
+        and profile["runtime"].get("canonical_moe_order", False)
+        and MOE_ORDER_MARKERS[1] not in env
+        and MOE_ORDER_MARKERS[0] in env
+    ):
+        warnings.append("moe_order_marker_1_accepted_for_recovery")
+    # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
+    # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
+    if "mla_decode_cpb" in profile["runtime"]:
+        warnings.append(RETIRED_CPB)
+    return warnings
+
+
 def resolve_launch(profile, environ=None):
     """Freeze the launch-origin allocator override into the shared profile once."""
     env = os.environ if environ is None else environ

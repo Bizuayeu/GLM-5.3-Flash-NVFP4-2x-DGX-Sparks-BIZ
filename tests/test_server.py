@@ -376,7 +376,7 @@ class ServerConfigTests(unittest.TestCase):
         )
         image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
         self.assertIs(
-            server.image_capability_checks(distributed, image)["moe_order_support"],
+            config.image_capability_checks(distributed, image)["moe_order_support"],
             False,
         )
         # Marker 1 is shared by the image whose sort mis-sized its buffer, so a new
@@ -390,13 +390,13 @@ class ServerConfigTests(unittest.TestCase):
         ):
             env = ["GLM53_REFERENCE_ATTENTION=1", marker]
             self.assertIs(
-                server.image_capability_checks(
+                config.image_capability_checks(
                     distributed, {"Config": {"Env": env}}, recovery=recovery
                 )["moe_order_support"],
                 expected,
             )
         self.assertEqual(
-            server.capability_warnings(
+            config.capability_warnings(
                 distributed,
                 {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}},
                 recovery=True,
@@ -408,7 +408,7 @@ class ServerConfigTests(unittest.TestCase):
             (["GLM53_MOE_ORDER_API=1"], False),
         ):
             self.assertEqual(
-                server.capability_warnings(
+                config.capability_warnings(
                     distributed, {"Config": {"Env": env}}, recovery=recovery
                 ),
                 [],
@@ -421,7 +421,7 @@ class ServerConfigTests(unittest.TestCase):
         )
         self.assertNotIn(
             "moe_order_support",
-            server.image_capability_checks(
+            config.image_capability_checks(
                 self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
             ),
         )
@@ -446,12 +446,12 @@ class ServerConfigTests(unittest.TestCase):
         )
         image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
         self.assertIs(
-            server.image_capability_checks(distributed, image)["indexer_topk_support"],
+            config.image_capability_checks(distributed, image)["indexer_topk_support"],
             False,
         )
         image["Config"]["Env"].append("GLM53_INDEXER_TOPK_API=1")
         self.assertIs(
-            server.image_capability_checks(distributed, image)["indexer_topk_support"],
+            config.image_capability_checks(distributed, image)["indexer_topk_support"],
             True,
         )
         # Off is the comparison arm: the kernels alone, which any image has.
@@ -462,7 +462,7 @@ class ServerConfigTests(unittest.TestCase):
         )
         self.assertNotIn(
             "indexer_topk_support",
-            server.image_capability_checks(
+            config.image_capability_checks(
                 self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
             ),
         )
@@ -517,7 +517,7 @@ class ServerConfigTests(unittest.TestCase):
         self.assertNotIn(
             "inductor_deterministic",
             json.dumps(
-                server.image_capability_checks(
+                config.image_capability_checks(
                     self.profile, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
                 )
             ),
@@ -538,7 +538,7 @@ class ServerConfigTests(unittest.TestCase):
         self.assertNotIn("GLM53_PREFIX_PAGE_DEDUP", config.environment(distributed, 0))
         self.assertNotIn(
             "prefix_dedup_support",
-            server.image_capability_checks(
+            config.image_capability_checks(
                 distributed, {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
             ),
         )
@@ -549,12 +549,12 @@ class ServerConfigTests(unittest.TestCase):
         )
         image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
         self.assertIs(
-            server.image_capability_checks(self.profile, image)["prefix_dedup_support"],
+            config.image_capability_checks(self.profile, image)["prefix_dedup_support"],
             False,
         )
         image["Config"]["Env"].append("GLM53_PREFIX_DEDUP_API=1")
         self.assertIs(
-            server.image_capability_checks(self.profile, image)["prefix_dedup_support"],
+            config.image_capability_checks(self.profile, image)["prefix_dedup_support"],
             True,
         )
         self.profile["runtime"]["prefix_page_dedup"] = False
@@ -576,9 +576,9 @@ class ServerConfigTests(unittest.TestCase):
             image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
             self.assertNotIn(
                 "mla_decode_cpb_support",
-                server.image_capability_checks(example, image),
+                config.image_capability_checks(example, image),
             )
-            self.assertEqual(server.capability_warnings(example, image), [])
+            self.assertEqual(config.capability_warnings(example, image), [])
 
     def test_a_profile_that_still_carries_mla_decode_cpb_launches_as_before(self):
         # Retired in 1.16.0: it never ran in serving. A profile that carries it keeps
@@ -597,9 +597,9 @@ class ServerConfigTests(unittest.TestCase):
             )
             self.assertEqual(config.serve_args(profile, 0, "/hf/model"), args)
             for recovery in (False, True):
-                warnings = server.capability_warnings(profile, image, recovery=recovery)
+                warnings = config.capability_warnings(profile, image, recovery=recovery)
                 self.assertEqual(warnings, ["mla_decode_cpb_retired"])
-            checks = server.image_capability_checks(profile, image)
+            checks = config.image_capability_checks(profile, image)
             if value:
                 self.assertIs(checks["mla_decode_cpb_support"], False)
                 image_with = {
@@ -608,7 +608,7 @@ class ServerConfigTests(unittest.TestCase):
                     }
                 }
                 self.assertIs(
-                    server.image_capability_checks(profile, image_with)[
+                    config.image_capability_checks(profile, image_with)[
                         "mla_decode_cpb_support"
                     ],
                     True,
@@ -631,7 +631,7 @@ class ServerConfigTests(unittest.TestCase):
     def test_retired_warning_comes_beside_the_recovery_warning(self):
         self.profile["runtime"]["canonical_moe_order"] = True
         self.profile["runtime"]["mla_decode_cpb"] = False
-        warnings = server.capability_warnings(
+        warnings = config.capability_warnings(
             self.profile,
             {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}},
             recovery=True,
@@ -1387,7 +1387,7 @@ class ServerConfigTests(unittest.TestCase):
     def test_image_capability_markers_follow_enabled_features(self):
         # A missing or empty image env fails every required marker closed.
         for image_config in ({}, {"Env": None}):
-            checks = server.image_capability_checks(
+            checks = config.image_capability_checks(
                 self.profile, {"Config": image_config}
             )
             self.assertEqual(checks, {"reference_attention": False})
@@ -1395,7 +1395,7 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["cache"]["prefix_caching"] = True
         self.profile["cache"]["fused_unpack"] = True
         env = ["GLM53_REFERENCE_ATTENTION=1", "GLM53_LPA_API=2", "GLM53_APC_LPA_API=1"]
-        checks = server.image_capability_checks(self.profile, {"Config": {"Env": env}})
+        checks = config.image_capability_checks(self.profile, {"Config": {"Env": env}})
         self.assertEqual(
             checks,
             {
@@ -1513,7 +1513,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             marker
             for marker in env
             if all(
-                server.image_capability_checks(
+                config.image_capability_checks(
                     profile, {"Config": {"Env": [m for m in env if m != marker]}}
                 ).values()
             )
@@ -1523,7 +1523,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
     def test_the_reference_dockerfile_satisfies_every_capability_check(self):
         env, profile = self.dockerfile_env(), self.enabled_profile()
         # A new launch: the stricter requirement.
-        checks = server.image_capability_checks(profile, {"Config": {"Env": env}})
+        checks = config.image_capability_checks(profile, {"Config": {"Env": env}})
         # A check added without turning its feature on above fails this list.
         self.assertEqual(
             list(checks),
