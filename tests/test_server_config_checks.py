@@ -42,6 +42,25 @@ class OptionalKeyTests(unittest.TestCase):
                     without[section].pop(key, None)
                     config.validate(without)
 
+    def test_every_default_belongs_to_an_optional_key(self):
+        for section, defaults in config.OPTIONAL_DEFAULTS.items():
+            with self.subTest(section=section):
+                self.assertLessEqual(
+                    defaults.keys(), config.OPTIONAL_KEYS["server." + section]
+                )
+
+    def test_an_absent_key_reads_as_its_default_and_a_present_one_as_written(self):
+        value = profile()
+        value["runtime"].pop("vision", None)
+        self.assertIs(config.optional(value, "runtime", "vision"), False)
+        value["runtime"]["vision"] = True
+        self.assertIs(config.optional(value, "runtime", "vision"), True)
+
+    def test_keys_whose_absence_leaves_the_choice_to_the_image_have_no_default(self):
+        # Absent, the launcher sets no environment and the image's patch decides.
+        for key in ("canonical_moe_order", "stable_indexer_topk"):
+            self.assertNotIn(key, config.OPTIONAL_DEFAULTS["runtime"])
+
 
 class CheckOrderTests(unittest.TestCase):
     def test_the_validator_runs_its_checks_in_one_declared_order(self):

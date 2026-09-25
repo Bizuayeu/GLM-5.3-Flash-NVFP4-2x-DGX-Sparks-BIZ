@@ -1053,11 +1053,28 @@ class ServerConfigTests(unittest.TestCase):
             {"vllm:num_requests_running": 3.0, "vllm:generation_tokens_total": 5.0},
         )
 
+    def test_dev_mode_is_what_turns_on_the_server_dev_mode(self):
+        self.assertFalse(config.dev_mode(self.profile))
+        self.assertNotIn("VLLM_SERVER_DEV_MODE", config.environment(self.profile, 0))
+        for section, key in (
+            ("api", "dev_endpoints"),
+            ("lpa", "enabled"),
+            ("validation", "component_worker"),
+            ("validation", "expert_worker"),
+        ):
+            with self.subTest(key=key):
+                profile = copy.deepcopy(self.profile)
+                profile[section][key] = True
+                self.assertTrue(config.dev_mode(profile))
+                self.assertEqual(
+                    config.environment(profile, 0)["VLLM_SERVER_DEV_MODE"], "1"
+                )
+
     def test_dev_endpoints_gate_reset_and_capacity_layout(self):
         self.profile["lpa"]["enabled"] = False
-        self.assertFalse(server.dev_endpoints(self.profile))
+        self.assertFalse(config.dev_mode(self.profile))
         self.profile["api"]["dev_endpoints"] = True
-        self.assertTrue(server.dev_endpoints(self.profile))
+        self.assertTrue(config.dev_mode(self.profile))
         with (
             patch.object(server, "container_logs", return_value=""),
             patch.object(server, "metrics_text", return_value=""),

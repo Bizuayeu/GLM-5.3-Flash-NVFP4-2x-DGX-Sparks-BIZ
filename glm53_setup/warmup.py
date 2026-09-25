@@ -13,6 +13,8 @@ import re
 import struct
 import zlib
 
+from .server_config import optional
+
 COMPILED = re.compile(r"JIT compilation during inference: (.+?)\. This causes")
 ANSWER_TOKENS = 32  # Enough decode steps to reach the sampling kernels.
 LONG_LINE = "warmup line {index}.\n"
@@ -119,7 +121,7 @@ def rungs(profile):
             },
         ),
     ]
-    if profile["runtime"].get("vision", False):
+    if optional(profile, "runtime", "vision"):
         ladder.append(
             (
                 "image",
@@ -140,7 +142,7 @@ def rungs(profile):
                 },
             )
         )
-    if profile["generation"].get("warmup_long_tokens", 0):
+    if optional(profile, "generation", "warmup_long_tokens"):
         ladder.append(("long", None))
     return ladder
 

@@ -235,7 +235,7 @@ def rpc(action, rank, value):
         return install(rank, value)
     if action == "warmup":
         profile = server.thaw(value["launch"]["manifest"])
-        if rank != 0 or not profile["generation"].get("warmup", False):
+        if rank != 0 or not server_config.optional(profile, "generation", "warmup"):
             return {"skipped": True}
         owned_record(value)
         state = server.state_path(0)

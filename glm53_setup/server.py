@@ -108,13 +108,13 @@ def command(profile, config_path, rank, name, cache=None):
             target = f"{VLLM_MODEL_DIR}/{overlay['target']}"
             args += ["-v", f"{overlay['source']}:{target}:ro"]
     if profile["lpa"]["enabled"]:
-        target = "/lpa/projector.pt"
+        target = settings.LPA_PROJECTOR
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
-    if profile["validation"].get("memory_probe"):
+    if settings.optional(profile, "validation", "memory_probe"):
         # The probe is newer than the image; mount the checkout's copy.
         source = ROOT / "glm53_setup/runtime/memory_probe.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
-    if profile["runtime"].get("inductor_deterministic"):
+    if settings.optional(profile, "runtime", "inductor_deterministic"):
         # Keeps TORCHINDUCTOR_DETERMINISTIC on through Dynamo's state restore,
         # which turns it off after the first compiled frame (torch 2.12.1 and
         # 2.13, pytorch/pytorch#198563). The .pth runs the module at
@@ -126,7 +126,7 @@ def command(profile, config_path, rank, name, cache=None):
             "-v",
             f"{runtime / 'inductor_pin_pth.txt'}:{SITE_PACKAGES}/glm53-inductor-pin.pth:ro",
         ]
-    if profile["runtime"].get("fa2_attention"):
+    if settings.optional(profile, "runtime", "fa2_attention"):
         # cc-defer: redundant on images that carry GLM53_FA2_ATTENTION_API=1; drop
         # the mounts once no image without it can be a recovery target.
         # The FA2 path and its dispatch are newer than the image, and so is the
@@ -235,7 +235,7 @@ def image_capability_checks(profile, image, *, recovery=False):
         (
             "prefix_dedup_support",
             "GLM53_PREFIX_DEDUP_API=1",
-            runtime.get("prefix_page_dedup", False),
+            settings.optional(profile, "runtime", "prefix_page_dedup"),
         ),
         # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the
         # helper, the Dockerfile RUN/ENV lines and the key's acceptance together in the
@@ -243,7 +243,7 @@ def image_capability_checks(profile, image, *, recovery=False):
         (
             "mla_decode_cpb_support",
             "GLM53_MLA_DECODE_CPB_API=1",
-            runtime.get("mla_decode_cpb", False),
+            settings.optional(profile, "runtime", "mla_decode_cpb"),
         ),
     ]
     env = image["Config"].get("Env") or []
@@ -440,7 +440,7 @@ def supervise(profile, name, record, rank):
     deadline = time.monotonic() + seconds if seconds else None
     # Only the head serves /metrics; /health answers 200 while the engine is
     # wedged, so progress is read from the request counters instead.
-    stall = profile["resources"].get("stall_seconds", 0) if rank == 0 else 0
+    stall = settings.optional(profile, "resources", "stall_seconds") if rank == 0 else 0
     last, moved = None, (time.monotonic() if stall else None)
     try:
         with (record / "resources.jsonl").open("a", encoding="utf-8") as log:
@@ -528,19 +528,10 @@ def container_logs(name):
     ).stdout.decode("utf-8", "replace")
 
 
-def dev_endpoints(profile):
-    return (
-        profile["api"].get("dev_endpoints", False)
-        or profile["lpa"]["enabled"]
-        or profile["validation"]["component_worker"]
-        or profile["validation"]["expert_worker"]
-    )
-
-
 def capacity_report(profile, name):
     """Decompose the KV boot line for the running head; read-only."""
     layout = None
-    if profile["lpa"]["enabled"] and dev_endpoints(profile):
+    if profile["lpa"]["enabled"] and settings.dev_mode(profile):
         layout = collective_rpc(profile, "apc_cache_layout")[0]
     return capacity.summarize(
         profile, container_logs(name), metrics_text(profile), layout
@@ -567,7 +558,7 @@ def warmup_report(profile, name):
         count_tokens=count_tokens,
         logs=lambda: container_logs(name),
         clock=time.monotonic,
-        reset=reset if dev_endpoints(profile) else None,
+        reset=reset if settings.dev_mode(profile) else None,
     )
 
 

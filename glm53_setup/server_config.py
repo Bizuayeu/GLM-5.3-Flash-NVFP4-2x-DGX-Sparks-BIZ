@@ -7,10 +7,15 @@ import math
 import os
 import re
 import tomllib
+from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
 from . import host
 from .config import MODEL_LAYERS, ROOT, load_lock
+from .runtime.apc_runtime import RuntimeSettings
+
+# Where server.command mounts the LPA projector inside the container.
+LPA_PROJECTOR = "/lpa/projector.pt"
 
 
 def load(path):
@@ -78,6 +83,29 @@ OPTIONAL_KEYS = {
 }
 
 
+# What an absent optional key means, where it means a value. canonical_moe_order and
+# stable_indexer_topk have none: absent, the launcher sets nothing and the image decides.
+OPTIONAL_DEFAULTS = {
+    "runtime": {
+        "vision": False,
+        "fa2_attention": False,
+        "prefix_page_dedup": False,
+        "inductor_deterministic": False,
+        "mla_decode_cpb": False,
+    },
+    "cache": {"prefix_cache_retention_interval": 0, "mm_processor_cache_gb": 0.1},
+    "api": {"prompt_tokens_details": False, "dev_endpoints": False},
+    "validation": {"memory_probe": False},
+    "resources": {"stall_seconds": 0},
+    "generation": {"warmup": False, "warmup_long_tokens": 0},
+}
+
+
+def optional(profile, section, key):
+    """An optional key's value, or what its absence means."""
+    return profile[section].get(key, OPTIONAL_DEFAULTS[section][key])
+
+
 def optional_at(path):
     """Which keys may be absent at this point in the schema."""
     if path.startswith("server.nodes["):
@@ -134,7 +162,7 @@ def check_optional_shapes(profile):
                 "runtime.cuda_allocator_conf must be a single-line string, including empty"
             )
     decode_graphs(profile)
-    if type(profile["runtime"].get("vision", False)) is not bool:
+    if type(optional(profile, "runtime", "vision")) is not bool:
         raise ValueError("runtime.vision must be true or false")
     if "nccl_channels" in profile["runtime"]:
         channels = profile["runtime"]["nccl_channels"]
@@ -146,21 +174,21 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.canonical_moe_order must be true or false")
     if type(profile["runtime"].get("stable_indexer_topk", True)) is not bool:
         raise ValueError("runtime.stable_indexer_topk must be true or false")
-    if type(profile["runtime"].get("fa2_attention", False)) is not bool:
+    if type(optional(profile, "runtime", "fa2_attention")) is not bool:
         raise ValueError("runtime.fa2_attention must be true or false")
-    if type(profile["runtime"].get("inductor_deterministic", False)) is not bool:
+    if type(optional(profile, "runtime", "inductor_deterministic")) is not bool:
         raise ValueError("runtime.inductor_deterministic must be true or false")
-    if type(profile["runtime"].get("prefix_page_dedup", False)) is not bool:
+    if type(optional(profile, "runtime", "prefix_page_dedup")) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
     # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
     # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
     # Until then a profile that carries it is checked as it was when it launched.
-    if type(profile["runtime"].get("mla_decode_cpb", False)) is not bool:
+    if type(optional(profile, "runtime", "mla_decode_cpb")) is not bool:
         raise ValueError("runtime.mla_decode_cpb must be true or false")
-    if profile["runtime"].get("mla_decode_cpb") and decode_graphs(profile):
+    if optional(profile, "runtime", "mla_decode_cpb") and decode_graphs(profile):
         # The pinned values were timed on eager decode steps only.
         raise ValueError("runtime.mla_decode_cpb excludes decode Graphs")
-    if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
+    if optional(profile, "runtime", "fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
     if "mm_processor_cache_gb" in profile["cache"]:
@@ -169,15 +197,15 @@ def check_optional_shapes(profile):
             raise ValueError(
                 "cache.mm_processor_cache_gb must be a finite nonnegative number"
             )
-    if type(profile["api"].get("dev_endpoints", False)) is not bool:
+    if type(optional(profile, "api", "dev_endpoints")) is not bool:
         raise ValueError("api.dev_endpoints must be true or false")
-    if type(profile["generation"].get("warmup", False)) is not bool:
+    if type(optional(profile, "generation", "warmup")) is not bool:
         raise ValueError("generation.warmup must be true or false")
     for section, key in (
         ("resources", "stall_seconds"),
         ("generation", "warmup_long_tokens"),
     ):
-        value = profile[section].get(key, 0)
+        value = optional(profile, section, key)
         if type(value) is not int or value < 0:
             raise ValueError(f"{section}.{key} must be a nonnegative integer")
     for rank in (0, 1):
@@ -310,9 +338,9 @@ def check_worker_exclusivity(profile):
         raise ValueError(
             "LPA requires max_num_seqs=1; use a separate no-LPA throughput profile"
         )
-    if type(profile["validation"].get("memory_probe", False)) is not bool:
+    if type(optional(profile, "validation", "memory_probe")) is not bool:
         raise ValueError("validation.memory_probe must be true or false")
-    if profile["validation"].get("memory_probe") and (
+    if optional(profile, "validation", "memory_probe") and (
         profile["lpa"]["enabled"]
         or profile["validation"]["component_worker"]
         or profile["validation"]["expert_worker"]
@@ -330,7 +358,7 @@ def check_generation(profile):
     if profile["generation"]["max_tokens"] >= profile["context"]["max_model_len"]:
         raise ValueError("Reserve context space for the input prompt")
     if (
-        profile["generation"].get("warmup_long_tokens", 0)
+        optional(profile, "generation", "warmup_long_tokens")
         + profile["generation"]["max_tokens"]
         >= profile["context"]["max_model_len"]
     ):
@@ -536,7 +564,7 @@ def environment(profile, rank):
         result["NCCL_MAX_NCHANNELS"] = channels
     if "fa2_attention" in profile["runtime"]:
         result["GLM53_FA2_ATTENTION"] = str(int(profile["runtime"]["fa2_attention"]))
-    if profile["runtime"].get("inductor_deterministic"):
+    if optional(profile, "runtime", "inductor_deterministic"):
         # The replicated indexer's compiled key norm chose XBLOCK by timing on
         # each rank and launch, and two choices differ in bits: one rank's key
         # forked completions (2026-09-24). This mode picks reduction configs
@@ -566,12 +594,7 @@ def environment(profile, rank):
         # Retired (see check_optional_shapes); still set so a profile that carries the key
         # keeps its environment and fingerprint.
         result["GLM53_MLA_DECODE_CPB"] = str(int(profile["runtime"]["mla_decode_cpb"]))
-    if (
-        profile["lpa"]["enabled"]
-        or profile["validation"]["component_worker"]
-        or profile["validation"]["expert_worker"]
-        or profile["api"].get("dev_endpoints", False)
-    ):
+    if dev_mode(profile):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
         result["GLM53_FUSED_UNPACK"] = "1"
@@ -579,17 +602,15 @@ def environment(profile, rank):
         result["GLM53_ASYNC_INDEX_CHECKS"] = "1"
     if apc_lpa_enabled(profile):
         lpa = profile["lpa"]
-        result["GLM53_APC_LPA_CONFIG"] = json.dumps(
-            {
-                "cut": lpa["cut"],
-                "tail": lpa["tail"],
-                "break_even": lpa["break_even_tokens"],
-                "projector_path": "/lpa/projector.pt",
-                "projector_sha256": lpa["projector_sha256"],
-                "skip_mla_queries": lpa["skip_mla_queries"],
-            },
-            sort_keys=True,
+        settings = RuntimeSettings(
+            cut=lpa["cut"],
+            tail=lpa["tail"],
+            break_even=lpa["break_even_tokens"],
+            projector_path=LPA_PROJECTOR,
+            projector_sha256=lpa["projector_sha256"],
+            skip_mla_queries=lpa["skip_mla_queries"],
         )
+        result["GLM53_APC_LPA_CONFIG"] = json.dumps(asdict(settings), sort_keys=True)
     if profile["runtime"]["pipeline_parallel_size"] == 2:
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
@@ -604,6 +625,16 @@ def resolve_launch(profile, environ=None):
         resolved["runtime"]["cuda_allocator_conf"] = env["PYTORCH_CUDA_ALLOC_CONF"]
     validate(resolved)
     return resolved
+
+
+def dev_mode(profile):
+    """Whether the launch mounts vLLM's dev routes (/collective_rpc, cache reset)."""
+    return (
+        optional(profile, "api", "dev_endpoints")
+        or profile["lpa"]["enabled"]
+        or profile["validation"]["component_worker"]
+        or profile["validation"]["expert_worker"]
+    )
 
 
 def apc_lpa_enabled(profile):
@@ -654,7 +685,7 @@ def apply_boolean_flags(args, profile):
 
 def apply_vision(args, profile):
     """Accept image input, and bound what vLLM's startup profiling encodes."""
-    if not profile["runtime"].get("vision", False):
+    if not optional(profile, "runtime", "vision"):
         return
     args.remove("--language-model-only")
     # Images only. Startup profiling encodes the largest item once, and a
@@ -662,7 +693,7 @@ def apply_vision(args, profile):
     args += ["--limit-mm-per-prompt", json.dumps({"video": 0})]
     # vLLM defaults to 4 GiB, duplicated in the head's API and engine
     # processes; this host keeps about 1 GiB above the memory reserve.
-    size = profile["cache"].get("mm_processor_cache_gb", 0.1)
+    size = optional(profile, "cache", "mm_processor_cache_gb")
     args += ["--mm-processor-cache-gb", str(size)]
 
 
@@ -670,7 +701,7 @@ def apply_cache(args, profile):
     """Prefix caching, the KV budget, and how long a prefix is retained."""
     if profile["cache"]["prefix_caching"]:
         args[args.index("--no-enable-prefix-caching")] = "--enable-prefix-caching"
-    if profile["api"].get("prompt_tokens_details"):
+    if optional(profile, "api", "prompt_tokens_details"):
         args.append("--enable-prompt-tokens-details")
     for key in ("kv_cache_memory_bytes", "block_size"):
         args += ["--" + key.replace("_", "-"), str(profile["cache"][key])]
@@ -749,7 +780,7 @@ def apply_worker_extension(args, profile):
             "glm53_setup.validation.expert_worker.ExpertFixtureWorker",
         ),
         (
-            profile["validation"].get("memory_probe"),
+            optional(profile, "validation", "memory_probe"),
             "glm53_setup.runtime.memory_probe.MemoryProbeWorker",
         ),
     ):
@@ -812,7 +843,7 @@ def serve_args(profile, rank, model_path):
 
 
 def retention_interval(profile):
-    value = profile["cache"].get("prefix_cache_retention_interval", 0)
+    value = optional(profile, "cache", "prefix_cache_retention_interval")
     return None if value == "dense" else value
 
 
@@ -844,7 +875,7 @@ def lpa_request(profile, length):
         "cut": lpa["cut"],
         "prompt_length": length,
         "tail": min(lpa["tail"], length),
-        "predictor_path": "/lpa/projector.pt",
+        "predictor_path": LPA_PROJECTOR,
         "skip_mla_queries": lpa["skip_mla_queries"],
         "allow_mtp": profile["mtp"]["enabled"],
     }
