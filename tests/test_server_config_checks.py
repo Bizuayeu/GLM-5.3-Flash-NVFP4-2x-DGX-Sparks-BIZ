@@ -7,6 +7,7 @@ sentence the operator reads -- so they are split by position, never by theme,
 and the order lives in one readable sequence.
 """
 
+import ast
 import copy
 import unittest
 from pathlib import Path
@@ -144,10 +145,26 @@ class ServeArgumentTests(unittest.TestCase):
                     current["runtime"]["enforce_eager"] = True
                     current["context"]["max_num_seqs"] = 1
                 expected = config.serve_args(current, 0, "/model")
-                built = config.host.serve_args(config.site(current, 0), "/model")
+                built = config.serve_template(config.site(current, 0), "/model")
                 for step in config.SERVE_STEPS:
                     step(built, current)
                 self.assertEqual(built, expected)
+
+    def test_the_settings_layer_does_not_import_the_host_module(self):
+        # host runs docker and reads /proc; the argv template and the site
+        # checks the settings need are pure, and live here and in fabric.
+        tree = ast.parse(Path(config.__file__).read_text(encoding="utf-8"))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.level
+            for alias in node.names
+        } | {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.level and node.module
+        }
+        self.assertNotIn("host", imported)
 
     def test_a_step_that_needs_no_work_leaves_the_arguments_alone(self):
         plain = profile()

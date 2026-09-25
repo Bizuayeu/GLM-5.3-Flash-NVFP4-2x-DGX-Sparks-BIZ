@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from glm53_setup import fabric, host, server_config
+from glm53_setup import fabric, server_config
 
 
 class FabricTests(unittest.TestCase):
@@ -30,8 +30,10 @@ class FabricTests(unittest.TestCase):
         }
 
     def test_all_ports_explicit_and_common_gid_required(self):
-        self.assertEqual(host.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0:1,roce1:2")
-        self.assertEqual(host.fabric_env(self.site)["NCCL_SOCKET_IFNAME"], "=fabric0")
+        self.assertEqual(
+            fabric.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0:1,roce1:2"
+        )
+        self.assertEqual(fabric.fabric_env(self.site)["NCCL_SOCKET_IFNAME"], "=fabric0")
         for change in [
             {"gid_index": 4},
             {"hca": "roce1,"},
@@ -43,7 +45,7 @@ class FabricTests(unittest.TestCase):
             site = copy.deepcopy(self.site)
             site["additional_rails"][0].update(change)
             with self.subTest(change=change), self.assertRaises(ValueError):
-                host.validate_site(site)
+                fabric.validate_site(site)
 
     def test_second_rail_faults_cannot_hide_behind_first_rail(self):
         with tempfile.TemporaryDirectory() as tmp:

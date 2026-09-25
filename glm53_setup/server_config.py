@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
-from . import host
+from . import fabric
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .runtime.apc_runtime import RuntimeSettings
 
@@ -408,7 +408,7 @@ def check_graph_scope(profile):
 def check_identifiers(profile):
     """The two sites, and the names the API is served under."""
     for rank in (0, 1):
-        host.validate_site(site(profile, rank))
+        fabric.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile["api"][key]):
             raise ValueError(f"Invalid api.{key}")
@@ -536,7 +536,7 @@ def selected_image(profile):
 
 
 def environment(profile, rank):
-    result = host.fabric_env(site(profile, rank))
+    result = fabric.fabric_env(site(profile, rank))
     result.update(
         NCCL_SOCKET_FAMILY="AF_INET",
         NVIDIA_TF32_OVERRIDE="0",
@@ -649,7 +649,7 @@ def asynchronous_index_checks(profile):
 
 
 def apply_scalar_settings(args, profile):
-    """Substitute the named values into the placeholders host.serve_args left."""
+    """Substitute the named values into the placeholders serve_template left."""
     values = {
         "--served-model-name": profile["api"]["served_model_name"],
         "--reasoning-parser": profile["api"]["reasoning_parser"],
@@ -818,6 +818,55 @@ def apply_parallelism(args, profile):
         args += ["--pipeline-parallel-size", "2"]
 
 
+def serve_template(site, model_path):
+    """vLLM's argument list for one rank, before SERVE_STEPS apply the profile."""
+    fabric.validate_site(site)
+    args = [
+        "serve",
+        str(model_path),
+        "--served-model-name",
+        "glm-5.3-flash-nvidia",
+        "--distributed-executor-backend",
+        "mp",
+        "--nnodes",
+        "2",
+        "--tensor-parallel-size",
+        "2",
+        "--node-rank",
+        str(site["rank"]),
+        "--master-addr",
+        site["head_ip"],
+        "--master-port",
+        str(site["master_port"]),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(site["api_port"]),
+        "--language-model-only",
+        "--enforce-eager",
+        "--kv-cache-dtype",
+        "fp8",
+        "--max-model-len",
+        "32768",
+        "--max-num-seqs",
+        "1",
+        "--max-num-batched-tokens",
+        "512",
+        "--gpu-memory-utilization",
+        "0.80",
+        "--enable-chunked-prefill",
+        "--no-enable-prefix-caching",
+        "--reasoning-parser",
+        "glm45",
+        "--tool-call-parser",
+        "glm47",
+        "--enable-auto-tool-choice",
+    ]
+    if site["rank"] == 1:
+        args.append("--headless")
+    return args
+
+
 # Order is part of the contract: these steps write into one argument list and
 # several of them index into what the earlier steps left.
 SERVE_STEPS = (
@@ -836,7 +885,7 @@ SERVE_STEPS = (
 
 def serve_args(profile, rank, model_path):
     """Assemble a profile already validated by load() or server.command()."""
-    args = host.serve_args(site(profile, rank), model_path)
+    args = serve_template(site(profile, rank), model_path)
     for step in SERVE_STEPS:
         step(args, profile)
     return args

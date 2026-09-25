@@ -1,4 +1,5 @@
-"""Explicit RoCE rail configuration and read-only checks for every selected port."""
+"""A rank's site and explicit RoCE rails: their validation, the NCCL environment they
+imply, and read-only checks for every selected port."""
 
 import ipaddress
 import json
@@ -43,6 +44,49 @@ def rails(site):
         interfaces.add(rail["interface"])
         addresses.add(address)
     return result
+
+
+def validate_site(site):
+    if type(site.get("rank")) is not int or site["rank"] not in (0, 1):
+        raise ValueError("rank must be 0 or 1")
+    for key in ("head_ip", "local_ip"):
+        address = ipaddress.IPv4Address(site[key])
+        if address.is_loopback or address.is_unspecified or address.is_multicast:
+            raise ValueError(f"{key} must be a fabric IPv4 address")
+    if (site["rank"] == 0) != (site["head_ip"] == site["local_ip"]):
+        raise ValueError("Head must own head_ip; worker must have a different address")
+    for key in ("interface", "hca"):
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]+", site.get(key, "")):
+            raise ValueError(f"Set a concrete {key} from the local device inventory")
+    if site["interface"].startswith("wl"):
+        raise ValueError("The real-model profile requires RoCE, not Wi-Fi")
+    if type(site.get("gid_index")) is not int or site["gid_index"] < 0:
+        raise ValueError("gid_index must be nonnegative")
+    for key in ("api_port", "master_port"):
+        if type(site.get(key)) is not int or not 1024 <= site[key] <= 65535:
+            raise ValueError(f"Invalid {key}")
+    if site["api_port"] == site["master_port"]:
+        raise ValueError("API and rendezvous ports must differ")
+    rails(site)
+
+
+def fabric_env(site):
+    validate_site(site)
+    hcas = ",".join(f"{r['hca']}:{r['port']}" for r in rails(site))
+    return {
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_HOST_IP": site["local_ip"],
+        "NCCL_NET": "IB",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_SOCKET_IFNAME": "=" + site["interface"],
+        "GLOO_SOCKET_IFNAME": site["interface"],
+        "NCCL_IB_HCA": "=" + hcas,
+        "NCCL_IB_GID_INDEX": str(site["gid_index"]),
+        "NCCL_IB_ROCE_VERSION_NUM": "2",
+        "NCCL_IB_ADDR_FAMILY": "AF_INET",
+        "NCCL_DEBUG": "INFO",
+    }
 
 
 def checks(site, run, *, sys_root=Path("/sys"), dev_root=Path("/dev")):

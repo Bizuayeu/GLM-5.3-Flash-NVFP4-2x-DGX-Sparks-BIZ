@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from glm53_setup import host
+from glm53_setup import fabric, host, server_config
 
 
 class HostContractTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class HostContractTests(unittest.TestCase):
         }
 
     def test_p0_preserves_target_semantics_and_local_api(self):
-        args = host.serve_args(self.site, "/hf/model")
+        args = server_config.serve_template(self.site, "/hf/model")
         self.assertEqual(args[args.index("--tensor-parallel-size") + 1], "2")
         self.assertEqual(args[args.index("--host") + 1], "127.0.0.1")
         for flag in [
@@ -45,11 +45,11 @@ class HostContractTests(unittest.TestCase):
 
     def test_worker_uses_own_address_and_headless(self):
         self.site.update(rank=1, local_ip="10.53.0.2")
-        args = host.serve_args(self.site, "/hf/model")
+        args = server_config.serve_template(self.site, "/hf/model")
         self.assertIn("--headless", args)
-        self.assertEqual(host.fabric_env(self.site)["VLLM_HOST_IP"], "10.53.0.2")
-        self.assertEqual(host.fabric_env(self.site)["NCCL_NET"], "IB")
-        self.assertEqual(host.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0:1")
+        self.assertEqual(fabric.fabric_env(self.site)["VLLM_HOST_IP"], "10.53.0.2")
+        self.assertEqual(fabric.fabric_env(self.site)["NCCL_NET"], "IB")
+        self.assertEqual(fabric.fabric_env(self.site)["NCCL_IB_HCA"], "=roce0:1")
 
     def test_bad_rank_interface_or_address_refused(self):
         for values in [
@@ -62,7 +62,7 @@ class HostContractTests(unittest.TestCase):
             {"api_port": 70000},
         ]:
             with self.subTest(values=values), self.assertRaises(ValueError):
-                host.validate_site({**self.site, **values})
+                fabric.validate_site({**self.site, **values})
 
     def test_free_blocks_count_only_orders_of_two_mib_and_above(self):
         # Recorded on the reference head (4 KiB pages, orders 0-13) while serving.
