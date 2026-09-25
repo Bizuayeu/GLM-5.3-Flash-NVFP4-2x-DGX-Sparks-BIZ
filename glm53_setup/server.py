@@ -469,34 +469,39 @@ def warmup_report(profile, name):
     )
 
 
-def warmup_running(profile):
-    """Ladder for the running rank 0 owned by this profile; records the result."""
+def recorded_on_head(profile, action, run):
+    """Run one check on the running rank 0 under the request lock; record it.
+
+    ``run(state)`` gets rank 0's recorded state and returns the result, which
+    is written to a new ``<stamp>-<action>-r0`` record and names it.
+    """
     state, info = running_head(profile)
     if not info["State"]["Running"]:
-        raise ValueError("warmup requires the running rank 0")
+        raise ValueError(f"{action} requires the running rank 0")
     with request_lock():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = RECORDS / (stamp + "-warmup-r0")
+        record = RECORDS / (stamp + f"-{action}-r0")
         record.mkdir(parents=True)
-        result = warmup_report(profile, state["name"])
+        result = run(state)
     result["record"] = str(record)
     write_json(record / "result.json", result)
     return result
+
+
+def warmup_running(profile):
+    """Ladder for the running rank 0 owned by this profile; records the result."""
+    return recorded_on_head(
+        profile, "warmup", lambda state: warmup_report(profile, state["name"])
+    )
 
 
 def mojibake_running(profile):
     """Japanese/Korean broken-character check on the running rank 0; recorded."""
-    state, info = running_head(profile)
-    if not info["State"]["Running"]:
-        raise ValueError("mojibake requires the running rank 0")
-    with request_lock():
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = RECORDS / (stamp + "-mojibake-r0")
-        record.mkdir(parents=True)
-        result = mojibake.run(lambda request: ask(profile, request))
-    result["record"] = str(record)
-    write_json(record / "result.json", result)
-    return result
+    return recorded_on_head(
+        profile,
+        "mojibake",
+        lambda state: mojibake.run(lambda request: ask(profile, request)),
+    )
 
 
 def agreement_senders(profile, sender=post):
@@ -535,21 +540,19 @@ def agreement_senders(profile, sender=post):
 
 def agreement_running(profile, reference=None):
     """Teacher-forced reading on the running rank 0; compared with a saved run."""
-    state, info = running_head(profile)
-    if not info["State"]["Running"]:
-        raise ValueError("agreement requires the running rank 0")
+    # A profile the reading cannot be taken under is refused before the head is read.
     tokenize, complete = agreement_senders(profile)
-    with request_lock():
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = RECORDS / (stamp + "-agreement-r0")
-        record.mkdir(parents=True)
+
+    def run(state):
         result = agreement.run(tokenize, complete)
-    if reference is not None:
-        result["reference"] = str(reference)
-        result["comparison"] = agreement.compare_records(read_json(reference), result)
-    result["record"] = str(record)
-    write_json(record / "result.json", result)
-    return result
+        if reference is not None:
+            result["reference"] = str(reference)
+            result["comparison"] = agreement.compare_records(
+                read_json(reference), result
+            )
+        return result
+
+    return recorded_on_head(profile, "agreement", run)
 
 
 def ask(profile, request, sender=post):

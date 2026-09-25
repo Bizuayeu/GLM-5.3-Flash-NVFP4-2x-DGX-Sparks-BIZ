@@ -3,7 +3,9 @@ import copy
 import hashlib
 import io
 import json
+import os
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -1599,6 +1601,123 @@ class HeadClientTests(unittest.TestCase):
             with self.assertRaises(UnicodeDecodeError):
                 server.metrics_text(self.PROFILE, timeout=10, errors="strict")
         self.assertEqual(seen, [2, 10])
+
+
+class RecordedHeadRunTests(unittest.TestCase):
+    """warmup, mojibake and agreement: one run on the head, one record each."""
+
+    RUNNERS = {
+        "warmup": ("warmup_report", server.warmup_running),
+        "mojibake": ("mojibake", server.mojibake_running),
+        "agreement": ("agreement", server.agreement_running),
+    }
+
+    def setUp(self):
+        self.profile = config.load(ROOT / "examples/server.example.toml")
+        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(patch.object(server, "RECORDS", self.tmp))
+        self.locked = []
+
+        @contextlib.contextmanager
+        def lock():
+            self.locked.append(True)
+            yield
+            self.locked.append(False)
+
+        self.enterContext(patch.object(server, "request_lock", lock))
+
+    def head(self, running=True):
+        info = {"State": {"Running": running}}
+        return patch.object(server, "running_head", return_value=({"name": "c"}, info))
+
+    def job(self, action):
+        """Replace what the action runs; the replacement records the lock state."""
+        name, _ = self.RUNNERS[action]
+
+        def run(*args):
+            self.assertEqual(self.locked, [True])
+            return {"passed": True}
+
+        if name == "warmup_report":
+            return patch.object(server, name, side_effect=run)
+        return patch.object(getattr(server, name), "run", side_effect=run)
+
+    def test_each_writes_its_result_into_a_new_stamped_record(self):
+        for action, (_, running) in self.RUNNERS.items():
+            with self.subTest(action=action), self.head(), self.job(action):
+                result = running(self.profile)
+                record = Path(result["record"])
+                self.assertEqual(record.parent, self.tmp)
+                self.assertRegex(record.name, rf"^\d{{8}}T\d{{12}}Z-{action}-r0$")
+                saved = json.loads((record / "result.json").read_text("utf-8"))
+                self.assertEqual(saved, result)
+                self.assertEqual(list(saved), ["passed", "record"])
+            self.locked.clear()
+
+    def test_a_stopped_head_is_refused_before_the_lock_and_the_record(self):
+        for action, (_, running) in self.RUNNERS.items():
+            with self.subTest(action=action), self.head(running=False):
+                with self.assertRaisesRegex(
+                    ValueError, f"^{action} requires the running rank 0$"
+                ):
+                    running(self.profile)
+        self.assertEqual(self.locked, [])
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    def test_agreement_compares_with_a_reference_before_naming_the_record(self):
+        reference = self.tmp / "reference.json"
+        reference.write_text(json.dumps({"texts": []}), encoding="utf-8")
+        with (
+            self.head(),
+            self.job("agreement"),
+            patch.object(
+                server.agreement, "compare_records", return_value={"same": True}
+            ) as compare,
+        ):
+            result = server.agreement_running(self.profile, reference)
+        self.assertEqual(compare.call_args.args[0], {"texts": []})
+        self.assertEqual(list(result), ["passed", "reference", "comparison", "record"])
+        self.assertEqual(result["reference"], str(reference))
+
+    def test_agreement_refuses_native_lpa_before_reading_the_head(self):
+        self.profile["lpa"]["enabled"] = True
+        self.profile["cache"]["prefix_caching"] = False
+        with (
+            patch.object(server, "running_head") as head,
+            self.assertRaisesRegex(ValueError, "native LPA"),
+        ):
+            server.agreement_running(self.profile)
+        head.assert_not_called()
+        self.assertEqual(self.locked, [])
+
+
+class RequestLockTests(unittest.TestCase):
+    def test_the_lock_is_an_exclusive_nonblocking_flock_on_the_state_file(self):
+        calls = []
+        fake = SimpleNamespace(
+            LOCK_EX=2, LOCK_NB=4, flock=lambda f, flags: calls.append((f.name, flags))
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(server, "STATE", Path(tmp)),
+            patch.dict(sys.modules, {"fcntl": fake}),
+        ):
+            with server.request_lock():
+                pass
+            self.assertEqual(calls, [(str(Path(tmp) / "startup-request.lock"), 6)])
+
+    @unittest.skipUnless(os.name == "posix", "flock exists on the model host only")
+    def test_a_second_client_is_refused_while_the_first_holds_it(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(server, "STATE", Path(tmp)),
+        ):
+            with server.request_lock():
+                with self.assertRaises(BlockingIOError):
+                    with server.request_lock():
+                        pass
+            with server.request_lock():
+                pass
 
 
 if __name__ == "__main__":
