@@ -293,20 +293,6 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
     }
 
 
-def freeze(profile, environ=None):
-    resolved = settings.resolve_launch(profile, environ)
-    return {"profile": resolved, "fingerprint": settings.fingerprint(resolved)}
-
-
-def thaw(manifest):
-    if not isinstance(manifest, dict) or manifest.keys() != {"profile", "fingerprint"}:
-        raise ValueError("Invalid frozen launch manifest")
-    settings.validate(manifest["profile"])
-    if manifest["fingerprint"] != settings.fingerprint(manifest["profile"]):
-        raise ValueError("Frozen launch manifest no longer matches this checkout/lock")
-    return manifest["profile"]
-
-
 PROGRESS_SIGNALS = (
     "vllm:num_requests_running",
     "vllm:kv_cache_usage_perc",
@@ -663,7 +649,7 @@ def act_freeze(cli, args, profile):
     """Write the shared launch manifest both ranks will be started from."""
     if not args.output or args.launch:
         cli.error("freeze requires --output and a TOML --config")
-    manifest = freeze(profile)
+    manifest = settings.freeze(profile)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(manifest, stream, indent=2)
@@ -890,7 +876,9 @@ def main(argv=None):
     if not action.needs_profile:
         return action.handler(cli, args, None)
     profile = (
-        thaw(read_json(args.launch)) if args.launch else settings.load(args.config)
+        settings.thaw(read_json(args.launch))
+        if args.launch
+        else settings.load(args.config)
     )
     if (
         action.launch_path

@@ -183,7 +183,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
 
     def test_prepare_tells_the_launch_checks_when_it_inspects_a_recovery_target(self):
         launch = {
-            "manifest": server.freeze(profile(), {}),
+            "manifest": config.freeze(profile(), {}),
             "config_path": "/srv/glm53/state/server.toml",
         }
         for value, expected in ((launch, False), ({**launch, "recovery": True}, True)):
@@ -236,7 +236,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
 
     def test_prepare_refuses_when_the_static_checks_did_not_pass(self):
         launch = {
-            "manifest": server.freeze(profile(), {}),
+            "manifest": config.freeze(profile(), {}),
             "config_path": "/srv/glm53/state/server.toml",
         }
         failed = {"passed": False, "checks": {}, "foreign_gpu_containers": []}

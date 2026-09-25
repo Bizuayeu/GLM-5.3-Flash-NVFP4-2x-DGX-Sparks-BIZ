@@ -157,7 +157,7 @@ class ActionGuardTests(unittest.TestCase):
         # environment is no longer a source of divergence between the ranks.
         handler = MagicMock()
         entry = server.ACTIONS["preflight"]._replace(handler=handler)
-        with frozen_launch(server.freeze(profile(), {})) as path:
+        with frozen_launch(config.freeze(profile(), {})) as path:
             with (
                 patch.dict(server.ACTIONS, {"preflight": entry}),
                 on_host("posix", INHERITED_ALLOCATOR),

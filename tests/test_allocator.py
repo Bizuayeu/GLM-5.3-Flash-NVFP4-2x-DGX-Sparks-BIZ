@@ -57,12 +57,12 @@ class AllocatorTests(unittest.TestCase):
                 config.validate(self.profile)
 
     def test_frozen_manifest_survives_other_host_env_and_detects_tampering(self):
-        manifest = server.freeze(self.profile, {"PYTORCH_CUDA_ALLOC_CONF": ""})
+        manifest = config.freeze(self.profile, {"PYTORCH_CUDA_ALLOC_CONF": ""})
         with patch.dict("os.environ", {"PYTORCH_CUDA_ALLOC_CONF": "different"}):
-            loaded = server.thaw(manifest)
+            loaded = config.thaw(manifest)
         self.assertEqual(loaded["runtime"]["cuda_allocator_conf"], "")
         manifest["profile"]["runtime"]["cuda_allocator_conf"] = (
             "backend:cudaMallocAsync"
         )
         with self.assertRaisesRegex(ValueError, "no longer matches"):
-            server.thaw(manifest)
+            config.thaw(manifest)

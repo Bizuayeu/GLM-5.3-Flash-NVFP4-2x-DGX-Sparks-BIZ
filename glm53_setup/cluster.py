@@ -38,7 +38,7 @@ def current(rank):
         raise ValueError("Running rank has no recorded configuration path for recovery")
     profile = read_json(Path(state["record"]) / "settings.json")
     manifest = {"profile": profile, "fingerprint": state["fingerprint"]}
-    server.thaw(manifest)
+    server_config.thaw(manifest)
     return {
         "name": state["name"],
         "fingerprint": state["fingerprint"],
@@ -72,7 +72,7 @@ def install(rank, value):
     state = server.state_path(rank)
     if not state.exists() or read_json(state)["name"] != identity["name"]:
         raise ValueError("This attempt is not the running rank")
-    running = server.thaw(identity["launch"]["manifest"])
+    running = server_config.thaw(identity["launch"]["manifest"])
     profile = server_config.loads(text)
     # The launch may have frozen an allocator override from its environment.
     if "cuda_allocator_conf" in running["runtime"]:
@@ -111,7 +111,7 @@ def rpc(action, rank, value):
         return current(rank)
     if action == "prepare":
         return launch_assets.inspect(
-            server.thaw(value["manifest"]),
+            server_config.thaw(value["manifest"]),
             Path(value["config_path"]),
             rank,
             recovery=value.get("recovery", False),
@@ -206,7 +206,7 @@ def rpc(action, rank, value):
         if not state.exists() or read_json(state)["name"] != value["name"]:
             return {"ready": False}
         if rank == 0:
-            profile = server.thaw(value["launch"]["manifest"])
+            profile = server_config.thaw(value["launch"]["manifest"])
             # The tail answers a starting head cheaply. A head that has served
             # for minutes has pushed the line out of it (the supervisor reads
             # /metrics every two seconds), so a resume reads the whole log.
@@ -234,7 +234,7 @@ def rpc(action, rank, value):
     if action == "install":
         return install(rank, value)
     if action == "warmup":
-        profile = server.thaw(value["launch"]["manifest"])
+        profile = server_config.thaw(value["launch"]["manifest"])
         if rank != 0 or not server_config.optional(profile, "generation", "warmup"):
             return {"skipped": True}
         owned_record(value)
@@ -485,7 +485,7 @@ def act_switch(cli, args):
     # bytes. Text mode turns CRLF into LF on the way.
     text = args.config.read_text(encoding="utf-8")
     launch = {
-        "manifest": server.freeze(server_config.loads(text)),
+        "manifest": server_config.freeze(server_config.loads(text)),
         "config_path": args.remote_config,
     }
     write_json(args.output / "launch.json", launch)

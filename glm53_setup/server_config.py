@@ -731,6 +731,20 @@ def resolve_launch(profile, environ=None):
     return resolved
 
 
+def freeze(profile, environ=None):
+    resolved = resolve_launch(profile, environ)
+    return {"profile": resolved, "fingerprint": fingerprint(resolved)}
+
+
+def thaw(manifest):
+    if not isinstance(manifest, dict) or manifest.keys() != {"profile", "fingerprint"}:
+        raise ValueError("Invalid frozen launch manifest")
+    validate(manifest["profile"])
+    if manifest["fingerprint"] != fingerprint(manifest["profile"]):
+        raise ValueError("Frozen launch manifest no longer matches this checkout/lock")
+    return manifest["profile"]
+
+
 def dev_mode(profile):
     """Whether the launch mounts vLLM's dev routes (/collective_rpc, cache reset)."""
     return (

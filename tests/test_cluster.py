@@ -25,7 +25,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         launch = {
-            "manifest": server.freeze(profile, {}),
+            "manifest": server_config.freeze(profile, {}),
             "config_path": "/srv/glm53/state/server.toml",
         }
         with (
@@ -54,7 +54,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         launch = {
-            "manifest": server.freeze(profile, {}),
+            "manifest": server_config.freeze(profile, {}),
             "config_path": "/srv/glm53/state/server.toml",
         }
         with (
@@ -78,7 +78,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "examples/server.example.toml"
         )
         launch = {
-            "manifest": server.freeze(profile, {}),
+            "manifest": server_config.freeze(profile, {}),
             "config_path": "/srv/glm53/state/server.toml",
         }
         with (
@@ -103,7 +103,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             run.assert_called_once()
             off = copy.deepcopy(launch)
             off["manifest"]["profile"]["generation"]["warmup"] = False
-            off["manifest"] = server.freeze(off["manifest"]["profile"], {})
+            off["manifest"] = server_config.freeze(off["manifest"]["profile"], {})
             quiet = cluster.rpc("reserve", 0, off)
             self.assertEqual(cluster.rpc("warmup", 0, quiet), {"skipped": True})
 
@@ -344,7 +344,7 @@ class ProfileInstallTests(unittest.TestCase):
         config = Path(tmp) / "site/server.toml"
         config.parent.mkdir()
         launch = {
-            "manifest": server.freeze(server_config.loads(text), {}),
+            "manifest": server_config.freeze(server_config.loads(text), {}),
             "config_path": str(config),
         }
         identity = cluster.rpc("reserve", 0, launch)
@@ -404,7 +404,7 @@ class ProfileInstallTests(unittest.TestCase):
             rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
-            identity["launch"]["manifest"] = server.freeze(
+            identity["launch"]["manifest"] = server_config.freeze(
                 server_config.loads(text),
                 {"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"},
             )
@@ -460,7 +460,7 @@ class SwitchCommandTests(unittest.TestCase):
         self.assertEqual(call.kwargs["config"], EXAMPLE.read_text(encoding="utf-8"))
         self.assertEqual(
             call.args[1]["manifest"],
-            server.freeze(server_config.loads(call.kwargs["config"])),
+            server_config.freeze(server_config.loads(call.kwargs["config"])),
         )
 
     def test_no_send_config_keeps_the_remote_file_untouched(self):
@@ -483,7 +483,7 @@ class ReadinessPollTests(unittest.TestCase):
             rooted(Path(tmp)),
         ):
             launch = {
-                "manifest": server.freeze(server_config.loads(text), {}),
+                "manifest": server_config.freeze(server_config.loads(text), {}),
                 "config_path": "/srv/glm53/state/server.toml",
             }
             identity = cluster.rpc("reserve", 0, launch)
