@@ -248,10 +248,9 @@ def image_capability_checks(profile, image, *, recovery=False):
     }
 
 
-RETIRED_CPB = (
-    "runtime.mla_decode_cpb is retired: it never ran in serving, because the "
-    "reference attention returns before the decode it patched; remove it from the profile"
-)
+# The key never ran in serving (the reference attention returns before the decode it
+# patched); a profile that carries it can drop it.
+RETIRED_CPB = "mla_decode_cpb_retired"
 
 
 def capability_warnings(profile, image, *, recovery=False):

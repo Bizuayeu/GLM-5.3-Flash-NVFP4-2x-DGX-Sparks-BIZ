@@ -567,8 +567,7 @@ class ServerConfigTests(unittest.TestCase):
             self.assertEqual(config.serve_args(profile, 0, "/hf/model"), args)
             for recovery in (False, True):
                 warnings = server.capability_warnings(profile, image, recovery=recovery)
-                self.assertEqual(len(warnings), 1)
-                self.assertIn("runtime.mla_decode_cpb is retired", warnings[0])
+                self.assertEqual(warnings, ["mla_decode_cpb_retired"])
             checks = server.image_capability_checks(profile, image)
             if value:
                 self.assertIs(checks["mla_decode_cpb_support"], False)
@@ -607,7 +606,7 @@ class ServerConfigTests(unittest.TestCase):
             recovery=True,
         )
         self.assertEqual(warnings[0], "moe_order_marker_1_accepted_for_recovery")
-        self.assertIn("runtime.mla_decode_cpb is retired", warnings[1])
+        self.assertEqual(warnings[1], "mla_decode_cpb_retired")
 
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)

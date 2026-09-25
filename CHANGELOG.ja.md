@@ -8,7 +8,7 @@
 
 ### Removed
 
-- `runtime.mla_decode_cpb` を退役した。servingでは一度も実行されていなかった：imageは `GLM53_REFERENCE_ATTENTION=1` を設定し、sparse MLAのforwardは、DSAの11層でもMTPのdraft層でも、keyのpatchが変えるFlashInferのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnする。1.14.0のkernelの根拠は、このflagを切った単体の結果だった。2026-09-26の到達性の調査では、配信中の対のtraceがsparse MLAの呼び出しを単独の要求で434、2本の組で448数え、すべて参照attentionを通っていた。keyが2系列のdecodeの分け方を固定する、要求のattentionがstepを共有する他の要求に依らなくなる、という1.14.0の記述は撤回する。1.14.0の測定（単独のcompletion・decodeの速度・NLLが不変、2系列のcompletionが1.13.0とbyte一致）は、効果が無かったことと整合する。両方のexampleからkeyを外した。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも変わらずに起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、decode Graphとは排他）、`server preflight` はkeyを外してよいという一行を `warnings` に足す。patch・helper・imageのmarker・keyの受理は、次のimageのbuildで外す（[起動設定](docs/server-configuration.ja.md#再現性のスイッチ)）。
+- `runtime.mla_decode_cpb` を退役した。servingでは一度も実行されていなかった：imageは `GLM53_REFERENCE_ATTENTION=1` を設定し、sparse MLAのforwardは、DSAの11層でもMTPのdraft層でも、keyのpatchが変えるFlashInferのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnする。1.14.0のkernelの根拠は、このflagを切った単体の結果だった。2026-09-26の到達性の調査では、配信中の対のtraceがsparse MLAの呼び出しを単独の要求で434、2本の組で448数え、すべて参照attentionを通っていた。keyが2系列のdecodeの分け方を固定する、要求のattentionがstepを共有する他の要求に依らなくなる、という1.14.0の記述は撤回する。1.14.0の測定（単独のcompletion・decodeの速度・NLLが不変、2系列のcompletionが1.13.0とbyte一致）は、効果が無かったことと整合する。両方のexampleからkeyを外した。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも変わらずに起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、decode Graphとは排他）、`server preflight` は `warnings` に `mla_decode_cpb_retired` を記録する。patch・helper・imageのmarker・keyの受理は、次のimageのbuildで外す（[起動設定](docs/server-configuration.ja.md#再現性のスイッチ)）。
 
 ### ドキュメント
 
