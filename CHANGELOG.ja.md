@@ -4,6 +4,19 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.13.0 — 2026-09-25
+
+### Fixed
+
+- 参照imageは、固定しているvLLMのkpoolのprefill seed kernelにpatchを当て、indexerの生tailのblockをtail自身のstrideで番地付けするようにする（marker `GLM53_KPOOL_SEED_STRIDE=1`、`glm53_setup/runtime/patch_kpool_seed.py`。vLLMのpull request #57477と同じ変更で、上流では2026-09-20にmerge）。tailはindexerのcacheを、indexerの詰め物入りのblock strideで共有しているが、vLLM 385dce36のseed kernelは詰め物なしで番地を計算していた。prefillのたびに要求自身のtail blockがseedされず、最後のtokenの生のkeyとgateが番号の小さいindexer blockへ書き込まれる。そのblockは別の要求のものであり得る。壊れるのは長い文脈での疎なtop-kの選択で、prefix cacheから再利用する長いpromptで最も効く。MLAのKVは無傷。上流の回帰テストは1.12のimageでfailし、作り直したimageでpassする。基準の2台では、測った出力は一つも変わらなかった：decode検査、教師強制のNLL、同時2系列のcompletion、配布既定の重みのdigestは前後でbit単位で同一で、長文の検査は両profileで正答した（[実測](docs/benchmarks.ja.md#1130での測定)）。参照imageを作り直して `reference_image` を更新すること。このmarkerを要求する検査はなく、固定しているvLLMが上流の修正より先へ進んだらpatchは外す。
+
+### Documentation
+
+- 同時2系列：サーバが2本を同じ順でprefillすれば、対のcompletionは反復する。1台のGB10でのkernel単体の試験では、NVFP4のMarlin MoEが、別の要求のdecode行と同じ呼び出しに載るだけで行の結果を変える。cuBLASのBF16 GEMMはbitを保ち、Marlinのdense GEMMはprefill規模の行数でだけ変わる。kpool seedの修正は原因ではない。検証の同時実行の段落にそう書いた。
+- 3か所参照の正典を、記事を背景として囲み `=` の後の値を問う問題文にした。両profileとも3回とも正答し、READMEの行もこの結果にした（問題文はベンチマークに掲載）。古い問題文は今回も両profileで分かれた（AXLは3回とも記事を書き写し、配布既定はコードを返した）。
+- READMEの公開した任意設定のNLLを、`runtime.inductor_deterministic` 付きの同時2系列profileの値にした（1.6270／1.9946／0.9601／0.6275。1.12と1.13のimageで同一）。同時1系列profileの1.6645／2.0024／1.0031／0.6279より4文とも低い。短所の行は「配布既定より4文のうち3文で1〜6%上がる」とした。
+- このhybridモデルではprefix cacheは4,608 tokenの丸ごとのblock単位でしか当たらない。修正の効く範囲を述べる箇所にそう書いた。
+
 ## 1.12.2 — 2026-09-25
 
 ### Documentation

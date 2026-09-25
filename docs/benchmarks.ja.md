@@ -834,3 +834,58 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 sparkDashの手順はthinking offを要求するが固定のGLMテンプレートはそれを無視するので、従来どおり推論を含む実際の生成を測っている。1.5.0からの伸びはそれ以後の配信profile（attention射影と `lm_head` の再パック、FA2 prefill、KDA射影の分割、MTP k=3）のもので、この版のものではない。headの空きは7.24 GiBを保った。
 
 tool-eval-bench `2.6.1.dev52+g81eae0a33`、[1.0.0の測定](#tool-eval-bench)と同じ版・同じ設定（全69標準シナリオ、1試行、parallel 1、seed 42、temperature 0、effort low、clear_thinking、出力上限4,096トークン、timeout 600秒、最大8ターン。10.8分）：**88／100（122／138点）**、55 pass・11 partial・3 fail、69件すべて採点、完了率100%、除外なし。failの3件は1.0.0と同じ3件（TC-21は5つの検証エラーのうち2つしか見つけず、TC-43はweb_searchを空のqueryで呼び、TC-61は分析スクリプトを試みなかった）で、**Safety GateはTC-43で未達のまま**。partialは8件から11件に動いた（不要な電卓、不完全な連鎖、天気確認の後に行動しない、injectionの2件は安全だが不完全）。版ごとに1試行なので、1.0.0との2点差は1試行が動く幅の内側。failの3件は2回の測定とその間のprofileの変更を跨いで安定しており、変更は配信経路であってtemperature 0でのモデルの選択ではない。
+
+## 1.13.0での測定
+
+### 両profileでのkpool seedの修正（2026-09-25）
+
+作り直したimage `f53b563b…`（1.12のruntimeに `patch_kpool_seed` を足したもの。vLLMのpull request #57477）で、基準の2台が両profileを配信しました。公開した任意設定の同時2系列profile（`runtime.inductor_deterministic` 付き）を3回、keyを付けた配布既定を3回起動し、切替はすべて復旧なしで完了しました。最初の切替の前に、同じ朝、「1.12」と書いたAXLの検査を1.12のimage（`76a1172b…`）で取りました。
+
+| 検査 | 公開した任意設定（AXL） | 配布既定 |
+|---|---|---|
+| decode検査：count／prose／code | 3起動とも1.12と同じcompletion。45.97／28.47／38.63 tok/s | 3起動とも1.12と同じcompletion。32.75／20.79／27.57 tok/s |
+| 教師強制のNLL：日本語／英語／コード／数学 | 1.6270／1.9946／0.9601／0.6275。1.12のimageと同一 | 1.5963／2.0241／0.9479／0.5931。公開値どおり |
+| 重みのdigest | — | 2026-09-25の1.12の起動と一致（rankあたり1,690 tensor） |
+| 同時2系列（下記） | 1.12のimageと同じcompletion | — |
+| 199,652 tokenの合言葉 | 162.8 s、正答 | 170.7 s、正答 |
+| 255,950 tokenの合言葉 | 214.7 s、正答 | 218.8 s、正答 |
+| 容量：262,080入力＋64出力、2回 | logprobは有限 | logprobは有限 |
+| 3か所参照、古い問題文、3回 | 3回とも誤答判定（下記） | 3回とも正答 |
+| 3か所参照、囲んだ問題文、3回 | 3回とも正答（228〜233 s、出力36 token） | 3回とも正答（233〜235 s、出力36 token） |
+| prefill 38,962 token／短いpromptの後のdecode | 1,281.3／41.9 tok/s | 1,287.7／27.43 tok/s |
+| 文字化けの検査 | 合格 | 合格 |
+
+この長さでは、修正は出力を一つも変えませんでした。decodeのpromptとNLLの文は2,048 token前後かそれ以下で、長い要求はどれもcacheしたprefixを再利用していません。このhybridモデルではprefix cacheは4,608 tokenの丸ごとのblock単位でしか当たらず（要求した256は、KDAの状態のpageに揃えるために引き上げられます。起動logにそう出ます）、decode検査が当たることはありません。上流の報告が再現した形、つまりprefix cacheから再利用する長いpromptを、他の要求がpoolを一巡した後に送る場合は、ここでは測っていません。
+
+3か所参照の古い問題文は、[1.4.0で曖昧と分かった](#140での200k実入力)ものです。AXLは3回とも3つのコードをreasoningに書いたうえで、「REGISTRY values」を記事のことと読み、記事の書き写しを始めて512 tokenの上限で切れました。配布既定も同じ読みを検討したうえで、コードを返しました。同じ問題文は2026-09-22のAXL（同時1系列）では3回とも正答だったので、どちらの読みが勝つかは数値経路で動く同点すれすれの差です。囲んだ問題文は、記事を `BACKGROUND` の印の間に置き、各 `REGISTRY` 行の `=` の後の値を問います。両profileともすぐにコードを返しました。1.13.0からは、この囲んだ問題文をこの検査の正典とし、READMEの行もその結果にしました（中央値はAXLで230.7 s、配布既定で234.2 s、prompt 261,573 token）。READMEのそれまでの値は、[1.6.0](#160での測定)の明示した問題文（recordは1行）で取ったものです。要求は次のとおりで、記事は以前の検査と同じ、temperature 0、出力512 token、毎回prefix cacheをresetしてから送ります：
+
+```text
+system: Read the supplied archive and return only the requested registry JSON.
+user:   The archive below has exactly three REGISTRY lines, each of the form 'REGISTRY <key> = <value>'. Everything between the BACKGROUND fences is unrelated article text.
+        REGISTRY begin = violet-bird-731
+        ----- BACKGROUND (unrelated articles) -----
+        <articles, 130,700 tokens>
+        ----- END OF BACKGROUND (unrelated articles) -----
+        REGISTRY middle = copper-fish-284
+        ----- BACKGROUND (unrelated articles) -----
+        <the same articles>
+        ----- END OF BACKGROUND (unrelated articles) -----
+        REGISTRY end = silver-tree-956
+        Return the value after '=' on each REGISTRY line as a JSON object with keys begin, middle, end (for example {"begin": "...", "middle": "...", "end": "..."}). No other text.
+```
+
+公開した任意設定のNLLは、同時1系列のprofile（2026-09-21に1.6645／2.0024／1.0031／0.6279）より4文とも下がりました。keyを付けた同時2系列のprofileでは1.6270／1.9946／0.9601／0.6275で、0.1〜4.3%低く、同じ朝の1.12のimageでも1.13のimageでも同じ値です。下がったのは修正より前からです。
+
+### 同時2系列：何がcompletionを変えるか（2026-09-25）
+
+decode検査の3つのpromptを、単独で、2本同時に、1本目が最初のtokenを返してから2本目を送る形で、それぞれ3回ずつAXLの同時2系列profileへ送りました。続けて1,024 tokenのpromptで同じことをしました。こちらは文脈が2,048 token未満に収まり、indexerが全tokenを選びます。単独ではどの要求もbit単位で反復しました。同時では単独と違うcompletionになり、サーバが2本を同じ順でprefillし、chunkを同じ所で切った時には対のcompletionが反復しました。回どうしで違ったのは、最初のtokenの時刻から見て順序が違った回だけです。相手が届く前にprefillを終えていた要求も、主に相手の行が自分のdecode stepに加わった後で変わりました。短いpromptでも同じだったので、原因はindexerでもkpool seedでもありません。1.13.0のimageは、どの並びでも1.12のimageと同じhashを返しました。
+
+1台のGB10で、同じ4行（深さ3のdecode 1 step）を単独と大きな呼び出しの中とで計算しました：
+
+| kernel | さらに4行と並べる（8行） | 2,044行のprefillの前（2,048行） |
+|---|---|---|
+| cuBLASのBF16 GEMM | 同じbit | 同じbit |
+| MarlinのW4A16・NVFP4 dense GEMM | 同じbit | 違う |
+| NVFP4のfused Marlin MoE（32 expert、top 4、行ごとにroutingを固定） | 違う | 違う |
+
+試したkernelのうち、別の要求のdecode行と同じ呼び出しに載るだけで行の結果が変わるのはMoEだけでした。attentionとKDAは試していません。

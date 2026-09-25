@@ -2,6 +2,19 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.13.0 — 2026-09-25
+
+### Fixed
+
+- Reference images patch the pinned vLLM's kpool prefill seed kernel to address the indexer's raw-tail blocks by the tail's own strides (marker `GLM53_KPOOL_SEED_STRIDE=1`, `glm53_setup/runtime/patch_kpool_seed.py`; the same change as vLLM pull request #57477, merged upstream on 2026-09-20). The tail shares the indexer cache at the indexer's padded block stride, while the seed kernel of vLLM 385dce36 addressed it densely: every prefill left the request's own tail block unseeded and wrote the last tokens' raw key and gate into a low-numbered indexer block, which can belong to another request. The damage is to sparse top-k selection over long contexts, most of all a long prompt reused from the prefix cache; the MLA KV is untouched. The upstream regression test fails on the 1.12 image and passes on the rebuilt one. On the reference pair no measured output changed: the decode checks, teacher-forced NLL, the two-sequence completions and the defaults' weight digest are bit-identical before and after, and the long-input checks answer correctly on both profiles ([measurements](docs/benchmarks.md#measurements-on-1130)). Rebuild the reference image and update `reference_image`; no check requires the marker, and the patch goes when the pinned vLLM passes the upstream fix.
+
+### Documentation
+
+- Two sequences: a pair's completions repeat whenever the server prefills the two requests in the same order; kernel runs on one GB10 point at the NVFP4 Marlin MoE, whose rows change when another request's decode rows share the call, while cuBLAS BF16 GEMMs keep their bits and Marlin's dense GEMMs change only at prefill-sized row counts. The kpool seed fix is not the cause. Validation's concurrency paragraph says so.
+- The three-position reference's canonical form is now a fenced framing that marks the articles as background and asks for the value after `=`; both profiles answered it correctly 3 of 3, and the README row carries it, with the prompt in the benchmarks. The old framing again split the two profiles (AXL copied an article in all three runs, the defaults returned the codes).
+- The published option's NLL in the README is now the two-sequence profile's with `runtime.inductor_deterministic` (1.6270 / 1.9946 / 0.9601 / 0.6275, identical on the 1.12 and 1.13 images), lower on all four texts than the one-sequence profile's 1.6645 / 2.0024 / 1.0031 / 0.6279. The Cons row reads 1 to 6% higher than the defaults on three of four texts.
+- On this hybrid model the prefix cache hits only in whole 4,608-token blocks; the benchmarks say so where the fix's reach is discussed.
+
 ## 1.12.2 — 2026-09-25
 
 ### Documentation

@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.12.2」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.13.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
@@ -95,9 +95,9 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.10.4）
+### 主要な測定値（1.13.0）
 
-GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)を2026-09-23に測ったもの（[1.10.4での測定](docs/benchmarks.ja.md#1104での測定)）で、その夜に測り直していない行は最後に測った夜の値を日付つきで残しています。配布既定の列は2026-09-22の夜です。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)を2026-09-23に測ったもの（[1.10.4での測定](docs/benchmarks.ja.md#1104での測定)。NLLは2026-09-25、[1.13.0での測定](docs/benchmarks.ja.md#1130での測定)）で、その夜に測り直していない行は最後に測った夜の値を日付つきで残しています。配布既定の列は2026-09-22の夜です。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ。注記がなければ2026-09-22） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile。注記がなければ2026-09-23） |
 |---|---|---|---|
@@ -107,9 +107,9 @@ GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-k
 | decode | sparkDash DecodeBench（128 token）：structured／prose／code／json | 36.24／26.68／31.67／26.25 tok/s（1.5.0） | **48.23／31.38／41.28／34.88 tok/s** |
 | 長文入力 | 約200K token入力、中央の合言葉1個 | 173.5 sと173.6 s、正答（199,652 token） | **165.7 s、正答**（199,649 token）。同種の2本を同時に：330.2 s、両方正答、preemptionなし |
 | 長文入力 | 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答（2026-09-22） |
-| 長文入力 | 261,461 tokenの3か所参照、枠を明示したprompt | 235.9 s、3つとも正答 | **227.2 s、3つとも正答**（2026-09-22） |
+| 長文入力 | 261,573 tokenの3か所参照、背景を囲んだprompt（1.13.0からの正典） | 234.2 s、3回とも正答（2026-09-25） | **230.7 s、3回とも正答**（2026-09-25） |
 | 長文入力 | 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限（2026-09-22） |
-| 品質 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6645／2.0024／1.0031／0.6279（2026-09-22） |
+| 品質 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6270／1.9946／0.9601／0.6275（2026-09-25。同時1系列のprofileでは1.6645／2.0024／1.0031／0.6279、2026-09-21） |
 | 品質 | tool-eval-bench、標準69シナリオ | 90／100（1.0.0、2026-09-14） | 88／100、failは同じ3件、Safety Gate未達 |
 | 反復性 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0。1.12.0からはどの起動も同じ数値状態で計算する（3起動中3起動） | 単独の要求なら同じ（3回中3回、どの起動でも）。1.12.0からはどの起動も同じ数値状態で計算する（3起動中3起動）。以前の三つの状態の原因は[検証](docs/validation.ja.md#フルモデルtp2の実験範囲)に名指しした。要求が2本走っている間のcompletionは単独時と一致しない |
 | メモリ | bench中のheadの最小空きメモリ | 5.53 GiB（KV 3 GiB） | 200K 2本の同時で6.46 GiB、sparkDash中は7.24 GiB（KV 6 GiB） |
@@ -117,7 +117,7 @@ GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-k
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。prefillも同じ夜の既定より2〜5%速い（projectionの分割で以前の代価が消えた）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
-| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で4〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
+| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
 MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは45 tok/s、散文は28 tok/sです。数値と選定は[配信profile](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)、[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)、[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。

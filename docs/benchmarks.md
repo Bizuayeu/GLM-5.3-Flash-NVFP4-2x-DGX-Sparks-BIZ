@@ -834,3 +834,58 @@ The [1.4.0](#measurements-on-140) and [1.5.0](#sparkdash-and-200k-on-150) runs w
 sparkDash's protocol requests thinking off, which the fixed GLM template ignores, so these measure actual generation including reasoning, as before. The gain over 1.5.0 is the serving profile's since then (the repacked attention projections and `lm_head`, FA2 prefill, the split KDA projection, MTP k=3), not this version's; the head kept 7.24 GiB available.
 
 tool-eval-bench `2.6.1.dev52+g81eae0a33`, the same version and settings as the [1.0.0 run](#tool-eval-bench) (all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking, 4,096-token output budget, 600-second timeout, at most eight turns; 10.8 minutes): **88/100 (122/138 points)**, 55 pass, 11 partial, 3 fail, all 69 scored, completion 100%, no exclusion. The three failures are the same three as in 1.0.0 (TC-21 found two of five validation errors, TC-43 called web_search with an empty query, TC-61 did not attempt the analysis script), so the **Safety Gate is still not passed**, on TC-43. The partial results moved from 8 to 11 (unnecessary calculator use, an incomplete chain, an action not taken after a weather check, two injection scenarios answered safely but incompletely). One trial per version, so the two points against 1.0.0 are inside what one trial can move; the failures are stable across the two runs and the profiles between them, which changed the serving path and not the model's choices at temperature 0.
+
+## Measurements on 1.13.0
+
+### The kpool seed fix on both profiles (2026-09-25)
+
+The rebuilt image `f53b563b…` (the 1.12 runtime plus `patch_kpool_seed`, vLLM pull request #57477) served both profiles on the reference pair: the published option's two-sequence profile with `runtime.inductor_deterministic` three times, and the distributed defaults with the key three times. Every switch completed without recovery. Before the first switch, the AXL checks marked "1.12" ran on the 1.12 image (`76a1172b…`) the same morning.
+
+| Check | Published option (AXL) | Distributed defaults |
+|---|---|---|
+| Decode check, counting / prose / code | the 1.12 completions on all three launches; 45.97 / 28.47 / 38.63 tok/s | the 1.12 completions on all three launches; 32.75 / 20.79 / 27.57 tok/s |
+| Teacher-forced NLL: Japanese / English / code / mathematics | 1.6270 / 1.9946 / 0.9601 / 0.6275, identical to the 1.12 image | 1.5963 / 2.0241 / 0.9479 / 0.5931, as published |
+| Weight digest | — | equal to the 1.12 launch of 2026-09-25, 1,690 tensors per rank |
+| Two sequences (below) | the same completions as on the 1.12 image | — |
+| 199,652-token passphrase | 162.8 s, correct | 170.7 s, correct |
+| 255,950-token passphrase | 214.7 s, correct | 218.8 s, correct |
+| Capacity, 262,080 input + 64 output tokens, twice | finite logprobs | finite logprobs |
+| Three-position reference, old framing, three runs | incorrect 3 of 3 (below) | correct 3 of 3 |
+| Three-position reference, fenced framing, three runs | correct 3 of 3 (228–233 s, 36 output tokens) | correct 3 of 3 (233–235 s, 36 output tokens) |
+| Prefill 38,962 tokens / decode after a short prompt | 1,281.3 / 41.9 tok/s | 1,287.7 / 27.43 tok/s |
+| Mojibake check | passed | passed |
+
+At these lengths the fix changed no output. The decode prompts and the NLL texts stay near or below 2,048 tokens, and none of the long requests reused a cached prefix: on this hybrid model the prefix cache hits only in whole blocks of 4,608 tokens (the requested 256 is raised so that KDA state pages align, as the boot log reports), so the decode checks never hit it. The case the upstream report reproduced, a long prompt reused from the prefix cache after other requests have cycled through the pool, was not measured here.
+
+The old framing of the three-position reference is the one found [ambiguous on 1.4.0](#200k-real-input-on-140). On AXL all three runs wrote the three codes into their reasoning, then took "the REGISTRY values" to be the articles and began copying one until the 512-token limit; the defaults weighed the same reading and returned the codes. The same framing had scored 3 of 3 on AXL on 2026-09-22 with one active sequence, so which reading wins is a near tie that moves with the numerical path. The fenced framing puts the articles between `BACKGROUND` fences and asks for the value after `=` on each `REGISTRY` line; both profiles answered it with the codes at once. From 1.13.0 the fenced framing is the canonical form of this check, and the README row carries its results (medians 230.7 s on AXL and 234.2 s on the defaults, 261,573 prompt tokens). The earlier README values came from the explicit framing of [1.6.0](#measurements-on-160) (a record is one line). The request, with the same articles as the earlier checks, temperature 0, 512 output tokens and the prefix cache reset before each run:
+
+```text
+system: Read the supplied archive and return only the requested registry JSON.
+user:   The archive below has exactly three REGISTRY lines, each of the form 'REGISTRY <key> = <value>'. Everything between the BACKGROUND fences is unrelated article text.
+        REGISTRY begin = violet-bird-731
+        ----- BACKGROUND (unrelated articles) -----
+        <articles, 130,700 tokens>
+        ----- END OF BACKGROUND (unrelated articles) -----
+        REGISTRY middle = copper-fish-284
+        ----- BACKGROUND (unrelated articles) -----
+        <the same articles>
+        ----- END OF BACKGROUND (unrelated articles) -----
+        REGISTRY end = silver-tree-956
+        Return the value after '=' on each REGISTRY line as a JSON object with keys begin, middle, end (for example {"begin": "...", "middle": "...", "end": "..."}). No other text.
+```
+
+The published option's NLL is lower on all four texts than on its one-sequence profile (1.6645 / 2.0024 / 1.0031 / 0.6279 on 2026-09-21): the two-sequence profile with the key gives 1.6270 / 1.9946 / 0.9601 / 0.6275, 0.1 to 4.3% lower, on the 1.12 image that morning and on the 1.13 image alike, so the gain predates the fix.
+
+### Two sequences: what changes a completion (2026-09-25)
+
+The decode check's three prompts were sent alone, both at once, and with the second sent only after the first had produced its first token, three times each, on the AXL two-sequence profile; then the same with 1,024-token prompts, whose contexts stay under 2,048 tokens so that the indexer selects every token. Alone, every request repeated bit for bit. Together, the completions differed from the solo ones, and a pair repeated whenever the server prefilled the two requests in the same order and cut its chunks at the same places; the only runs that differed from one another were those in which the first-token times showed a different order. A request whose prefill had finished before the other arrived still changed, mostly once the other's rows joined its decode steps, and the short prompts behaved the same, so neither the indexer nor the kpool seed is the cause; the 1.13.0 image gave the same hashes as the 1.12 image in every arrangement.
+
+On one GB10, the same four rows (one decode step at depth 3) computed alone and in a larger call:
+
+| Kernel | Next to four more rows (8 rows) | In front of a 2,044-row prefill (2,048 rows) |
+|---|---|---|
+| cuBLAS BF16 GEMM | same bits | same bits |
+| Marlin W4A16 and NVFP4 dense GEMM | same bits | different |
+| NVFP4 fused Marlin MoE (32 experts, top 4, routing fixed per row) | different | different |
+
+The MoE is the one tested kernel whose rows change when another request's decode rows share the call. Attention and KDA were not tested.
