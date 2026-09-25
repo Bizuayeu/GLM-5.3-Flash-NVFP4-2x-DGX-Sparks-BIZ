@@ -1,4 +1,4 @@
-"""Build the source-pinned reference image; this does not qualify TP=2 serving."""
+"""Build the source-pinned reference image; this step does not validate TP=2 serving."""
 
 import argparse
 import json
@@ -47,6 +47,7 @@ def main(argv=None):
         result = subprocess.run(
             command, stdout=log, stderr=subprocess.STDOUT, check=False
         )
+    # A build runs no model: tp2_validated is always False (the record's shape).
     write_json(
         record / "result.json", {"exit_code": result.returncode, "tp2_validated": False}
     )

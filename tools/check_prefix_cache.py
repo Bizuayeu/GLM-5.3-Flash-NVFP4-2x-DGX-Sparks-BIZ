@@ -10,8 +10,7 @@ which this probe opts out of per request).
 Reuse is also block-aligned. A prompt shorter than the runtime's aligned
 attention block can never hit, so the default length is generous.
 
-    python tools/check_prefix_cache.py --base-url http://127.0.0.1:8893/v1 \
-        --model glm-5.3-flash-nvidia
+    python tools/check_prefix_cache.py --base-url http://127.0.0.1:8893/v1 --model glm-5.3-flash-nvidia
 """
 
 import argparse

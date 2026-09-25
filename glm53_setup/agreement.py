@@ -5,8 +5,8 @@ None says how often the model's next-token choice still equals the unmodified
 server's choice. This module feeds fixed, self-authored texts through
 ``/v1/completions`` with ``prompt_logprobs`` and records, per position, the
 rank and log-probability of the actual next token. A later run on a changed
-server (FP8 projections, a different attention kernel, a reduced candidate
-set) is compared with the saved reference position by position.
+server (requantized projections, a different attention kernel, a reduced
+candidate set) is compared with the saved reference position by position.
 
 Two readings, kept apart:
 
@@ -269,8 +269,8 @@ def run(tokenize, complete, texts=None, top_k=TOP_K, repeats=2):
         "self_agreement": self_checks,
         "errors": len(errors),
         "first_raw_response": raw_first,
-        # Every request answered in the checked shape. Repeats are not required
-        # to be identical: a served full model moved its argmax on a few percent
-        # of positions between identical requests, a fixture on none.
+        # Every request answered in the checked shape. Repeats are reported in
+        # self_agreement, not required to be identical: whether they are depends
+        # on the profile (docs/server-configuration.md#repeatability-switches).
         "passed": not errors and bool(self_checks),
     }

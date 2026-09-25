@@ -276,8 +276,8 @@ def check_parallelism(profile):
         or profile["cache"]["fused_unpack"]
         or profile["context"]["max_num_seqs"] != 1
     ):
-        # cc-defer: independent serial PP evaluation; extend only after the
-        # matching optimization and batching combination is qualified.
+        # PP2 was measured alone, one sequence, and not adopted (P17); it
+        # launches only in that setting.
         raise ValueError("PP2 requires eager, one sequence, no EP/LPA/MTP/fusion/APC")
     if profile["runtime"]["expert_parallel"] and (
         profile["lpa"]["enabled"]
@@ -287,8 +287,8 @@ def check_parallelism(profile):
         or decode_graphs(profile)
         or profile["context"]["max_num_seqs"] > 2
     ):
-        # cc-defer: independent EP with up to two sequences; extend combinations
-        # only after their resource and quality gates pass.
+        # EP was measured alone, up to two sequences, and not adopted (P21); it
+        # launches only in that setting.
         raise ValueError(
             "EP requires eager, at most two sequences, no LPA/MTP/fusion/APC"
         )
@@ -345,8 +345,8 @@ def check_speculation(profile):
     """Draft depth, and the local view the draft weights are served from."""
     depth = profile["mtp"]["num_speculative_tokens"]
     if type(depth) is not int or not 1 <= depth <= 5:
-        # 1 and 3 are measured; 2, 4 and 5 are launchable for the depth sweep
-        # (the draft is one layer, run k times, so acceptance falls with depth).
+        # 1 to 5 are measured; the template keeps 3 (docs/speculative-decoding.md).
+        # The draft is one layer, run k times, so acceptance falls with depth.
         raise ValueError("MTP depth must be an integer from 1 to 5")
     view = PurePosixPath(profile["mtp"]["view"])
     if view.is_absolute() or ".." in view.parts or not view.parts or ":" in str(view):
@@ -374,6 +374,7 @@ def check_graph_scope(profile):
         # cc-defer: one sequence only (MTP k=3 and prefix caching were qualified on
         # the MTP fixture, records/20260918-stage1-graph); extend to batching after
         # a fixture with max_num_seqs > 1 shows the same eager/graph identity.
+        # runtime.mla_decode_cpb also refuses decode Graphs (check_optional_shapes).
         raise ValueError("Graph experiments require one sequence")
 
 
@@ -386,8 +387,6 @@ def check_identifiers(profile):
             raise ValueError(f"Invalid api.{key}")
 
 
-# Order is part of the contract: the first raise is the sentence the operator
-# reads, so a profile with two faults must report the one it met first.
 # The KV budget the pinned weights leave room for on the reference pair (GB10, 121 GB
 # shared): they load 95.76 GiB per rank and leave the head 5.5 GiB at 3 GiB of KV; the
 # repacked ones load 91.34 GiB and leave 10.5 GiB. Twice the KV crosses the 3 GiB reserve
@@ -407,6 +406,8 @@ def check_kv_budget(profile):
         )
 
 
+# Order is part of the contract: the first raise is the sentence the operator
+# reads, so a profile with two faults must report the one it met first.
 VALIDATORS = (
     check_schema,
     check_optional_shapes,
@@ -523,9 +524,8 @@ def environment(profile, rank):
         # Triton keeps compiled kernels there but tunes again on every launch; on
         # the four-layer fixture the KDA inverse kernel's pick (num_warps 2 or 4)
         # decided which of two numerical states a launch computed in. Kept, the
-        # first pick stays. The pair still lands in another state now and then
-        # with the tables untouched (1 of 6 launches on 2026-09-22), so this pin
-        # removes one cause, not every one: a new launch is checked, not assumed.
+        # first pick stays. The launch states that remained came from the
+        # indexer's key norm; inductor_deterministic below removes that cause.
         TRITON_CACHE_AUTOTUNING="1",
     )
     if "cuda_allocator_conf" in profile["runtime"]:
@@ -654,7 +654,7 @@ def apply_boolean_flags(args, profile):
 
 
 def apply_vision(args, profile):
-    """Accept image input, and bound what the startup profile encodes."""
+    """Accept image input, and bound what vLLM's startup profiling encodes."""
     if not profile["runtime"].get("vision", False):
         return
     args.remove("--language-model-only")

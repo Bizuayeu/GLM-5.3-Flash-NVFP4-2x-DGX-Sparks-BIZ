@@ -1,4 +1,4 @@
-"""Inspect a candidate in-container; config success is not inference success."""
+"""Inspect a candidate in-container; this step validates the config, not inference."""
 
 import argparse
 import importlib.metadata
@@ -18,6 +18,7 @@ def main(argv=None):
     from vllm.engine.arg_utils import EngineArgs
     from vllm.model_executor.layers.quantization import modelopt
 
+    # Nothing here runs inference: inference_validated is always False (the record's shape).
     result = {"vllm": importlib.metadata.version("vllm"), "inference_validated": False}
     engine_args = EngineArgs(
         model=str(args.snapshot),

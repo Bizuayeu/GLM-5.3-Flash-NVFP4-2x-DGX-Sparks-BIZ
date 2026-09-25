@@ -1,4 +1,5 @@
-"""Run a serial TP=2 reference experiment with a configurable lifetime."""
+"""The launcher of the TP=2 serving pair: plan and start a rank, supervise it,
+and query or check the running head (docs/server-configuration.md)."""
 
 import argparse
 import contextlib
@@ -109,8 +110,9 @@ def command(profile, config_path, rank, name, cache=None):
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
     if profile["runtime"].get("inductor_deterministic"):
         # Keeps TORCHINDUCTOR_DETERMINISTIC on through Dynamo's state restore,
-        # which turns it off after the first compiled frame (torch 2.13). The
-        # .pth runs the module at interpreter start in every container process.
+        # which turns it off after the first compiled frame (torch 2.12.1 and
+        # 2.13, pytorch/pytorch#198563). The .pth runs the module at
+        # interpreter start in every container process.
         runtime = ROOT / "glm53_setup/runtime"
         args += [
             "-v",
@@ -888,7 +890,8 @@ def start_rank(cli, args, profile, result):
         host.run("docker", "stop", name)
         raise
     print(
-        "Supervising in foreground; Ctrl+C, low memory or an enabled deadline stops this rank.",
+        "Supervising in foreground; Ctrl+C, low memory, an enabled deadline or an "
+        "engine stall stops this rank.",
         flush=True,
     )
     supervise(profile, name, record, args.rank)

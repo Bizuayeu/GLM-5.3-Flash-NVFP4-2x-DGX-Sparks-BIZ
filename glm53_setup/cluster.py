@@ -295,8 +295,8 @@ class SSHBackend:
                     input=json.dumps({"action": action, "rank": rank, "value": value}),
                     text=True,
                     capture_output=True,
-                    # The ladder's long rung pays a full prefill (about 500 s
-                    # at 200K measured); everything else answers in seconds.
+                    # The ladder's long rung pays a full prefill (times by
+                    # length in docs/benchmarks.md); the rest answer in seconds.
                     timeout=self.timeout if action == "warmup" else 120,
                 )
             except subprocess.TimeoutExpired:
