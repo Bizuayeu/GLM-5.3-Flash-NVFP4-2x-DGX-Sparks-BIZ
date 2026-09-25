@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from ..io import write_json
+from ..server_config import speculative_config
 
 
 def parser():
@@ -64,13 +65,7 @@ def engine_kwargs(args, compilation_mode):
                 n for n in (1, 2, 4, 8, 16) if n <= args.seqs * ((args.mtp or 0) + 1)
             ],
         },
-        "speculative_config": {
-            "method": "mtp",
-            "num_speculative_tokens": args.mtp,
-            "moe_backend": "triton",
-        }
-        if args.mtp
-        else None,
+        "speculative_config": speculative_config(args.mtp) if args.mtp else None,
         "profiler_config": {
             "profiler": "torch",
             "torch_profiler_dir": str(args.output / "profiles"),

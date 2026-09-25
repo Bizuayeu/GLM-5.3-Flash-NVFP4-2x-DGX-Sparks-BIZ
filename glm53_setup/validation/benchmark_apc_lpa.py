@@ -11,6 +11,11 @@ from pathlib import Path
 
 from .. import server, server_config
 from ..io import write_json
+from ..runtime.apc_runtime import MODE_KEY
+from .apc_history import expected_omission
+
+# The cut the calibration is measured at; main refuses a profile with another.
+CUT = 32
 
 
 def check(row, length, hit, eligible, approximate):
@@ -25,11 +30,7 @@ def check(row, length, hit, eligible, approximate):
                 "Actual N/H/R differs from the paired calibration condition"
             )
         counts = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
-        expected = (
-            {str(layer): eligible for layer in (35, 39, 43)}
-            if approximate and eligible
-            else {}
-        )
+        expected = expected_omission(CUT, eligible) if approximate and eligible else {}
         if counts != expected:
             raise ValueError(("Actual approximation differs", counts, expected))
 
@@ -44,7 +45,7 @@ def generate_completion(profile, ids, mode):
         "ignore_eos": True,
         "logprobs": 5,
         "return_token_ids": True,
-        "vllm_xargs": {"glm53_lpa_mode": mode},
+        "vllm_xargs": {MODE_KEY: mode},
     }
     began = time.perf_counter()
     response = server.post(profile, "/v1/completions", body)
@@ -89,7 +90,7 @@ def main(argv=None):
     if (
         not server_config.apc_lpa_enabled(profile)
         or profile["lpa"]["break_even_tokens"] != 0
-        or profile["lpa"]["cut"] != 32
+        or profile["lpa"]["cut"] != CUT
         or not profile["lpa"]["skip_mla_queries"]
         or profile["context"]["max_num_seqs"] != 1
         or profile["profiling"]["enabled"]

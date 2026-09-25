@@ -11,7 +11,9 @@ from functools import partial
 from pathlib import Path
 
 from .. import model_http, server, server_config
+from ..config import MODEL_LAYERS
 from ..io import write_json
+from ..runtime.apc_runtime import MODE_KEY
 
 
 def common_prefix(left, right):
@@ -175,6 +177,11 @@ def encode_prompt(profile, body):
     )["tokens"]
 
 
+def expected_omission(cut, eligible, layers=MODEL_LAYERS):
+    """The query rows LPA skips: every eligible one on each MLA layer after the cut."""
+    return {str(layer): eligible for layer in range(cut + 1, layers) if layer % 4 == 3}
+
+
 def policy_hits(profile, rpc, length, mode):
     """Both ranks' admission decision, and the joint hit they must agree on."""
     workers = rpc("apc_lpa_report")
@@ -187,15 +194,7 @@ def policy_hits(profile, rpc, length, mode):
             raise ValueError("Tokenization and scheduler N differ")
         eligible = max(0, length - min(length, profile["lpa"]["tail"]) - hit)
         active = mode == "auto" and eligible > profile["lpa"]["break_even_tokens"]
-        expected = (
-            {
-                str(layer): eligible
-                for layer in range(profile["lpa"]["cut"] + 1, 45)
-                if layer % 4 == 3
-            }
-            if active
-            else {}
-        )
+        expected = expected_omission(profile["lpa"]["cut"], eligible) if active else {}
         actual = worker["lpa"]["mla_queries_skipped"] if worker["lpa"] else {}
         if actual != expected or policy["shared_cache_limit"] != (
             hit if active else None
@@ -213,7 +212,7 @@ def chat_turn(profile, rpc, body, expected, mode):
     if len(ids) + body["max_tokens"] > profile["context"]["max_model_len"]:
         raise ValueError("History exceeds the qualified context budget")
     before = read_metrics(profile)
-    row = stream_chat(profile, {**body, "vllm_xargs": {"glm53_lpa_mode": mode}})
+    row = stream_chat(profile, {**body, "vllm_xargs": {MODE_KEY: mode}})
     hit, workers = policy_hits(profile, rpc, len(ids), mode)
     row.update(
         prompt_token_ids=ids,
@@ -385,7 +384,7 @@ def main(argv=None):
                             "ignore_eos": True,
                             "return_token_ids": True,
                             "logprobs": 1,
-                            "vllm_xargs": {"glm53_lpa_mode": "off"},
+                            "vllm_xargs": {MODE_KEY: "off"},
                         },
                     )
                     elapsed = time.perf_counter() - began
@@ -543,7 +542,7 @@ def main(argv=None):
                             "max_tokens": 1,
                             "ignore_eos": True,
                             "logprobs": 1,
-                            "vllm_xargs": {"glm53_lpa_mode": mode},
+                            "vllm_xargs": {MODE_KEY: mode},
                         },
                     )
                     hit, workers = check_policy(length, mode)

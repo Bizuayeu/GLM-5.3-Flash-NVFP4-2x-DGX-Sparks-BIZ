@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 from ..config import HIDDEN_SIZE, MODEL, MODEL_LAYERS, REVISION, TEACHER_PRECISION
+from ..runtime.lpa import PROJECTOR_FORMAT
 
 
 def validate_teacher(manifest):
@@ -203,7 +204,7 @@ def main(argv=None):
         "teacher_revision": teacher["revision"],
         "teacher_precision": teacher["precision"],
         "seed": 42,
-        "format_version": 2,
+        "format_version": PROJECTOR_FORMAT,
         "representation": "diagonal-low-rank",
         "weights": cpu_weights(weights),
     }

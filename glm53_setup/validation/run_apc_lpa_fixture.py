@@ -9,6 +9,9 @@ from pathlib import Path
 
 from ..config import REVISION, TEACHER_PRECISION
 from ..io import write_json
+from ..runtime.apc_runtime import MODE_KEY
+from ..runtime.lpa import PROJECTOR_FORMAT
+from ..server_config import speculative_config
 from .run_fixture import read_fixture
 
 # The synthetic LPA configuration under test: no cut, a 512-token exact tail,
@@ -60,13 +63,7 @@ def engine_kwargs(args):
         "gpu_memory_utilization": 0.2,
         "seed": 42,
         "worker_extension_cls": "glm53_setup.validation.apc_fixture_worker.APCFixtureWorker",
-        "speculative_config": {
-            "method": "mtp",
-            "num_speculative_tokens": args.mtp,
-            "moe_backend": "triton",
-        }
-        if args.mtp
-        else None,
+        "speculative_config": speculative_config(args.mtp) if args.mtp else None,
         "kernel_config": {
             "moe_backend": "marlin",
             "linear_backend": "marlin",
@@ -102,7 +99,7 @@ def write_synthetic_projector(path, width):
 
     torch.save(
         {
-            "format_version": 2,
+            "format_version": PROJECTOR_FORMAT,
             "teacher_revision": REVISION,
             "teacher_precision": TEACHER_PRECISION,
             "cut": 0,
@@ -240,7 +237,7 @@ def main(argv=None):
                 ignore_eos=True,
                 logprobs=10,
                 detokenize=False,
-                extra_args={"glm53_lpa_mode": mode},
+                extra_args={MODE_KEY: mode},
             )
             result = llm.generate(
                 [{"prompt_token_ids": prompt}], params, use_tqdm=False

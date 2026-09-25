@@ -10,6 +10,9 @@ from pathlib import Path
 
 from ..config import REVISION, TEACHER_PRECISION
 
+# The projector artifact this loader reads; train_lpa and the APC/LPA fixture write it.
+PROJECTOR_FORMAT = 2
+
 
 @dataclass(frozen=True)
 class ExperimentSpec:
@@ -299,7 +302,7 @@ class AttentionInputExperiment:
         artifact = self.torch.load(
             predictor_path, map_location="cpu", weights_only=True
         )
-        if artifact.get("format_version") != 2:
+        if artifact.get("format_version") != PROJECTOR_FORMAT:
             raise ValueError("Unsupported projector artifact version")
         if (
             artifact.get("teacher_revision") != REVISION

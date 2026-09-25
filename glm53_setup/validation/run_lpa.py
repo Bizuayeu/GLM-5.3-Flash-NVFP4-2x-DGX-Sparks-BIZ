@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from ..io import write_json
+from ..server_config import speculative_config
 
 
 def parser():
@@ -57,13 +58,7 @@ def engine_kwargs(args, compilation_mode):
         "gpu_memory_utilization": 0.2,
         "seed": 42,
         "worker_extension_cls": "glm53_setup.runtime.lpa.LPAWorkerExtension",
-        "speculative_config": {
-            "method": "mtp",
-            "num_speculative_tokens": args.mtp,
-            "moe_backend": "triton",
-        }
-        if args.mtp
-        else None,
+        "speculative_config": speculative_config(args.mtp) if args.mtp else None,
         "kernel_config": {
             "enable_flashinfer_autotune": False,
             "enable_cutedsl_warmup": False,

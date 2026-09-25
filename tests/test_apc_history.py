@@ -6,6 +6,7 @@ from glm53_setup.validation import apc_history
 from glm53_setup.validation.apc_history import (
     answer_matches,
     common_prefix,
+    expected_omission,
     history_cases,
 )
 
@@ -63,6 +64,15 @@ class HistoryCaseTests(unittest.TestCase):
             "MIA110001-9",
         ):
             self.assertFalse(answer_matches(malformed, "MIA110001"))
+
+
+class ExpectedOmissionTests(unittest.TestCase):
+    def test_every_eligible_row_is_skipped_on_each_mla_layer_after_the_cut(self):
+        self.assertEqual(
+            expected_omission(32, 7), {"35": 7, "39": 7, "43": 7}
+        )  # The calibration cut; 44 is the model's last layer.
+        self.assertEqual(expected_omission(40, 7), {"43": 7})
+        self.assertEqual(expected_omission(0, 1, layers=4), {"3": 1})
 
 
 class PolicyHitTests(unittest.TestCase):
