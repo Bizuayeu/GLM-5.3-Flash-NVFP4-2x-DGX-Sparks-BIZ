@@ -11,10 +11,11 @@
 schema_version = 1
 
 [runtime]
-canonical_moe_order = true # One token order inside each expert; needs an image with GLM53_MOE_ORDER_API (1 or 2)
+canonical_moe_order = true # One token order inside each expert; needs an image with GLM53_MOE_ORDER_API=2 (1 only to recover a launched pair)
 # Without it identical requests do not repeat exactly: the align kernel orders an expert's tokens by
 # thread scheduling and the Marlin MoE result depends on it (docs/validation.md). false = comparison arm;
 # omitted = whatever the image defaults to. 同一要求の反復を一致させるexpert内token順の固定。
+# 新規起動には GLM53_MOE_ORDER_API=2 のimageが必要（1は起動済みの対の復旧だけ）。
 stable_indexer_topk = true # Indexer top-k ties go to the lower pool index; needs an image with GLM53_INDEXER_TOPK_API=1
 # The pinned kernels pick a different candidate set for the same input when pools tie across rank k, and
 # one such tie forks a completion (docs/server-configuration.md). false = comparison arm; omitted = the image's default.
@@ -22,7 +23,7 @@ stable_indexer_topk = true # Indexer top-k ties go to the lower pool index; need
 inductor_deterministic = true # Inductor picks reduction configs without timing, the same on both ranks
 # The indexer's compiled key norm otherwise picks its config by timing on each rank, two picks differ in
 # bits, and a launch then computes in one of three numerical states (docs/validation.md). Also keeps the
-# mode on through torch 2.13's state restore (pytorch/pytorch#198563); compiles into its own cache.
+# mode on through the state restore of torch 2.12.1 and 2.13 (pytorch/pytorch#198563); compiles into its own cache.
 # false or omitted = the timed choice. indexerのkey正規化のconfigを計測なしで両rank同じに決める（起動ごとの数値状態の原因）。
 fa2_attention = true # NoPE attention calls of more than six query rows through FlashInfer FA2, the rest on the reference path
 # Prefill of 38,962 tokens went from 572-577 to 1,242-1,272 tok/s on the reference pair and identical requests
@@ -44,8 +45,9 @@ nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses
 reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 lpa_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 decode_graphs = false
-# true: full decode Graphs (uncompiled prefill; one sequence, no LPA; MTP and prefix caching allowed).
-# trueでdecodeのみGraph化。対応イメージが必要。同時1シーケンス・LPAなし、MTP・prefix cacheは併用可。
+# Not adopted (P06: slower than eager on the full model). true needs a matching image, one sequence and
+# no LPA (MTP and prefix caching allowed).
+# 不採用（P06：本モデルではeagerより遅い）。trueには対応イメージ・同時1シーケンス・LPAなしが条件（MTP・prefix cacheは併用可）。
 index_checks = "async" # auto: sync in eager, async in Graphs; sync also allowed
 # 範囲検査は常に実施。asyncはdevice assertで失敗し得る。
 expert_parallel = false # Independent TP2/DP1 EP experiment; needs matching image
@@ -93,9 +95,10 @@ enabled = false # Enable on-demand Torch/CUDA tracing; disable for timing scores
 # カーネル計測用。通常の速度比較はfalseで実行する。
 
 [validation]
-component_worker = false # Exclusive CUDA/indexer diagnostics, before LPA/MTP integration
+component_worker = false # Exclusive CUDA/indexer diagnostics: eager, one sequence, no LPA/MTP/APC / 排他のCUDA・indexer診断（eager・1系列・LPA/MTP/APCなし）
 expert_worker = false # EP placement metadata; layer hashes only on explicit RPC
-# memory_probe = true # Optional: dev /collective_rpc method allocator_stats (torch reserved/allocated, retries); excludes LPA and the other workers
+# memory_probe = true # Optional: diagnostics over dev /collective_rpc (allocator and host memory, request traces, weight and kernel hashes, Inductor state); excludes LPA and the other workers
+# 任意：dev /collective_rpc 経由の診断（allocator・hostメモリ、要求のtrace、重み・kernelのhash、Inductorの状態）。LPA・他のworkerとは排他。
 
 [cache]
 # Native checkpoint retention. Omission preserves the runtime default (0).
@@ -120,7 +123,7 @@ gpu_memory_utilization = 0.80
 
 [mtp]
 enabled = true # LPA併用には対応イメージが必要 / Combined use needs a compatible image
-num_speculative_tokens = 3 # Measured: 1 to 5; 3 for both checkpoints, see docs/speculative-decoding.md
+num_speculative_tokens = 3 # Measured: 1 to 5; 3 for both checkpoints (docs/speculative-decoding.md) / 1〜5を実測、両checkpointとも3
 # Relative to Hugging Face cache; prepare with tools/prepare_mtp_view.py.
 # HFキャッシュからの相対パス。原本を変えず作成するMTP用メタデータview。
 view = "local-views/glm53-mtp-compatible"
@@ -165,8 +168,8 @@ warmup = true # cluster switch runs `server warmup` on rank 0 after readiness; o
 warmup_long_tokens = 0 # Long-prefill rung in prompt tokens; 0 = no long rung. Must leave room for max_tokens.
 # A new prompt shape can still compile kernels while serving (docs/vision.md); the
 # 200K request compiled one TileLang shape. Set this to the longest prompt you will
-# serve and pay its prefill once per start (262,144 tokens measured about 490 s at chunk 2048).
-# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（256K・chunk 2048 で約 490 秒の実測）。
+# serve and pay its prefill once per start (prefill times by length: docs/benchmarks.md).
+# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（長さごとの prefill 時間は docs/benchmarks.ja.md）。
 
 [resources]
 # Existing experimental memory budgets; larger workloads need new measurement.
@@ -177,7 +180,9 @@ reserve_gib = 3.0 # GiB of MemAvailable; fractions allowed / 小数可
 run_seconds = 0 # No time limit; positive seconds INCLUDE load
 # ロード時間込みの自動停止期限。0なら時間制限なし。メモリ保護は常に有効。
 stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metrics signal moves this long; 0 = off
-# Same value as generation.timeout_seconds; the longest measured request (256K, 493 s at chunk 2048) fits.
+# Same value as generation.timeout_seconds; the longest request measured before FA2 prefill (256K, 493 s on
+# 1.5.0; docs/benchmarks.md) fits.
+# generation.timeout_seconds と同じ値。FA2 prefill 以前の最長の実測要求（256K、1.5.0 で 493 秒、docs/benchmarks.ja.md）が収まる。
 # KV usage counts as progress, so a long prefill is not a stall. /health stays 200 while the engine is wedged.
 # rank 0 だけ。要求が running なのに /metrics の信号（生成・prompt token 計数、KV 使用率、running 数）がこの秒数動かなければ停止。
 # KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。
