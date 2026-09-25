@@ -700,19 +700,18 @@ def apply_determinism(args, profile):
     ]
 
 
+def speculative_config(depth):
+    """vLLM's MTP draft at this depth; examples/speculative.mtp*.json spell it."""
+    return {"method": "mtp", "num_speculative_tokens": depth, "moe_backend": "triton"}
+
+
 def apply_speculation(args, profile):
     """The MTP draft, when this profile serves the local view."""
     if not profile["mtp"]["enabled"]:
         return
     args += [
         "--speculative-config",
-        json.dumps(
-            {
-                "method": "mtp",
-                "num_speculative_tokens": profile["mtp"]["num_speculative_tokens"],
-                "moe_backend": "triton",
-            }
-        ),
+        json.dumps(speculative_config(profile["mtp"]["num_speculative_tokens"])),
     ]
 
 

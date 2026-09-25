@@ -1069,6 +1069,25 @@ class ServerConfigTests(unittest.TestCase):
         self.assertIn("--worker-extension-cls", args)
         self.assertTrue(config.lpa_request(self.profile, 2048)["allow_mtp"])
 
+    def test_the_speculative_examples_are_what_the_launcher_passes(self):
+        # docs/README.md names the two files as the MTP configuration examples.
+        for depth in (1, 3):
+            text = (ROOT / f"examples/speculative.mtp{depth}.json").read_text(
+                encoding="utf-8"
+            )
+            self.assertEqual(
+                json.loads(text, object_pairs_hook=list),
+                list(config.speculative_config(depth).items()),
+            )
+        self.profile["mtp"]["enabled"] = True
+        args = config.serve_args(self.profile, 0, "/hf/mtp-view")
+        self.assertEqual(
+            args[args.index("--speculative-config") + 1],
+            json.dumps(
+                config.speculative_config(self.profile["mtp"]["num_speculative_tokens"])
+            ),
+        )
+
     def test_command_mounts_mtp_view_and_projector_without_mutating_cache(self):
         self.profile["lpa"]["enabled"] = True
         self.profile["mtp"]["enabled"] = True

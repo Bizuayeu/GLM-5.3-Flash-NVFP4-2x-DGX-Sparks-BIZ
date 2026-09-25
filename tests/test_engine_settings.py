@@ -20,6 +20,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from glm53_setup.server_config import speculative_config
+
 ROOT = Path(__file__).resolve().parents[1]
 
 BLOCKED = """
@@ -110,6 +112,19 @@ class EveryEngineRunnerTests(unittest.TestCase):
         for module in ENGINE_RUNNERS:
             with self.subTest(runner=module):
                 self.assertEqual(self.settings(module)["tensor_parallel_size"], 1)
+
+
+class SpeculativeConfigTests(unittest.TestCase):
+    def test_the_mtp_runners_ask_for_the_draft_the_server_launches(self):
+        for module in ("run_graph_fixture", "run_apc_lpa_fixture", "run_lpa"):
+            for depth in (1, 3):
+                with self.subTest(runner=module, depth=depth):
+                    kwargs = kwargs_without_gpu(
+                        module, argv(mtp=depth), ENGINE_RUNNERS[module]
+                    )
+                    self.assertEqual(
+                        kwargs["speculative_config"], speculative_config(depth)
+                    )
 
 
 class FixtureRunnerTests(unittest.TestCase):
