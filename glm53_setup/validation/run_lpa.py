@@ -1,13 +1,13 @@
 """Exercise teacher attention-input replay on a verified four-layer fixture."""
 
 import argparse
-import json
 import math
 import time
 from pathlib import Path
 
 from ..io import write_json
 from ..server_config import speculative_config
+from .run_fixture import read_fixture
 
 
 def parser():
@@ -71,14 +71,7 @@ def engine_kwargs(args, compilation_mode):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
-    config = json.loads((args.fixture / "config.json").read_text())
-    if not (
-        status.get("all_tensor_bytes_verified")
-        and config.get("_test_fixture_only")
-        and config["text_config"]["num_hidden_layers"] == 4
-    ):
-        raise ValueError("A verified four-layer fixture is required")
+    read_fixture(args.fixture)
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "loading",

@@ -3,13 +3,13 @@ log-probabilities and sparse-MLA candidate sets, for a later A/B against
 another checkpoint of the same fixture."""
 
 import argparse
-import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ..io import write_json
 from ..runtime.indexer_worker import IndexerCaptureWorker
+from .run_fixture import read_fixture
 
 LONG_TOKENS = 8192
 LONG_KEEP_LAST = 1024
@@ -154,14 +154,7 @@ def engine_kwargs(args):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
-    config = json.loads((args.fixture / "config.json").read_text())
-    if (
-        not status.get("all_tensor_bytes_verified")
-        or not config.get("_test_fixture_only")
-        or config["text_config"]["num_hidden_layers"] not in (4, 8)
-    ):
-        raise ValueError("Verified four- or eight-layer fixture required")
+    config, status = read_fixture(args.fixture, layers=(4, 8))
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "started_at": datetime.now(timezone.utc).isoformat(),

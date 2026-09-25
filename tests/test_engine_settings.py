@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from glm53_setup.server_config import speculative_config
 
@@ -222,11 +223,72 @@ class FixtureGateTests(unittest.TestCase):
                 {**COMPLETE, "all_tensor_bytes_verified": False},
             ),
             "no verification recorded": (FOUR_LAYER, {"status": "complete"}),
+            "no download status recorded": (
+                FOUR_LAYER,
+                {"all_tensor_bytes_verified": True},
+            ),
+            "a truthy flag that is not true": (
+                FOUR_LAYER,
+                {**COMPLETE, "all_tensor_bytes_verified": 1},
+            ),
         }
         for name, (config, status) in cases.items():
             with self.subTest(case=name):
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "^Only a complete, byte-verified test fixture with 4 layers "
+                    "is allowed$",
+                ):
                     run_fixture.check_fixture(config, status)
+
+    def test_a_runner_names_the_layer_counts_it_accepts(self):
+        from glm53_setup.validation import run_fixture
+
+        eight = {**FOUR_LAYER, "text_config": {"num_hidden_layers": 8}}
+        run_fixture.check_fixture(eight, COMPLETE, layers=(4, 8))
+        run_fixture.check_fixture(eight, COMPLETE, layers=None)
+        with self.assertRaisesRegex(ValueError, "with 4 or 8 layers is allowed$"):
+            run_fixture.check_fixture(
+                {**FOUR_LAYER, "text_config": {"num_hidden_layers": 2}},
+                COMPLETE,
+                layers=(4, 8),
+            )
+        # Any layer count still has to be a complete, verified test fixture.
+        with self.assertRaisesRegex(ValueError, "test fixture is allowed$"):
+            run_fixture.check_fixture(
+                eight, {**COMPLETE, "status": "partial"}, layers=None
+            )
+
+    def test_every_runner_applies_the_one_gate_before_it_writes(self):
+        import importlib
+
+        from glm53_setup.config import FIXTURE_LAYERS
+
+        expected = {
+            "run_fixture": (FIXTURE_LAYERS,),
+            "run_graph_fixture": (FIXTURE_LAYERS,),
+            "run_indexer_fixture": (FIXTURE_LAYERS,),
+            "run_lpa": (FIXTURE_LAYERS,),
+            "run_apc_lpa_fixture": (FIXTURE_LAYERS,),
+            "run_agreement_fixture": (4, 8),
+            "run_repeat_trace": None,
+        }
+
+        class Refused(Exception):
+            pass
+
+        for module, layers in expected.items():
+            with self.subTest(runner=module), tempfile.TemporaryDirectory() as tmp:
+                runner = importlib.import_module("glm53_setup.validation." + module)
+                output = Path(tmp) / "out"
+                with (
+                    patch.object(runner, "read_fixture", side_effect=Refused) as gate,
+                    self.assertRaises(Refused),
+                ):
+                    runner.main(["--fixture", tmp, "--output", str(output)])
+                self.assertEqual(gate.call_args.args, (Path(tmp),))
+                self.assertEqual(gate.call_args.kwargs.get("layers", (4,)), layers)
+                self.assertFalse(output.exists())
 
 
 class FixtureFilesTests(unittest.TestCase):

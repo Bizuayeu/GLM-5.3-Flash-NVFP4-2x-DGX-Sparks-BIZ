@@ -6,13 +6,13 @@ matched received identical inputs, so the difference was made inside it.
 """
 
 import argparse
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ..io import write_json
 from ..runtime.moe_token_order import canonical_expert_order as canonical_order
+from .run_fixture import read_fixture
 
 # Decoder layers and the parts below them; deeper leaves add calls, not information.
 HOOKED = re.compile(
@@ -281,12 +281,7 @@ def engine_kwargs(args):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
-    config = json.loads((args.fixture / "config.json").read_text())
-    if not status.get("all_tensor_bytes_verified") or not config.get(
-        "_test_fixture_only"
-    ):
-        raise ValueError("Verified test fixture required")
+    config, _ = read_fixture(args.fixture, layers=None)
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "started_at": datetime.now(timezone.utc).isoformat(),

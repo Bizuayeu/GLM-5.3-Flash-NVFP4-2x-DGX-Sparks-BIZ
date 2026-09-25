@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from ..io import write_json
+from ..config import FIXTURE_LAYERS
+from ..io import read_json, write_json
 from .summarize_fixture import assess_outputs
 
 
@@ -86,22 +87,33 @@ def parser():
     return cli
 
 
-def check_fixture(config, status):
-    """Refuse anything but a fully downloaded, byte-verified four-layer fixture."""
+def check_fixture(config, status, layers=(FIXTURE_LAYERS,)):
+    """Refuse anything but a fully downloaded, byte-verified test fixture.
+
+    ``layers`` names the layer counts the runner accepts; None accepts any.
+    """
     if (
         not config.get("_test_fixture_only")
-        or config["text_config"]["num_hidden_layers"] != 4
-        or status["status"] != "complete"
+        or (
+            layers is not None
+            and config["text_config"]["num_hidden_layers"] not in layers
+        )
+        or status.get("status") != "complete"
         or status.get("all_tensor_bytes_verified") is not True
     ):
-        raise ValueError("Only a byte-verified four-layer test fixture is allowed")
+        counts = (
+            "" if layers is None else f" with {' or '.join(map(str, layers))} layers"
+        )
+        raise ValueError(
+            f"Only a complete, byte-verified test fixture{counts} is allowed"
+        )
 
 
-def read_fixture(fixture):
+def read_fixture(fixture, layers=(FIXTURE_LAYERS,)):
     """Read the builder's two files and apply the gate to them."""
-    config = json.loads((fixture / "config.json").read_text())
-    status = json.loads((fixture / "fixture-status.json").read_text())
-    check_fixture(config, status)
+    config = read_json(fixture / "config.json")
+    status = read_json(fixture / "fixture-status.json")
+    check_fixture(config, status, layers)
     return config, status
 
 

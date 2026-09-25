@@ -2,7 +2,6 @@
 
 import argparse
 import hashlib
-import json
 import math
 import os
 import time
@@ -10,6 +9,7 @@ from pathlib import Path
 
 from ..io import write_json
 from ..server_config import speculative_config
+from .run_fixture import read_fixture
 
 
 def parser():
@@ -88,14 +88,7 @@ def engine_kwargs(args, compilation_mode):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    config = json.loads((args.fixture / "config.json").read_text())
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
-    if (
-        not config.get("_test_fixture_only")
-        or config["text_config"]["num_hidden_layers"] != 4
-        or not status.get("all_tensor_bytes_verified")
-    ):
-        raise ValueError("Verified four-layer fixture required")
+    read_fixture(args.fixture)
     args.output.mkdir(parents=True, exist_ok=False)
     os.environ.update(
         GLM53_FUSED_UNPACK="1" if args.fused_unpack else "0",

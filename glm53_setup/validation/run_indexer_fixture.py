@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+from .run_fixture import read_fixture
+
 
 def parser():
     """The runner's argument interface; the engine settings follow from it."""
@@ -43,14 +45,7 @@ def engine_kwargs(args):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    status = json.loads((args.fixture / "fixture-status.json").read_text())
-    config = json.loads((args.fixture / "config.json").read_text())
-    if (
-        not status.get("all_tensor_bytes_verified")
-        or not config.get("_test_fixture_only")
-        or config["text_config"]["num_hidden_layers"] != 4
-    ):
-        raise ValueError("Verified four-layer fixture required")
+    read_fixture(args.fixture)
     args.output.mkdir(parents=True, exist_ok=False)
     from vllm import LLM, SamplingParams
 
