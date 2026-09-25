@@ -20,7 +20,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Document | Role | EN | JA |
 |---|---|---|---|
 | Operations | Artifact storage paths, acquisition, host preparation, launch checks, recovery | [EN](operations.md) | [JA](operations.ja.md) |
-| Server configuration | The categorized server TOML, KV/RAM conditions, image contract, LPA/MTP constraints | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
+| Server configuration | The categorized server TOML, the published option against the defaults, every optional key, KV/RAM conditions, image markers, feature limits | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFP network | Direct QSFP connection and persistent NetworkManager profiles | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL validation | Two-host collective diagnostic and its limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | Launch contracts | API client authentication, allocator propagation, all-rail checks, two-rank switch and recovery, APC history qualification | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
@@ -35,8 +35,8 @@ Every document has one role; other documents link to it instead of repeating its
 | Component validation | CUDA/indexer components, Graph fixture, PP/EP/APC fixtures, history fixtures | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | Benchmarks | TP=2 benchmark method, the independent full-model runs of each initiative, and the measurements of each release | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | Image input | Vision at 256K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
-| FreedomBench | Political-context evaluation: required matrix and preliminary results | [EN](freedombench.md) | [JA](freedombench.ja.md) |
-| Harnesses | ZCode and Claude Code connection plans and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| FreedomBench | Political-context evaluation: the closure on the serving profile, earlier runs and what was not run | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| Harnesses | The accepted harness route (npm ZCode CLI), connection settings and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCode guard hook | Setup of the PreToolUse existing-file guard: why a hook, install, verify, limits | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | Licensing guide | Commercial use, modification and redistribution by artifact | [EN](licensing.md) | [JA](licensing.ja.md) |
 
@@ -60,7 +60,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Model ID, pinned revision, base-image digest, local reference tag, pinned vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | Distributed LPA projector URL, file hash, format, teacher and training provenance | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json); package layout in [operations](operations.md#artifact-storage-and-paths) |
 | Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml) (the distributed defaults) and [examples/server.axl.example.toml](../examples/server.axl.example.toml) (the published option: repacked weights, two sequences, 6 GiB KV), explained in [server configuration](server-configuration.md) |
-| MTP speculative configuration examples | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
+| MTP speculative configuration (the launcher builds it from `mtp.*`; the files show it for a manual reproduction) | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |
 | Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md) |
@@ -70,6 +70,7 @@ Every document has one role; other documents link to it instead of repeating its
 | Routine-use acceptance of the serving profile: its scope and where each item's evidence is recorded | [Setup runbook step 6](../SETUP.md#6-qualify-the-full-model); the README status table and [validation](validation.md#full-model-tp2-experimental-scope) point there |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
 | What `server preflight` checks before a start, and what it does not certify | [Operations](operations.md#full-model-launch-checks) |
+| Image capability markers: which setting requires each, and from which version images carry it | [Server configuration](server-configuration.md#current-image-contract) |
 | Host kernel requirement, the `7.0.0-1019-nvidia` RoCE failure and the `kho=off` workaround | [Operations](operations.md#host-kernel-and-multi-node-roce) |
 | License permissions and obligations by artifact | [Licensing guide](licensing.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | Harness acceptance cases and their run status | [Harnesses](harnesses.md) |

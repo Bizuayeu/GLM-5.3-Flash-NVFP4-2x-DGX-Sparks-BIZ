@@ -2,13 +2,13 @@
 
 [日本語](launch-safety.ja.md)
 
-These changes extend P10 (memory), P19/P22 (APC) and E03 (operations). They do not introduce another acceleration claim. Implementation and CPU contracts are present; real-container and full-model regression results must be recorded separately before adoption.
+These contracts extend P10 (memory), P19/P22 (APC) and E03 (operations) and add no acceleration claim. The switch and recovery paths were exercised in the drills below and run on every switch of the reference pair; routine-use acceptance is recorded in [SETUP step 6](../SETUP.md#6-qualify-the-full-model).
 
 ## Model API clients
 
 The common transport uses a nonempty `API_KEY`, otherwise a nonempty `VLLM_API_KEY`. If both are empty or absent it sends no Authorization header. This includes `server ask`, dependent benchmarks, profiler controls and component readiness checks. The origin must explicitly identify the model API; all redirects are refused, including same-origin redirects. Downloads use a separate unauthenticated transport. Keys are never settings or fingerprint inputs; HTTP failures expose the status code without headers or response bodies. HTTP 401/403 are failures, not samples omitted from a successful score.
 
-The pinned vLLM authentication middleware guards `/v1`, `/v2`, `/inference` and `/cohere`. It does **not** authenticate `/health`, `/metrics`, `/tokenize`, `/collective_rpc`, `/reset_prefix_cache` or profiler controls. Sending Bearer credentials does not change that server-side boundary. The listener remains loopback-only. This change adds client authentication, not a new public server authentication layer. `api.dev_endpoints = true` mounts the dev routes (cache reset, collective RPC, sleep) on a profile that would not otherwise run in dev mode; they are equally unauthenticated ([server configuration](server-configuration.md#commands)).
+The pinned vLLM authentication middleware guards `/v1`, `/v2`, `/inference` and `/cohere`. It does **not** authenticate `/health`, `/metrics`, `/tokenize`, `/collective_rpc`, `/reset_prefix_cache` or profiler controls. Sending Bearer credentials does not change that server-side boundary. The listener remains loopback-only. This change adds client authentication, not a new public server authentication layer. `api.dev_endpoints = true` mounts the dev routes (cache reset, collective RPC, sleep) on a profile that would not otherwise run in dev mode; they are equally unauthenticated ([server configuration](server-configuration.md#api-and-diagnostics)).
 
 ## Allocator and shared launch settings
 
@@ -50,7 +50,7 @@ On the owned two-host test system, an intentionally mismatched projector hash le
 
 ### After a switch: the decode check
 
-A new launch is checked, not assumed: on the four-layer fixture launches fell into two numerical states, and on the pair one launch in six computed in another state on 2026-09-22 with the kernel tables unchanged ([measurements on 1.9.0](benchmarks.md#six-launches-of-the-new-image-the-same-completions-five-times-different-once)). After every switch, on rank 0, run `tools/decode_check.py` once per task type with `TOKENS_OUT` set, and save both ranks' container logs before the next switch discards them:
+A new launch is checked, not assumed. Until 1.12.0 launches of the pair fell into one of three numerical states ([measurements on 1.9.0](benchmarks.md#six-launches-of-the-new-image-the-same-completions-five-times-different-once); cause and fix in [validation](validation.md#repeatability)); `runtime.inductor_deterministic` removed that cause, and this routine is what would show a new one. After every switch, on rank 0, run `tools/decode_check.py` once per task type with `TOKENS_OUT` set, and save both ranks' container logs before the next switch discards them:
 
 ```sh
 for kind in prose count code; do

@@ -2,7 +2,7 @@
 
 [日本語](licensing.ja.md) · [Provenance and notices](../THIRD_PARTY_NOTICES.md)
 
-**Original repository code and documentation are Apache-2.0: commercial use, modification, and paid or free redistribution are permitted subject to its conditions. Weights, containers and harnesses retain separate terms.** This is an operational summary; the applicable license text and artifact version govern. Beta status describes maturity, not a non-commercial restriction.
+**Original repository code and documentation are Apache-2.0: commercial use, modification, and paid or free redistribution are permitted subject to its conditions. Weights, containers and harnesses retain separate terms.** This is an operational summary; the applicable license text and artifact version govern.
 
 ## Permissions by artifact
 
@@ -31,9 +31,9 @@ Original code here is Apache-2.0 because the express patent grant and the change
 
 ## Distributing Apache-covered material
 
-Supply the license, retain applicable upstream notices, and reproduce NOTICE attribution readably. **Mark each modified file; a changelog alone does not replace that requirement.** The patch generator adds change comments to modified vLLM files. Different terms for your modifications or a closed product can coexist with retained upstream obligations.
+Supply the license, retain applicable upstream notices, and reproduce NOTICE attribution readably. **Mark each modified file as the table above describes; a changelog alone does not replace that requirement.** Different terms for your modifications or a closed product can coexist with retained upstream obligations.
 
-Apache includes a limited contributor patent grant and a patent-litigation termination provision; it does not grant branding/endorsement rights. Warranty is disclaimed. Paid support can be offered on your own responsibility. Private use or providing an API does not itself create a general Apache/MIT source-publication obligation; delivering artifacts to customers triggers their distribution conditions.
+Warranty is disclaimed; paid support can be offered on your own responsibility. Private use or providing an API does not itself create a general Apache/MIT source-publication obligation; delivering artifacts to customers triggers their distribution conditions.
 
 ## Weight notices
 

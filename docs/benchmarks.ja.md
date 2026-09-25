@@ -2,13 +2,28 @@
 
 [English](benchmarks.md) · [検証範囲](validation.ja.md)
 
-本書はTP=2ベンチの方法、MTPなしの基準値、独立施策の全モデル実行（P08・P11・P13〜P15・P17〜P19・P21・P22・checkpoint保持）、リリース候補・200K・256Kの実入力確認と、それを1.3.1で繰り返したsparkDash・200Kの測定を所有します。MTP k=1／k=3の比較は[投機的デコーディング](speculative-decoding.ja.md)、現在の画像入力の既定は[画像入力](vision.ja.md)を参照してください。
+本書はTP=2ベンチの方法、MTPなしの基準値、独立施策の全モデル実行（2026-09-12〜14：P08・P11・P13〜P15・P17〜P19・P21・P22・checkpoint保持）、リリース候補・200K・256Kの実入力確認と、下の表の各リリースの測定を所有します。採否の判断は[最適化カタログ](optimization-catalog.ja.md)、MTP k=1／k=3の比較は[投機的デコーディング](speculative-decoding.ja.md)、現在の画像入力の既定は[画像入力](vision.ja.md)を参照してください。
+
+| リリース | 日付 | 測ったもの |
+|---|---|---|
+| [1.3.1](#131での測定) | 2026-09-17 | LPA offの200K画像profile：sparkDash、200K実入力 |
+| [1.4.0](#140での測定) | 2026-09-17 | chunk 2048：sparkDash、200K実入力 |
+| [1.5.0](#150での測定) | 2026-09-17〜18 | 256K画像の既定：起動、prefillとdecode、256K・200K実入力、sparkDash |
+| [1.6.0](#160での測定) | 2026-09-18〜21 | 同一要求の反復、FA2 prefill、長い入力。route g・k=4の配信profileとslot対応付けのguard |
+| [1.7.0](#170での測定) | 2026-09-21〜22 | 再パック `l`・k=3のprofile、decode Graphs |
+| [1.7.1](#171での測定) | 2026-09-22 | 再パックと既定のprefill、同じ夜の対 |
+| [1.8.0](#180での測定) | 2026-09-22 | KDA input projectionの分割 |
+| [1.9.0](#190での測定) | 2026-09-22〜25 | prefix pageの重複排除、起動ごとの数値状態 |
+| [1.10.2](#1102での測定) | 2026-09-23 | 公開した任意設定での同時2系列 |
+| [1.10.4](#1104での測定) | 2026-09-23 | 同時2系列profileでのsparkDashとtool-eval-bench |
+| [1.13.0](#1130での測定) | 2026-09-25 | 両profileでのkpool seedの修正、同時2系列のcompletion |
+| [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方、`max_num_seqs = 1` での再現性、cacheした長いprompt |
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
 ## 初期の測定条件
 
-GB10 2台、TP=2、Marlin W4A16、全候補保持の参照attention、eager、MTP/APCなし、context 16,384、各GPUのKV予算1 GiBを対象とします。サーバーの`max_num_seqs=1`を明示します。fixtureでは同時実行2で僅差の候補が同点となりtoken列が変わったため、そのprofileは未検収です。
+GB10 2台、TP=2、Marlin W4A16、全候補保持の参照attention、eager、MTP/APCなし、context 16,384、各GPUのKV予算1 GiBを対象とします。サーバーの`max_num_seqs=1`を明示します。fixtureでは同時実行2で僅差の候補が同点となりtoken列が変わったため、そのprofileは当時未検収でした。配布既定は今も1系列です。公開した任意設定の同時2系列profileは1.11.2で検収しました（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
 
 | ケース | 要求入力token | 出力token | クライアント同時数 | 測定要求数 |
 |---|---:|---:|---:|---:|
@@ -77,7 +92,7 @@ CLIの説明は[vLLM公式資料](https://docs.vllm.ai/en/latest/cli/bench/serve
 
 上記profileでの結果です。ソースcommit `1816722`、固定ベースから構築した参照image ID `sha256:c4f0aa51b70b85ec86cdf12a25468a443475dfe5b67216c92f8bd906df22b0c3`を使用しました。イメージはレジストリへ公開していません。クライアント2同時では待ち時間が増えますが、サーバーは1 sequenceなので、並列バッチ性能の証明ではありません。この範囲では長い入力のprefill待ちが主な遅延増加要因です。
 
-vLLMの報告するモデル用メモリは各rank約88.2 GiB。ベンチrun中のホスト利用可能メモリは各台で約11.6／12.5 GiB以上を維持し、OOMはありませんでした。最大性能・本番品質を保証する値ではなく、限定条件の合成ベンチbaselineです。両ハーネスの実接続は未検証です。
+vLLMの報告するモデル用メモリは各rank約88.2 GiB。ベンチrun中のホスト利用可能メモリは各台で約11.6／12.5 GiB以上を維持し、OOMはありませんでした。最大性能・本番品質を保証する値ではなく、限定条件の合成ベンチbaselineです。このrunではハーネスを試していません。状況は[ハーネス](harnesses.ja.md)にあります。
 
 ## 標準batchingの独立評価
 
@@ -107,7 +122,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 
 各条件で、計算・資料抽出4問をクライアント同時数1／2で実行した計8回答と、異なる注文ID・確認コードによる並列tool往復2件が期待値に一致しました。限定的なタスク確認であり、一般品質・cancel・テナント分離の検収ではありません。全条件を通じた空きメモリはrank 0で11.4 GiB以上、rank 1で12.5 GiB以上。試験ガードは4 GiBで、OOMはありません。制御停止時のrank 0はexit 0、rank 1は従来どおり強制終了（exit 137、OOMではない）が必要でした。
 
-**判断:** 上記の入力32／2,048・出力64token、最大2同時要求の範囲で、独立throughput用の2系列を受け入れます。全体出力は両1系列対照比、短文で約76〜78%、2Kで約26%改善しました。既定と単発遅延の対照は1系列を維持します。LPAはこの複数系列profileと非対応です。MTP/fusion/Graphsとの併用、4系列、長文の品質・性能、連続負荷、復旧は別検収であり、業務利用や通常serviceの認定を意味しません。
+**結果:** 入力32／2,048・出力64token、最大2同時要求の範囲で、2系列の全体出力は両1系列対照比で短文約76〜78%、2Kで約26%増えました。既定と単発遅延の対照は1系列のままで、LPAはこの複数系列profileと非対応です。判断と範囲は[最適化カタログ](optimization-catalog.ja.md)（P13）にあります。
 
 ### 最大長での容量確認
 
@@ -146,7 +161,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 | ITL p95（ms） | 107.23 | 602.08 | 80.44 | 110.13 |
 | 観測した最長ITL（秒） | 1.551 | 0.687 | 2.790 | 1.562 |
 
-**判断:** 128は最長停止を短縮しましたが、prefillと全体出力が悪化したため不採用です。1024は2Kの全体出力を両512対照比で約4.6%（単発）／5.7%（2同時）改善し、単発TTFTも約6.1→5.6秒に短縮しました。ただし2同時の最長停止は約1.56→2.79秒に延びました。**1024はこの停止を許容するthroughput試験の採用候補**とし、既定512は維持します。p95改善だけから対話の途切れも改善したとはしません。少数測定であり、SLAや長文の定常性能を保証しません。
+**結果:** 128は最長停止を短縮した一方で、prefillと全体出力が悪化しました（不採用）。1024は2Kの全体出力を両512対照比で約4.6%（単発）／5.7%（2同時）改善し、単発TTFTを約6.1→5.6秒に短縮しましたが、2同時の最長停止は約1.56→2.79秒に延びました。既定は当時512のままでした（1.4.0から2048、下記）。p95改善だけから対話の途切れも改善したとはせず、少数測定でありSLAを示しません。判断は[最適化カタログ](optimization-catalog.ja.md)（P11）にあります。
 
 1024の別容量run `capacity-v17-chunk1024-16kx2` でも、各16,320入力＋64出力の2要求が完了し、実running最大2、KV最大約58.1%、preemption増分0、終了後KV使用0、後続要求の完了を確認しました。固定KVは各rank 1 GiBのままです。LPA/MTP/fusion/Graphs/APCとの併用と、長文内容の品質は別検収です。
 
@@ -162,7 +177,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 
 2048では、[1.3.1での200K実入力](#131での200k実入力)と同じ199,652 tokenの合言葉要求が、512の410.8秒に対して361.3秒で、正答し正常に終了しました。その要求中の最小空きはhead 6.88 GiB・peer 9.16 GiBで、512では7.12・9.44でした。decodeの差は実行ごとのばらつきの範囲内です。1024と2048は655 tokenを超える最初の予算でindexerの分割経路を使いますが、どの大きさでも配信中のkernelのコンパイルはありませんでした。2048の起動ではpeerで `NV_ERR_NO_MEMORY` の再試行が28件、すべて重みのロード中に記録されました（1024では0件）。起動とすべての要求は完了しています。512のprefillは、ダッシュボード稼働中に測った1.3.1の492.0 tok/sより約3%低い値です。再起動をまたぐため、原因は切り分けていません。
 
-**判断:** 1.4.0で配布の既定を2048にします。既定の同時1系列では、chunkを長くしても他の要求は待たされません。2系列では、上の1024の行が示したように停止が長くなると見込んでください。2048を超える大きさは測っていません。Miaの記録では、indexerの共有メモリの上限は4096付近です。
+**結果:** 配布の既定は1.4.0から2048です。既定の同時1系列では、chunkを長くしても他の要求は待たされません。2系列では、上の1024の行が示したように停止が長くなると見込んでください。2048を超える大きさは測っていません。Miaの記録では、indexerの共有メモリの上限は4096付近です。判断は[最適化カタログ](optimization-catalog.ja.md)（P11）にあります。
 
 ## 同種タスクの投入順比較（P14）
 
@@ -176,7 +191,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 | TPOT中央値（ms） | 84.45 | 83.91 | 84.86 |
 | ITL p95（ms） | 76.39 | 75.46 | 77.15 |
 
-**判断: 今回の用途では専用の同種投入制御を不採用。** 改善は対照比約0.7〜0.9%に留まり、小規模A/B/A一巡から再現性や専用schedulerの実益は確立できません。標準batchingは維持します。これは投入順の比較であり、実expert選択やengine内の同種batchを直接観測していないため、expert共有の成功・不成立は断定しません。長さ・タスク数・同時数を変える場合は別実験です。
+**結果:** 小規模A/B/A一巡で約0.7〜0.9%の改善に留まり、再現性も専用schedulerの必要も示しません。expert選択は観測していないため、expert共有の成否は断定しません。不採用です（[最適化カタログ](optimization-catalog.ja.md)、P14）。
 
 非公開runは`task-grouping-v20b`。固定vLLMのCustomDatasetは`--disable-shuffle`でJSONL順を保持し、既存templateへ`--skip-chat-template`を指定しました。元イメージにJSONL readerの任意依存がなかったため、最初のrunは要求前に失敗。再試行ではサーバーを固定し、同じベースのベンチ専用イメージへpandas 2.3.3／pytz 2025.2／tzdata 2025.2だけを公式wheelのSHA照合後に追加しました。クライアントimageは`sha256:4b5a2146c2015b00a5653e54efebcd40a29b12d77c309fdc57476be7523cfa25`、driver SHAは`31e7b5c2e42a1ff2b85744ca1d25d5b6a00e705ac47f6879fffa79f7db9454b5`です。
 
@@ -200,7 +215,7 @@ prefillと待ち行列を含む全体出力（token/s）:
 | 32 | 0.414秒／73.35ms | 0.498秒／77.43ms | 0.490秒／74.65ms |
 | 2,048 | 6.973秒／153.35ms | 7.069秒／157.64ms | 6.996秒／153.38ms |
 
-**判断: この2系列・短文／2K負荷ではEPを性能面で不採用とします。** 全4ケースで両off対照を下回りました。短文2同時の全体出力は約2.8〜5.8%低下。標準batchingの採用判断は維持し、EP設定は実験用・既定offのまま残します。別の同時数やMTPとの併用へ結果を一般化しません。
+**結果:** 全4ケースで両off対照を下回りました（短文2同時の全体出力は約−2.8〜−5.8%）。EP設定は実験用・既定offのままです。不採用です（[最適化カタログ](optimization-catalog.ja.md)、P21）。
 
 全42 MoE層の実物を両rankで確認し、EP offの288分割expert→onの144個の完全expert→offへの復帰、全288 expertの重複しない担当範囲、`MarlinExperts`を確認しました。各armの計算・資料抽出8回答とtool往復2件は期待値に一致しました。各armの別容量試験（`capacity-v28-ep-*`）でも16,320入力＋64出力×2要求が完了し、実running最大2、KV最大約58.1%、preemption増分0、終了後KV使用0と後続要求を確認しました。これらは限定的な品質・容量の証拠です。
 
@@ -221,7 +236,7 @@ SSEは3個の非空chunkを受信後に切断し、256tokenの上限前に生成
 
 全armの測定30要求・各64出力token、計算／抽出8回答、tool往復2件、SSE切断後の停止・後続要求は通過しました。サーバーは1系列なので、クライアント2同時は待ち行列を含みます。
 
-2K単発のTTFT中央値は6.071→4.709→6.099秒で、PPは約22〜23%短縮しました。一方、TPOTは約70〜72→111 msとなり、生成速度が下がりました。**この32／2K入力・64出力の通常生成用途ではPP2を性能面で不採用**とします。初動短縮は観測として残し、より長い入力・短い出力での再評価と、MTP/LPA併用は別課題です。
+2K単発のTTFT中央値は6.071→4.709→6.099秒で、PPは約22〜23%短縮しました。一方、TPOTは約70〜72→111 msとなり、生成速度が下がりました。**結果:** この32／2K入力・64出力の用途では不採用です（[最適化カタログ](optimization-catalog.ja.md)、P17）。初動短縮は観測として残します。
 
 PPの速度・品質測定後、2回目のprofiler開始時にPyTorch/Kinetoの結果解放処理でsegfaultが発生しました。その後headは4 GiBメモリガードで停止し、OOMKilledはfalse。peerも停止しました。成功済みの速度・品質結果は保持しますが、PP run全体のstatusはfailedです。**PPの単一16K容量試験と33出力traceは未完了**です。TPの両対照は、別の単一16K容量試験も通過しました。
 
@@ -244,7 +259,7 @@ PPのprofiling開始前までのhead空き最小は約4.27 GiBで、4 GiBガー�
 | 8,192 | 1 | 24.6281 | 24.5649 | 24.6000 |
 | 8,192 | 128 | 33.7452 | 33.3316 | 33.5738 |
 
-各armで内容8回答・tool往復2件・SSE切断と後続要求が通過しました。**限定した独立eager用途のopt-inとして受け入れます。** 128出力の改善は両対照比で短文約2.2〜2.5%、2K約1.8〜1.9%、8K約0.7〜1.2%。Prefill単体の差は小さく、大きな短縮とは扱いません。当時は既定`index_checks="auto"`（eagerでは同期）を維持しました。現在のテンプレートは`async`です（[起動設定](server-configuration.ja.md#配布用の既定設定)）。MTP/LPA/fusion併用は別に検収します。
+各armで内容8回答・tool往復2件・SSE切断と後続要求が通過しました。**結果:** 128出力は両対照比で短文約2.2〜2.5%、2K約1.8〜1.9%、8K約0.7〜1.2%改善し、prefill単体の差は小さいものでした。opt-inとして受け入れました（[最適化カタログ](optimization-catalog.ja.md)、P08）。テンプレートは`async`です（[起動設定](server-configuration.ja.md#配布用の既定設定)）。MTP/LPA/fusion併用は下のP18です。
 
 速度・品質測定後、新しいプロセスでprofilerを一度だけ開始・停止しました。off／async／restoredの1／33出力を1秒のidle間隔で記録し、両rankとも6つのGPU区間を確認。offと復帰のkernel／launch／NCCL件数の一致を確認してから差分を算出しました。
 
@@ -277,7 +292,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 別run `integration-ops-v38` では、3条件とも16,320入力＋64出力を完了し、preemptionなし、終了後のscheduler／KV使用0、後続要求成功を確認しました。peak KV使用率は約0.630でした。2K入力のSSEを3つの非空chunk受信後に切断する検査も3条件で通過し、生成は9tokenで止まり、後続要求へ復帰しました。LPA onでは容量試験・切断試験の両方で近似の実作動を確認しています。[FreedomBench再確認と6問の長文付きpilot](freedombench.ja.md#併用構成の再確認と長文付きpilot)は別集計です。
 
-ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit 0、peerは明示停止後exit 137です。**この直列併用を実測した実験範囲で受け入れます。** 当時のテンプレート既定（8 GiB reserveを含む）はこのrunでは変更していません。現在の既定は[起動設定](server-configuration.ja.md#配布用の既定設定)を参照してください。Graphs・APC・batching/MTP併用・さらに長い文脈・持続負荷・harness・本番復旧の検収を兼ねず、通常運用のqualification receiptは発行しません。
+ロードを含む全runのコンテナ上限は112 GiB、host reserveは4 GiB。利用可能RAMの最小値はrank0／1で8.278／9.330 GiBでした。両コンテナともOOMなしで停止し、headはexit 0、peerは明示停止後exit 137です。**結果:** 実測した実験範囲で受け入れました（[最適化カタログ](optimization-catalog.ja.md)、P18）。当時のテンプレート既定（8 GiB reserveを含む）はこのrunでは変更していません（現在の既定は[起動設定](server-configuration.ja.md#配布用の既定設定)）。
 
 ## 32Kまでの独立コンテキスト評価（P15）
 
@@ -295,7 +310,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 測定30要求とwarmup10要求が出力予算まで完了し、preemptionは0、各条件の終了後はscheduler／KV使用0、最後の32入力＋1出力の後続要求も成功しました。32,704入力で観測したKV使用率の最大は固定poolの約0.4194です（0.5秒間隔の標本）。TP2の実効block sizeは4,352で、TP1 fixtureの8,704とは異なりました。
 
-**検収範囲は、この1系列の容量と時間です。長文課題の品質や最適化併用の検収を兼ねません。** 1出力はprefillの対照、64出力はprefill込みの時間です。context拡大に伴うKV予算の自動増額はしていません。runtimeが表示する収容数の見積りを、別の同時数の検収とは扱いません。128K以上は未試験です。このsweepの後、同じサーバーを別のAPC off比較へ継続利用しています。
+**検収範囲は、この1系列の容量と時間です。長文課題の品質や最適化併用の検収を兼ねません。** 1出力はprefillの対照、64出力はprefill込みの時間です。context拡大に伴うKV予算の自動増額はしていません。runtimeが表示する収容数の見積りを、別の同時数の検収とは扱いません。128K以上はこのsweepの対象外です（[200Kでの実入力確認](#200kでの実入力確認)と[256K](#256kでの実入力確認)を参照）。このsweepの後、同じサーバーを別のAPC off比較へ継続利用しています。
 
 ## 全モデルのPrefix caching独立評価（P19）
 
@@ -313,7 +328,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 長文の抽出・再参照6要求、長文tool往復、12K入力のSSE切断と後続要求は、3条件とも通過しました。12,763-tokenの資料要求では異なる資料を挟み、APC onの3回の再参照全てで8,704 tokenが命中して正答しました。tool結果を渡した続きでも8,704 tokenを再利用し、期待する値を返しました。新規prefixの要求は全てhit0です。これらを一般的な言語品質の認定とはしません。
 
-コンテナ112 GiB上限、host reserve 4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead 11.445／11.489／11.495 GiB、peer 12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit 0、全peerがexit 137で停止し、OOMはありません。**今回の長いprefixを繰り返す直列実験用途ではAPCを採用します。** 当時の既定はoffで、現在のテンプレートではonです（[起動設定](server-configuration.ja.md#配布用の既定設定)）。 設定上のcontext上限を、APCの32K実要求容量・MTP／fusion／Graphs併用・業務検収へ読み替えません。LPA併用は、[P22の通常状態だけを共有する契約](apc-lpa-design.ja.md)で別に評価します。
+コンテナ112 GiB上限、host reserve 4 GiB。ロードを含むoff／on／復帰の利用可能RAM最小値はhead 11.445／11.489／11.495 GiB、peer 12.726／12.620／12.586 GiBでした。最初のoffには32K sweepも含みます。全headがexit 0、全peerがexit 137で停止し、OOMはありません。**結果:** 長いprefixを繰り返す直列用途で採用しました（[最適化カタログ](optimization-catalog.ja.md)、P19）。当時の既定はoffで、現在のテンプレートではonです（[起動設定](server-configuration.ja.md#配布用の既定設定)）。LPA併用は[P22の通常状態だけを共有する契約](apc-lpa-design.ja.md)で評価します。
 
 ## APC優先LPAの損益分岐計測（P22）
 
@@ -336,7 +351,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 | 4,352 | 4,096 | 8,960 | 14.220秒 | 11.389秒 | 14.222秒 |
 | 4,352 | 8,192 | 13,056 | 26.618秒 | 20.922秒 | 26.620秒 |
 
-上記12条件では、LPAの全測定値が対応する通常・復帰対照の全測定値を下回りました。追加のH=0ではR=0／1／4／16／32／64を測りました。R=0は仕様どおり通常計算、R=1／4／16は時間の範囲が重なり、R=32／64は小幅ながら両対照より速い範囲に分離しました。H>0のR<128は未測定です。**保守的な有効化候補はB=128、適用条件はR>128とします。厳密・普遍的な損益分岐定数ではありません。** 品質・最終併用・繰り返し入力での構成選択は別検査です。独立集計でwarmup込み324要求の網羅性、policy境界、出力数、中央値・範囲を再確認しました。別に108回の通常primingを時間外で実行しています。この速度結果だけで一般品質や最終併用構成を受け入れるものではありません。
+上記12条件では、LPAの全測定値が対応する通常・復帰対照の全測定値を下回りました。追加のH=0ではR=0／1／4／16／32／64を測りました。R=0は仕様どおり通常計算、R=1／4／16は時間の範囲が重なり、R=32／64は小幅ながら両対照より速い範囲に分離しました。H>0のR<128は未測定です。**結果:** B=128（R>128のときだけLPA）を保守的な有効化の閾値とします。厳密・普遍的な損益分岐定数ではありません（[最適化カタログ](optimization-catalog.ja.md)、P22）。品質と併用構成は下にあります。独立集計でwarmup込み324要求の網羅性、policy境界、出力数、中央値・範囲を再確認しました。別に108回の通常primingを時間外で実行しています。
 
 ## APC・LPA・MTP・融合・非同期検査の併用（P22）
 
@@ -365,7 +380,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 | 8,192 | 18.532秒、H=4,352 | 22.356秒、H=0 |
 | 16,320 | 17.361秒、H=13,056 | 22.294秒、H=9,216 |
 
-この通常priming済み・128出力の条件では、全併用が約20.6%／28.4%遅くなりました。MTPの復帰境界によって、再利用できる入力が短くなっています。KV予算・正確なkernelの設定も異なる構成全体の比較であり、MTPだけの因果的なコスト差とはしません。**生成を重視する直列MTP構成と、prefix再利用を重視するMTPなしのP22構成を分けます。** 全機能有効を常に最速とはせず、もっと長い出力でも同じ境界になるとは推定しません。
+この通常priming済み・128出力の条件では、全併用が約20.6%／28.4%遅くなりました。MTPの復帰境界によって、再利用できる入力が短くなっています。KV予算・正確なkernelの設定も異なる構成全体の比較であり、MTPだけの因果的なコスト差とはしません。**結果:** 生成を重視するMTP構成と、prefix再利用を重視するMTPなしのP22構成を分けます（[最適化カタログ](optimization-catalog.ja.md)、P22）。全機能有効が常に最速ではありません。
 
 ## APCの履歴保持の基準検査
 
@@ -373,7 +388,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 
 21件の変形要求と21件のprimeは、すべて指定されたコードを返しました。別会話への交互再訪5件、保持圧力用の別履歴12件、その前後の再訪も正答し、実evictionを確認しました。9つのpool／scheduler境界条件も完了しています。独立した識別子全体の照合でも61回答すべてを確認し、この範囲で旧値・別会話のコードの混入はありませんでした。逐語一致、並列利用、長時間SLAの証明ではありません。
 
-50%位置の編集・分岐はH=0でした。90%位置の編集・分岐と追記はH=13,056を復元しました。続く`retention-a-v69`では、N=16,100、共通prefix8,061 tokenの初回50%編集を、通常計算・1出力tokenで測定しました。毎回resetと通常primingを行い、warmup1回を除いた5回すべてでH=0、48.320〜48.557秒、中央値は **48.437秒** でした。primeの時間は含めません。[checkpoint保持候補](launch-safety.ja.md#apcの履歴検証)の基準値であり、性能採用には候補と復帰対照を揃える必要があります。
+50%位置の編集・分岐はH=0でした。90%位置の編集・分岐と追記はH=13,056を復元しました。続く`retention-a-v69`では、N=16,100、共通prefix8,061 tokenの初回50%編集を、通常計算・1出力tokenで測定しました。毎回resetと通常primingを行い、warmup1回を除いた5回すべてでH=0、48.320〜48.557秒、中央値は **48.437秒** でした。primeの時間は含めません。[checkpoint保持候補](launch-safety.ja.md#apcの履歴検証)の基準値です。候補と復帰対照は次のとおりです。
 
 標準の保持間隔4,352を使う`retention-b-v69`と、0へ戻した`retention-restored-v72`まで完了しました。入力token列・固定モデルimage・KV予算を揃え、各条件でwarmup1回を除き5回測定しています。HCA指定はport 1を明示する表記にしましたが、両HCAともそのportだけを持ち、実通信経路は同じです。
 
@@ -383,7 +398,7 @@ capture／off／oracle-full-MLP／oracle／offの検査では、16出力tokenの
 | 4,352 tokenごとに保持 | 4,352 | 35.080秒 | 35.060〜35.112秒 |
 | 復帰0 | 0 | 48.462秒 | 48.417〜48.775秒 |
 
-この初回途中編集では両対照に対して **約27.6%短縮** し、候補の全測定範囲が両対照を下回りました。候補の全履歴試験も、識別子全体の採点、別会話への再訪、実eviction、9境界条件を通過しています。50%編集・分岐はH=4,352に改善し、90%編集・分岐と追記のH=13,056を維持しました。**この通常priming済み・直列再利用用途でcheckpoint保持を採用します。** cold処理、MTPの全用途、任意の保持圧力でのcache寿命を保証する結果ではありません。block幅に依存しない`dense`指定は、この整列された配置では同じ標準KDA maskを使います。最終併用の検収は別に行います。
+この初回途中編集では両対照に対して **約27.6%短縮** し、候補の全測定範囲が両対照を下回りました。候補の全履歴試験も、識別子全体の採点、別会話への再訪、実eviction、9境界条件を通過しています。50%編集・分岐はH=4,352に改善し、90%編集・分岐と追記のH=13,056を維持しました。**結果:** この通常priming済み・直列再利用用途でcheckpoint保持を採用しました（[最適化の全体像](optimization-overview.ja.md)）。cold処理の短縮や、任意の保持圧力でのcache寿命は保証しません。block幅に依存しない`dense`指定は、この整列された配置では同じ標準KDA maskを使います。併用の検収は[保持候補を含む最終併用の回帰](#保持候補を含む最終併用の回帰)にあります。
 
 ### 保持候補を含む最終併用の回帰
 
@@ -529,7 +544,7 @@ prefix cacheをリセットしてから、以前と同じ入力を送りまし�
 
 合言葉の要求は12%、容量の要求は19%短くなりました。[chunk予算の比較](#200k画像profileでのchunk予算2026-09-17)で別に起動した2048のペアでも、合言葉は361.3秒で正答しています。
 
-**3か所参照の質問文は、どちらのchunkでもモデルにとって曖昧です。** 不正解の回はどれも、記録の位置は正しく見つけたうえで、各値を `REGISTRY` の行に続く記事本文と読んで写し始め、512 tokenの上限で途切れました。2026-09-14の256Kの確認でも、推論に同じ読みを書いたうえで正しく答えていました。同じスタックで同じ要求を変えずに繰り返し、各回の前にprefix cacheをリセットしました。
+**この枠の3か所参照の質問文は、どちらのchunkでもモデルにとって曖昧でした**（[1.6.0](#長い入力)で解消、[1.13.0](#1130での測定)から囲みの枠が正式な形）。 不正解の回はどれも、記録の位置は正しく見つけたうえで、各値を `REGISTRY` の行に続く記事本文と読んで写し始め、512 tokenの上限で途切れました。2026-09-14の256Kの確認でも、推論に同じ読みを書いたうえで正しく答えていました。同じスタックで同じ要求を変えずに繰り返し、各回の前にprefix cacheをリセットしました。
 
 | chunk | 直前の要求 | 各回 | 正答 |
 |---:|---|---|---:|
@@ -614,7 +629,7 @@ temperature 0のgreedyでも、同じ要求の結果は回ごとに再現しま�
 | 容量 204,736＋64 | 5.84 GiB | 8.37 GiB | 6.40／8.95 GiB |
 | 3か所 200,095 | 5.85 GiB | 8.37 GiB | 6.40／8.95 GiB |
 
-速度は回ごとのぶれの範囲で1.4.0と一致します。空きメモリは両rankとも0.5〜0.7 GiB少なく、KVの増分とほぼ同じです。これでchunk 2048の3か所参照は、200Kの容量の要求の直後では3回中0回、256Kでは2回中1回の正答になりました。待機の後の回は各長さ1回ずつで、どちらも正答です。この回数では、直前の要求が効いているとは言えません。いずれもケースごとに1回で、複数系列、すべての履歴編集パターン、長期信頼性を確かめたものではありません。
+速度は回ごとのぶれの範囲で1.4.0と一致します。空きメモリは両rankとも0.5〜0.7 GiB少なく、KVの増分とほぼ同じです。chunk 2048の3か所参照は、200Kの容量の要求の直後では3回中0回、256Kでは2回中1回、待機の後の2回（各長さ1回）はどちらも正答でした。原因は質問文の枠でした（[1.6.0](#長い入力)）。いずれもケースごとに1回で、複数系列、すべての履歴編集パターン、長期信頼性を確かめたものではありません。
 
 ## 1.6.0での測定
 
@@ -649,13 +664,13 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 | 3か所参照、枠を明示したprompt、3回 | 3回とも正答（232.7・233.7・233.5 s、最後は300秒の待機の後）。各回とも出力36 token、reasoningなし | 下記 |
 | 系列全体での最小空き、head／peer | 6.08／8.03 GiB（head 5.38） | 5.82 GiB |
 
-3か所参照は、1.5.0から「不安定」と報告してきました（2026-09-19は3回中2回、2026-09-20の最初の系列は3回中1回が正答）。原因は長文の読みではなく、promptでした。この曖昧さは[1.4.0の失敗](#140での200k実入力)から最初に読み取ったもので、今回はそれを対照実験で確かめたものです。旧いpromptは、13万tokenの記事それぞれの前に `REGISTRY 名前 = コード` の行を置き、「3つのREGISTRYの値」を求めていましたが、recordがその1行であるとは書いていませんでした。保存してある全ての回で、正答した回も含めて、モデルのreasoningは「値」を行の後ろに続く記事だと解釈しており、3つの行の位置は毎回正しく読めていました。その後にコードを答えるか、記事を書き写し始めるかで、正誤が分かれていました。archiveはそのままで枠の文だけを明示する（recordは1行、値は短いコード、記事はどのrecordにも属さない）と、同じprofileで3回とも正答しました。同じセッションの旧い枠は2回とも正答でしたが、reasoningには同じ読み違えが残っています（237.0・241.1 s、出力79・207 token）。
+3か所参照は、1.5.0から「不安定」と報告してきました（2026-09-19は3回中2回、2026-09-20の最初の系列は3回中1回が正答）。原因は長文の読みではなく、promptでした。旧いpromptは、13万tokenの記事それぞれの前に `REGISTRY 名前 = コード` の行を置き、「3つのREGISTRYの値」を求めていましたが、recordがその1行であるとは書いていませんでした。保存してある全ての回で、正答した回も含めて、reasoningは3つの行の位置を正しく読んだうえで「値」を後ろに続く記事だと解釈し、コードを答えるか記事を書き写し始めるかで正誤が分かれていました。archiveはそのままで枠の文だけを明示する（recordは1行、値は短いコード、記事はどのrecordにも属さない）と、同じprofileで3回とも正答しました。同じセッションの旧い枠は2回とも正答でしたが、reasoningには同じ読み違えが残っています（237.0・241.1 s、出力79・207 token）。
 
 同点の規則は、prefillのchunkごとに検査を一つ足します。下の配信profileでは、199,652 tokenで2.9%の費用でした（169.1 s対164.3 s、各1回）。この既定の上では、255,950 tokenの要求が規則ありで217.3 s、前日の規則なしで207.4 sでした。各1回で、imageも違います。したがって4.8%は費用の上側の読みで、規則だけを切り分けた値ではありません。
 
 ### 基準の2台の配信profile
 
-2026-09-19から21まで、基準の2台は新規の導入には無い設定を二つ足して配信していました。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。**2026-09-21からは、attentionと `lm_head` の再パックを深さ3で配信しており、そのprofileは[1.7.0での測定](#170での測定)にあります。** 下の表は、その間に配信していたprofileのものです。
+2026-09-19から21まで、基準の2台は新規の導入には無い設定を二つ足して配信していました。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。**2026-09-21からはattentionと `lm_head` の再パックを深さ3で配信しました（[1.7.0での測定](#170での測定)。KDA input projectionは[1.8.0](#180での測定)から分割）。2026-09-23からは、公開した任意設定の同時2系列profileを配信しています（[1.10.2](#1102での測定)、[1.14.0](#1140での測定)）。** 下の表は、その間に配信していたprofileのものです。
 
 | 項目 | 配信profile | 1.6.0の既定 |
 |---|---|---|
@@ -666,21 +681,21 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 | rankあたりの重み／headの最小空き | 91.76 GiB／10.08 GiB | 95.76 GiB／6.28 GiB |
 | NLL：日本語／英語／コード／数学 | 1.6600／2.0020／1.0040／0.6184 | 1.5963／2.0241／0.9479／0.5931 |
 
-**約25万tokenを超える要求には、slot対応付けのguardが必要です。1.7.0から作るimageには入っています。** 2026-09-20に、1.6.0のimageで、261,461 tokenのchat要求1本が、prefillの終わり近くで両rankのCUDA illegal memory accessに終わりました。4回試して4回とも同じです。内訳は、このprofileのままで2回、`CUDA_LAUNCH_BLOCKING=1` を足して1回、深さを3に下げて1回です。その後、監視が対を停止しました。passphraseのledgerで測ると、閾値は248,954 token（完走）と252,958 token（失敗）の間で、文章の中身にはよりません。同じ要求は、既定の重みでは深さ4でも（231.0 s、正答）深さ3でも完走しました。原因は固定しているvLLMの側にあり、再量子化したcheckpointではありません。`_compute_slot_mappings_kernel` は、block tableの `position // block_size` 番目を、行の幅を確かめずに読みます。indexerのtailのscratchを置くKV group（`KpoolTailSpec`、block size 4、1行32要素）では、この読み込みがposition 128から行の外に出て、1 tokenごとに1 byteずつ遠くなります。失敗するのは、読んだ先が未割り当てのメモリに届いた時だけです。したがって、失敗するかどうかと、その長さは、profileごとのメモリ配置で決まります。compute-sanitizerは、無改変のfixtureでも同じ不正な読み込みを示します。上流ではvLLMのissue #53982として報告されており、修正はpull request #54296です（執筆時点で未マージ）。`glm53_setup/runtime/patch_slot_mapping.py` が、同じguardをimageのbuild時に当てます（marker `GLM53_SLOT_MAPPING_GUARD=1`）。行の外のindexは読まず、そのslotはpaddingにします。4層fixtureでは、guardを入れるとcompute-sanitizerの不正な読み込みは0件になり、guard入りでbuildしたimageのlog確率は、5本の文章でguardのないimage（`1b7dc6fa…`）とbyte単位で一致しました。基準の2台にguard入りのimage（`b3f6e18c…`、fingerprint `4acdc3484f56…`、2026-09-21）を入れた結果は次のとおりです。decodeの完了文3本は1.6.0のhashと一致しました。252,914 tokenのledgerは219.7 sで完走し、passphraseを答えました。261,461 tokenの要求は235.8 sで完走し、3つのコードはすべて正答でした。長い要求2本の後のproseの完了文も、再び一致しました。markerのないimageでは、このprofileへの要求を245,000 token以下にしてください。配布している既定は、測定したどの長さでも失敗していませんが、同じ行の外の読み込みは行っています。
+**約25万tokenを超える要求には、slot対応付けのguardが必要です。1.7.0から作るimageには入っています。** 2026-09-20に、1.6.0のimageで、261,461 tokenのchat要求1本が、prefillの終わり近くで両rankのCUDA illegal memory accessに終わりました。4回試して4回とも同じです。内訳は、このprofileのままで2回、`CUDA_LAUNCH_BLOCKING=1` を足して1回、深さを3に下げて1回です。その後、監視が対を停止しました。passphraseのledgerで測ると、閾値は248,954 token（完走）と252,958 token（失敗）の間で、文章の中身にはよりません。同じ要求は、既定の重みでは深さ4でも（231.0 s、正答）深さ3でも完走しました。原因は再量子化したcheckpointではなく、固定しているvLLMのslot対応付けkernelがblock tableを行の外まで読むことで、失敗するかどうかはprofileごとのメモリ配置で決まります（[運用手順](operations.ja.md#フルモデルの起動検査)。vLLMのissue #53982、修正はpull request #54296で、2026-09-21時点で未マージ）。`glm53_setup/runtime/patch_slot_mapping.py` が、このguardをimageのbuild時に当てます（marker `GLM53_SLOT_MAPPING_GUARD=1`）。4層fixtureでは、guardを入れるとcompute-sanitizerの不正な読み込みは0件になり、guard入りでbuildしたimageのlog確率は、5本の文章でguardのないimage（`1b7dc6fa…`）とbyte単位で一致しました。基準の2台にguard入りのimage（`b3f6e18c…`、fingerprint `4acdc3484f56…`、2026-09-21）を入れた結果は次のとおりです。decodeの完了文3本は1.6.0のhashと一致しました。252,914 tokenのledgerは219.7 sで完走し、passphraseを答えました。261,461 tokenの要求は235.8 sで完走し、3つのコードはすべて正答でした。長い要求2本の後のproseの完了文も、再び一致しました。markerのないimageでは、このprofileへの要求を245,000 token以下にしてください。配布している既定は、測定したどの長さでも失敗していませんが、同じ行の外の読み込みは行っています。
 
-このprofileの3回の起動は、間に他のprofileの起動を挟んでも、同じ三つのcompletion（hashが一致）と、小数4桁まで同じNLLを返しました。4層のfixtureでは、3回の起動のうち2回が、最初の層の線形attentionのkernelから先の数値で残りの1回と違い、起動の中の反復は同一でした。全モデルのある起動が前の起動を再現するかどうかは、保証ではなく、繰り返し測るべき事柄です。
+このprofileの3回の起動は、間に他のprofileの起動を挟んでも、同じ三つのcompletion（hashが一致）と、小数4桁まで同じNLLを返しました。4層のfixtureでは、3回の起動のうち2回が、最初の層の線形attentionのkernelから先の数値で残りの1回と違い、起動の中の反復は同一でした。その後に対で見た起動ごとの数値状態は、Inductorの計測によるautotuneが原因と分かり、1.12.0の `runtime.inductor_deterministic` でなくなりました（[1.9.0](#190での測定)）。
 
-1.6.0の再量子化・深さの比較は種類ごとに1 promptでした。前後の無改変対照はcompletionと教師強制値が一致しましたが、候補arm間では通常completionが異なります。decode速度はそれに伴うdraft採択の変化を含みます。decode速度を記録済みの採択長で割るとstep/sの目安になります。同じ深さ（k=3）で、再量子化はこれをcount／code／proseの各promptで9.20／9.21／9.68から11.18／11.07／11.79へ上げました。3 promptとも+20〜22%で、採択長の変化は+6%・+5%・0%です。したがってこの利得の大半はstepあたりの速さで、completionがたどった道筋によるものではありません。この目安は深さの異なるarmの比較には使えません。深さでstepあたりの検証コストが変わるためです。保存済みdecode窓の再点検でclient／serverの出力token合計は一致しましたが、独立した要求完了counterは保存されていません。測定値と設定の採否はこの範囲で維持し、新しい負荷には[比較手順](validation.ja.md#候補と無改変対照の比較)を適用します。
+1.6.0の再量子化・深さの比較は種類ごとに1 promptで、候補arm間では通常completionが異なるため、decode速度はdraft採択の変化を含みます。同じ深さ（k=3）では、decode速度を採択長で割ったstep/sの目安で二つを分けられます。再量子化はこれを数え上げ／散文／コードで9.20／9.68／9.21から11.18／11.79／11.07へ上げ（+20〜22%）、採択長の変化は+6%・0%・+5%でした。したがって利得の大半はstepあたりの速さです。深さでstepあたりの検証コストが変わるため、この目安は深さの比較には使えません。保存済みdecode窓のclient／serverの出力token合計は一致しましたが、独立した要求完了counterは保存されていません。新しい負荷には[比較手順](validation.ja.md#候補と無改変対照の比較)を適用します。
 
 ## 1.7.0での測定
 
-2026-09-21（Asia/Tokyo）、基準の2台は1.7.0のruntimeで動きました。guard入りのimage `b3f6e18c…`（slot対応付けのguard、MoE順のmarker 2、`TRITON_CACHE_AUTOTUNING=1`）、FA2 prefill、expert内の順序の固定、indexerの同点の決定、1系列です。配布既定そのものは測り直していません。その数字は[1.6.0での測定](#160での測定)のもので、2026-09-20の長い入力の系列はすでにmarker 2のbuildのimageで走っています。1.7.0で足したのは、基準の2台の新しい配信profile、decode Graphsの全モデルでの読み、10入力の深さの掃引（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)が正典）です。
+2026-09-21（Asia/Tokyo）、基準の2台は1.7.0のruntimeで動きました。guard入りのimage `b3f6e18c…`（slot対応付けのguard、MoE順のmarker 2、`TRITON_CACHE_AUTOTUNING=1`）、FA2 prefill、expert内の順序の固定、indexerの同点の決定、1系列です。配布既定は1.7.0では測り直していません。ここでの数字は[1.6.0での測定](#160での測定)のもので（同じ夜の対は[1.7.1](#171での測定)と[1.8.0](#180での測定)）、2026-09-20の長い入力の系列はすでにmarker 2のbuildのimageで走っています。1.7.0で足したのは、基準の2台の新しい配信profile、decode Graphsの全モデルでの読み、10入力の深さの掃引（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)が正典）です。
 
 ### 基準の2台の配信profile：attentionと `lm_head` の再パック、深さ3
 
 配布テンプレートに、公開したattentionと `lm_head` のW4A16再パックを指す `runtime.derived_checkpoint`（`requant_target = "l"`、[P23](optimization-catalog.ja.md)）と `mtp.num_speculative_tokens = 3` を足したprofileです。fingerprintは `70d01dbf82ca…`、1.7.0のcheckoutから2026-09-21 23:39に起動しました。decodeは固定の2,048 tokenのpromptに続く512 tokenを9標本（中央値のtok/s、括弧内は平均の採択長、completionは各1種）。右の列は、これが置き換えたprofileです。
 
-| 項目 | 再パック `l`、k=3（配信） | 再パック `g`、k=4（2026-09-19〜21に配信） | 1.6.0の既定、k=3 |
+| 項目 | 再パック `l`、k=3（2026-09-21〜22に配信） | 再パック `g`、k=4（2026-09-19〜21に配信） | 1.6.0の既定、k=3 |
 |---|---|---|---|
 | decode：数え上げ／散文／コード（tok/s） | 46.20（3.68）／28.79（2.16）／38.18（3.04） | 45.43／24.33／34.75 | 32.50／21.00／28.30 |
 | NLL：日本語／英語／コード／数学 | 1.6645／2.0024／1.0031／0.6279 | 1.6600／2.0020／1.0040／0.6184 | 1.5963／2.0241／0.9479／0.5931 |
@@ -719,13 +734,13 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 
 ### 全モデルでのdecode Graphs
 
-2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-overview.ja.md#decode)）。
+2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-catalog.ja.md#性能施策一覧)）。
 
 ## 1.7.1での測定
 
 ### 公開した任意設定と配布既定、同じ夜の対
 
-2026-09-22（08:59〜10:12 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、二つのprofileを続けて動かしました。配信中の任意設定（再パック `l`、深さ3、fingerprint `70d01dbf82ca…`）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そして再び任意設定で、`cluster switch` を2回（それぞれwarmup ladder付き）。各armで、38,962 tokenのprefillと短いpromptのdecodeを3回（`glm_bench.py`）、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、文種ごとにdecodeを3標本取りました。監視dashboardはarmの間は止めています。問いは再パックのprefillの代価です。kernelの測定では、KDAの融合したinput projectionのW4A16 Marlinが2,048行のchunkでBF16 GEMMの1.5倍で、200Kの要求で約2.4%と予測していました（[P23](optimization-catalog.ja.md)）。このkernelの測定はrankあたりの幅を12,416列として取ったもので、paddingの後の幅を論理的な幅として渡していました。TP=2での融合したinput projectionの実際のrankあたりの幅は12,576（3×4,096＋32＋128＋128）で、Marlinはこれを12,608に詰めて毎回のforwardで切り戻すため、この数字はその切り戻しの複写（[1.8.0での測定](#180での測定)で2,048行のchunkで1層あたり0.48 ms）を含んでいません。
+2026-09-22（08:59〜10:12 JST）、基準の2台は1.7.0のcheckoutとguard入りのimage `b3f6e18c…` で、二つのprofileを続けて動かしました。配信中の任意設定（再パック `l`、深さ3、fingerprint `70d01dbf82ca…`）、次に配布既定＝同じprofileの `runtime.derived_checkpoint` だけを無効にしたもの（fingerprint `c337c08dd19c…`）、そして再び任意設定で、`cluster switch` を2回（それぞれwarmup ladder付き）。各armで、38,962 tokenのprefillと短いpromptのdecodeを3回（`glm_bench.py`）、199,652 tokenの合言葉要求を2回、261,461 tokenの3か所参照を1回（いずれもprefix cacheの初期化の後）、文種ごとにdecodeを3標本取りました。監視dashboardはarmの間は止めています。問いは再パックのprefillの代価です。kernelの測定では、KDAの融合したinput projectionのW4A16 Marlinが2,048行のchunkでBF16 GEMMの1.5倍で、200Kの要求で約2.4%と予測していました（[P23](optimization-catalog.ja.md)）。このkernelの数字はpadding後の12,416列の幅で取ったもので、実際のrankあたりの幅12,576列の切り戻しの複写（2,048行のchunkで1層あたり0.48 ms。[1.8.0](#180での測定)を参照）を含んでいません。
 
 | 項目 | 任意設定（前） | 配布既定 | 任意設定（後） |
 |---|---|---|---|
@@ -736,7 +751,7 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード（tok/s） | 46.28／28.80／37.57 | 32.58／20.64／27.42 | 45.81／28.48／38.13 |
 | rankあたりの重み／bench中のheadの最小空き | 91.38 GiB／10.22 GiB | 95.76 GiB／6.20 GiB | 91.38 GiB／10.15 GiB |
 
-任意設定の二つの起動はprefillで0.45%、長い要求で0.2%の内側で一致し、decodeのcompletionは3文種ともhashが同じです。既定との差は起動間のゆらぎではありません。**再パックのprefillの代価は、38,962 tokenのpromptで1.8%、199,652 tokenの要求で1.2%、261,461 tokenの要求で3.4%です。**（1.8.0は融合したKDA input projectionの分割でこの代価を消した。[1.8.0での測定](#180での測定)。）200Kの数字はprefillの差を小さく見せています。既定はこの要求にcompletionを100 token（うちreasoning 89）返し、任意設定は20 tokenで、約3秒のdecodeの差があるためで、prefillだけなら2.5%に近い値です。既定の数字は[1.6.0の表](#160でのprefillとdecode)の幅の内側です（1,277.0対1,271.6 tok/s、167.3対167.7 s）。1.7.0のruntimeは既定を動かしていません。代価の所在はkernelの測定が指したところ、prefillの幅でのKDAの融合input projectionにあり、同じ再パックが買うdecodeの利得の値札です。配信profileは変えず、任意設定の説明にこの数字を持たせます。
+任意設定の二つの起動はprefillで0.45%、長い要求で0.2%の内側で一致し、decodeのcompletionは3文種ともhashが同じです。既定との差は起動間のゆらぎではありません。**再パックのprefillの代価は、38,962 tokenのpromptで1.8%、199,652 tokenの要求で1.2%、261,461 tokenの要求で3.4%です。** 200Kの数字はprefillの差を小さく見せています。既定はこの要求にcompletionを100 token（うちreasoning 89）返し、任意設定は20 tokenで、約3秒のdecodeの差があるためで、prefillだけなら2.5%に近い値です。既定の数字は[1.6.0の表](#160でのprefillとdecode)の幅の内側です（1,277.0対1,271.6 tok/s、167.3対167.7 s）。1.7.0のruntimeは既定を動かしていません。代価の所在はprefillの幅でのKDAの融合input projectionで、同じ再パックが買うdecodeの利得の値札でしたが、1.8.0でそのprojectionを分割して消えました（[1.8.0での測定](#180での測定)）。
 
 ## 1.8.0での測定
 
@@ -753,7 +768,7 @@ stepは同じ深さで全入力10 ms短くなりました。tok/sがそれ以上
 | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード（tok/s、採択長） | 46.12（3.68）／28.53（2.16）／38.15（3.04） | 32.01（3.57）／20.67（2.15）／26.68（3.00） | 45.44（3.66）／30.01（2.28）／37.17（2.97） |
 | rankあたりの重み／bench中のheadの最小空き | 91.38 GiB／10.35 GiB | 95.76 GiB／5.53 GiB | 91.34 GiB／10.50 GiB |
 
-**分割した任意設定のprefillは、融合したものより38,962 tokenで2.6%、199,652 tokenの要求で3.2%、261,461 tokenの要求で3.1%速く、これは[1.7.1](#171での測定)が測った代価と同じ大きさです。代価は消えました。**この夜は既定より任意設定のprefillが速くもなっています。既定はこの夜、どのprefillの行でも1.7.1の夜より3〜4%遅く、これは起動間の差です（decodeのcompletionは1.7.1の夜とhashが同じでした）。decodeは、短いpromptの後で融合したものより9%速く、2,048 tokenのpromptの後の差は採択長の動きに沿います（数え上げ−1.5%＝3.66対3.68、散文+5.2%＝2.28対2.16、コード−2.6%＝2.97対3.04）。悪化はありません。completionのhashは、融合した任意設定と既定が3文種とも1.7.1の夜と同一で、起動と夜をまたぐ標本がそれぞれ1つ取れました。分割した任意設定のcompletionは異なります（3本のGEMMのBF16での丸めが違うため）。その3標本は文種ごとに同一で、4層fixtureでは分割と融合が全語彙KLの平均1e-4、layer 3の候補集合でJaccard 0.986で一致します。これは同じfixtureの2回の起動と同じ水準で、再パックそのものは無改変fixtureに対してKL 1.6e-2・Jaccard 0.950の位置にあります。メモリは変わりません。
+**分割した任意設定のprefillは、融合したものより38,962 tokenで2.6%、199,652 tokenの要求で3.2%、261,461 tokenの要求で3.1%速く、これは[1.7.1](#171での測定)が測った代価と同じ大きさです。代価は消えました。**この夜は既定より任意設定のprefillが速くもなっています。既定はこの夜、どのprefillの行でも1.7.1の夜より3〜4%遅く、これは起動間の差です。既定と融合した任意設定のcompletionは、3文種とも1.7.1の夜とhashが同じでした。decodeは、短いpromptの後で融合したものより9%速く、2,048 tokenのpromptの後の差は採択長の動きに沿います（数え上げ−1.5%、散文+5.2%、コード−2.6%）。悪化はありません。分割した任意設定のcompletionは異なり（3本のGEMMのBF16での丸めが違うため）、arm内では同一です。4層fixtureでは分割と融合が全語彙KLの平均1e-4、layer 3の候補集合でJaccard 0.986で一致します。これは同じfixtureの2回の起動と同じ水準で、再パックそのものは無改変fixtureに対してKL 1.6e-2・Jaccard 0.950の位置にあります。
 
 分割が効く理由は、固定のimageでGB10を1台使って測ったkernelの値にあります。2,048行のchunkでは、W4A16 Marlin GEMMは試したどの融合幅（12,288〜12,800、整列の有無を問わず）でもBF16 GEMMの1.6〜1.8倍ですが、4,096幅のGEMM 3本と288幅の残りなら1.14倍（層が必要とする `q|k|v` の連結を含めて1.3倍）です。代価は幅であって、paddingではありません。decodeの行数（M=8）では、分割は34層で1 stepあたり約0.5 ms増やしますが、全モデルのdecodeにその差は出ませんでした。
 
@@ -786,15 +801,15 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 | 5 | off | 45.79（3.70）／28.31（2.15）／38.45（3.10） | 状態1 |
 | 6 | on | 45.62（3.70）／28.32（2.15）／38.49（3.10） | 状態1 |
 
-以前のimage（1.8.0、その夜は1起動）は第三の状態で計算していた。設定は軸ではない：offの起動5はonの起動1と同じcompletionを出し、offの起動2は出さなかった。速さと採択長はどの状態でも一つの起動の幅の中にあり、状態の違いはgreedyの同点の割れ方であって品質や速さの差ではない。比べて原因ではないと確かめたもの：二つのimage（Pythonと共有ライブラリの全fileをhash。patchした `block_pool.py` とこのリポジトリ自身のfileだけが違う）、起動引数（環境変数とcontainer名だけ）、両rankの共有runtime cache（6起動の間にkernelもautotune表も書かれていない。起動ごとに触られるのはFlashInferの0 byteのlock fileだけ）、Tritonのautotune表（この経路がcompileする全autotune kernelについて2026-09-15から保たれ、起動ごとにJITされるkernelはautotuneされない）。4層fixture（TP=1、in-process）では両image・両設定の6起動がbit一致した。残る候補は起動時に決まって痕跡を残さない（cuBLASが担うBF16 GEMM、FlashInferのplan、未初期化メモリ、分散経路でのhash seed依存の順序）ので、起動は仮定せずに確かめ、decode検査はcompletionのtoken idと両rankのcontainer logを残すようにした。次に別の状態の起動が出れば、最初に分岐したtokenで比べられる（`tools/decode_check.py`・`tools/decode_divergence.py`、[切替の後](launch-safety.ja.md#切替の後のdecode検査)）。
+以前のimage（1.8.0、その夜は1起動）は第三の状態で計算していた。設定は軸ではない：offの起動5はonの起動1と同じcompletionを出し、offの起動2は出さなかった。速さと採択長はどの状態でも一つの起動の幅の中にあり、状態の違いはgreedyの同点の割れ方であって品質や速さの差ではない。比べて原因ではないと確かめたもの：二つのimage（Pythonと共有ライブラリの全fileをhash。patchした `block_pool.py` とこのリポジトリ自身のfileだけが違う）、起動引数（環境変数とcontainer名だけ）、両rankの共有runtime cache（6起動の間に何も書かれていない）、Tritonのautotune表（2026-09-15から不変）、4層のMTP fixtureを本番のimage・fabric・起動flagで対にTP=2で20回起動（completionとtoken idは20起動すべてで同一）、GB10 1台の新しいprocess 13本でのcuBLASのBF16 GEMM・KDAのkernel・`lm_head` のargmax、続いてindexer自身のkernelの配信形状・固定入力での計算（すべてbit一致、`CUBLAS_WORKSPACE_CONFIG` と `PYTHONHASHSEED` を固定しても同じ）。decode検査はcompletionのtoken idと両rankのcontainer logを残すので、別の状態の起動を最初に分岐したtokenで比べられる（`tools/decode_check.py`・`tools/decode_divergence.py`、[切替の後](launch-safety.ja.md#切替の後のdecode検査)）。
 
-別の状態がどれほど稀か、2026-09-18からheadに残るdecode記録で見ると：一つのprofileのcompletionは日と記録集を跨いで繰り返す（1.6.0のroute g＋FA2のprofile族——draftの深さは数値を変えない——は2026-09-19〜21の全記録集で同じcounting・prose・codeのcompletionを出し、countingのhashは複数の起動にわたる14記録に現れる）。一度しか見ていない二つの状態（1.8.0のimageの状態と起動2の状態）はどこにも再出しない。残る候補の一つを上流は決定論の設定として扱っている：vLLMのbatch-invariantモードは自分で `CUBLAS_WORKSPACE_CONFIG` を設定し（`vllm/model_executor/determinism/batch_invariant.py`）、PyTorchの再現性の注記は未設定のcuBLAS workspaceをrun-to-runの非決定源に挙げる。このスタックはこれを設定しない。別の状態の起動がBF16 GEMMを指すまでは入れない——この設定はGEMMのalgorithmを変え、基準のcompletionごと動かすため。
+| 起動 | 状態1／2／3 | decode、数え上げ／散文／コード（tok/s） |
+|---|---|---|
+| Inductorの計測によるautotuneのまま確かめた配信imageの16起動（2026-09-22〜24） | 11／3／2 | 45.0〜47.9／27.7〜28.6／37.7〜40.1（状態1の起動） |
+| `runtime.inductor_deterministic` 付きの同時2系列AXL profileの3起動（2026-09-25） | 3／0／0、同じcompletion | 46.05〜46.27／27.95〜28.44／38.39〜38.80 |
+| 同じkey付きの配布既定の3起動（2026-09-25） | 3起動とも同じcompletion | 32.80〜32.84／20.76〜20.82／27.53〜27.64（配布既定の公表値は32.01／20.67／26.68） |
 
-2026-09-22にさらに二つの検査で残る候補を絞った。参照imageの中でGB10一枚に新しいprocessを13回起こし、対のrankあたりの形でcuBLASのBF16 GEMM（`lm_head` 4096→77,440を4行と2,048行、MTPの射影、正方）、KDAのchunkとrecurrentのkernel（局所32 head×128）、`lm_head` のargmaxを固定入力で計算した：13回とも全出力がbit一致。うち3回は `CUBLAS_WORKSPACE_CONFIG` と `PYTHONHASHSEED` を固定したが何も動かなかった。次に4層のMTP fixture（stock重み、draft深さ3）を本番のimage・fabric・起動flagで対にTP=2で20回起動した（本番は1時間停止）：decode検査のcompletionとtoken idは3課題とも20起動すべてで同一。分散経路（RoCE越しの2 process、shardされたsparse MLA・indexer・Marlin MoEのkernel、draft）は20回で起動ごとの差を再現しなかったので、対で見た1/6〜1/15の頻度を考えると、残る候補はフルサイズのモデルだけがloadと起動でする何かに絞られる。
-
-2026-09-23の起動（[1.10.2](#1102での測定)の同時2系列profile、再起動1回）は別の状態で計算し、probeで捕まえた：両rankの重みのdigestは前の起動と等しく（各2,382 tensor）、要求のtraceは最初に違う呼び出しを名指しした——rank 1のlayer 19の複製されたkpool indexer、decodeの検証step、散文とコードの両要求で、入力は同一で候補集合が違う。前の起動ではそのrankのindexerがまさにその呼び出しでrank 0と食い違い、今回の起動では両rankが一致した。数え上げ要求のtraceはbit一致した。続いてindexer自身の計算（fp32のhead gate、融合したFWHT量子化、pool cacheのcompress-and-writeとdecodeのtail update、DeepGEMMのpaged MQA logitsとstable top-k）をGB10 1台の新しいprocess 13本で配信の形状・固定の入力で回し、全出力がbit一致した（`records/20260922-prefix-dedup/indexer-state/`）。次の起動（Probe4、再び状態2）は前の状態2の起動とすべてのtraceで行ごとに一致し、固定入力のkernel hashも両rankで一致した。入力まで取った3段のtraceでは、同じ射影の出力から両rankの複製されたindexerが8つのMLA層のprefillで違うkeyを受け取っていた（`trace-Probe4-prose160-deep-in/`）。その次の起動（Probe5、1.11.1のcheckout、状態1）は、層の重みでのcompiledのlayer normを含む16のhashすべてで両rankが一致し、すべての呼び出しで両rankが同じkeyを受け取った。状態2の起動と比べると、rank 0のprefillは同一で、rank 1のkeyが最初のMLA層から違っていた（`trace-Probe5-prose160-deep-in/`）。配信imageの起動はここまで13回：状態1が9、状態2が3、状態3が1。何を名指ししたか・何が残るかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にある。
-
-その後kernelを名指しし、状態をなくした（2026-09-24〜25。経緯は[検証](validation.ja.md#フルモデルtp2の実験範囲)）。配信のkey正規化はInductorのpersistent reductionで、候補configは `XBLOCK` 1・8・32。各rankが起動のたびに計測で選び、1は他の二つとbitが違う。従来のやり方でさらに3回起動し（Probe6・Probe7・Det1：状態1・1・3）、状態を確かめた起動は16回になった：状態1が11、状態2が3、状態3が2。configだけを指定すると、状態2（rank 0が8、rank 1が1）と状態1（両方8）を狙って作れた。同じ2系列profileに `runtime.inductor_deterministic` を付けると、両rankがこのkernelを `XBLOCK` 8・候補一つで動かした：3起動（2026-09-25）すべて状態1で同じcompletion。decodeはprose／count／codeで27.95〜28.44／46.05〜46.27／38.39〜38.80 tok/s、以前の状態1の起動では27.7〜28.6／45.0〜47.9／37.7〜40.1。warmupのlong段は52.1〜52.7 s（`records/20260924-inductor-autotune-asymmetry/`）。keyを付けた配布既定の3起動は、3回とも同じcompletionで、decodeはcount／prose／codeで32.80〜32.84／20.76〜20.82／27.53〜27.64 tok/s（配布既定の値は32.01／20.67／26.68、`records/20260925-defaults-deterministic/`）。
+indexerのkey正規化のInductor configだけを指定すると、状態2（rank 0が8、rank 1が1）と状態1（両方8）を狙って作れた。keyを付けると両rankがこのkernelを `XBLOCK` 8・候補一つで動かし、warmupのlong段は52.1〜52.7 sだった（`records/20260924-inductor-autotune-asymmetry/`、`records/20260925-defaults-deterministic/`）。原因と修正は[検証](validation.ja.md#再現性)に、探索の手順（probeのmethod、Probe4・Probe5の起動、深いtrace）は[変更履歴](../CHANGELOG.ja.md)の1.10.0〜1.12.2にある。
 
 ## 1.10.2での測定
 
@@ -822,7 +837,7 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 
 ### 同時2系列profileでのsparkDashとtool-eval-bench（2026-09-23）
 
-[1.4.0](#140での測定)・[1.5.0](#150でのsparkdashと200k)の測定を、参照対が配信するprofile（[AXLの例](../examples/server.axl.example.toml)の設定にprobeとdev経路を足したもの。image `76a1172b…`。02:53（Asia/Tokyo）の状態1の起動、同時1本の要求）で変えずに繰り返した。順に走らせ、他は何も走らせていない（`records/20260923-bench-1104/`）。sparkDashの12 streamはすべて128トークンで成功した。
+[1.4.0](#140での測定)・[1.5.0](#150でのsparkdashと200k)の測定を、参照対が2026-09-23に配信していたprofile（[AXLの例](../examples/server.axl.example.toml)の設定にprobeとdev経路を足したもの。image `76a1172b…`。02:53（Asia/Tokyo）の状態1の起動、同時1本の要求）で変えずに繰り返した。順に走らせ、他は何も走らせていない（`records/20260923-bench-1104/`）。sparkDashの12 streamはすべて128トークンで成功した。
 
 | prompt | decode（token/s）、中央値 | 3回 | TTFT（ms）、中央値 | 1.5.0のdecode／TTFT |
 |---|---:|---|---:|---|
@@ -831,7 +846,7 @@ KDAの状態checkpoint（dense retention）がKV予算の大半を占め、100K�
 | code | 41.28 | 41.37／41.28／38.64 | 442.04 | 31.67／570.67 |
 | json | 34.88 | 34.80／34.94／34.88 | 273.00 | 26.25／444.05 |
 
-sparkDashの手順はthinking offを要求するが固定のGLMテンプレートはそれを無視するので、従来どおり推論を含む実際の生成を測っている。1.5.0からの伸びはそれ以後の配信profile（attention射影と `lm_head` の再パック、FA2 prefill、KDA射影の分割、MTP k=3）のもので、この版のものではない。headの空きは7.24 GiBを保った。
+sparkDashの手順はthinking offを要求するが固定のGLMテンプレートはそれを無視するので、従来どおり推論を含む実際の生成を測っている。1.5.0からの伸びはそれ以後の配信profile（attention射影と `lm_head` の再パック、FA2 prefill、KDA射影の分割、MTP k=3）のもので、1.10.4のものではない。headの空きは7.24 GiBを保った。
 
 tool-eval-bench `2.6.1.dev52+g81eae0a33`、[1.0.0の測定](#tool-eval-bench)と同じ版・同じ設定（全69標準シナリオ、1試行、parallel 1、seed 42、temperature 0、effort low、clear_thinking、出力上限4,096トークン、timeout 600秒、最大8ターン。10.8分）：**88／100（122／138点）**、55 pass・11 partial・3 fail、69件すべて採点、完了率100%、除外なし。failの3件は1.0.0と同じ3件（TC-21は5つの検証エラーのうち2つしか見つけず、TC-43はweb_searchを空のqueryで呼び、TC-61は分析スクリプトを試みなかった）で、**Safety GateはTC-43で未達のまま**。partialは8件から11件に動いた（不要な電卓、不完全な連鎖、天気確認の後に行動しない、injectionの2件は安全だが不完全）。版ごとに1試行なので、1.0.0との2点差は1試行が動く幅の内側。failの3件は2回の測定とその間のprofileの変更を跨いで安定しており、変更は配信経路であってtemperature 0でのモデルの選択ではない。
 
@@ -855,7 +870,7 @@ tool-eval-bench `2.6.1.dev52+g81eae0a33`、[1.0.0の測定](#tool-eval-bench)と
 | prefill 38,962 token／短いpromptの後のdecode | 1,281.3／41.9 tok/s | 1,287.7／27.43 tok/s |
 | 文字化けの検査 | 合格 | 合格 |
 
-この長さでは、修正は出力を一つも変えませんでした。decodeのpromptとNLLの文は2,048 token前後かそれ以下で、長い要求はどれもcacheしたprefixを再利用していません。このhybridモデルではprefix cacheは4,608 tokenの丸ごとのblock単位でしか当たらず（要求した256は、KDAの状態のpageに揃えるために引き上げられます。起動logにそう出ます）、decode検査が当たることはありません。上流の報告が再現した形、つまりprefix cacheから再利用する長いpromptを、他の要求がpoolを一巡した後に送る場合は、ここでは測っていません。
+この長さでは、修正は出力を一つも変えませんでした。decodeのpromptとNLLの文は2,048 token前後かそれ以下で、長い要求はどれもcacheしたprefixを再利用していません。このhybridモデルではprefix cacheは4,608 tokenの丸ごとのblock単位でしか当たらず（要求した256は、KDAの状態のpageに揃えるために引き上げられます。起動logにそう出ます）、decode検査が当たることはありません。上流の報告が再現した形、つまりprefix cacheから再利用する長いpromptを、他の要求がpoolを一巡した後に送る場合は、1.13.0では測っていません。[1.14.0](#1140での測定)で測りました（cold、cacheからの再利用、他の3本のprefillの後のcacheからの再利用のいずれも正答で、同じcompletion）。
 
 3か所参照の古い問題文は、[1.4.0で曖昧と分かった](#140での200k実入力)ものです。AXLは3回とも3つのコードをreasoningに書いたうえで、「REGISTRY values」を記事のことと読み、記事の書き写しを始めて512 tokenの上限で切れました。配布既定も同じ読みを検討したうえで、コードを返しました。同じ問題文は2026-09-22のAXL（同時1系列）では3回とも正答だったので、どちらの読みが勝つかは数値経路で動く同点すれすれの差です。囲んだ問題文は、記事を `BACKGROUND` の印の間に置き、各 `REGISTRY` 行の `=` の後の値を問います。両profileともすぐにコードを返しました。1.13.0からは、この囲んだ問題文をこの検査の正典とし、READMEの行もその結果にしました（中央値はAXLで230.7 s、配布既定で234.2 s、prompt 261,573 token）。READMEのそれまでの値は、[1.6.0](#160での測定)の明示した問題文（recordは1行）で取ったものです。要求は次のとおりで、記事は以前の検査と同じ、temperature 0、出力512 token、毎回prefix cacheをresetしてから送ります：
 
@@ -888,7 +903,7 @@ decode検査の3つのpromptを、単独で、2本同時に、1本目が最初�
 | MarlinのW4A16・NVFP4 dense GEMM | 同じbit | 違う |
 | NVFP4のfused Marlin MoE（32 expert、top 4、行ごとにroutingを固定） | 違う | 違う |
 
-試したkernelのうち、別の要求のdecode行と同じ呼び出しに載るだけで行の結果が変わるのはMoEだけでした。attentionとKDAは試していません。
+試したkernelのうち、別の要求のdecode行と同じ呼び出しに載るだけで行の結果が変わるのはMoEだけでした。attentionとKDAはここでは試していません。[1.14.0](#1140での測定)を参照。
 
 ## 1.14.0での測定
 
@@ -927,4 +942,23 @@ attentionの分け方を固定しても、他の要求とstepを共有した要�
 
 中央に合言葉を置いた19,851トークンのpromptは、cacheを空にした1回目、prefix cacheからの再送（cache済み13,824トークン：draftがあると検索は一致した最後のblockを計算し直す）、別の約2万トークンのprompt 3本の後の再送のすべてで正答し、completionはtoken単位で毎回同じだった。1.13.0のkpool seedの修正で、他のprefillが走ってもcache済みのprefixは壊れない。
 
-上流へ報告した：[flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553)（分け方が呼び出しのtoken数で決まる。FlashInferのmainでも同じ）と、[vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639)（Marlin MoEのbatch不変化、open）へのNVFP4の実測。
+上流へ報告した：[flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553)（分け方が呼び出しのtoken数で決まる。2026-09-26時点のFlashInferのmainでも同じ）と、[vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639)（Marlin MoEのbatch不変化、2026-09-26時点でopen）へのNVFP4の実測。
+
+## 1.15.0での測定
+
+### 参照対でのCPU配置（2026-09-26）
+
+1.15.0の `nodes[].cpuset_cpus` について（[#1](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/issues/1)）。参照対は公開した任意設定を2系列で配信したまま（image `8444078038c0…`、source `b7cd765`）、`docker update --cpuset-cpus` で各rankの稼働中のコンテナを再起動なしにコア間で移した（`records/20260926-cpu-placement/`）。両ホストとも、最大2.8 GHzの高効率コア10個（0〜4、10〜14）と最大3.9 GHzの高性能コア10個（5〜9、15〜19）を持ち、governorは `performance`、boostはoff、周波数の上限なし。各状態でdecode check（2,048トークン前後のprompt）と22トークンのprompt（`PROMPT_TOKENS=0`、数え上げ）を、512トークンを3サンプルずつ、他の要求なしで走らせた。表はtok/sの中央値。
+
+| rank 0のCPU | rank 1のCPU | 数え上げ／散文／コード | 22トークンのprompt |
+|---|---|---|---:|
+| 未設定 | 未設定 | 45.76 / 27.62 / 38.34 | 41.61 |
+| 高効率（0〜4、10〜14） | 未設定 | 15.21 / 8.87 / 12.83 | 13.39 |
+| 高性能（5〜9、15〜19） | 高性能（5〜9、15〜19） | 45.68 / 27.72 / 37.99 | 41.26 |
+| 全コア（0〜19） | 高効率（0〜4、10〜14） | 15.47 / 9.03 / 13.02 | 14.36 |
+| 全コア（0〜19） | 全コア（0〜19） | 45.59 / 27.85 / 37.94 | 41.30 |
+
+- どの状態でも、promptごとのcompletionと受理長（3.698 / 2.146 / 3.097 / 3.303）は同じだった。配置が変えたのは速度で、計算ではない。
+- **どちらか一方のrankが高効率コアにいるだけで、decodeは約3分の1になる。** 二つのrankは歩調を合わせて進むので、遅い方が速度を決める。CPU setはrank 0だけでなく両rankに要る。差は#1の約2.1倍（両種のコアとも2.4 GHz上限）より大きい。周波数とコアの種類は切り分けていない。
+- 固定なしでも、この計測の間はrank 0の主workerスレッドが3秒ごとの標本すべてで、rank 1のものも取った標本（約15秒ごと）すべてで高性能コアにいたので、高性能コアへの固定は固定なしを上回らなかった。#1では、固定なしのworkerが待機後に高効率コアへ落ちた。CPU setが買うのはその抽選を無くすことである。
+- 1.15.0のlauncherの経路（preflightの `cpu_set_available`、`docker run` 後の読み戻し）は、まだ参照対で走らせていない。コンテナは `0-19` へ戻した。稼働中のコンテナのCPU setはDockerでは消せないので、`HostConfig.CpusetCpus` は次の切替まで `0-19` を示す。

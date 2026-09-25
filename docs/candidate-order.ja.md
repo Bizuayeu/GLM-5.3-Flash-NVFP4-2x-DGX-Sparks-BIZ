@@ -8,32 +8,13 @@
 
 ## 導入と更新
 
-既存の参照imageビルドで、この修正も自動適用します。
-
-```sh
-python -m glm53_setup build-reference
-```
-
-公式base imageだけには、本リポジトリのパッチは入っていません。Docker build時に固定vLLM sourceのハッシュを検査し、一致するものへ適用します。別sourceなら停止します。インストール済みvLLMの手編集や、ハッシュ不一致の回避は行わず、[導入手順のステップ4](../SETUP.ja.md#4-イメージ準備と参照実装の単体検証)に従ってください。
-
-checkoutを更新しても、既存imageや稼働containerは自動更新されません。確認したcheckoutから再ビルドし、生成したimage IDを記録し、必要に応じてimageを移送して各ホストでIDを照合します。既存の管理された切替手順を使い、稼働中containerへ直接パッチを当てません。
-
-新しい参照imageは `GLM53_CANONICAL_CANDIDATES=1` を設定します。利用する実imageを確認してください。
-
-```sh
-docker image inspect "$IMAGE" --format '{{.Id}}'
-docker image inspect "$IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}'
-```
-
-`IMAGE` は、その導入で選択した参照imageです。ビルドログでsourceパッチの検査が完了し、環境に `GLM53_CANONICAL_CANDIDATES=1` があることを確認します。タグ名や環境変数だけを、記録したビルド／imageの同一性の代わりにはしません。
-
-対照試験やロールバックでは、container環境を明示的に `GLM53_CANONICAL_CANDIDATES=0` とすると正規化を無効にできます。GLM backendではそれ以外の値を拒否します。変更は実行記録へ残してください。無効化を速度面から推奨するものではありません。
+参照imageはすべてこのパッチを持ち、`GLM53_CANONICAL_CANDIDATES=1` を設定します。imageのビルド・照合・確認は[現行イメージの契約](server-configuration.ja.md#現行イメージの契約)に従います。対照試験やロールバックでは、container環境を `GLM53_CANONICAL_CANDIDATES=0` とすると正規化を無効にでき、GLM backendはそれ以外の値を拒否します。変更は実行記録へ残してください。無効化を速度面から推奨するものではありません。
 
 ## 範囲と検証
 
 実装は `glm53_setup.runtime.candidate_order` です。固定sourceへの参照パッチが、`FLASHINFER_MLA_SPARSE_SM120` のGLM経路へ組み込みます。vLLMの全top-k演算や全モデルbackendを一律に変更するものではありません。このruntimeコードにEuryaleパッケージの依存はありません。
 
-CPU契約では全順列・重複ID・padding・空行・非連続tensor・整数の上限・入力非変更・論理順序を物理変換より前に揃えることを検証します。GPU部品検査、fixture実測、全モデル／TP=2の検収は区別します。他の層を含む完全な数値再現性や、採択境界でscoreが同点になった場合の候補集合の決定性まで保証する変更ではありません。現在の検収上限は[検証文書](validation.ja.md)を参照してください。
+CPU契約では全順列・重複ID・padding・空行・非連続tensor・整数の上限・入力非変更・論理順序を物理変換より前に揃えることを検証します。GPU部品検査、fixture実測、全モデル／TP=2の検収は区別します。他の層を含む完全な数値再現性まで保証する変更ではありません。512番目のpoolで同点になった場合の*候補集合*は、別に[`runtime.stable_indexer_topk`](server-configuration.ja.md#再現性のスイッチ)が決めます。現在の検収上限は[検証文書](validation.ja.md)を参照してください。
 
 ### GB10での回帰検証と費用
 
@@ -66,6 +47,6 @@ GB10 1台・4層・Marlin W4A16のfixtureで、C1／TP1／eager／APCなし、KV
 
 通常／LPA／通常への復帰の課題得点は22／24／21（各24件）で、LPAだけが失敗する回帰はありませんでした。3条件のtool往復、cancel後の次要求、32,704入力＋64出力を通過し、容量試験中のpreemption増加は0でした。履歴試験は61回答の独立再採点、9境界、evictionを通過。30,100入力の途中編集も3条件でH=9,216を復元して正答しました。
 
-既存のheldout 8件を同じ要求で再実行し、3条件とも8/8でした。途中に別クライアントの要求が混ざった試験は無効記録を保持し、応答とworkerの要求IDを照合した前半と、再実行した後半から集計しました。新しい未使用test集合の結果とは扱いません。私用証拠は`records/20260913-mia-updates/canonical-v78-assessment.json`です。
+既存のheldout 8件を同じ要求で再実行し、3条件とも8/8でした。要求IDを照合した結果（一部は再実行）から集計しており、新しい未使用test集合の結果とは扱いません。私用証拠は`records/20260913-mia-updates/canonical-v78-assessment.json`です。
 
-128出力、warmup1回を除く3反復の要求中央値は、2,048入力で12.215／10.366／10.969秒、8,192入力で28.205／24.529／28.790秒、16,320入力・H=4,608で39.976／34.547／40.099秒でした。旧imageとの対応する36測定中34件で出力token列が異なるため、この時間差を並べ替えkernel単体の費用や速度改善には帰属させません。batching、長時間負荷、Euryaleの学習済みproposer、全設定の数値同一性は未検収です。
+128出力、warmup1回を除く3反復の要求中央値は、2,048入力で12.215／10.366／10.969秒、8,192入力で28.205／24.529／28.790秒、16,320入力・H=4,608で39.976／34.547／40.099秒でした。旧imageとの対応する36測定中34件で出力token列が異なるため、この時間差を並べ替えkernel単体の費用や速度改善には帰属させません。長時間負荷、Euryaleの学習済みproposer、全設定の数値同一性は未検収です。

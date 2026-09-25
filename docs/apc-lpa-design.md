@@ -2,7 +2,7 @@
 
 [日本語](apc-lpa-design.ja.md) · [Catalog](optimization-catalog.md)
 
-**Status: CPU contracts, four-layer GPU shared-state isolation, full-model calibration, scoped quality and operational checks, combinations including asynchronous MTP, and the final held-out retrieval evaluation are complete.** Depending on the workload, select the no-MTP prefix-reuse profile. It requires the matching image marker and still rejects APC coexistence through manual RPCs. See the [calibration and combination results](benchmarks.md#apc-first-lpa-crossover-measurement-p22), the [current LPA operating scope](lpa.md#operating-scope) and the [initiative catalog](optimization-catalog.md). Additional evaluation of history edits, branches and retention pressure is carried out separately from this acceptance.
+**Status: complete.** CPU contracts, four-layer GPU shared-state isolation, full-model calibration, scoped quality and operational checks, combinations including asynchronous MTP, and the final held-out retrieval evaluation passed ([evidence](#evidence)). LPA ships off and excludes FA2 prefill (1.6.0). The path requires the matching image marker and rejects APC coexistence through manual RPCs. History edits, branches and retention: [fixtures](component-validation.md#additional-history-fixtures), [full model](benchmarks.md#apc-history-retention-baseline). See the [current LPA operating scope](lpa.md#operating-scope) and the [initiative catalog](optimization-catalog.md).
 
 ## Goal and first-version policy
 
@@ -43,21 +43,19 @@ The target vLLM is the existing lock's `385dce36bcee42309924a5ece951a96db3dce7f2
 - The LPA hook uses absolute positions and approximates and counts only the uncached positions actually computed. Capture/oracle must not treat a prefix missing because of a cache hit as "collected".
 - Prevent a manual RPC during APC-first mode from enabling an approximation the scheduler is not told about. Leave no path by which an ordinary APC control stores approximate state.
 
-The first integration check uses text, eager, TP2, one sequence and local cache. Graphs, PP, an external KV connector, fine-grained Mamba prefix caching and multiple sequences are not added at the same time. Combinations with MTP, fused unpack and asynchronous checks are validated as individual combinations after the base contract passes.
+## Evidence
 
-## Implementation and acceptance order
+- Shared-state isolation on the four-layer fixture, including MTP, fusion and asynchronous checks: [component validation](component-validation.md#apc-first-lpa-cache-isolation-p22).
+- Crossover calibration and the threshold B: [benchmarks](benchmarks.md#apc-first-lpa-crossover-measurement-p22).
+- Full model: [the combination with MTP, fusion and asynchronous checks](benchmarks.md#apclpa-with-mtp-fusion-and-asynchronous-checks-p22) and [held-out retrieval](benchmarks.md#repeated-input-tradeoff).
 
-In the four-layer GPU test, with N=18,432 and restored H=8,704, every inspected shared-prefix hash still matched after passing through the approximated suffix. The following ordinary request still had H=8,704, and only after ordinary computation did the shared range grow to 17,408. The 16 output tokens of the control, of the ordinary request following approximation and of the restored control matched, and the synthetic approximation's distribution difference was detected separately. This is a TP1/eager/no-MTP state-isolation result, not acceptance of the full model or of combinations.
-
-Run the shared-cache isolation component test from the following command inside the matching image. `--fixture` takes the four-layer fixture whose tensors have all passed byte verification; `--output` takes a fresh destination. It uses one GPU with 32K context, 1 GiB KV and one sequence, so monitor the container cap and host availability separately.
+The fixture test runs inside the matching image on one GPU, with a byte-verified four-layer fixture and a fresh output directory. It builds a fixture-only synthetic projector, so it checks isolation, not quality or the crossover.
 
 ```sh
 python -m glm53_setup apc-lpa-fixture --fixture /fixture --output /out/validation
 ```
 
-This test builds a fixture-only synthetic projector that differs from ordinary state. It checks the restoration boundary of a real cache lookup, the GPU byte hashes of the shared prefix, the actual number of omitted queries and the output of a following ordinary request. It is not used to evaluate full-model quality or the crossover. Startup warmup is excluded within an explicit range of the pinned source, and real requests require the scheduler-supplied policy. The worker's cache format check uses the `fp8_ds_mla` value normalized at model load.
-
-Measure the crossover from a Linux host on a dedicated TP2 server with LPA/APC enabled and `lpa.break_even_tokens=0`. Do not edit the routine-operation TOML directly; align a measurement TOML across both ranks. The following example corresponds to an actual joint restoration unit of 4,352 tokens. Do not reuse it as is for configurations whose boundary changes, for instance through MTP's speculation recomputation.
+The calibration runs on a dedicated TP2 server with LPA and APC enabled and `lpa.break_even_tokens=0`, from a measurement TOML aligned across both ranks. `--cached-prefix-tokens` is the actual joint restoration unit of that profile (4,352 here); a profile whose boundary differs, for instance under MTP, needs its own value.
 
 ```sh
 python -m glm53_setup apc-lpa-benchmark \
@@ -67,18 +65,4 @@ python -m glm53_setup apc-lpa-benchmark \
   --eligible-tokens 128 512 1024 2048 4096 8192 --repeats 5
 ```
 
-Reset the shared cache before each measurement, and rebuild the prefix by ordinary computation when H>0. Check the actual N/H/R and the omitted-query count on both ranks, and keep reset, priming and diagnostic RPCs outside the timing window. Repeat ordinary/LPA/restored controls and exclude the first cycle as warmup. Use only the validation split of the specified corpus as input. Additional measurements at small remainders can specify `--cold-only --eligible-tokens 0 1 4 16 32 64`. The calibration value B=0 is not an operational recommendation.
-
-| Stage | Work and completion criteria |
-|---|---|
-| Current standalone evaluation | Establish 32K capacity and timing, APC off/on/off speed, actual hits, long-document extraction, revisits, tools and cancellation. Retain the raw results |
-| CPU contracts | Check the N/H/T/B boundaries, H=0, near-complete hits, consistency across multiple cache groups, the cap on every publication path, request-ID switching, and cap retention after cancellation/preemption |
-| Components and the small-layer fixture | Build a prefix by ordinary computation, restore H, apply LPA to the suffix, then revisit with an ordinary request. Confirm that nothing beyond the approximation is in the shared table, that the original prefix state is unchanged, and the actual omission count |
-| Contamination detection test | Use a fixture whose approximate state is deliberately distinguishable from ordinary state, and check that it does not flow into a following LPA-off request. Do not treat oracle values that merely happen to match as a pass |
-| Crossover measurement | Vary R stepwise for H=0 and for H>0, and compare APC plus ordinary, APC plus LPA and restored with the auxiliary projector warmup excluded. Select B and record the conditions, the variance and the unmeasured ranges |
-| Full model | Check no hit, partial hit and near-complete hit, the pool/block/T/B boundaries, evidence positions in long documents, isolation from other documents, projector settings and LPA off, tools, SSE, cancellation, capacity, and stop/recovery of both ranks |
-| Final combination | Validate the combination with the already adopted MTP3, fused unpack and asynchronous checks on the same pinned assets, and record functional acceptance, performance adoption and default settings separately |
-
-Retain, for each request, N, the actual restored H, R, the LPA decision, the first approximated position, the shared cap, the actual omitted-query count and the cache publication range. Do not enable heavy tensor hashing or the profiler during speed measurement. Keep verbatim agreement, task correctness, state diagnostics and the restored control separate for quality, and do not promote an incomplete result to a pass. Record each run's own host reserve, and do not read a fixture's validation reserve as the distributed profile's `resources.reserve_gib`.
-
-Collect the startup options into the existing category TOML files, and document APC-first mode, B and the request option that computes common documents ordinarily. Require the matching image marker, and reject combination with manual RPCs, whose publication cap the scheduler cannot establish. Check invalid request options and injected internal policies in the input processor as well, and turn them into input errors before they enter the scheduler.
+`--cold-only --eligible-tokens 0 1 4 16 32 64` adds small remainders. The calibration value B=0 is not an operational recommendation.

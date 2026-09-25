@@ -1,10 +1,10 @@
-# MTP speculative decoding — experimental
+# MTP speculative decoding
 
 [日本語](speculative-decoding.ja.md) · [Baseline benchmarks](benchmarks.md)
 
 The first TP=2 baseline used no speculation. The speculative profiles use the MTP tensors already in the pinned NVIDIA checkpoint. No external draft model, EXL3 conversion or DFlash2 weights are needed; this introduces no additional model license. Existing [artifact licenses](licensing.md) still apply.
 
-Depths one to five have been measured, on the checkpoint as shipped and on the requantized copies. **The template keeps k=3, and k=3 is also the depth the reference pair serves with the requantized checkpoint** ([the decision of 2026-09-21](#depth-three-for-both-checkpoints-2026-09-21)). [Depths one to five](#depths-one-to-five-2026-09-19-and-20) holds the sweep that led there; the k=1 and k=3 sections below are the earlier, smaller runs. [Beyond a fixed depth](#beyond-a-fixed-depth-2026-09-21) records what was tried after the sweep and why none of it is adopted.
+Depths one to five have been measured, all five with the requantized checkpoint and 1, 3 and 4 with the pinned one. **The template keeps k=3, and k=3 is also the depth the reference pair serves with the requantized checkpoint** ([the decision of 2026-09-21](#depth-three-for-both-checkpoints-2026-09-21)). MTP k=3 is part of the distributed defaults, accepted for routine use ([SETUP step 6](../SETUP.md#6-qualify-the-full-model)). [Depths one to five](#depths-one-to-five-2026-09-19-and-20) holds the sweep that led there; the k=1 and k=3 sections below are the earlier, smaller runs. [Beyond a fixed depth](#beyond-a-fixed-depth-2026-09-21) records what was tried after the sweep and why none of it is adopted.
 
 ## Why a flag alone is insufficient
 
@@ -26,15 +26,7 @@ python tools/prepare_mtp_view.py \
 
 The tool checks the declared MTP tensor headers and refuses quantized MTP data rather than silently treating it as BF16. Header inspection is not a substitute for the preceding full checksum. It creates links and modified metadata, not a second copy of the tensor data. Keep the emitted provenance/hash report privately and compare the view configuration on both nodes. Use a new destination; existing views are preserved.
 
-Serve the **view path**, with the existing tested TP=2 reference image/settings, and add:
-
-```sh
---speculative-config "$(cat examples/speculative.mtp1.json)"
-```
-
-The JSON is the [k=1 candidate](../examples/speculative.mtp1.json). For the tested k=3 profile, use [speculative.mtp3.json](../examples/speculative.mtp3.json) instead; it changes only `num_speculative_tokens` to 3. Both select `mtp` and a separate `triton` MoE backend for the draft. Keep the target's Marlin configuration, eager mode, one active sequence and the benchmark's context/KV settings, with prefix caching disabled as in that baseline (the distributed template enables APC; see [server configuration](server-configuration.md#distributed-defaults)). Mount the cache root read-only, including both original snapshot and view; mounting the view alone breaks its links.
-
-This is an experimental recipe, not an acceptance for routine use. To return to the baseline, use the original snapshot and omit the speculative configuration. Preserve the view and evidence.
+Set `mtp.view` to this path relative to the cache (`local-views/glm53-mtp-compatible`; the launcher appends the revision). With `mtp.enabled = true`, `server start` serves the view, mounts the whole cache root read-only (the view's links point into the snapshot) and builds `--speculative-config` from `mtp.num_speculative_tokens` with `mtp` and a separate `triton` MoE backend for the draft. [speculative.mtp1.json](../examples/speculative.mtp1.json) and [speculative.mtp3.json](../examples/speculative.mtp3.json) show the JSON it passes, for a manual `vllm serve` reproduction. `mtp.enabled = false` serves the original snapshot; keep the view. A profile with `runtime.derived_checkpoint` loads the draft layer without the view ([server configuration](server-configuration.md#attention-cache-and-checkpoint)).
 
 ## Acceptance and comparison
 
@@ -44,13 +36,13 @@ This is an experimental recipe, not an acceptance for routine use. To return to 
 - Save raw `/metrics` snapshots before/after each case. Draft acceptance is the accepted-draft-token delta divided by the draft-token delta; conventional mean acceptance length includes the bonus token: `1 + accepted_token_delta / draft_count_delta`. The case window may include warmup and the client's initial probe, so it is distinct from measured-request-only timing. See [vLLM's metric definitions](https://docs.vllm.ai/en/v0.24.0/api/vllm/v1/spec_decode/metrics/).
 - Compare depths by mean acceptance length, not by acceptance rate. A deeper k lowers the rate even when it yields more tokens per step; another recipe ranked k=5 and k=7 the wrong way round by rate (tonyd2wild PR #12, no code adopted).
 - Check final answers, tools, SSE, EOS/length termination and state behavior. Keep greedy token/logprob differences as numerical diagnostics instead of demanding identical free-form reasoning text.
-- Compare both prefill latency and decode/aggregate throughput. A faster decode path can still lose on long-input, short-output workloads. Increase k only in a separate test after k=1 passes.
+- Compare both prefill latency and decode/aggregate throughput. A faster decode path can still lose on long-input, short-output workloads.
 
 amasu reports similar aggregate scores at k=3 and k=4 in its own configuration (benchmark §12, commit `73e19d8`). That external result does not select a depth for this setup; use the local comparison below.
 
 ## Measured k=1 results
 
-On 2026-09-12 (Asia/Tokyo), the full model completed all five baseline workloads: 21 measured requests and 1,344 output tokens, with no request errors. Each request produced the requested 64 tokens. The image, target arithmetic, network and workload settings match the [MTP-off baseline](benchmarks.md#initial-full-model-results); this is a comparison between separate runs, not a repeated A/B/A study. Client concurrency 2 still queues behind server `max_num_seqs=1`.
+The first full-model runs, on 2026-09-12 (Asia/Tokyo), since superseded by [depth three](#depth-three-for-both-checkpoints-2026-09-21). The image, target arithmetic, network and five workloads match the [MTP-off baseline](benchmarks.md#initial-full-model-results); these are separate runs, not an A/B/A. Client concurrency 2 still queues behind server `max_num_seqs=1`.
 
 | Input tokens | Client concurrency | MTP median TTFT (s) | Decode off → k=1 (token/s) | Aggregate output off → k=1 (token/s) | Draft acceptance |
 |---:|---:|---:|---:|---:|---:|
@@ -60,19 +52,11 @@ On 2026-09-12 (Asia/Tokyo), the full model completed all five baseline workloads
 | 32 | 2 | 3.116 | 14.27 → 23.54 | 13.71 → 21.38 | 85.7% |
 | 2,048 | 2 | 15.820 | 14.22 → 21.49 | 6.08 → 6.80 | 84.0% |
 
-Decode is `1000 / mean_tpot_ms`. Acceptance uses the per-case counter windows described above, including client preparation/warmup where present, not just the timed requests. Accepted/drafted counts were respectively 122/132, 122/134, 105/149, 204/238 and 204/243. Mean acceptance length was 1.70–1.92 tokens per draft step.
-
-The runtime reported 95.17 GiB model memory per rank, approximately 6.97 GiB more than the baseline. Minimum host available memory was 7.90/10.25 GiB; the 6 GiB reserve guard did not trigger, and neither rank was OOM-killed. API readiness took about 14.4 minutes in this run; cold loading remains expensive and is separate from request TTFT.
-
-All 11 basic API checks passed, including final-answer replay, Japanese arithmetic, SSE, automatic tool arguments/return, Messages and token counting. Text responses terminated with `stop`, the tool request with `tool_calls`, and Messages with `end_turn`. Reasoning wording differed on replay and remains diagnostic. These checks establish neither full output-distribution equivalence nor broad application quality.
-
-Short-input k=1 decode improved about 1.69× over MTP off, but 8,192-input/64-output aggregate throughput fell about 1.3% and TTFT rose from 24.387 to 26.257 seconds. Retain the MTP-off baseline for comparison and memory-constrained or prefill-heavy use. The subsequent k=3 comparison below determines the candidate for further evaluation.
-
-Both trial servers were stopped and host memory recovered. Rank 0 exited zero; rank 1 exited 137 after the controller's Docker stop grace period, with `OOMKilled=false`. Distributed graceful shutdown/recovery remains unqualified. This experiment does not promote the routine launcher or produce its qualification receipt.
+Decode is `1000 / mean_tpot_ms`; acceptance uses the per-case counter windows described above, warmup included. All 21 requests produced their 64 tokens, mean acceptance length was 1.70–1.92, model memory was 95.17 GiB per rank (about 6.97 GiB more than without MTP) and all 11 basic API checks passed. Short-input decode rose about 1.69×, while the 8,192-token input lost about 1.3% of aggregate throughput and its TTFT rose from 24.387 to 26.257 s.
 
 ## Measured k=3 comparison
 
-A separate run on 2026-09-12 (Asia/Tokyo) changed only the speculative-token argument from 1 to 3. The same image, checkpoint view, workload and requested context/KV/chunk settings were retained. The runtime automatically enlarged the aligned attention block from 4,352 to 4,608 tokens; this is a consequence of k=3, not a manually tuned KV budget. API readiness took about 924 seconds, including loading and initialization.
+A separate run the same day changed only the depth from 1 to 3. The runtime enlarged the aligned attention block from 4,352 to 4,608 tokens as a consequence of k=3.
 
 | Input tokens | Client concurrency | k=3 median TTFT (s) | Decode k=1 → k=3 (token/s) | Aggregate output k=1 → k=3 (token/s) |
 |---:|---:|---:|---:|---:|
@@ -82,7 +66,7 @@ A separate run on 2026-09-12 (Asia/Tokyo) changed only the speculative-token arg
 | 32 | 2 | 2.602 | 23.54 → 25.41 | 21.38 → 22.61 |
 | 2,048 | 2 | 15.305 | 21.49 → 27.04 | 6.80 → 7.19 |
 
-Per-position acceptance is accepted tokens at that position divided by all draft steps, not conditional acceptance after the previous position. The same warmup-inclusive metric windows apply.
+Per-position acceptance is accepted tokens at that position divided by all draft steps, not conditional on the previous position.
 
 | Case | Position 1 | Position 2 | Position 3 | Mean acceptance length |
 |---|---:|---:|---:|---:|
@@ -92,9 +76,7 @@ Per-position acceptance is accepted tokens at that position divided by all draft
 | short-c2 | 70.3% | 64.6% | 52.5% | 2.87 |
 | medium-c2 | 73.1% | 62.8% | 54.5% | 2.90 |
 
-All 21 measured requests produced 64 tokens without errors, and all 11 basic API checks passed. Reasoning wording again differed on replay; broad output equivalence and actual harness acceptance remain separate. Model memory stayed at 95.17 GiB/rank. Minimum host available memory was 7.33/10.12 GiB, with no reserve-triggered stop or OOM kill. Both servers were stopped; rank 1 again required Docker's stop timeout (exit 137), so recovery qualification remains open.
-
-**Decision:** prefer k=3 for the next experimental text/tool and harness evaluations, while preserving k=1 and MTP-off references. In these samples, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7% over k=1. The long-input aggregate gain was only 0.45%, too small to establish a repeatable benefit, and its TTFT increased slightly. The measurements are small, separate runs, not a statistical optimum search. k=2 and k≥4 were not tested in this run; they were measured later ([depths one to five](#depths-one-to-five-2026-09-19-and-20)). Two active sequences, graphs, prefix caching, vision, both harnesses and routine deployment remain unqualified.
+All 21 requests completed, all 11 API checks passed and model memory stayed at 95.17 GiB per rank. Over k=1, k=3 improved short-input decode by 25.5% and medium-input decode by 34.7%; the long-input aggregate gain (0.45%) was too small to call. k=3 was therefore preferred for the evaluations that followed.
 
 ## Depths one to five (2026-09-19 and 20)
 
@@ -113,11 +95,9 @@ Teacher-forced NLL was the same to four decimals at every depth, and the 199,652
 
 With the pinned checkpoint as it is, both depths with the tie settled: counting 33.08 at k=4 against 32.50 at k=3, prose 19.60 against 21.00, code 28.37 against 28.30, short prompts 28.10 against 27.17. The requantized projections make every step cheaper, so the longer verification step of a deeper draft costs relatively less there; without them depth four gains 0 to 3% where the text is predictable and loses 7% on prose.
 
-**Decision (2026-09-20, superseded the next day):** the template keeps k=3, which is never the slowest depth on any of the three prompts; k=4 was paired with `runtime.derived_checkpoint` on the reference pair for two days. k=1 is the fastest depth for prose alone. The ten-input sweep below moved the requantized pair to k=3 as well.
-
 ## Depth three for both checkpoints (2026-09-21)
 
-The sweep was repeated on ten inputs, three repeats each, on the reference pair with the requantized attention projections (route g, FA2 prefill, one sequence, 512 tokens per request): four regression inputs (the three decode prompts above and a short counting prompt) and, split by document into a tuning and an evaluation set, Japanese prose, code and a tool round-trip. Median tok/s with the mean acceptance length in brackets. Every arm repeated its own completions; **the completion of most inputs changes with the depth** (the draft's candidates enter the verification batch, and a BF16 tie in the target's logits then resolves the other way), so a difference between columns includes a change of text, not only of speed.
+After that sweep the template kept k=3 while the reference pair served k=4 with `runtime.derived_checkpoint` for two days. The sweep was then repeated on ten inputs, three repeats each, on the reference pair with the requantized attention projections (route g, FA2 prefill, one sequence, 512 tokens per request): four regression inputs (the three decode prompts above and a short counting prompt) and, split by document into a tuning and an evaluation set, Japanese prose, code and a tool round-trip. Median tok/s with the mean acceptance length in brackets. Every arm repeated its own completions; **the completion of most inputs changes with the depth** (the draft's candidates enter the verification batch, and a BF16 tie in the target's logits then resolves the other way), so a difference between columns includes a change of text, not only of speed.
 
 | Input | k=2 | k=3 | k=4 | k=5 |
 |---|---|---|---|---|
@@ -142,6 +122,6 @@ Everything below was measured on the reference pair on the same ten inputs, kept
 - **A confidence gate on the draft** (stop drafting at the first depth whose top-1 probability is at or under a threshold; the draft's own probability predicts acceptance with AUC 0.89 at every depth): the mechanism works as designed, but every stop is a host synchronisation, and on two hosts under TP=2 each one costs about 1.3 ms in the next collectives while the ranks fall back into step, about 5 ms per step in all. That is the whole projected gain. vLLM's own proposals of the same rule ([#36657](https://github.com/vllm-project/vllm/issues/36657), [#48202](https://github.com/vllm-project/vllm/issues/48202)) were closed without a wall-clock gain either.
 - **Not sharing the first depth's sparse top-k across draft depths** (`index_share_for_mtp_iteration = false`): acceptance equal or lower on every input, 2 to 3 ms per step slower. The checkpoint's setting is right.
 - **Reducing the draft's logits on each rank instead of all-gathering them** (`use_local_argmax_reduction`): same completions and acceptance, same step time; the all-gather is 0.2 ms per depth.
-- **Decode CUDA Graphs** on the full model: 7 to 9 ms per step slower than eager on every input with identical completions ([overview](optimization-overview.md#decode)).
+- **Decode CUDA Graphs** on the full model: slower than eager on every input, with identical completions ([benchmarks](benchmarks.md#decode-graphs-on-the-full-model)).
 
 Two facts from this work carry over to any later change on the draft side: a draft-side change that alters which candidates are drafted **alters the completions**, so it is judged by acceptance and teacher-forced NLL rather than by equal text; and the per-step cost of a depth is per row of verification and per draft forward, so any scheme that drafts fewer rows must also verify fewer rows to pay.

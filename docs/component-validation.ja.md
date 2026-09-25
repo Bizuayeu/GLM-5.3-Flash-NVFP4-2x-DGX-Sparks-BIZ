@@ -44,47 +44,23 @@ GPU部品の検査は、全FP8 byteコードと選定したFP32 scale（符号�
 
 この8K validation入力の最終queryでは、隣接するsparse層のJaccardが0.349〜0.693、対象候補のcoverageが0.518〜0.818でした。取得した集合は両rankで一致しています。2Kの選択は因果的な全tokenを覆い、自明なJaccard=1となるため、有用なsparse再利用の証拠からは除外します。固定した1つのvalidation入力から採取したqueryであり、一般的な重なりの分布や調整済みの層スケジュールではありません。
 
-[indexerの部品](indexer-reuse.ja.md)は追加評価のために保持します。Reuse／Reindexはservingで有効にしていません。品質ゲートを通過した層スケジュールがなく、測定したkpool opは試験した負荷のごく一部で、8K相当の部品サイズでは共有poolのscorerがnativeより遅かったためです。より長い文脈では、容量・全コスト・候補品質を別に測定する必要があります。
+P16は2026-09-21にコストの門で中止しました（[indexerの再利用](indexer-reuse.ja.md)）。この2K／8Kの観測はその前段の材料です。
 
-## 再現手順と残る統合
+## 再現手順
 
 [起動設定](server-configuration.ja.md)で `validation.component_worker=true` を指定し、LPA/MTPをoff、検証済みimageを使います。head側で `python -m glm53_setup.validation.run_components --config /path/to/profile.toml --corpus /path/to/documents.jsonl --output /new/record` を実行します。driverは全応答、実token数、A/B/Aの再現性、時間サンプル、rankごとの重なりを保存します。対応するprofiler traceと資源ログも残してください。
 
-[LPA／MTP／unpack融合／非同期の直列比較](benchmarks.ja.md#直列併用の評価p18)には、対にした課題・時間・容量・切断の限定的な証拠があります。より広い業務課題、FreedomBenchの全体、ハーネス検収は別のゲートです。この測定時点ではunpack融合の既定はoffでした。現在の値は[起動設定](server-configuration.ja.md#配布用の既定設定)を参照してください。
+併用した結果は[P18](benchmarks.ja.md#直列併用の評価p18)にあります。
 
 ## Decode Graphのfixture独立評価
 
-2026-09-12（Asia/Tokyo）、GB10 1台・4層のfixtureで、同期eager実行と、非同期index検査＋prefill非compile／decode全体のGraphsを比較しました。両armとも **融合・LPA・MTP・APCはoff** です。checkpointは元の幅とexpertを保持しており、言語品質の試験ではありません。設定はcontext 16,384、chunk 512、実行1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperatureは0です。64／2,048／8,192入力tokenのそれぞれでwarmup後に32tokenを生成し、時間測定は3回、traceはその後に取得しました。
-
-上記のimageを使い、新しいattention sourceを正規のmoduleと配置先の `glm53_reference.py` の両方へmountしました。attentionのSHA256は `d044697bae525fac77cbec451475f29df5298a5d63700560b7c532a6729335de`、driverの実バイトは `0590daed24d583097fe125ceb5f5200081d3d8f60d728e28b2b4393304fffd81` です。driverはsource commit `eb30095` の `glm53_setup.validation.run_graph_fixture` として保持しています。非公開のrun IDは `graph-component-v13-results/fixture-eager-single` と `fixture-graph-single` です。
-
-| 入力token | eagerの中央値（秒） | Graphの中央値（秒） | 両armの生成token |
-|---:|---:|---:|---|
-| 64 | 0.518719 | 0.504478 | 3回の反復すべてで一致 |
-| 2,048 | 0.982739 | 0.970794 | 3回の反復すべてで出力token 12から相違 |
-| 8,192 | 2.480334 | 2.487705 | 3回の反復すべてで一致 |
-
-各armは内部ではtokenが再現しました。2Kの最初の相違点では、eagerがtoken ID 2090と43424へ同じ最上位logprobを与えて2090を選び、Graphは0.0625の差を付けて43424を選びました。同点における数値摂動と整合しますが、原因を切り分けたり、品質の妥当性を示したりするものではありません。この比較では範囲検査のスケジューリングとGraph実行の両方を変えており、非同期eagerという帰属用の対照が欠けています。速度差は小さく、性能採用の根拠にはなりません。
-
-Graphのtraceでは、hostのGraph launchが31回、eagerでは0回でした。これは単一のGPU kernelではありません。captureによる追加メモリは、この切り詰めたfixtureで約0.06 GiBと報告されており、全モデルの値ではありません。両runともOOMなしで完了しました。別の部品コンテナでの不正index試験では、非同期のassertが失敗時にCUDA contextを使用不能にすることを事前に確認しています。
-
-追加した非同期eagerの対照（`fixture-eager-async-single`、driver SHA256 `f718c322431f1388c9b28ff3f0ee20caa5ed3be7426657349494fd32f5a53115`）はtokenが再現し、3つの長さすべてで同期eagerと一致しました。Graphと異なったのは2Kだけです。これにより観測された相違はGraph実行の条件へ絞り込まれますが、内部のどの演算かを特定したり、品質の退行を証明したりするものではありません。この対照の中央値は、64／2K／8Kで0.508454／0.989053／2.485845秒でした。
-
-**判断: capture／replayは実証しましたが、数値面の受け入れと全モデルへの展開は保留し、既定はoffとします。** その後2026-09-21に全モデルで測り、Graphsは採りませんでした。基準の2台の配信profile（深さ4）で、10入力すべてがeagerより1 stepあたり7〜9 ms遅く、completionは同一でした（[P06](optimization-overview.ja.md#decode)）。終了コード0を受け入れと見なさず、不一致はそのまま残します。実測した速度差が小さいため、他の独立した施策を優先します。全モデルでdispatch削減が有効だという証拠が出た時点で再開し、受け入れ前に同一の強制token prefixでattention／KDAなどの状態差を切り分けます。全モデルのGraph、既定での有効化、LPA/MTPとの併用は未検収です。候補imageは `eb30095` から両ノードで同一にビルドし、`sha256:e18f7ae02e96beeb9af954a4e5600ce6ff534d9f91a9fcc2e440a4d91350c494` としました。全モデルのGraph試験は未実施で、通常のprofileも置き換えていません。
-
-**2026-09-18、expertのtoken順を固定して読み直し**（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#コマンド)有効）。byte検証済みの4層MTP fixture（MTP k=3・融合unpack・非同期index検査・FP8 KV 512 MiB・seed 42・temperature 0）で同じdriverをeager 2回・`FULL_DECODE_ONLY` decode Graph 2回（captureしたdecode形状は4 tokenの1つ、Graph launchは各122）回したところ、64／2,048／8,192 tokenのすべてで生成32 tokenとtop-10 logprobが、各実行内でも全実行対でも一致しました（以前の2Kのtieも割れません）。prefix cacheを有効にした4回（うち2回は12,288 tokenを追加）も一致しましたが、この fixture のMTP時のblockは8,960 tokenで、hitには16,384のcontextを超えるprimingが要るためcache hitは一度も起きておらず、hit経路そのものは未検証です。2026-09-12の分岐はexpert順の揺れであってGraphの差ではなかったと読みます。結果として起動設定は、同時1シーケンスならMTP・prefix cacheとGraphの併用を受け、capture sizeを投機の深さから決めます（[起動設定](server-configuration.ja.md#lpaとmtp制約)）。batching・LPA・TP=2のcollectiveはGraphでは未検収のままで、全モデルの速度と採否は別のA/Bです。
+**decode Graphs（P06）：off。** 4層fixture、GB10 1台、context 16,384、chunk 512、1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperature 0で、64／2,048／8,192入力tokenのそれぞれで32 tokenを生成しました。2026-09-12にはGraphとeagerが2Kの出力token 12からlogprobの同点で分かれ、非同期eagerの対照はeagerと一致しました。2026-09-18にexpertのtoken順を固定して（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#再現性のスイッチ)有効、MTP k=3・融合unpack・非同期index検査、prefix cacheあり・なし）測り直すと、eagerと`FULL_DECODE_ONLY`のGraphsは全長・全実行で生成32 tokenとtop-10 logprobが一致したので、以前の分岐はexpert順によるものでした。prefix cacheにhitした実行はなく（hitには16,384のcontextを超えるprimingが要る）、hit経路は未検証です。全モデルではGraphsはeagerより遅く、採用していません（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。1.14.0からは`runtime.mla_decode_cpb`とも排他です。非公開run：`graph-component-v13-results/*`、driverは`eb30095`の`glm53_setup.validation.run_graph_fixture`。
 
 ## padding付きnative attentionの直接試験
 
-非公開run `native-attention-v15` では、全モデルのサーバーを停止した後、同じ `e18f7ae…` imageで公開FlashInferのsparse MLA APIを試験しました。実際のFP8 cache packing、64次元の零RoPE、GLMの `arbitrary_fp32` scaleを使い、候補はすべて保持しています。driver SHA256: `4c41525d85ca5ba148cbd98d8c53241cf5e00817e47cd373c7089dc14f93fef6`、module: `glm53_setup.validation.benchmark_native_attention`。
+**不採用**（[施策台帳](optimization-catalog.ja.md)のP05）。`glm53_setup.validation.benchmark_native_attention` は、実際のFP8 cache packing、64次元の零RoPE、GLMの `arbitrary_fp32` scaleで、候補をすべて保持したままFlashInferの公開sparse MLA APIを呼びます。最初のrun（`native-attention-v15`、`eb30095`からビルドしたimage `sha256:e18f7ae02e96beeb9af954a4e5600ce6ff534d9f91a9fcc2e440a4d91350c494`）は32 headでBF16 2 ulpの許容範囲を超え（空行で3.03125）、固定のSM120 v32／GLM decode tableは幅128/512/1024/2048しか受けないため、2,051候補を2,176へpaddingできません。prefillのみのrun（`native-prefill-v16`）は `GLM_NSA`・top-k 128・page size 64で拒否されました。
 
-この直接経路は **不合格** です。32 headで試験した幅63/64/65/2048では、空行の出力が0でなく、最大絶対差は3.03125となり、事前に定めたBF16 2 ulpの許容範囲（約0.025〜0.031）を超えました。2051候補を2176へpaddingすると、固定のSM120 v32／GLM decode tableが対応する幅は128/512/1024/2048であり、2176やそれより大きいpadding幅には対応しないため、dispatchがshapeを拒否しました。このため、末尾の感度と時間測定の段階は実行していません。これは部品検証の失敗で、コンテナはexit 1、OOMはありません。servingのbackendは変更していません。
-
-**判断:** この直接的なbackend差し替えは採用しません。零RoPEのpaddingだけでは不十分で、候補を2048へ切り詰めるのは許容できません。別のkernel拡張や候補を保持する組み立てには、新たな数値・状態と性能の試験が必要です。このrunからnative attentionの高速化は主張しません。
-
-続くprefillのみの試験（`native-prefill-v16`、driver SHA256 `171b013c59cd5ffb3acc45143236b5ff541c740e33a2ab4cafc3f35f80ad903b`）では、65 query行と呼び出し側で0埋めした出力を用い、末尾だけを有効候補とする条件と空行を想定しました。ライブラリは最初の構成——`GLM_NSA`、32 head、top-k 128、page size 64——を拒否し、一致検査のケースが完了する前にOOMなしでexit 1しました。2176候補のprefillケースと時間測定の段階には到達しておらず、あらゆるprefill shapeが未対応であることを示すものではありません。prefillのみの差し替えは未検収で、servingは変更していません。
-
-**行の種類別の再検討（2026-09-17）。** source `adf8ca9` の `benchmark_native_attention --by-row-kind`（driver SHA256 `4baea4aa9161658cac09db71ee849de7175b2b0b7b3be0ad744c68ca96320b8a`）で、配信と同じimage `f6fc154c…`・FlashInfer 0.6.18を使い、GB10 1台（他の負荷なし）で幅2048——SM120 v32／GLM decodeが受ける最大の幅——の試験をやり直しました。誤差は行の種類ごとに分けています。空行は、そのままkernelへ渡す場合と、slot 0を指させて出力を後から0にする場合の2通りです。後者の扱いはMiaの `Dockerfile`（コードは採用しない）とdrowzeysのWALLS #4/#5/#7（コードは採用しない）にあります。
+**行の種類別の再検討（2026-09-17）。** source `adf8ca9` の `--by-row-kind` で、配信と同じimage `f6fc154c…`・FlashInfer 0.6.18・幅2048を使い、他の負荷のないGB10 1台で誤差を行の種類ごとに分けました。空行は、そのまま渡す場合と、slot 0を指させて出力を後から0にする場合の2通りで、後者はMiaの `Dockerfile` とdrowzeysのWALLS #4/#5/#7の扱いです（コードは採用しない）。
 
 | head | query行 | 全候補の行 | 17候補の行 | 空行（そのまま） | 空行（slot 0＋0化） | 許容範囲 |
 |---:|---|---:|---:|---:|---:|---:|
@@ -93,17 +69,15 @@ Graphのtraceでは、hostのGraph launchが31回、eagerでは0回でした。�
 | 64 | 3 | 0.0078 | 0.0547 | 3.03125 | 0 | 0.029 |
 | 64 | 65 | 0.0088 | 0.0566 | 3.03125 | 0 | 0.030 |
 
-v15の差は空行から来ており、同じ値がそのまま再現しました。空行を0にすればこの差は消えます。全候補の行は許容範囲内ですが、17候補の行（3行では先頭、65行では末尾に詰めた配置）は、空行の扱いによらず許容範囲の1.3〜2倍の差が残ります。幅2048の65行は受理され、v16のtop-k 128とは結果が異なりました。2,048候補がすべて有効な場合、kernelは許容範囲内で、P04の計時条件で1/8/65/512行が0.085/0.092/0.413/2.439 ms、参照は0.187/1.105/8.831/68.837 msでした。
+空行を0にすればv15の差は消え、全候補の行は許容範囲内ですが、17候補の行（3行では先頭、65行では末尾に詰めた配置）は、空行の扱いによらず許容範囲の1.3〜2倍の差が残ります。2,048候補がすべて有効な場合、P04の計時条件で1/8/65/512行が0.085/0.092/0.413/2.439 ms、参照は0.187/1.105/8.831/68.837 msでした。
 
-kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）は、合成データでのみ測りました。乱数のpacked FP8 cacheとquery、64行×32 head、poolの順位は参照計算のattention質量から作っています。出力の最大変化は、質量が最小のpoolを落とすと0.022、無作為なら0.039、最大のpoolなら0.151で、参照出力の最大絶対値は0.326、許容範囲は0.016でした。合成データのattentionはほぼ一様（1 poolの質量は約1/512）なので、実際のindexerでの影響はこの数字からは言えません。実際の順位とattentionは採っていません。
-
-**再検討後の判断:** 空行を0にすればv15の失敗は消えますが、候補の少ない行は許容範囲を超えたままで、kernelに収めるには候補を落とす必要があるため、直接の差し替えは不採用のままです。2,047候補を使うには、モデル全体の品質の証拠（FreedomBench、tool評価、長文のneedle）と別の判断が要ります。
+kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）は、合成データ（乱数のpacked FP8 cacheとquery、64行×32 head）でのみ測りました。出力の最大変化は、質量が最小・無作為・最大のpoolを落とした場合に0.022・0.039・0.151で、許容範囲は0.016です。合成データのattentionはほぼ一様なので、実際のindexerでの影響はこの数字からは言えません。2,047候補を使うには、モデル全体の品質の証拠と別の判断が要ります。
 
 ## SM90 FA2 MLA wrapperの試験
 
-2026-09-17（Asia/Tokyo）、source `adf8ca9` の `benchmark_sm90_attention`（driver SHA256 `c94af60c1ac31ac1b3184edb749f7c34496a4895a0e6d05f4c6e7ecec4a0c260`）で、FlashInferの `BatchMLAPagedAttentionWrapper` を、固定vLLMの `FLASHINFER_MLA_SPARSE_SM90` backendと同じ形で呼びました。NoPE（`head_dim_kpe=0`）、page size 1で各query行の候補をKV pageとし、行ごとの正確な長さと `causal=False` を渡しています。固定vLLMがこのbackendを選ぶのはcompute capability 9だけで、そこでは `fa3` を使います。試験ではGB10（capability 12.1）で `fa2` を使いました。上の再検討と同じホスト・imageで、モデルの重みは使わず、servingは変えていません。着想はsfxnzの `docker/Dockerfile.sm121-v8`（コードは採用しない）とtonyd2wildのPR #17・Issue #20（コードは採用しない）で、どちらもこのbackendを `fa2` でcapability 12へ広げています。
+2026-09-17（Asia/Tokyo）、source `adf8ca9` の `benchmark_sm90_attention` で、FlashInferの `BatchMLAPagedAttentionWrapper` を、固定vLLMの `FLASHINFER_MLA_SPARSE_SM90` backendと同じ形で呼びました。NoPE（`head_dim_kpe=0`）、page size 1で各query行の候補をKV pageとし、行ごとの正確な長さと `causal=False` を渡しています。固定vLLMがこのbackendを選ぶのはcompute capability 9だけで、そこでは `fa3` を使います。試験ではGB10（capability 12.1）で `fa2` を使い、上の再検討と同じホスト・imageで、モデルの重みは使いませんでした。着想はsfxnzの `docker/Dockerfile.sm121-v8` とtonyd2wildのPR #17・Issue #20（コードは採用しない）で、どちらもこのbackendを `fa2` でcapability 12へ広げています。
 
-最初の `plan()` はNoPE用のmoduleをJITでビルドし、8.0秒かかりました。imageのJIT cacheにあるのは `head_dim_kpe=64` の版だけです。**FlashInfer 0.6.18ではGB10でFP8 KVは使えません。** `plan()` が `FP8 kv_data_type for MLA requires an SM90 (Hopper) device, got SM121.` を返します。そのため試験では、参照計算と同じpacked cacheを展開したBF16 KVを使いました。BF16のMLA cacheは1 tokenあたりMLA層ごとに1,024 byteで、`fp8_ds_mla` は656 byteです。
+**FlashInfer 0.6.18ではGB10でFP8 KVは使えません。** `plan()` が `FP8 kv_data_type for MLA requires an SM90 (Hopper) device, got SM121.` を返すため、試験では参照計算と同じpacked cacheを展開したBF16 KVを使いました。最初の `plan()` はNoPE用のmoduleをJITでビルドし、8.0秒かかりました。
 
 数値の検査は、P04と同じBF16 epsilon 2つ分の許容範囲ですべて合格しました。
 
@@ -121,7 +95,7 @@ kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）�
 | 65 | 9.082 | 0.569 | 0.041 | 195 / 1 |
 | 512 | 70.604 | 3.508 | 0.085 | 1,348 / 1 |
 
-**判断:** このkernelはGB10で部品として数値的に使え、512行では参照計算の約20倍速い。ただし、servingのbackendを切り替える証拠ではありません。切り替えるとKVはBF16になり、1 GiBあたりのtoken数が減ります。またpacked cacheの機能はSM120経路を前提に作られています。P03のunpack融合は `fp8_ds_mla` を展開し、P19のprefix cachingとP22のLPAは4,608 tokenの配置と参照計算のhookに依存し、[候補順序の正規化](candidate-order.ja.md)はSM120のGLM経路にしか入っていません。それぞれの再検収と、モデル全体の品質・容量の検査を、別の判断として行う必要があります。
+**結果:** このkernelはGB10で部品として数値的に使え、512行では参照計算の約20倍速い。1.6.0でprefillに採用しましたが、KVはBF16で保存しません。cacheは `fp8_ds_mla` のままで、呼び出しが触れる行だけをその都度BF16へ展開します。unpack融合、prefix caching、LPA、[候補順序の正規化](candidate-order.ja.md)がSM120のpacked cache経路の上に作られているためです（[起動設定](server-configuration.ja.md#attentionとcacheとcheckpoint)、[全モデルのprefill](benchmarks.ja.md#160でのprefillとdecode)）。
 
 ## NoPE attentionの融合とquery batching（P04）
 
@@ -150,7 +124,7 @@ kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）�
 
 全出力は有限で宣言した許容範囲に収まり、最大絶対差は0.000122〜0.000488でした。5つのGPU kernelには、融合attention kernelの前後の範囲検査が含まれます。測定した同期APIの回数は、ベンチ側の同期を含めて両経路とも4回のままでした。これらは部品呼び出しの回数であり、全モデルの生成tokenあたりkernel数ではありません。
 
-範囲を区切ったtilingの追試（`benchmark_fused_tiles`、非公開run `fused-tiles-v19b`）では、tile／warpを8/4、16/4、16/8、32/8で試験しました。いずれも同じ許容範囲を満たし、register spillなしでコンパイルできました。最良値は1 queryで0.389 ms、512 queryで105.039 msです。どちらも参照実装の測定値を上回りませんでした。最初の `fused-tiles-v19` はGPU実行前のコンテナmount設定で失敗しており、その記録は別に保持しています。
+範囲を区切ったtilingの追試（`benchmark_fused_tiles`、非公開run `fused-tiles-v19b`）では、tile／warpを8/4、16/4、16/8、32/8で試験しました。いずれも同じ許容範囲を満たし、register spillなしでコンパイルできました。最良値は1 queryで0.389 ms、512 queryで105.039 msです。どちらも参照実装の測定値を上回りませんでした。
 
 これらの試作はlaunch数と一時割当を減らしますが、**測定上の速度改善はありません**。再現用に保持し、起動設定へ接続したり、全モデルでの受け入れを主張したり、すでに有用なP03のunpack融合を否定したりはしません。P04は、当てずっぽうのtile探索を続けるのではなく、profilingに裏付けられた実質的に異なる実行方式が得られた時点で再開します。
 
@@ -170,9 +144,9 @@ source固定の実験的なモデルpatchは、BF16のhidden／residual tensor�
 
 `patch_pipeline_layout` は、既存の混在cacheのshape検査と要求layoutの検証を保ったまま、PP=2で共通して対応するリストを選ぶようになりました。積集合が空の場合は引き続きエラーで、PP以外の選択は変えていません。CPU側の検査は、異なるリスト、優先順位、空・互いに素な対応をカバーします。sourceのutilityのSHA256は `63f58dd2b29543045109f40897ddc5f57e299bb4259f0e37a64b024cb1f20ddb`、patch後のSHA256は `48222663f4fb1842dd4d93e34f6e356ebaa3d4ebe1c15255d0b5bd670359e4d3` です。両ノードで同じ候補image `sha256:5052db070ec651c0b16f1c72f523d631d4b96ba7a2e2b5c3adce46b3f2cace79` をビルドしました。
 
-再試行（`pipeline-v17-pp2-b`）は **不合格** です。SSHの一時的な不通が再起動なしに解消した後、そのログからstageごとのMamba cache仕様の不一致を確認しました。両コンテナともOOMなしで終了しています。固定版のGLMのcacheグループ化は、Mamba層を持つすべてのstageにMLA層があることも明示的に要求します。したがって、4層モデルを2+2に分割する構成はPP fixtureとして不適切です。これを動かすためにcacheの契約を緩めたり、SSH中断の原因をこのモデル側の失敗から推測したりはしません。
+再試行（`pipeline-v17-pp2-b`）は **不合格** です。ログにはstageごとのMamba cache仕様の不一致があり、両コンテナともOOMなしで終了しました。固定版のGLMのcacheグループ化は、Mamba層を持つすべてのstageにMLA層があることも明示的に要求します。したがって、4層モデルを2+2に分割する構成はPP fixtureとして不適切です。これを動かすためにcacheの契約を緩めたりはしません。
 
-fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要です。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](server-configuration.ja.md)では、対応するimageと併せてPPを選択できます。全モデルでの受け入れは別扱いです。
+fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要です。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](server-configuration.ja.md)では、対応するimageと併せてPPを選択できます。
 
 ### 8層PPの観測
 
@@ -190,7 +164,7 @@ fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのb
 
 これは厳密な数値同値、誤差の無視可能性、無制限の言語品質を示すものではありません。転送の不具合を特定するものでもありません。実際に送られたtensorは一致しており、反復間の変動はPPなしでも生じています。診断は保持し、より強い受け入れを主張する前に、prefixを揃えた数値差をbaselineと比較してください。
 
-両runともOOMなしで停止しました。ホストの利用可能RAMの最小値は、48 GiB上限のPP1対照で71.82 GiB、32 GiB上限のPP2各rankで87.69／39.71 GiBで、host reserveは4 GiBです。これらの最小値はロード・warmupを含み、定常推論だけの値ではありません。headはexit 0で停止し、peerは引き続き強制終了（exit 137）が必要でした。観測器のhashは同期とCPU copyを伴うため、これは **TP2とPP2の速度ベンチマークではありません**。全モデルの性能、より長いrunからの復旧、最適化の組合せは未検収です。
+両runともOOMなしで停止しました。ホストの利用可能RAMの最小値は、48 GiB上限のPP1対照で71.82 GiB、32 GiB上限のPP2各rankで87.69／39.71 GiBで、host reserveは4 GiBです。これらの最小値はロード・warmupを含み、定常推論だけの値ではありません。headはexit 0で停止し、peerは引き続き強制終了（exit 137）が必要でした。観測器のhashは同期とCPU copyを伴うため、これは **TP2とPP2の速度ベンチマークではありません**。全モデルの結果は[P17](benchmarks.ja.md#tp2pp2の独立評価p17)で、不採用です。
 
 ## Expert配置のfixture独立評価（P21）
 
@@ -225,7 +199,7 @@ EP観測器のSHA256: `38c2e228ab086d179b06a7663a0879b4871950fdefc65632e4768d9a5
 
 このfixtureの要求時間は16出力tokenを含み、最初のサンプルにはshape依存のJITが含まれる場合があります。全モデルの性能を示す値ではありません。8,705入力までは、生成tokenが全armで一致しました。16,319では、各armとも最初のtokenが同じ2候補の間で変動し、厳密な同点か0.03125のlogprob差になりました。off／onの組は3／6回、off／復帰は5／6回一致しています。arm内の共有prefix logprob差の最大は約0.0632でした。他の長さでもcache hitなしに確率の変動が見られ、bitwise同値も原因の特定も主張しません。
 
-**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。この時点のAPCの既定はoffで、現在はonです（[起動設定](server-configuration.ja.md#配布用の既定設定)）。LPA／APCは下記のP22の契約を別に使います。
+**このfixtureが示すのは、実際のcache再利用と範囲内での実行です。** 交互に挟んだpromptは2Kのみでhitがなく、実際にcacheされた要求の隔離を示すものではありません。後続の[全モデルA/B/A](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)が、実hitを伴う長文・tool・資源／切断・復帰対照の限定的な証拠を与えます。driver SHA256: `da967a4928ab88846c33523fb11c0b9c65234d27f88274ac752c78b3bd8bc198`。LPA／APCは下記のP22の契約を別に使います。
 
 ## APC優先LPAのcache隔離（P22）
 
@@ -241,7 +215,7 @@ N=18,432、H=8,704では、近似suffixが層3で9,216 queryを省略しまし�
 
 別の診断 `native-apc-mtp-v58` では、**LPAのownerを一度も構築せずに**、厳密prime／厳密follow-upの組を6回実行しました。上記の完全な16 token経路が、どちらも再現しています。これにより、観測された分岐はLPAなしでも生じることが確認できました。bitwiseの安定性や一般的な言語品質を証明するものではありません。cache隔離の証拠、厳密な数値一致、その後の全モデルでの課題・性能の受け入れは、それぞれ別の結果です。
 
-続く `p22-fixture-v62` は、source `3df93c9`、image `sha256:0de1ef13b7bfebb088ac7d9399e2d45decf058f16819d72f5a8e89c1bc993b81` で非同期schedulerを動かしました。MTPのdraftが棄却された後はCPUのcursorがGPUより先行することがあり、LPAのguardは生成tokenのdecodeでのみこれを認め、prompt内の不一致は引き続き拒否します。2件の近似要求はどちらもこの補正を13回観測しました。8件の要求、cache境界の検査、prefix hashの不変はすべて通過し、このrunでは3件の厳密な16 token対照も一致して、OOMなしでexit 0しました。先のnativeのみの変動は、別の結果として引き続き保持します。全モデルでの非同期MTPの組合せには、独自の検証が必要です。
+続く `p22-fixture-v62` は、source `3df93c9`、image `sha256:0de1ef13b7bfebb088ac7d9399e2d45decf058f16819d72f5a8e89c1bc993b81` で非同期schedulerを動かしました。MTPのdraftが棄却された後はCPUのcursorがGPUより先行することがあり、LPAのguardは生成tokenのdecodeでのみこれを認め、prompt内の不一致は引き続き拒否します。2件の近似要求はどちらもこの補正を13回観測しました。8件の要求、cache境界の検査、prefix hashの不変はすべて通過し、このrunでは3件の厳密な16 token対照も一致して、OOMなしでexit 0しました。先のnativeのみの変動は、別の結果として引き続き保持します。全モデルでの併用は[ベンチマーク](benchmarks.ja.md#apclpamtp融合非同期検査の併用p22)にあります。
 
 ## 履歴fixtureの追加
 
@@ -263,4 +237,4 @@ GB10 1台のbyte検証済み8層stock fixture（ロード重み23.91 GiB）で�
 
 両方ともOOMなし・正常終了し、測定要求でFA2を8回呼び、同じ1 tokenを返しました。FA2 NoPEの共有ライブラリと、Triton・TileLang・Inductor・NVIDIA cacheの新規生成物を確認しています。これは実行の確認で、言語品質の証明ではありません。ホスト／プロセスの標本間隔は2秒で、短いピークを取り逃がし得ます。
 
-**判断：既定envを維持します。** この制限で減らせるのは、コンパイラ1個分までです。このレシピが実行時にコンパイルするFlashInferのmoduleはFA2 NoPEの1個だけで、翻訳単位は3本です。したがって制限なしのNinjaが同時に起こすnvccは3個で、CPU数ぶんにはなりません。稼働中のTP=2・MTPの参照ペアも、両rankで同じ1 module・object 3本を持ち、そのbuild logでは3本が同時に始まり8.1秒以内に終わっています。fixtureの全体の最小値は重みのロード中にあり、nvccが複数走る区間の約70秒前、その区間より約9 GiB低い位置でした。つまりこの値はJITの並列を測っていません。一方、全モデルで最初のFA2起動の最小値が出たのは最初のwarmup要求の中で、これはこの区間に当たります。区間の中では、未指定側が80.12 GiBまで下がって80.61へ戻り、制限側は80.94まで単調に下がりました。コンパイラ1個分として辻褄の合う差ですが、各窓4標本・各arm 1回で、ばらつきの幅がありません。固定FlashInferのNVCC thread数は既に既定1なので、変わるのはNinjaのjob数だけです。JIT cacheは起動を跨いで残るので、影響を受けるのは新しいcacheごとに1回の起動です。開始時のOS Cachedは42.86対67.29 GiBで異なり、起動全体の時間はJIT単独の速さではありません。全モデルでの利得は主張せず、このfixture結果ではTP=2再起動を行う根拠は得られませんでした。
+**判断：env未指定を維持します。** 実行時にビルドするFlashInferのmoduleはFA2 NoPEの1個だけで（fixtureでも参照ペアでも翻訳単位3本）、制限なしのNinjaが同時に起こすnvccは3個、`MAX_JOBS=2` で減らせるのは1個までです。これが起きるのは新しいJIT cacheごとに1回で、FlashInferのNVCC thread数は既に既定1です。nvccが複数走る区間での両armの差は1 GiB未満で、各arm 1回ではばらつきと区別できません。fixtureの最小値は重みのロード中で、JIT中ではありません。

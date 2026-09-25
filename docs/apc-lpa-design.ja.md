@@ -2,7 +2,7 @@
 
 [English](apc-lpa-design.md) · [施策台帳](optimization-catalog.ja.md)
 
-**状態：CPU契約、4層GPUの共有状態隔離、全モデルの校正・限定品質・運用検査、非同期MTPを含む併用と最終held-out参照評価を完了。** 用途によりMTPなしのprefix再利用構成を選ぶ。対応imageのmarkerを必要とし、手動RPCによるAPC併用は引き続き拒否する。[校正・併用結果](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)／[現在のLPA使用範囲](lpa.ja.md#使用範囲)／[施策台帳](optimization-catalog.ja.md)を参照。履歴編集・分岐・保持圧力の追加評価は、この検収と分けて実施する。
+**状態：完了。** CPU契約、4層GPUの共有状態隔離、全モデルの校正・限定品質・運用検査、非同期MTPを含む併用、最終held-out参照評価を通過した（[証拠](#証拠)）。LPAは既定offで、FA2 prefillとは排他（1.6.0）。この経路は対応imageのmarkerを必要とし、手動RPCによるAPC併用は拒否する。履歴編集・分岐・保持：[fixture](component-validation.ja.md#履歴fixtureの追加)、[全モデル](benchmarks.ja.md#apcの履歴保持の基準検査)。[現在のLPA使用範囲](lpa.ja.md#使用範囲)と[施策台帳](optimization-catalog.ja.md)も参照。
 
 ## 目的と初版の方針
 
@@ -43,21 +43,19 @@ MTPでは、先読みを再計算するため、固定vLLMの[cache coordinator]
 - LPA hookは絶対位置を使い、実際に計算する未処理位置だけを近似・計数する。capture／oracleはcache hitで欠けたprefixを「採取済み」と見なさない。
 - APC優先モード中の手動RPCが、schedulerに伝わらない近似を有効化できないようにする。通常APCの対照が近似状態を保存する経路を残さない。
 
-最初の接続検証は、テキスト・eager・TP2・1系列・ローカルcacheで行う。Graph、PP、外部KV connector、細粒度Mamba prefix cache、複数系列を同時に追加しない。MTP／unpack融合／非同期検査の併用は、基本契約の通過後に個別の組合せとして検証する。
+## 証拠
 
-## 実装と検収の順番
+- 4層fixtureでの共有状態の隔離（MTP・融合・非同期検査を含む）：[部品検証](component-validation.ja.md#apc優先lpaのcache隔離p22)。
+- 損益分岐の校正と閾値B：[ベンチマーク](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)。
+- 全モデル：[MTP・融合・非同期検査との併用](benchmarks.ja.md#apclpamtp融合非同期検査の併用p22)と[held-out参照](benchmarks.ja.md#同一入力を再利用する場合の差)。
 
-4層GPU試験ではN=18,432、復元H=8,704で、近似suffixを通過した後も共有prefixの全検査対象hashが一致した。後続通常要求のHは8,704のままで、通常計算後に初めて17,408まで共有範囲が伸びた。対照・近似の後の通常要求・復帰対照の16出力tokenは一致し、合成近似の分布差は別に検出できた。これはTP1・eager・MTPなしの状態隔離の結果であり、全モデルや併用の受入ではない。
-
-共有キャッシュ隔離の部品試験は、対応image内で次のコマンドから実行する。`--fixture` は全tensorのバイト照合を終えた4層fixture、`--output` は新規の保存先を指定する。GPUを1台使い、32K context・1 GiB KV・1系列で実行するため、別途コンテナ上限とホスト余裕を監視する。
+fixture試験は対応image内、GPU 1台で、byte照合済みの4層fixtureと新規の出力先を指定して実行する。fixture専用の合成projectorを作るため、検査するのは隔離であり、品質や損益分岐ではない。
 
 ```sh
 python -m glm53_setup apc-lpa-fixture --fixture /fixture --output /out/validation
 ```
 
-この試験は通常状態との違いが出る合成projectorをfixture専用に作る。実cache lookupの復元境界、共有prefixのGPUバイトhash、実際のquery省略数、後続通常要求の出力を検査する。全モデルの品質や損益分岐の評価には使わない。startup warmupは固定ソース内の明示的な範囲に限定して除外し、実要求にはscheduler由来のpolicyを必須とする。workerのキャッシュ形式は、モデル読込時に正規化された`fp8_ds_mla`を検査する。
-
-損益分岐は、LPA/APCを有効にして`lpa.break_even_tokens=0`とした専用TP2サーバーで、Linuxホストから計測する。通常運用のTOMLを直接変更せず、計測用TOMLを両rankに揃える。次は、実際のjoint復元単位が4,352 tokenの条件に対応する例である。MTPの先読み再計算などで境界が変わる構成には、そのまま流用しない。
+校正は、LPAとAPCを有効にして`lpa.break_even_tokens=0`とした専用TP2サーバーで、両rankに揃えた計測用TOMLから実行する。`--cached-prefix-tokens`はそのprofileでの実際のjoint復元単位（ここでは4,352）で、MTPなどで境界が変わるprofileには固有の値が要る。
 
 ```sh
 python -m glm53_setup apc-lpa-benchmark \
@@ -67,18 +65,4 @@ python -m glm53_setup apc-lpa-benchmark \
   --eligible-tokens 128 512 1024 2048 4096 8192 --repeats 5
 ```
 
-各測定前に共有cacheをリセットし、H>0では通常計算でprefixを作り直す。実際のN/H/Rとquery省略数を両rankで検査し、時間の測定区間にreset・priming・診断RPCを含めない。通常／LPA／復帰対照を繰り返し、最初の一巡をwarmupとして除外する。入力には指定コーパスのvalidation分割だけを使う。小さい残余長の追加計測には`--cold-only --eligible-tokens 0 1 4 16 32 64`を指定できる。校正用のB=0をそのまま運用推奨値とはしない。
-
-| 段階 | 実施内容・完了条件 |
-|---|---|
-| 現在の単独評価 | 32K容量・時間とAPC off/on/offの速度、実hit、長文抽出・再参照・tool・cancelを確定。生結果を保持する |
-| CPUの契約 | N/H/T/Bの境界、H=0、ほぼ全hit、複数cache groupの整合、全登録経路の上限、要求ID切替、cancel／preemption後の上限維持を検査する |
-| 部品と小層fixture | 通常計算でprefixを作成→Hを復元→suffixにLPA→通常要求で再参照。近似以降が共有表に無いこと、元のprefix状態が不変であること、実際の省略数を確認する |
-| 汚染を検出する試験 | 近似状態を意図的に通常状態から区別できるfixtureを使い、後続LPA off要求に流入しないことを検査する。oracleの値がたまたま同じであることだけで合格にしない |
-| 損益分岐の計測 | H=0／H>0それぞれでRを段階的に変え、補助器warmupを除外したAPC＋通常／APC＋LPA／復帰を比較。Bを選び、条件・ばらつき・未測定範囲を記録する |
-| 全モデル | hitなし／部分hit／ほぼ全hit、pool・block・T・B境界、長文の証拠位置、別文書・projector設定・LPA offへの分離、tool、SSE、cancel、容量、両rank停止復旧を確認する |
-| 最終併用 | 既に採用したMTP3・unpack融合・非同期検査との組合せを同じ固定資産で検証し、機能受入・性能採用・既定設定を分けて記録する |
-
-各要求には、N、実復元H、R、LPA採否、最初の近似位置、共有上限、実際のquery省略数・cache登録範囲を残す。速度測定で重いtensor hashやprofilerを有効にしない。品質は逐語一致・タスク正答・状態診断・復帰対照を分け、未完了を合格へ繰り上げない。run ごとの host reserve をそのまま記録し、fixture の検証用 reserve を配布 profile の `resources.reserve_gib` と読み替えない。
-
-起動オプションは既存のカテゴリ別TOMLへまとめ、APC優先モードとB、共通資料を通常計算する要求指定を文書化する。対応imageのmarkerを必須とし、schedulerの登録上限を確定できない手動RPCとの併用は拒否する。無効な要求オプションと内部policyの持込みはinput processorでも検査し、schedulerへ投入する前に入力エラーにする。
+`--cold-only --eligible-tokens 0 1 4 16 32 64`で小さい残余長を追加できる。校正用のB=0は運用推奨値ではない。

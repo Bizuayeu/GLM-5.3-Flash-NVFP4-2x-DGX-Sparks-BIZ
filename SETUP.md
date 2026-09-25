@@ -4,7 +4,7 @@
 
 The launcher and its client read [one server TOML](docs/server-configuration.md).
 
-**The serial full-model TP=2 reference profile is accepted for routine use (2026-09-22) within its declared scope, on the evidence recorded in [step 6](#6-qualify-the-full-model). Outside that scope — other hardware, more than one active sequence on the distributed defaults, video input — nothing is qualified; the published option's two-sequence profile is accepted since 2026-09-23 within the extent recorded in [step 6](#6-qualify-the-full-model) and [concurrency scope](docs/validation.md#concurrency-scope), and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).**
+**Routine use is accepted within a declared scope: both profiles for one active sequence (2026-09-22), and the published option's two-sequence profile for two (2026-09-23).** [Step 6](#6-qualify-the-full-model) records what each acceptance rests on; other hardware, more sequences than those and video input are outside it, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).
 
 This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
@@ -124,9 +124,9 @@ Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-
 
 ## 6. Qualify the full model
 
-The [experimental scope](docs/validation.md#full-model-tp2-experimental-scope) and [initial benchmarks](docs/benchmarks.md) have evidence for one active sequence. Acceptance for routine use was closed on 2026-09-22 on that recorded evidence, not by a separate launcher; the items below are what it rests on, and the table after them says where each one is recorded.
+Acceptance for routine use was closed on recorded evidence, not by a separate launcher: on 2026-09-22 for both profiles with one active sequence, for the public demonstration at 生成AIなんでも展示会#6 (2026-09-23), and kept for routine use within the same scope; on 2026-09-23 for the published option's two-sequence profile ([full-model scope](docs/validation.md#full-model-tp2-experimental-scope)). The items below are what it rests on, and the tables after them say where each one is recorded for the reference pair; a new pair repeats them.
 
-Optional [MTP k=1 and k=3 experiments](docs/speculative-decoding.md) have also passed the basic API and matched benchmark cases; k=3 is preferred for further evaluation. Prepare their separate metadata view on each host before enabling speculation; a flag alone misclassifies the BF16 MTP tensors. Follow the documented memory/performance comparison and preserve the MTP-off baseline.
+The template enables [MTP k=3](docs/speculative-decoding.md). Prepare its separate metadata view on each host before the first launch; a flag alone misclassifies the BF16 MTP tensors. The published option does not use the view: its checkpoint declares the BF16 draft layer itself.
 
 Inspect without launching:
 
@@ -151,7 +151,7 @@ Before calling a profile ready for routine use, verify and record at least:
 
 | Item above | Where it is recorded |
 |---|---|
-| Layers, memory, reserve, KV, no OOM | [benchmarks](docs/benchmarks.md) for the serving profile — weights 91.34 GiB per rank, FP8 KV 3 GiB per rank, lowest available memory on the head 10.50 GiB over the same-night long-input bench — and the [launch checks](docs/operations.md#full-model-launch-checks) each start performs |
+| Layers, memory, reserve, KV, no OOM | [Measurements on 1.8.0](docs/benchmarks.md#measurements-on-180): both profiles the same night at 3 GiB of FP8 KV per rank, with the weights per rank and the head's lowest available memory over the long-input bench; and the [launch checks](docs/operations.md#full-model-launch-checks) each start performs |
 | Text, context boundary, repeated requests, cancellation | [benchmarks](docs/benchmarks.md): 199,652-token and 261,461-token requests answered correctly within the declared boundary of 262,144 tokens, and identical requests repeat bit for bit. The profile serves one active sequence (`max_num_seqs = 1`), so concurrent requests queue; that is the declared behaviour. Cancellation is [harnesses](docs/harnesses.md#acceptance-matrix-and-status) H-06 PARTIAL: stopping a background job is verified, interrupting generation itself is untested and is the one open sub-item |
 | Tool calls | [harnesses](docs/harnesses.md#acceptance-matrix-and-status) API-03 PASS |
 | Precision/backend, quality, throughput | [validation](docs/validation.md) for W4A16 Marlin, [benchmarks](docs/benchmarks.md) for the teacher-forced NLL table and the throughput baselines. W4A4 behaviour is not claimed |
@@ -167,7 +167,7 @@ Before calling a profile ready for routine use, verify and record at least:
 | Precision/backend, quality, throughput | The published option's teacher-forced NLL and decode rows in [benchmarks](docs/benchmarks.md) and the README headline; decode with two sequences in [1.10.2](docs/benchmarks.md#measurements-on-1102) |
 | Controlled stop/restart and pair recovery | Three `cluster switch` runs into that profile on 2026-09-23 completed without recovery, each followed by the weight digest, the decode check and the traces of [launch safety](docs/launch-safety.md#after-a-switch-the-decode-check) |
 
-**Verdict:** routine use is accepted from 2026-09-22 for the serving profile on the distributed defaults, one active sequence, and from 2026-09-23 for the published option's two-sequence profile, two active sequences at up to about 200K tokens each. Anything outside those scopes — more sequences than that, video input, other hardware — stays outside them ([concurrency scope](docs/validation.md#concurrency-scope)).
+**Verdict:** routine use is accepted from 2026-09-22 for both profiles, one active sequence, and from 2026-09-23 for the published option's two-sequence profile, two active sequences at up to about 200K tokens each. Anything outside those scopes — more sequences than that, video input, other hardware — stays outside them ([concurrency scope](docs/validation.md#concurrency-scope)).
 
 ## 7. Serve and accept — only after step 6 passes
 

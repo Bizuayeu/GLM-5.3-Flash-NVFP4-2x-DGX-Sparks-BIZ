@@ -2,7 +2,7 @@
 
 [日本語](optimization-overview.ja.md) · [Catalog](optimization-catalog.md) · [Document map](README.md)
 
-One page showing which measure acts on which inference stage, what was adopted, and which profile fits which workload. The [catalog](optimization-catalog.md) owns initiative IDs and decisions; the linked measurement documents own the numbers. Figures here are representative values with their conditions; check the linked table before quoting one.
+One page showing which measure acts on which inference stage, where each one stands, and which profile fits which workload. The [catalog](optimization-catalog.md) owns initiative IDs and decisions; the linked measurement documents own the numbers.
 
 ## Baseline
 
@@ -12,69 +12,72 @@ The baseline is the [catalog's dated reference point](optimization-catalog.md#ba
 
 ```mermaid
 flowchart LR
-    R[request] --> A[prefix restore<br/>P19 APC, checkpoint retention, P22 policy]
-    A --> P[prefill<br/>P11 chunk, P02 LPA, P03 fused unpack]
-    P --> D[decode<br/>P01 MTP k=3, P08 async index checks, P06 Graphs deferred]
+    R[request] --> A[prefix restore<br/>P19 APC, checkpoint retention, P22 policy, P25 page dedup]
+    A --> P[prefill<br/>P11 chunk, P05 FA2 prefill, P02 LPA, P03 fused unpack]
+    P --> D[decode<br/>P01 MTP k=3, P08 async index checks, P23 repacked weights, P26 per-sequence decode split]
     D --> O[output]
-    S[parallelism / throughput<br/>P13 two sequences accepted, P21 EP rejected, P17 PP rejected] -.- P
+    S[parallelism / throughput<br/>P13 two sequences on the published option, P21 EP rejected, P17 PP rejected] -.- P
     S -.- D
-    B[attention backend / indexer<br/>P04 rejected, P05 SM120 rejected / SM90 FA2 usable as a component, P16 held, canonical candidate order] -.- P
+    B[attention backend / indexer<br/>P04 rejected, P16 stopped, canonical candidate order] -.- P
     B -.- D
 ```
 
 ## Measures and current position
 
-"Decision" is the catalog judgment (adopted / accepted / held / rejected); "Default" is the value in the [server TOML](server-configuration.md). Functional acceptance, performance adoption, defaults and combined-mode acceptance are judged separately, so "adopted" does not mean enabled by default. See [profiles by workload](#profiles-by-workload) for what to enable per use.
+"Status" is the catalog's decision in a few words; the catalog row carries its dates, reasons and reopening criteria. "Default" is the value in the distributed defaults, `examples/server.example.toml` ([server configuration](server-configuration.md#distributed-defaults)); the published option's differences are listed in [the published option against the defaults](server-configuration.md#the-published-option-against-the-defaults). Functional acceptance, performance adoption, defaults and combined-mode acceptance are judged separately, so "adopted" does not mean enabled by default. See [profiles by workload](#profiles-by-workload) for what to enable per use.
 
 ### Prefix restoration (repeated conversations)
 
-| Measure | Mechanism | Decision | Default | Representative value and condition | Owner |
-|---|---|---|---|---|---|
-| P19 APC | Register only exactly computed state in the shared cache and skip prefill for an identical prefix | Accepted (measured serial long-prefix reuse, experimental) | on (`cache.prefix_caching=true`) | About 79% shorter re-request at 16,320 input tokens; no gain at 2K; the two long cold cases 1.1–1.7% slower | [P19](benchmarks.md#independent-full-model-prefix-caching-p19) |
-| Checkpoint retention (`cache.prefix_cache_retention_interval`) | Keep KDA checkpoints at every scheduler block so more prefix H is restorable after a mid-history edit or branch | Adopted (exact-primed serial mid-edit workload). The measured arm was the native interval 4,352; `dense` uses the same native KDA mask in the measured aligned layout, and its final combined integration is qualified separately | `dense` (omitting the key preserves runtime default 0) | About 27.6% shorter at a 50% edit of a ~16K history, one output token (A/B/A, five runs each). Edit, branch, append, cross-chat revisit and eviction history tests passed | [Retention A/B/A](benchmarks.md#apc-history-retention-baseline) / [contract](launch-safety.md#apc-history-qualification) |
-| P22 APC-first LPA | Approximate only beyond the restored H, and only when the remainder R = N − T − H exceeds threshold B; approximated state stays request-local | Completed (calibration, scoped quality, final combination and held-out). B = 128 is a conservative candidate threshold, not a universal crossover constant | APC on; LPA off in the template (`lpa.break_even_tokens=128` applies when LPA is enabled) | LPA faster than both controls in all twelve H = 0 / 4,352 conditions | [Design](apc-lpa-design.md) / [calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22) |
+| Measure | Mechanism | Status | Default | Owner |
+|---|---|---|---|---|
+| P19 APC | Register only exactly computed state in the shared cache and skip prefill for an identical prefix | Accepted for measured serial long-prefix reuse (experimental); cold requests slightly slower | on (`cache.prefix_caching=true`) | [P19](benchmarks.md#independent-full-model-prefix-caching-p19) |
+| Checkpoint retention (`cache.prefix_cache_retention_interval`) | Keep KDA checkpoints at every scheduler block so more prefix H is restorable after a mid-history edit or branch | Adopted for the exact-primed serial mid-edit workload. The measured arm was the native interval 4,352; `dense` uses the same native KDA mask in the measured aligned layout, and its final combined integration is qualified separately | `dense` (omitting the key preserves runtime default 0) | [Retention A/B/A](benchmarks.md#apc-history-retention-baseline) / [contract](launch-safety.md#apc-history-qualification) |
+| P22 APC-first LPA | Approximate only beyond the restored H, and only when the remainder R = N − T − H exceeds threshold B; approximated state stays request-local | Completed (calibration, scoped quality, final combination and held-out). B = 128 is a conservative candidate threshold, not a universal crossover constant | APC on; LPA off (`lpa.break_even_tokens=128` applies when LPA is enabled) | [Design](apc-lpa-design.md) / [calibration](benchmarks.md#apc-first-lpa-crossover-measurement-p22) |
+| P25 page dedup | Do not register a full block under a hash that already has a cached block, so a history re-sent under MTP stops evicting older ones | Adopted (1.9.0) | off; on in the published option (`runtime.prefix_page_dedup`) | [1.9.0](benchmarks.md#measurements-on-190) |
 
 ### Prefill
 
-| Measure | Mechanism | Decision | Default | Representative value and condition | Owner |
-|---|---|---|---|---|---|
-| P02 LPA | Skip historical MLP rows from layer 32 onward (zero-based cut); the last 512 tokens stay exact; generation runs all layers | Measured (experimental path; general quality is a separate gate) | off by default; batch opt-in (`lpa.enabled=true`) because an approximated request publishes no shared prefix | About 21.6% shorter at 8,192 input, one output token (standalone). Six long-document checks and a tool round trip passed | [LPA](lpa.md) |
-| P03 fused unpack | One Triton kernel for FP8 MLA cache unpacking (copy, FP32 conversion, scale multiply) | Measured (component parity and full-model A/B/A; used within the accepted P18 combined scope) | on (`cache.fused_unpack=true`) | About 17% shorter at 8K in the one-output control; short-input decode unchanged | [Component validation](component-validation.md) |
-| P11 prefill chunk | Scheduler token budget compared at 128 / 512 / 1024 (two sequences) and 512 / 1024 / 2048 (200K profile, one sequence) | Default 2048 from 1.4.0; 128 rejected | 2048 (`context.max_num_batched_tokens`) | 2048 raises 39K prefill by 18% and cuts the 200K passphrase request from 410.8 to 361.3 s; with two sequences a longer chunk lengthens the longest stall | [P11](benchmarks.md#independent-prefill-chunk-evaluation-p11) / [200K](benchmarks.md#chunk-budget-on-the-200k-image-profile-2026-09-17) |
+| Measure | Mechanism | Status | Default | Owner |
+|---|---|---|---|---|
+| P02 LPA | Skip historical MLP rows from layer 32 onward (zero-based cut); the last 512 tokens stay exact; generation runs all layers | Measured (experimental path; general quality is a separate gate); long-document checks and a tool round trip passed | off; batch opt-in (`lpa.enabled=true`) because an approximated request publishes no shared prefix; excludes FA2 prefill | [LPA](lpa.md) |
+| P03 fused unpack | One Triton kernel for FP8 MLA cache unpacking (copy, FP32 conversion, scale multiply) | Measured (component parity and full-model A/B/A; used within the accepted P18 combined scope) | on (`cache.fused_unpack=true`) | [Component validation](component-validation.md) |
+| P11 prefill chunk | Scheduler token budget compared with two sequences and on the 200K profile with one | Default 2048; 128 rejected; with two sequences a longer chunk lengthens the longest stall | 2048 (`context.max_num_batched_tokens`) | [P11](benchmarks.md#independent-prefill-chunk-evaluation-p11) / [200K](benchmarks.md#chunk-budget-on-the-200k-image-profile-2026-09-17) |
 
 ### Decode
 
-| Measure | Mechanism | Decision | Default | Representative value and condition | Owner |
-|---|---|---|---|---|---|
-| P01 MTP k=3 | Load the checkpoint's BF16 draft through a separate metadata view and speculate three tokens; no external draft model | Selected: k=3 on the shipped checkpoint and on the requantized one (depths 1–5 measured on ten inputs; prose alone would prefer 2, counting-like text 4–5). Depth chosen from acceptance history, a confidence gate on the draft, and two draft-side settings were measured and not adopted | on (`mtp.enabled=true`; `num_speculative_tokens=3`) | Short-input decode 24.1 → 30.3 token/s from k=1 to k=3, after 14.3 → 24.1 from off to k=1 (one sequence, separate runs). The step costs about 13.5 ms per draft depth on the reference pair, so a depth pays only where the per-position acceptance holds | [depth three for both](speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) / [beyond a fixed depth](speculative-decoding.md#beyond-a-fixed-depth-2026-09-21) |
-| P08 async index checks | Keep range checks but move them to a GPU assert: about 22 fewer host syncs per rank and 22 fewer copies across both ranks per token, at the cost of 11 more GPU kernels | Accepted (independent opt-in) | async (`runtime.index_checks`) | About 0.7–2.5% shorter at 128 output tokens, largest for short inputs | [P08](benchmarks.md#independent-cpu-synchronization-reduction-p08) |
-| P06 CUDA Graphs | Capture/replay for decode only | Not adopted: measured on the full model (2026-09-21), 7 to 9 ms per step slower than eager on every one of ten inputs with identical completions; the option stays for re-measurement on a later runtime | off (`runtime.decode_graphs=false`) | Mean step 109.3 ms against 101.1 eager at depth 4 | [Graph fixture](component-validation.md#independent-decode-graph-fixture) / [full model](benchmarks.md#measurements-on-170) |
+| Measure | Mechanism | Status | Default | Owner |
+|---|---|---|---|---|
+| P01 MTP k=3 | Load the checkpoint's BF16 draft through a separate metadata view and speculate three tokens; no external draft model | k=3 selected on both checkpoints after depths 1–5 were measured; a depth from acceptance history, a confidence gate on the draft and two draft-side settings were measured and not adopted | on (`mtp.enabled=true`; `num_speculative_tokens=3`) | [depth three for both](speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) / [beyond a fixed depth](speculative-decoding.md#beyond-a-fixed-depth-2026-09-21) |
+| P08 async index checks | Keep range checks but move them to a GPU assert, trading host syncs and copies for a few more GPU kernels | Accepted (independent opt-in) | async (`runtime.index_checks`) | [P08](benchmarks.md#independent-cpu-synchronization-reduction-p08) |
+| P06 CUDA Graphs | Capture/replay for decode only | Not adopted (2026-09-21): slower per step than eager on the full model; the option stays for a later runtime | off (`runtime.decode_graphs=false`) | [Graph fixture](component-validation.md#independent-decode-graph-fixture) / [full model](benchmarks.md#decode-graphs-on-the-full-model) |
+| P23 repacked weights | The attention projections and `lm_head` repacked to W4A16 NVFP4 (route l), served through `runtime.derived_checkpoint` | Adopted as the published option; not lossless, so not in the defaults | off; on in the published option | [Catalog](optimization-catalog.md#performance-initiatives) / [serving profile](benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) |
+| P26 per-sequence decode split | Take the sparse-MLA decode's split from the tokens of one sequence instead of the whole step | Adopted (1.14.0): a request's attention no longer depends on the requests sharing its step | on (`runtime.mla_decode_cpb`) | [1.14.0](benchmarks.md#measurements-on-1140) |
 
 ### Parallelism and throughput
 
-| Measure | Mechanism | Decision | Default | Representative value and condition | Owner |
-|---|---|---|---|---|---|
-| P13 standard batching | Real batch overlap with `max_num_seqs=2`; LPA stays single-sequence | Accepted (limited throughput profile) | one sequence (`context.max_num_seqs=1`) | 16K × two capacity also checked | [P13](benchmarks.md#independent-active-batching) |
-| P21 Expert Parallel | Partition only expert layers by EP instead of TP | Not adopted for the measured throughput workload | off (`runtime.expert_parallel=false`) | Slower than both off controls in all four cases | [P21](benchmarks.md#independent-expert-parallel-evaluation-p21) |
-| P17 TP2 / PP2 | Same two hosts as TP1 × PP2 | Not adopted for the measured generation workload | TP2 (`runtime.pipeline_parallel_size=1`) | Prefill improved, decode slowed; PP capacity and decode trace remain incomplete after a profiler restart failure | [P17](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) |
-| P14 same-task batching | Group submissions by task type | Not adopted for this workload | — (no setting) | Gains of about 0.7–0.9% | [P14](benchmarks.md#task-grouping-order-comparison-p14) |
+| Measure | Mechanism | Status | Default | Owner |
+|---|---|---|---|---|
+| P13 standard batching | Real batch overlap with `max_num_seqs=2`; LPA stays single-sequence | The published option serves two (accepted 2026-09-23, up to about 200K tokens each); completions repeat under any load only at one ([concurrency scope](validation.md#concurrency-scope)) | one sequence (`context.max_num_seqs=1`); two in the published option | [P13](benchmarks.md#independent-active-batching) |
+| P21 Expert Parallel | Partition only expert layers by EP instead of TP | Not adopted for the measured throughput workload | off (`runtime.expert_parallel=false`) | [P21](benchmarks.md#independent-expert-parallel-evaluation-p21) |
+| P17 TP2 / PP2 | Same two hosts as TP1 × PP2 | Not adopted for the measured generation workload | TP2 (`runtime.pipeline_parallel_size=1`) | [P17](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) |
+| P14 same-task batching | Group submissions by task type | Not adopted for this workload | — (no setting) | [P14](benchmarks.md#task-grouping-order-comparison-p14) |
 
 ### Attention backend and indexer
 
-| Measure | Mechanism | Decision | Default | Owner |
+| Measure | Mechanism | Status | Default | Owner |
 |---|---|---|---|---|
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
-| P05 SM121 backend selection | Fit candidate widths to existing kernels | SM120 direct substitution rejected (width capped at 2,048; rows with few candidates miss the bound). SM90 FA2 wrapper numerically usable as a component, about 20× the reference at 512 rows, BF16 KV only | — (reference attention retained) | [SM120 probe](component-validation.md#direct-padded-native-attention-probe) / [SM90 FA2](component-validation.md#sm90-fa2-mla-wrapper-probe) |
-| P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Stopped at its first gate (2026-09-21): the indexer is 0.1–0.5% of prefill on the four-layer fixture at 2K–32K, and about 4% projected for the full model at 200K, of which reuse could remove only the scoring; components retained | — (not integrated) | [CSA2](indexer-reuse.md) |
-| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a shared runtime fix enabled in newly built reference images. The initial comparisons above predate it. Subsequent full-model combined regression and [256K checks](benchmarks.md#real-input-checks-at-256k) are recorded separately; rebuilt runtimes still need qualification | on (newly built reference images) | [Candidate order](candidate-order.md) |
+| P05 FA2 prefill (SM121 backend selection) | Prefill-sized NoPE attention through FlashInfer's SM90 FA2 wrapper over rows unpacked to BF16; direct SM120 substitution was rejected | Adopted for prefill (1.6.0) | on (`runtime.fa2_attention`); decode on the reference path; excludes LPA | [1.6.0](benchmarks.md#prefill-and-decode-on-160) / [SM90 FA2](component-validation.md#sm90-fa2-mla-wrapper-probe) / [SM120 probe](component-validation.md#direct-padded-native-attention-probe) |
+| P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Stopped at its first gate (2026-09-21): the indexer is too small a share of prefill; components retained | — (not integrated) | [CSA2](indexer-reuse.md) |
+| Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a runtime fix every reference image carries; the initial comparisons above predate it | on (reference images) | [Candidate order](candidate-order.md) |
 
 ### Operations (not a performance measure)
 
-Client authentication, allocator propagation, all-HCA rail checks and the two-rank switch with recovery are operational contracts, not acceleration; the [catalog](optimization-catalog.md) files them under P10/P19/P22/E03 and the [launch contracts](launch-safety.md) own their scope and the controlled switch/recovery evidence.
+Client authentication, allocator propagation, rail checks and the two-rank switch are operational contracts, not acceleration: the [catalog](optimization-catalog.md) files them under existing IDs and the [launch contracts](launch-safety.md) own them.
 
 ## Serial combination measurements
 
-Combined profiles are measured as combinations; per-measure gains are never added or multiplied.
+Combined profiles are measured as combinations.
 
 - **P18** MTP3, fused unpack and async checks fixed; LPA off / on / restored compared. LPA adds about 15% / 19% at 2K / 8K with one output token and about 9% / 13% with 128 output tokens. Zero LPA-only regressions across 24 tasks. [P18](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18)
 - **P22 final combination** adds APC and LPA cut 32 / tail 512 / B 128 with 2 GiB KV per rank. Strict scores 21 / 24 / 23 of 24; held-out eight documents 7 / 8 / 8. [P22 combined](benchmarks.md#apclpa-with-mtp-fusion-and-asynchronous-checks-p22)
@@ -82,22 +85,22 @@ Combined profiles are measured as combinations; per-measure gains are never adde
 
 ## Profiles by workload
 
-Enabling everything is not always fastest. When the same input is reused, the MTP-combined profile was about 20.6% (8,192 input) and 28.4% (16,320 input) slower than the MTP-free profile at 128 output tokens; its MTP replay boundary reused less input. This compares whole profiles with different KV budgets and kernel settings, not an isolated cost of MTP. [Repeated-input tradeoff](benchmarks.md#repeated-input-tradeoff)
+Enabling everything is not always fastest. When the same input is reused, the MTP-combined profile was slower than the MTP-free profile at 128 output tokens, because its MTP replay boundary reused less input. This compares whole profiles with different KV budgets and kernel settings, not an isolated cost of MTP. [Repeated-input tradeoff](benchmarks.md#repeated-input-tradeoff)
 
 | Workload | Profile | Basis | Caveat |
 |---|---|---|---|
-| Generation-heavy, serial (code; the template) | The shipped checkpoint, MTP k=3, fused unpack, async checks, FA2 prefill, APC | 1.6.0 and 1.7.0 defaults | One sequence, eager. Lossless with respect to the pinned weights. Business-use and harness acceptance pending |
-| Japanese prose, serial | The published attention + `lm_head` W4A16 repack through `runtime.derived_checkpoint` (`requant_target = "l"`), MTP k=3, otherwise the template | [Serving profile](benchmarks.md#the-reference-pairs-serving-profile) | The decode step is 12–13 ms shorter; teacher-forced NLL is 4–6% higher than the pinned weights on Japanese, code and mathematics. Not lossless, so not the template |
-| Batch prefill of long inputs | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512; APC optional | P18 / P22 final combination | LPA is a batch opt-in (off in the template), approximate, excludes FA2 prefill and forfeits shared prefix reuse |
+| Generation-heavy, serial (code; the distributed defaults) | The pinned checkpoint, MTP k=3, fused unpack, async checks, FA2 prefill, APC, one sequence | [Distributed defaults](server-configuration.md#distributed-defaults) | Accepted for routine use with one sequence ([SETUP step 6](../SETUP.md#6-qualify-the-full-model)). Lossless with respect to the pinned weights |
+| Japanese prose | The published option (NVFP4 BIZ AXL) | [The published option against the defaults](server-configuration.md#the-published-option-against-the-defaults) / [serving profile](benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) | Not lossless; its cost is in the README comparison ([what has been verified](../README.md#what-has-been-verified)) |
+| Batch prefill of long inputs | MTP k=3 + fused unpack + async checks + LPA cut 32 / tail 512, FA2 prefill off; APC optional | P18 / P22 final combination | LPA is a batch opt-in, approximate, excludes FA2 prefill and forfeits shared prefix reuse |
 | Prefix-reuse-heavy | APC + LPA (P22, B = 128) + `dense` retention, no MTP | Repeated-input and mid-edit A/B/A | Grow the shared cache with exact priming; cold requests slightly slower |
-| Throughput | Two sequences, no LPA, chunk 512 (1024 or more if the longer stall is acceptable) | P13 / P11 | LPA is single-sequence only; four or more sequences unqualified |
-| Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | Routine qualification not yet complete |
+| Throughput | Two sequences: the published option's example | [Concurrency scope](validation.md#concurrency-scope) | More throughput when requests overlap; completions depend on the co-scheduled requests; LPA is single-sequence only; more sequences need more ranks |
+| Baseline / isolation | Everything off, eager, one sequence | Baseline benchmarks | For comparisons; not a qualified serving profile |
 
 All are selected in the [server TOML](server-configuration.md) under `[mtp]`, `[lpa]`, `[cache]`, `[context]` and `[runtime]`, and require an image with the matching markers.
 
 ## Performance and capacity Q&A
 
-These answers explain how to assess extensions of the current configuration. The 256K text-only profile's limit is 262,144 input-plus-output tokens (the distributed image profile uses the same limit since 1.5.0); 1M means approximately one million tokens. Neither 1M nor new multi-sequence combinations are qualified.
+These answers explain how to assess extensions of the current configuration. Both served profiles limit a request to 262,144 input-plus-output tokens; 1M means approximately one million tokens. 1M and more than two sequences are not qualified; two sequences are qualified only on the published option ([concurrency scope](validation.md#concurrency-scope)).
 
 ### Q. With 3 GiB of KV cache per rank, can the configuration consistently accommodate a 256K context?
 
@@ -107,25 +110,25 @@ Changes to APC history, branching, checkpoint retention, block alignment or conc
 
 ### Q. If 12.5 GiB of KV cache is available per rank, can it accommodate a 1M context?
 
-**That is a promising KV budget to test.** GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so a budget extrapolated from the earlier 200K setting is not an exact fivefold requirement. It may need less than 12.5 GiB. Check the pinned runtime's cache groups and state-slot counts.
+**Not on two hosts with the pinned weights.** Without the derived checkpoint the launcher refuses more than 3 GiB of KV per rank (`check_kv_budget`), because the pinned weights leave the head too little room above the reserve ([KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements)). The repacked weights load less and serve 6 GiB, the largest budget measured here; 12.5 GiB is untested and needs memory freed elsewhere (next question) or more ranks (TP=4, [concurrency scope](validation.md#concurrency-scope)).
 
-Weights, activations, indexer workspace, the OS and other allocations must fit outside that KV budget. Verify KV allocation, total host-RAM fit and completion of a real 1M request in that order.
+The budget itself does not scale exactly with length from the 256K one: GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so check the pinned runtime's cache groups and state-slot counts. Weights, activations, indexer workspace, the OS and other allocations must fit outside that budget. Verify KV allocation, total host-RAM fit and completion of a real 1M request in that order.
 
 ### Q. Could disabling MTP and reducing the memory reserve make 1M operation feasible?
 
-**It is plausible and a natural configuration to investigate for 1M.** Disabling MTP releases approximately [7 GiB per rank in measured model memory](speculative-decoding.md#measured-k1-results). MTP weights are a fixed cost; they do not grow proportionally with context length.
+**It is the natural configuration to investigate, on the repacked weights or more ranks.** Disabling MTP releases [the draft's measured memory](speculative-decoding.md#measured-k1-results), a fixed cost that does not grow with context length. On the pinned weights the launcher still refuses KV above 3 GiB, with or without MTP.
 
-Using the earlier 200K profile as the baseline, increasing KV from 2.5 to 12.5 GiB adds 10 GiB. Using approximately 5.2 GiB from its [measured minimum available RAM](benchmarks.md#real-input-checks-at-200k), simple arithmetic leaves only `5.2 + 7 − 10 ≈ 2.2 GiB`, before extra long-context workspace. Establish the actual KV requirement and fit the remaining workspace as well. Lowering the reserve reduces retained headroom; it does not create more RAM.
+Start from the published option's measured memory ([measurements on 1.10.2](benchmarks.md#measurements-on-1102)) rather than extrapolating from an earlier profile, establish the actual KV requirement and fit the extra long-context workspace as well. Lowering the reserve reduces retained headroom; it does not create more RAM.
 
 ### Q. How much waiting should users expect with a 1M context?
 
-**First requests and requests without useful prefix-cache reuse can spend a long time processing the input (prefill). The relevant scale is tens of minutes.** The [earlier 200K measurement](benchmarks.md#real-input-checks-at-200k) took about eight minutes for the whole request, including input processing; even a simple fivefold extrapolation is about 40 minutes.
+**First requests and requests without useful prefix-cache reuse can spend a long time processing the input (prefill); tens of minutes is plausible, not measured.** A ~200K request takes roughly three minutes on either served profile ([headline measurements](../README.md#what-has-been-verified)).
 
 This is neither a measured 1M time nor a TTFT guarantee. Configuration changes, computational scaling, workspace and memory bandwidth may extend it further. A reusable prefix can sometimes reduce the wait, but repeatedly rereading a large input in conversation makes this latency a practical constraint.
 
 ### Q. Could 5 GiB of KV cache per rank make concurrent serving and EP or PP worthwhile?
 
-**It creates more room to investigate concurrent requests and a reason to reevaluate EP and PP.** Increasing KV does not guarantee that two maximum-length requests fit. Check per-sequence state and real input-plus-output lengths multiplied by concurrency. Current LPA supports one active sequence, so start with LPA disabled; MTP with multiple sequences also needs separate validation.
+**On the pinned weights 5 GiB is refused; the published option already serves two sequences from 6 GiB.** Its acceptance covers up to about 200K tokens each, with completions that depend on the co-scheduled request; two maximum-length requests together are not measured ([concurrency scope](validation.md#concurrency-scope)). LPA supports one active sequence. More sequences need more ranks (TP=4).
 
 Larger batches may improve expert-compute efficiency or pipeline utilization, while communication and stage waiting can grow too. [EP](benchmarks.md#independent-expert-parallel-evaluation-p21) and [PP](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) were not adopted for performance on the measured workloads. Different concurrency and workloads merit reevaluation; a larger KV budget alone does not establish a speedup.
 
@@ -139,9 +142,7 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 
 ## Next candidates
 
-The measures set aside in 1.5.0 because their effect was smaller than the run-to-run spread were all re-measured on the bit-reproducible baseline in 1.6.0 and 1.7.0: FA2 prefill was adopted, the attention and `lm_head` repack became a published option, the depth stays 3, and decode Graphs, adaptive or gated draft depth, the draft-side settings and CSA2 were measured and not adopted ([speculative decoding](speculative-decoding.md#beyond-a-fixed-depth-2026-09-21), [P06](#decode), [P16](#attention-backend-and-indexer)). What remains is outside the decode step:
-
-- P24 Per-request prefix-cache no-store: filed in the [catalog](optimization-catalog.md#performance-initiatives) after four individually harmless 15,025-token lanes evicted an 80,024-token conversation's entire cached prefix
-- Euryale: an external, unpublished draft-proposer research project outside this repository. It becomes the default speculation path only if a same-condition comparison against standard MTP k=3 passes the quality, performance, memory and recovery gates. Full-model teacher capture and training have not started
+- P24 Per-request prefix-cache no-store: measured need, not started ([catalog](optimization-catalog.md#performance-initiatives))
+- Euryale, a draft-proposer project outside this repository ([README](../README.md#related-research-outside-this-repository))
 - P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 256K and broader long-context coverage, multiple sequences with LPA
-- The pinned vLLM: the slot-mapping guard and the MoE order and indexer top-k patches go when a newer pin carries the upstream fixes; that move requalifies every measure above
+- The pinned vLLM: the source-pinned patches ([architecture](architecture.md)) go when a newer pin carries the upstream fixes; that move requalifies every measure above

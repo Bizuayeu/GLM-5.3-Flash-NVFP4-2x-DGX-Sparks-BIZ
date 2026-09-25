@@ -21,13 +21,14 @@ and `Edit` share one permission, and deletion goes through `Bash`.
 1. Copy `exists-guard.cjs` outside this repository, for example into the
    client's `hooks` directory next to its configuration.
 2. Merge `config.hooks.example.json` into the client configuration
-   (`config.json`). Keep a copy of the working file first: a schema-rejected
-   entry invalidates the whole configuration and surfaces as an unrelated
-   error such as a missing model configuration.
+   (`config.json`), with `hooks.enabled` set to true, and let the entry inherit
+   the top-level `hooks.timeoutMs`. Keep a copy of the working file first: a
+   schema-rejected entry invalidates the whole configuration and surfaces as an
+   unrelated error such as a missing model configuration.
 3. Use an absolute interpreter path in `command`. A desktop client started
-   from a launcher does not inherit a shell `PATH`, and the runtime fails the
-   matched tool call on any hook exit other than 0 or 2, on a spawn error and
-   on a timeout.
+   from a launcher does not inherit a shell `PATH`. The runtime reads exit
+   code 0 as a decision and 2 as deny, and fails the matched tool call on any
+   other exit, on a spawn error and on a timeout.
 
 ## Verify
 
@@ -42,6 +43,6 @@ it afterwards.
 
 The shell gate is a string heuristic over the command line and has misses; the
 conservative alternative is to ask for every `Bash` call. The hook only sees
-the tools its matcher names, so a future file-writing tool passes unless the
-matcher is extended. Protection is by existence, not by content: an approved
+the tools its matcher names (`Write|Edit|Bash`), so a future file-writing tool
+passes unless the matcher is extended. Protection is by existence, not by content: an approved
 overwrite is still a full overwrite.

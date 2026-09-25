@@ -2,6 +2,19 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased
+
+### Documentation
+
+- Benchmarks 1.15.0: CPU placement on the reference pair (2026-09-26). Every published decode figure has both ranks' workers on performance cores; with either rank on efficiency cores decode falls to about a third, which `nodes[].cpuset_cpus` prevents. The README headline and server configuration point there.
+- Documents brought up to 1.15.0 and shortened, each fact kept in one owner. Statements the later releases had overtaken now read as they are: the two-sequence profile's acceptance (2026-09-23), the repeatability switches of 1.12.0 and 1.14.0 instead of "under investigation", MTP k=3 in the template instead of an optional experiment, decode Graphs and Expert Parallel measured and not adopted, FreedomBench closed, the harness route decided, and every "images built from this version" replaced by its version.
+- Server configuration is reorganised: the defaults and the published option first, then a key reference grouped as repeatability switches, attention/cache/checkpoint, parallelism, image input, API and diagnostics (the memory probe's methods as a table) and LPA with prefix caching, then the commands. The image contract lists every capability marker, the setting that makes preflight require it and the version from which images carry it; the document map names it as the owner. Two corrections: MTP depths one to five were measured on the requantized checkpoint and 1, 3 and 4 on the pinned one (not all five on both), and LPA excludes `runtime.fa2_attention` and accepts MTP depth 1 or 3 only.
+- LPA: the recipe for enabling it now sets `runtime.fa2_attention = false`; without it the launcher refuses the profile, because the template enables FA2.
+- Validation: the concurrency scope is a table per profile with its evidence and the repeatability rule; the full-model section gains subsections (loading and API checks, multibyte output, repeatability); the account of the three launch states is one paragraph, with the numbers in benchmarks 1.9.0 and the steps of the search in this changelog (1.10.0 to 1.12.2).
+- Benchmarks open with an index of the release sections; each initiative's decision paragraph is one result line pointing at the catalog. The optimization overview, catalog and performance investigation keep their roles but point at the owners of numbers and decisions instead of restating them. Harnesses, FreedomBench, image input, NCCL, licensing, component validation, speculative decoding, APC-first LPA, candidate order and indexer reuse are shortened the same way.
+- The setup runbook's evidence row for memory points at the same-night measurements of both profiles on 1.8.0 instead of quoting the published option's figures under the defaults' acceptance.
+- The acceptance of 2026-09-22 is stated as it was made: for both profiles at one active sequence, for the public demonstration at 生成AIなんでも展示会#6 on 2026-09-23, and kept for routine use within the same scope (README, setup runbook, validation, operations).
+
 ## 1.15.0 — 2026-09-26
 
 ### Added

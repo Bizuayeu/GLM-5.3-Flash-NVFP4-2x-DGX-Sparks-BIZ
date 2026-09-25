@@ -16,20 +16,18 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 **LPA and prefix-cache reuse are mutually exclusive, so the distributed template ships `lpa.enabled = false` and this is a batch opt-in.** An approximated request publishes nothing to the shared prefix cache, and suppression continues through the exact tail and decode, because blocks computed after an approximated region still depend on approximated history. A workload that resends a growing prompt (any chat or coding harness) therefore never accumulates a reusable prefix while LPA is on: `break_even_tokens` compares one request's prefill cost and cannot see the reuse every later request forfeits. Enable LPA for a long input that is processed once, not for a conversation.
 
-The distributed TOML enables MTP coexistence. The corrected four-layer MTP3/fused-unpack/async fixture passed eight lengths from 3 to 8,192 tokens, including active KDA state comparisons, in `integration-fixture-v36`. The subsequent [serial full-model comparison](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) records its limited task, timing, capacity and cancellation acceptance. Component token agreement is not a general full-model quality claim.
+LPA runs together with MTP, fused unpack and asynchronous index checks; the evidence is [P18](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18).
 
 - Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [server TOML](server-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
-- This is an experimental worker extension, not an acceptance of the server profile for routine use or of either coding harness. Keep its development RPC on loopback.
+- This is an experimental worker extension, outside the routine-use acceptance of the serving profile. Keep its development RPC on loopback.
 
 ### APC and shared-state provenance
 
 LPA changes cached KV and KDA state. A cache produced with approximation must not enter an LPA-off request or a different projector configuration. The manual `lpa_configure` RPC therefore rejects prefix caching: it cannot establish the scheduler's cache-publication boundary.
 
-P22 implements [APC-first, uncached-suffix LPA](apc-lpa-design.md). The scheduler first restores a jointly usable exact prefix H, then selects the remaining approximation interval from N/H/T and a crossover threshold. Shared publication stops at the first approximation and remains stopped through the exact tail and decode. Requests can explicitly select normal computation to prime common documents. Approximate states remain request-local.
-
-This path requires the matching image marker and startup settings. CPU contracts, the four-layer GPU cache-isolation checks, full-model calibration, the MTP/fusion/async combination and the held-out evaluation are complete; the [design contract](apc-lpa-design.md) owns that status. Capture/oracle RPCs are not enabled with APC. Measure combined benefits rather than adding independent gains.
+With prefix caching on, P22 restores the exact prefix first and approximates only the uncached remainder, publishing nothing to the shared cache from the first approximation on; the [design contract](apc-lpa-design.md) owns that contract and its status. Capture/oracle RPCs are not enabled with APC.
 
 ## Download the trained projector
 
@@ -61,15 +59,7 @@ Enable LPA only for the [supported workload](#operating-scope): a long input pro
 [runtime]
 lpa_image = "sha256:<image ID verified on both hosts>"   # carries GLM53_LPA_API=2
 vision = false          # LPA's measured scope is text-only
-
-# The text-only profile is the documented 256K alternative, not the image
-# defaults with vision switched off (docs/server-configuration.md#distributed-defaults).
-[context]
-max_model_len = 262144
-[cache]
-kv_cache_memory_bytes = 3221225472   # 3 GiB per rank
-[resources]
-reserve_gib = 3                      # 2.5 is not validated for this profile
+fa2_attention = false   # the FA2 prefill path excludes LPA
 
 [lpa]
 enabled = true
@@ -78,11 +68,12 @@ projector = "lpa/glm53-lpa-cut32-v1/projector.pt"   # relative to this TOML, or 
 projector_sha256 = "<sha256 from config/lpa-projector.lock.json>"
 ```
 
-- **Image**: `lpa.enabled = true` makes the launcher select `runtime.lpa_image` instead of `reference_image`. Preflight requires the `GLM53_LPA_API=2` marker in that image, and `GLM53_APC_LPA_API=1` as well while `cache.prefix_caching` stays on (the template default, which selects the [APC-first path](server-configuration.md#commands)). An image built from current source against the [current image contract](server-configuration.md#current-image-contract) carries both; check with `docker image inspect <id>` and use the same ID on both hosts.
+- **Image**: `lpa.enabled = true` makes the launcher select `runtime.lpa_image` instead of `reference_image`. Preflight requires the `GLM53_LPA_API=2` marker in that image, and `GLM53_APC_LPA_API=1` as well while `cache.prefix_caching` stays on (the template default, which selects the [APC-first path](server-configuration.md#lpa-with-prefix-caching)). An image built from current source against the [current image contract](server-configuration.md#current-image-contract) carries both; check with `docker image inspect <id>` and use the same ID on both hosts.
 - **Projector**: preflight recomputes the SHA-256 of the file named by `[lpa].projector` and rejects a mismatch with `projector_sha256`. Keep `cut = 32`, `tail` and `break_even_tokens` at the template values, which are the measured settings for this projector.
-- **Text-only**: set `runtime.vision = false` together with the [text-only 256K alternative](server-configuration.md#distributed-defaults) (262,144 context, 3 GiB KV per rank), which since 1.5.0 is the image-input default with `vision` switched off. Its 256K checks ran with a 4 GiB reserve at chunk 512; the template's 3 GiB reserve at chunk 2048 is not validated for text-only.
+- **FA2**: the launcher refuses `runtime.fa2_attention` with LPA, so LPA runs on the reference attention path, without the FA2 prefill speedup ([server configuration](server-configuration.md#attention-cache-and-checkpoint)).
+- **Text-only**: see the [text-only alternative](server-configuration.md#distributed-defaults) for its validated reserve.
 - **Check, then switch**: run `python -m glm53_setup server preflight --config state/server.toml --rank N` on each host and confirm `projector_sha256`, `lpa_worker` and `image_id` pass. Any of these edits changes the profile fingerprint, so a running pair needs the normal [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch); `server ask` refuses a profile that no longer matches the running server.
-- **Per request**: while LPA is enabled, a request can still compute normally with `"vllm_xargs": {"glm53_lpa_mode": "off"}` to prime the shared prefix cache; see [server configuration](server-configuration.md#commands).
+- **Per request**: while LPA is enabled, a request can still compute normally with `"vllm_xargs": {"glm53_lpa_mode": "off"}` to prime the shared prefix cache; see [server configuration](server-configuration.md#lpa-with-prefix-caching).
 
 To turn LPA off again, set `enabled = false` and switch; the projector keys may stay in the file.
 

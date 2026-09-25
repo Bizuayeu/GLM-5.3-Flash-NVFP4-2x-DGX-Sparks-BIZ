@@ -53,9 +53,7 @@ The doubled equals signs in the Docker arguments are intentional: the environmen
 
 DGX Spark's unified-memory platform does not support conventional GPUDirect RDMA via `nvidia-peermem`, DMA-BUF or GDRCopy according to [NVIDIA's porting guide](https://docs.nvidia.com/dgx/dgx-spark-porting-guide/porting/cuda.html). Therefore `NET/IB` with `GDR 0` is not by itself a failed RoCE test. Do not load a kernel module or force GDR merely to change that log field.
 
-The reviewed initial run passed all collective checks on two GB10 hosts at MTU 1500 using NCCL runtime 2.30.7. Large AllReduce measured about 1.2 GB/s while another transfer could contend for resources. A separate `NCCL_NET_GDR_LEVEL=SYS` comparison also passed but did not enable GDR or improve bandwidth; it is not part of the recommended command above. See [validation](validation.md) for the current evidence boundary.
-
-The final run used the supplied probe after fabric transfers had ended. Both ranks passed all 11 checks; 256 MiB AllReduce measured 1.18–1.21 GB/s. An unrelated disk-checksum job remained active, so this is not an entirely idle-host benchmark. All test containers exited zero without OOM. Full-model TP=2 remains unqualified.
+Reference result (two GB10 hosts, MTU 1500, NCCL runtime 2.30.7, after fabric transfers had ended): both ranks passed all 11 checks and all containers exited zero without OOM; 256 MiB AllReduce measured 1.18–1.21 GB/s with an unrelated disk-checksum job still active, so this is not an idle-host benchmark. A separate `NCCL_NET_GDR_LEVEL=SYS` comparison also passed without enabling GDR or adding bandwidth, and is not part of the command above.
 
 ## Channel count
 

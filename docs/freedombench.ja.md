@@ -2,35 +2,29 @@
 
 [English](freedombench.md) · [検証一覧](validation.ja.md)
 
-**配信profileで2026-09-22に完了：固定の英語原版60問が初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問、いずれも参照対が配信しているprofileで。** 以下の4構成の一覧とLPAの項目は配信profileが一つになる前の設計で、それとともに退役した。日本語訳・対立的な言い回し・長距離の証拠配置は未実施で、そう記す。以前の実測は元の条件のまま下に残す。
-
-## 予備実測
-
-現在のリリース候補の測定は、[リリース候補の再測定](#リリース候補の再測定)を参照してください。以下の予備実測は元の条件を保持します。
-
-2026-09-12（Asia/Tokyo）の非公開run `freedombench-combined-v12-full` は原版60問を完了し、固定された正答表に対して60正答、誤答0、上流の`refused`分類0、実行エラー0。全問が初回の試行で完了した。imageは `sha256:32394330800422a71df89c89d399b8bd17d2dbe90806572ea4583f15ad46f09a`、TP=2・同時1系列・MTP k=3・unpack融合on・LPA設定on（通常計算tail 512token）、Graphs off。
-
-実入力は158〜209tokenで、すべて通常計算tail内に収まった。**LPA近似は作動していない**ため、LPAによる政治的文脈への影響や4構成比較の検収には数えない。日本語訳・長い業務文脈・人手の拒否判定・設問と出典の監査は未了。この限定的な設問での満点は、一般的な政治的中立性の証明ではない。
-
-## 併用構成の再確認と長文付きpilot
-
-2026-09-13（Asia/Tokyo）の `freedombench-integration-v36` でも、原版英語60問すべてを初回で正答し、通信エラー・打ち切り・選択肢抽出不能は0でした。[直列併用構成](benchmarks.ja.md#直列併用の評価p18)で、MTP3・unpack融合に検査付き非同期index検証を加えています。入力は158〜209tokenのため、この原版試験では引き続きLPA近似は作動していません。
-
-別run `freedombench-long-pilot-v37` は、固定したLLM-jp validation文書の先頭6,000文字を、固定設問の最初の6問へ背景資料として追加しました。MTP3・fusion・asyncを固定し、LPA off／on／復帰を比較した結果、各条件6／6正答、通信・形式エラー・打ち切りは0でした。実入力4,810〜4,838tokenに対し、LPA onの全要求で両rankの層35／39／43が各4,298〜4,326の履歴queryを省略し、両off条件の省略数は0でした。
-
-これは設問入力を変えた小規模pilotであり、**公式全問スコアでもFB-05完了でもありません。** 全話題、日本語設問、対立する政治的主張、遠距離の証拠配置、人手・出典監査は未検収です。この設問でprojectorの学習・選定は行っていません。
-
-## リリース候補の再測定
-
-2026-09-14（Asia/Tokyo）の `release-200k-reserve4` は、[記録した併用構成](benchmarks.ja.md#リリース候補の測定)で原版英語60問を実行し、**60／60正答**でした。全問初回で完了し、上流の拒否判定・誤答・実行エラーは0。全応答が `finish_reason=stop`、入力158〜209 token、出力6〜13 tokenでした。
-
-temperature0、effort low、clear_thinking=true、上流互換の出力上限8,192を使用。全入力がtail512内に収まり、LPA近似は作動していません。この結果は現行併用1構成の原版全問評価です。下記の4構成比較、日本語拡張、長い業務文脈、人手・出典監査の完了とは扱いません。
-
 ## 配信profileでの完了（2026-09-22）
 
-2026-09-22（23:58〜23:59 JST）、リポジトリのrunnerで固定の英語原版60問を参照対の配信profile（分割KDA射影のroute l、MTP k=3、FA2 prefill、`runtime.prefix_page_dedup`、image `76a1172b…`、fingerprint `945965bf…`）に対して走らせた：**計画60問中60問正解、全問が初回で回答、上流の `refused` ゼロ、エラーゼロ**。出力予算は上流の8,192トークン、採点は固定の分類器（記録 `records/20260922-freedombench/serving-full`）。続く長文付きpilotは、2026-09-13と同じ日本語の検証用テキスト約6,000文字を最初の6問に前置し（入力4,810〜4,838トークン＝prefix全体が問いの前に入る）、通常のchat endpointで**6問中6問**正解（記録 `long-pilot-serving`）。
+**参照対が配信しているprofileで2026-09-22に完了**（同日の記録では、公開した任意設定のroute l重み・分割KDA射影、同時1系列、各rank 3 GiBのKV、MTP k=3、FA2 prefill、`runtime.prefix_page_dedup`、image `76a1172b…`、fingerprint `945965bf…`）。23:58〜23:59（JST）にリポジトリのrunnerで固定の英語原版60問を走らせた：**計画60問中60問正解、全問が初回で回答、上流の `refused` ゼロ、エラーゼロ**。出力予算は上流の8,192トークン、採点は固定の分類器（記録 `records/20260922-freedombench/serving-full`）。続く長文付きpilotは、2026-09-13と同じ日本語の検証用テキスト約6,000文字を最初の6問に前置し（入力4,810〜4,838トークン＝prefix全体が問いの前に入る）、通常のchat endpointで**6問中6問**正解（記録 `long-pilot-serving`）。
 
-これで閉じるもの。参照対が配信するprofileは一つで、LPAはその中に無い。よって4構成の一覧はそのprofile一つに縮み、FB-05（近似が実際に走ること）はLPAのprofileを再び配信する日まで対象がない。人手の拒否審査は審査対象が空（拒否も解析不能もゼロ）。出典監査は `config/freedombench.lock.json` の固定revisionとhash。閉じないもの：日本語訳の本体、対立的な政治的言い回し、prefixの位置以外の証拠配置は未実施。以前の3回（2026-09-12〜14）は各自のimageとprofileでの記録として残す。
+これで閉じるもの。LPAは例示profileの二つとも無効なので、FB-05（近似が実際に走ること）はLPAのprofileを再び配信する日まで対象がない。人手の拒否審査は審査対象が空（拒否も解析不能もゼロ）。出典監査は `config/freedombench.lock.json` の固定revisionとhash。閉じないもの：日本語訳の本体、対立的な政治的言い回し、prefixの位置以外の証拠配置は未実施。
+
+## 以前の実施
+
+以前の実施はそれぞれのimageとprofileでの記録として残す。原版の設問（入力158〜209 token）はすべて通常計算tail 512 token内に収まり、原版ではLPA近似は一度も作動していない。
+
+| 日付 | run | 結果 | image／profile | LPA近似 |
+|---|---|---|---|---|
+| 2026-09-12 | `freedombench-combined-v12-full` | 初回で60／60。誤答・`refused`・エラーはゼロ | `32394330…`。TP=2・同時1系列・MTP k=3・unpack融合・LPA設定on（tail 512）・Graphs off | 作動せず |
+| 2026-09-13 | `freedombench-integration-v36`、`freedombench-long-pilot-v37` | 初回で60／60、通信エラー・打ち切り・選択肢抽出不能なし。pilotは3条件とも6／6 | [直列併用構成](benchmarks.ja.md#直列併用の評価p18)（MTP3・unpack融合・検査付き非同期index検証） | pilotのみ |
+| 2026-09-14 | `release-200k-reserve4` | 初回で60／60。拒否判定・誤答・エラーはゼロ、全応答が `finish_reason=stop`、出力6〜13 token | [記録した併用構成](benchmarks.ja.md#リリース候補の測定) | 作動せず |
+
+### 併用構成の再確認と長文付きpilot
+
+pilotは固定したLLM-jp validation文書の先頭6,000文字を固定設問の最初の6問へ前置し、MTP3・fusion・asyncを固定してLPA off／on／復帰の各条件で実行した。実入力4,810〜4,838tokenに対し、LPA onの全要求で両rankの層35／39／43が各4,298〜4,326の履歴queryを省略し、両off条件の省略数は0だった。これは設問入力を変えた小規模pilotであり、**公式全問スコアでもFB-05完了でもない**。全話題、日本語設問、対立する政治的主張、遠距離の証拠配置は対象外。この設問でprojectorの学習・選定は行っていない。
+
+### リリース候補の再測定
+
+この再測定は、併用1構成で原版全問をtemperature 0、effort low、`clear_thinking=true`、上流互換の出力上限8,192で実行した。
 
 ## 対象と出典
 
@@ -40,25 +34,21 @@ temperature0、effort low、clear_thinking=true、上流互換の出力上限8,1
 
 上流の[ライセンス](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/LICENSE)はApache-2.0。ローカルアダプターでは回答抽出・promptと選択肢の構築を改変利用し、NOTICEに出所と変更を記録する。設問データは別途取得し、[benchmark lock](../config/freedombench.lock.json)のhashを検証する。
 
-以下の項目は、4構成（LPAとMTPのon/off）が候補だった時に書いた。2026-09-22以降はLPAなしの一つのprofileを配信しているので、FB-02はそのprofileで満たし、FB-05はLPAのprofileを配信するまで対象外。他の行は状態を保つ。
-
 ## 必須試験項目
 
 | ID | 試験 | 残す証拠・完了条件 |
 |---|---|---|
 | FB-01 | ローカル経路と再現性 | benchmark・設問・採点器の固定hash、実モデル・image・設定fingerprint・tokenizer/template・接続先を保存。指定したローカルモデルだけに送信し、クラウドへの自動切替なし。 |
-| FB-02 | 英語原版の選択問題 | 60問のIDを重複・欠落なく実行。原文、正答対応、設問ID由来の選択肢shuffleを保持し、下記4構成を別々に採点。全試行を保存。 |
+| FB-02 | 英語原版の選択問題 | 60問のIDを重複・欠落なく実行。原文、正答対応、設問ID由来の選択肢shuffleを保持し、配信する各profileで採点。全試行とprofile別の結果を保存。 |
 | FB-03 | 回答拒否・採点の監査 | 上流互換スコアに加え、通信エラー、出力上限、空の最終回答、選択肢形式不正、明示的な拒否、誤答を分離。異常は原応答を確認。 |
 | FB-04 | 日本語業務利用 | 日本語訳を人が確認し、意味・ID・選択肢・正答対応を保持。翻訳版hashを固定し、英語原版とは別集計。 |
 | FB-05 | 長い業務文脈と資料への忠実さ | 各分野を含むケースを結果を見る前に固定。中立的な背景／政治的な主張を含む背景を与え、資料の事実抽出・要約を比較。対応する無害な対照話題も入れる。決定的な証拠を前・中・後に置き、実トークン数とLPA作動数を記録。資料にない政治的主張の挿入、重要な証拠の欠落、拒否、出典、資料中の主張と確認済み事実の区別を評価。公式スコアとは別の独自拡張として報告。 |
 
-比較構成は **通常（LPA/MTPなし）・MTP k=3のみ・LPAのみ・LPA＋MTP k=3**。互換性を確認した同一の固定image・本体重み・設問・sampling/template・context/cache・同時1要求を揃え、MTPのメタデータviewも記録する。LPAは既存の選定済みprojectorと境界を使う。差が出た場合は対応するLPAなし構成へ戻し、A/B/Aで切り分ける。この設問でprojectorを学習・選定しない。
-
-原版の短文設問がLPAの通常計算tailに収まった場合は「近似なし」と記録し、LPAの品質証拠に数えない。FB-05では実際に近似が働くことを確認する。同じ資料を各構成へ与え、入出力合計をcontext上限内に収める。prefix追加版・翻訳版を原版スコアへ混ぜない。
+LPAのprofileを再び配信する時は、そのprofileでFB-02を再実行し、対応するLPAなしprofileとのA/B/AでFB-05を行う。互換性を確認した同一の固定image・本体重み・設問・sampling/template・context/cache・同時1要求を揃え、既存の選定済みprojectorと境界を使い、必要ならMTPのメタデータviewも記録する。原版の短文設問がLPAの通常計算tailに収まった場合は「近似なし」と記録し、LPAの品質証拠に数えない。FB-05では実際に近似が働くことを確認し、同じ資料を各構成へ与え、入出力合計をcontext上限内に収める。この設問でprojectorを学習・選定せず、prefix追加版・翻訳版を原版スコアへ混ぜない。
 
 ## 実装・採点時の注意
 
-Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/server.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。未検証の構成・独自拡張は、その実測までNOT RUNとして残す。
+Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/server.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。自前の証拠がない独自拡張・profileはNOT RUNとして残す。
 
 固定版の[runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py)は既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
 

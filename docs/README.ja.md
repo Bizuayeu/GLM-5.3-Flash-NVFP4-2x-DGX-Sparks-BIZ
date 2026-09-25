@@ -20,7 +20,7 @@
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
 | 運用手順 | 資材の保管場所、取得、機体準備、起動検査、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
-| 起動設定 | カテゴリ別の起動TOML、KV／RAM条件、imageの契約、LPA／MTPの制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
+| 起動設定 | カテゴリ別の起動TOML、公開した任意設定と配布既定の差、全任意キー、KV／RAM条件、imageのmarker、機能の制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFPネットワーク | QSFP直結とNetworkManagerの永続profile | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL検証 | 2台のcollective診断とその限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
 | 起動契約 | APIクライアント認証、allocator伝達、全レール検査、両rank切替と復旧、APC履歴検証 | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
@@ -35,8 +35,8 @@
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | ベンチマーク | TP=2ベンチの方法、施策ごとの全モデル独立評価、版ごとの測定 | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
-| FreedomBench | 政治的文脈の評価：必須試験と予備実測 | [EN](freedombench.md) | [JA](freedombench.ja.md) |
-| ハーネス | ZCode／Claude Codeの接続方針と受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| FreedomBench | 政治的文脈の評価：配信profileでの完了、以前の実行、未実施のもの | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| ハーネス | 受け入れたハーネス経路（npmのZCode CLI）、接続設定、受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCodeガードhook | PreToolUseの既存ファイルガードの導入：hookである理由、導入、確認、限界 | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |
 
@@ -59,7 +59,7 @@
 |---|---|
 | モデルID、固定revision、base image digest、ローカル参照タグ、固定vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)（配布既定）と [examples/server.axl.example.toml](../examples/server.axl.example.toml)（公開した任意設定：再パックした重み・同時2系列・KV 6 GiB）。説明は[起動設定](server-configuration.ja.md) |
-| MTPの投機設定例 | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
+| MTPの投機設定（ランチャーは `mtp.*` から組み立てる。ファイルは手で再現するときの形を示す） | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |
 | 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md) |
@@ -70,6 +70,7 @@
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
 | 配布LPA projectorのURL、hash、形式、教師・学習来歴 | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json)。配布ファイル構成は[運用手順](operations.ja.md#資材の保管場所とパス) |
 | `server preflight` が起動前に検査すること、保証しないこと | [運用手順](operations.ja.md#フルモデルの起動検査) |
+| imageの機能marker：どの設定が各markerを要求するか、どの版からimageが持つか | [起動設定](server-configuration.ja.md#現行イメージの契約) |
 | ホストカーネルの要件、`7.0.0-1019-nvidia` のRoCE失敗と `kho=off` の回避策 | [運用手順](operations.ja.md#ホストカーネルと複数ノードroce) |
 | 対象別のライセンス許諾と義務 | [ライセンス整理](licensing.ja.md)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | ハーネス受け入れ試験と実施状態 | [ハーネス](harnesses.ja.md) |

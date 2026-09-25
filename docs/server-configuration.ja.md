@@ -6,23 +6,23 @@
 
 | カテゴリ | 管理するもの |
 |---|---|
-| `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed、画像入力の切替 |
+| `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed、画像入力の切替、再現性のスイッチ、derived checkpoint |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
 | `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
-| `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker |
-| `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、メモリ使用率、実験用unpack融合 |
+| `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker、メモリ探針 |
+| `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、checkpoint保持、メモリ使用率、unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
 | `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、損益分岐の閾値、クエリ省略、projectorとハッシュ |
-| `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー |
-| `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト |
-| `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限 |
+| `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー、dev経路、cache済みtokenの報告 |
+| `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト。warmupの段 |
+| `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限、停滞検知 |
 | `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定 |
 
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 
 ## 配布用の既定設定
 
-配布用TOMLは、[256Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、本番・ハーネス検収の完了を意味しません。既存の `state/server.toml` は自動更新されません。
+配布用TOMLは、[256Kでの画像入力](vision.ja.md)を含む直列の最適化構成を既定にします。これは設定の選定であり、通常運用の受け入れは[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)に別に記録しています。既存の `state/server.toml` は自動更新されません。
 
 | 項目 | 既定値 |
 |---|---|
@@ -33,9 +33,7 @@
 | 投機・近似 | MTP k=3（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
-| MoEのtoken順 | `canonical_moe_order = true`：expert内のtoken順を一つに固定し、同一要求の反復を一致させる。この版から作った参照imageが要る（参照機では2026-09-18から配信中） |
-| indexerのtop-k | `stable_indexer_topk = true`：512番目のpoolを跨ぐ同点を低いindexに決め、同一要求の反復を保つ。`GLM53_INDEXER_TOPK_API=1` を持つimageが要る |
-| Inductorのconfig | `inductor_deterministic = true`：indexerのcompileされたkey正規化などInductorのreductionが、計測せずに両rankで同じconfigを一つ選ぶ。どの起動も同じ数値状態で計算する。Inductorのcacheは専用のものを使う |
+| 再現性 | `canonical_moe_order`・`stable_indexer_topk`・`inductor_deterministic`・`mla_decode_cpb` をすべて `true`：同一要求はbit一致で反復し、どの起動も同じ数値状態で計算する（[再現性のスイッチ](#再現性のスイッチ)） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
@@ -43,6 +41,10 @@
 | warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に短文・tool・画像の段を流す。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
+
+**導入時はimage ID、両機の接続情報、MTP viewを準備してください。LPA projectorとhashはLPAを有効にするときだけ必要です。** 有効な機能のゼロhashは差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。[学習済みprojectorの取得](lpa.ja.md#学習済みprojectorの取得)により再学習を省けます。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
+
+期限は起動時に固定されます。`run_seconds` の変更を稼働中の監視へ反映するには、[両rankの切替手順](launch-safety.ja.md#全レール検査と両rankの切替)で再起動します。設定ファイルの変更だけでは既存の期限は消えません。コンテキストを拡大するときは、容量条件と実要求を別に検証します（[KV容量](#kv容量とramの条件)）。
 
 ### CPU配置の任意指定
 
@@ -55,10 +57,8 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 各ホストの`server preflight`は、指定されたCPUが起動プロセスの利用可能な範囲に含まれるか確認します。
 起動後はDockerの`HostConfig.CpusetCpus`を読み戻し、設定と一致しなければ新しいコンテナを停止します。
 この設定は配置を制御するもので、速度を保証するものではありません。
-
-**導入時はimage ID、両機の接続情報、MTP viewを準備してください。LPA projectorとhashはLPAを有効にするときだけ必要です。** 有効な機能のゼロhashは差し替え必須の仮値で、準備不足を理由に機能を黙って無効化しません。[学習済みprojectorの取得](lpa.ja.md#学習済みprojectorの取得)により再学習を省けます。資材の配置は[運用手順](operations.ja.md#資材の保管場所とパス)が正典です。MTP／LPAは個別に無効化でき、基準比較ではAPC・保持・融合・非同期検査も明示的に戻します。
-
-期限は起動時に固定されます。`run_seconds` の変更を稼働中の監視へ反映するには、[両rankの切替手順](launch-safety.ja.md#全レール検査と両rankの切替)で再起動します。設定ファイルの変更だけでは既存の期限は消えません。コンテキストを拡大するときは、以下の容量条件と実要求を別に検証します。
+両rankに設定してください。
+参照対（両ホストとも高性能コアは5〜9と15〜19）では、どちらか一方のrankが高効率コアにいるだけでdecodeが約3分の1になり、固定なしではスケジューラがたまたま両rankを高性能コアに置いていました（[1.15.0での測定](benchmarks.ja.md#1150での測定)）。
 
 ## 公開した任意設定と配布既定の差
 
@@ -73,47 +73,84 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 | `context.max_num_seqs = 2` | `--max-num-seqs 2`（既定は `1`） |
 | `cache.kv_cache_memory_bytes = 6442450944` | `--kv-cache-memory-bytes` 6 GiB（既定は3 GiB） |
 
-1行目から2つの引数が従い、独立した設定ではありません。model引数が `/hf` 配下のMTP metadata viewではなく `/derived` になること（再パックしたcheckpointはBF16のdraft層を自分で宣言する）と、containerのlabelがprofileのfingerprintを持つこと（どのkeyでも変われば変わる）です。command・環境変数のそれ以外はどちらのrankでも同じで、NCCL・cache・決定性・投機・視覚の引数は変わりません。
+1行目から2つの引数が従い、独立した設定ではありません。model引数が `/hf` 配下のMTP metadata viewではなく `/derived` になること（再パックしたcheckpointはBF16のdraft層を自分で宣言する）と、containerのlabelがprofileのfingerprintを持つこと（どのkeyでも変われば変わる）です。command・環境変数のそれ以外はどちらのrankでも同じです。
 
-2026-09-23に、AXLの例をコメントどおりに使って確認しました。仮値を参照対の値（checkpointとoverlayのパス、image ID、両機）に置き換え、`server freeze` と `server plan` をWindowsのcheckoutで、`server preflight` を各rankで配布済みの1.10.1のcheckoutから、対が配信中のまま走らせました。検査はすべて合格（RDMAレール、フルモデル、derived checkpoint、draft層が非量子化、overlay、image IDと6つの機能marker、GPUの専有）で、例外は `startup_memory` だけです。これは空き108 GiBを求める検査で、稼働中の対が114 GiBを持つhostでは成り立ちません。起動に属する検査であり、例は起動していません。この値を入れた例と参照対が配信するprofileの差は `validation.memory_probe` と `api.dev_endpoints`（配信profileでは切替後の検査のため両方on）、warmupの長文段（配信profileは65,536トークン、例は無し）、LPA offでは読まれないprojectorの仮値だけで、起動引数の差はworker extensionと `VLLM_SERVER_DEV_MODE` だけです。
+2026-09-23に、仮値を参照対の値に置き換えたAXLの例は、`server freeze`・`server plan` と両rankの `server preflight` の全検査に合格しました。例外は `startup_memory` だけで、これは稼働中の対の横では成り立ちません。参照対が配信するprofileとの差は `validation.memory_probe` と `api.dev_endpoints`（配信profileでは切替後の検査のためon）、warmupの長文段（配信profileは65,536トークン、例は無し）、使われないLPAの仮値だけです。
+
+## キーの解説
+
+以下の任意キーは、断りが無ければ未指定のとき起動を変えません。キーを足したり変えたりするとprofileのfingerprintが変わるため、次の[切替](launch-safety.ja.md#全レール検査と両rankの切替)から有効になります。imageの対応が要るキーは、[imageの契約](#現行イメージの契約)に挙げたmarkerの無いimageでは `server preflight` が拒否します。
+
+### 再現性のスイッチ
+
+四つのスイッチで、同一要求はbit一致で反復し、どの起動も同じ数値状態で計算します。四つとも両方のexampleで有効です。差の出どころをそれぞれどう見つけて測ったかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にあります。
+
+`runtime.canonical_moe_order`（テンプレートは `true`。未指定はimageの既定に従い、1.6.0から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。新規の起動には `GLM53_MOE_ORDER_API=2`（1.7.0から作ったimage）が要ります。marker 1は、切替の復旧先として残す稼働中の対にだけ認めます（[起動検査](operations.ja.md#フルモデルの起動検査)）。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。参照機では同一要求がbit一致で反復し、decodeは遅くならず、MTPの採択長は上がりました。既定で有効にしているのは、今後のA/Bを読む物差しとして、再現できる基準が要るためです。
+
+`runtime.stable_indexer_topk`（テンプレートは `true`。未指定はimageの既定で、1.6.0から作ったimageではon）は、両rankに `GLM53_STABLE_INDEXER_TOPK` を設定します。kpool indexerは4 tokenを1 poolに畳み、query行ごとに512 poolを選びます。固定の `persistent_topk`（decode）と `top_k_per_row_prefill` は、512位の境界にpoolの同点があると同じ入力から違う*集合*を返し、ある1 stepの同点一つでcompletionが割れます。`true` の時、同点は低いpool indexに決まります。decodeは安定なsort（最大6行、1回0.07〜0.25 ms。kernelは0.01〜0.02 ms。同期なし）、prefillはkernelのまま、512位の値を収まりきらない数のpoolが共有している行だけを選び直します（呼び出しごとに同期1回）。`GLM53_INDEXER_TOPK_API=1` が要ります。`false` は比較用のarmです。
+
+`runtime.inductor_deterministic`（1.12.0からテンプレートは `true`。未指定か `false` はInductorの計測による選択）は、両rankに `TORCHINDUCTOR_DETERMINISTIC=1` を設定し、`TORCHINDUCTOR_CACHE_DIR` を `/root/.cache/torchinductor-deterministic` に移します。複製されたindexerはkeyを、候補configが三つの `torch.compile` のleafで正規化します。以前は各rankが起動のたびに計測で一つを選び、三つのうち一つは行の足し算の順が違うため、両rankが別のclassを引くとpoolが同点になる所でcompletionが分かれました。決定性モードのInductorはreductionのconfigを計測せずに、どのrankでも同じものに決めます。torch 2.13と2.12.1は最初にcompileしたframeの後でモードを切るので（[pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)。GB10では [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636) に報告）、launcherは `glm53_setup/runtime/inductor_pin.py` と一行の `.pth` をmountし、設定を強制値で保ちます。モードなしでcompileしたgraphは既存のcacheから計測の候補ごと戻ってくるので、モードは専用のcacheにcompileします。keyを付けた最初の起動ではindexerのleafを作り直します（rankごとに約45ファイル）。pointwiseのleafはrankごとに計測を続けますが、要素ごとに同じ命令で計算するのでblockの大きさはbitを変えません。imageの対応は要りません。
+
+`runtime.mla_decode_cpb`（1.14.0から両方のexampleで設定。未指定は固定のとおりFlashInferが呼び出しごとに選ぶ）は、両rankに `GLM53_MLA_DECODE_CPB` を設定し、`GLM53_MLA_DECODE_CPB_API=1`（1.14.0から作ったimage）を要求します。FlashInfer 0.6.18のSM120 sparse MLA decodeは2,048の候補を32のchunkに分け、各CTAに `chunks_per_block` 個ずつ受け持たせます。heuristicがstep全体のtoken数からその値を選ぶので、2本目の系列が来ると要求の候補の足し方が変わります。keyをonにすると、長さの揃った1〜2系列のdecode stepは、1系列あたりのtoken数で値を決めます：draftの1 tokenは2、検証stepの4 tokenは6（rankあたり32 head、top-k 2,048）。1系列のときのheuristicの値そのものなので、単独の要求は以前と同じ計算です。呼び出しはFlashInferのdecodeの入口へ直接進み、wrapper、custom op、AutoTunerの照会を通りません。それ以外のstepはFlashInferの選択のままです。値はeagerのdecode stepでだけ計ったので、launcherは `runtime.decode_graphs` と一緒のkeyを拒みます。参照対では両profileとも、単独の要求のcompletion、decodeの速度、NLL、長文の答えがkeyの有無で同じでした（[1.14.0での測定](benchmarks.ja.md#1140での測定)）。
+
+これらのスイッチが扱うのは単独の要求です。`max_num_seqs` が2以上だと、他の要求とstepを共有した要求は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelを通して、なお違うcompletionになりえます。他に何が走っていても同じcompletionが欲しい場合は `max_num_seqs = 1` で配信します（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
+
+### attentionとcacheとcheckpoint
+
+`runtime.fa2_attention`（未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちprefillの大きさの呼び出し（query行が6を超えるもの）が、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。decodeのstep（最大6行＝MTPの深さ5）は参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。基準の2台では、38,962 tokenのprefillが約2.2倍速くなりました（[1.6.0での測定](benchmarks.ja.md#160での測定)）。unpack融合は要素数を実行時に受け取るので、256Kの系列で要素数ごとにTritonのkernelを一つcompileすることはもうありません。この経路はLPAと排他です。checkoutは、この経路・そのdispatch・上記のunpack融合を、それらより前に作られたimageの上にmountします。`GLM53_FA2_ATTENTION_API=1` を持つimageでは冗長です。
+
+`runtime.prefix_page_dedup`（未指定はoff＝固定vLLMのpoolのまま。AXLの例で設定）は、両rankに `GLM53_PREFIX_PAGE_DEDUP` を設定し、`GLM53_PREFIX_DEDUP_API=1`（1.9.0から作ったimage）を要求します。固定vLLMのblock poolは、同じhashのblockが既にcacheにあっても、fullになったblockをそのhashで登録します。draftがあるとprefix lookupは一致した末尾blockをhitから外して再計算するので、同じ履歴を再送するたびにKV cache groupごとに1 blockが既にあるhashでLRU queueに加わり、その複製が古い履歴を先に追い出します。keyをonにすると、そのblockは登録されません。hashを持たず、要求が終わるとfree queueの先頭に戻り、lookupは先にcacheされた複製にhitし続けます。block idと数値は変わりません（[1.9.0での測定](benchmarks.ja.md#190での測定)）。
+
+`runtime.derived_checkpoint`（任意のtable、既定では無し。table内の `enabled = false` はtableを残したまま固定snapshotを配信する）は、固定checkpointを手元で再量子化した複製を配信します。`path`（両hostの絶対ディレクトリ。`/derived` に読み取り専用でmount）、`requant_target`（そのディレクトリの `quantization_config.producer.requant_target` と照合）、`overlays`（`{target, source, sha256, base_sha256, marker}` の列。`source` は絶対パスのファイルで、image内のGLMモデルディレクトリの `target` に重ねてmount）を取ります。`server preflight` は、checkpointが `MIXED_PRECISION` とそのtargetを宣言していること、MTP draft層に量子化宣言が無いこと、各overlayが指定のSHA-256でmarkerを含むこと、image内の `target` が `base_sha256` であることを確かめ、どれか一つでも違えば失敗します。別のimage向けに作ったoverlayはmountできません。derived checkpointではMTPのメタデータviewを使いません。`MIXED_PRECISION` では宣言の無いmodule（BF16のdraft層を含む）が無量子化で読まれるためです。本リポジトリが配信する2つのoverlayは [`overlays/`](../overlays/README.md) に同梱しています（`kda-quant-split.py` を `kda.py` に、`mla-quant-split.py` を `model.py` に重ねます）。targetは二つあり、`g`（attention projection）と `l`（attention projectionと `lm_head`）です。現行の `l` のcheckpointは分割したKDAのinput projectionを宣言しており（`quantization_config.producer.in_proj_layout = "split-qkv-bfg"`）、この2つのoverlayとしか組めません。以前の融合した対は、このキーを持たないrevisionのものです。基準の2台は `l` をMTP k=3で配信しており、そのcheckpointはoverlayの要件をmodel cardに書いて公開しています（[施策台帳](optimization-catalog.ja.md)のP23、[配信profile](benchmarks.ja.md#基準の2台の配信profile)）。
+
+`cache.prefix_cache_retention_interval`（テンプレートは `"dense"`）と、未指定のときのruntimeの挙動は[APCの履歴検証](launch-safety.ja.md#apcの履歴検証)で説明します。
+
+`runtime.index_checks` は `auto`／`sync`／`async`（配布既定） を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。
+
+### 並列化と通信
+
+`runtime.nccl_channels`（未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。MTU 1500で8本にすると、実モデルの最小空きメモリがheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（[チャネル数の測定](nccl-validation.ja.md#チャネル数)）。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択をそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。
+
+`runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` が必要です。範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。全モデルで測って不採用としました（[Expert Parallel](performance-investigation.ja.md#expert-parallelp21)）。既存TOMLにもキーを明示し、欠落時のfallbackは設けません。
+
+`runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。範囲は1系列・eager・EP/MTP/LPA/fusion/APCなしで、PP2は測って不採用としました（[TPとPPの比較](performance-investigation.ja.md#tpとppの比較)）。TOML更新時は両キーを明示してください。
+
+### 画像入力
+
+`runtime.vision` は未指定でfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は無効で、送ると拒否されます。受け付けるのは画像だけです。** 理由は起動時のメモリです。vLLMは最大の入力1件を一度エンコードしてメモリを見積もり、このチェックポイントの動画の上限（30,000 token＝120,000パッチに制限済み）は画像1枚（最大8,000 token）よりはるかに大きいためです。1 promptあたりの画像枚数はvLLMの既定のままです（チャットハーネスは過去の画像を毎ターン送り直すため）。Vision有効時は `cache.mm_processor_cache_gb`（未指定は0.1）が `--mm-processor-cache-gb` を決めます。これは前処理済み画像のキャッシュで、vLLMはAPIプロセスとエンジンプロセスの両方に持ち、どちらもrank 0にだけ載ります。vLLMの既定4 GiBのままだと、headのホストRAMを最大8 GiB使い得ます。上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。視覚塔はBF16で量子化の対象外です（両方の除外リストに `model.visual*`）。実測、headのメモリ余裕、未解決の事項は[画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
+
+### APIと診断
+
+`api.prompt_tokens_details`（未指定は無効、テンプレートは `true`）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。
+
+`api.dev_endpoints`（未指定はfalse）は両rankに `VLLM_SERVER_DEV_MODE=1` を渡し、loopbackのAPIにvLLMのdev経路（`/reset_prefix_cache`・`/reset_mm_cache`・`/collective_rpc`・`/sleep`・`/wake_up`・`/server_info`）を載せます。LPA・component・expertのprofileは元からこのモードで動きます。このキーは、LPA offのprofileでもベンチやwarmupの後始末のために再起動なしでprefix cacheを消せるようにするためのものです。これらの経路は無認証です（[起動契約](launch-safety.ja.md#モデルapiクライアント)）。他のローカル利用者がいる機体では off のままにします。
+
+`validation.memory_probe`（未指定はfalse）はworker拡張を一つ載せ、dev経路 `POST /collective_rpc`（例：`{"method": "allocator_stats"}`）から呼べるようにします。LPAや他のworker拡張とは排他（起動につき拡張クラスは一つ）で、起動の他の点は変えません。メソッドは次のとおりです。
+
+| メソッド | 返すもの |
+|---|---|
+| `allocator_stats` | rankごとに、torchのcaching allocatorのreserved・allocated・active・inactive-splitバイト、segment数、確保のretry回数、`mem_get_info`。GB10ではGPUがホストのメモリを共有するので、allocatorの成長はworkerのRSSやcgroupが平らなまま `MemAvailable` の減少として現れる。この二つを切り分ける |
+| `host_stats` | workerの常駐匿名メモリ、glibcの `mallinfo2` の内訳、torchのpinned host cache。`{"trim": true}` を付けると二回の読みの間で `malloc_trim(0)` を呼び、保持している空き・生きているオブジェクト・mallocの外のメモリを切り分ける |
+| `host_census` | 生きているPythonオブジェクトの型ごとの数と、その中のCPU tensor |
+| `weight_digest` | loadされた全parameterとbufferの二つのbyte和（層ごと・全体）。`{"tensors": true}` で行そのものを返す。`tools/weight_digest.py` が切替の後にそれを記録し、前の起動と違うtensorを名指しする |
+| `kernel_hashes` | kpool indexerの計算（head gate、gate score、FWHT量子化、pool cacheの書き込み、paged MQA logits、stable top-k）と、1.11.1からは一つの層の実際の重みでの段階（`layer`、既定は19）を、固定入力でworkerの中で走らせたhash。`tools/kernel_hashes.py` が両rankと前の起動を比べる |
+| `autotuners`、`inductor_state` | 生きている各Inductor kernelが使っているconfigとその出どころ。Inductorの設定、`TORCHINDUCTOR_*` の環境変数、決定性スイッチへの書き込みのすべて |
+| `fa2_stage` | FA2経路の一部だけ（`off`、圧縮の単一操作、`compact`、`plan`、`full`）を走らせて残りを参照経路で答えるので、メモリの増加が始まる段を、段ごとの再起動なしに名指しできる |
+| `trace_begin`、`trace_end` | traceするmodule・draft・sparse NoPE attentionが1要求で受け取り返すものの指紋（byte列をint64の語として読んだwrapする和を二つ、device上に保持）。後の同一要求で最初に食い違った呼び出しを名指しする。`sync` はtraceした呼び出しごとに同期する。候補indexのtensorは行ごとに並べ替えてから指紋を取るので、候補の集合が違う時だけ食い違いとして読める。cache行のgatherはdecodeの大きさの呼び出しでだけ行う。`{"keep": true, "export": true}` で行を返し、`trace_differences` が二つの起動をofflineで比べる |
+
+workerのメソッドが例外を出すとHTTP 500が返り、その次の `/collective_rpc` の呼び出しも、内容に関係なくHTTP 500になります。その後の呼び出しは正常です（基準の2台で2026-09-20に計測）。エラーの直後の1回は捨ててください。新しい読みを足す前に、本番の形で費用を測ってください。4層fixtureの形は小さく、その費用は見えません。これらの読みを切替のたびに使う定型は[起動契約](launch-safety.ja.md#切替の後のdecode検査)にあります。
+
+`validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。
+
+`validation.component_worker=true` は、CUDAのA/Bとindexerの観測のための独立した観測workerを選びます（[機能の併用と制約](#lpaとmtp制約)）。
+
+`resources.stall_seconds`（未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。認証クライアント、`runtime.cuda_allocator_conf`、`nodes[].additional_rails`、両rankの切替は[起動契約](launch-safety.ja.md)にあります。
+
+### prefix cacheと併用するLPA
+
+P22のGPU状態隔離・校正・最終併用・held-out参照評価を、範囲を限って確認済みです。LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `server ask` は判断をサーバーへ任せ、APCなしの通常の `server ask` はH=0として同じ閾値を使います。テンプレートは `lpa.enabled = false` を既定とし、バッチ入力に限って用途ごとに有効化します（近似した要求は共有cacheに何も登録しないため）。有効にしている間、要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。更新するTOMLには閾値キーを明示してください。[実装契約](apc-lpa-design.ja.md)と[LPA](lpa.ja.md)を参照してください。
 
 ## コマンド
-
-認証クライアント、allocatorの未指定／空文字、全HCA検査、両rankの停止前検査と切替は[起動契約と運用検証](launch-safety.ja.md)を参照してください。P10／P19／P22／E03の追加範囲であり、複数レール実通信などの未検収を機能実装と区別します。
-
-**P22のGPU状態隔離・校正・最終併用・held-out参照評価を確認済みです。** LPAとprefix cachingを両方有効にする場合は `GLM53_APC_LPA_API=1` のimageが必要です。schedulerが全状態を揃えて復元したprefixと `lpa.break_even_tokens` から適用を決めます。テンプレートは[P22の校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22)に基づく保守的な閾値128を使います。最初の近似以降は、通常計算する末尾・decodeを含めて共有登録を止めます。このモードの `server ask` は判断をサーバーへ任せます。テンプレートは `lpa.enabled = false` を既定とし、バッチ入力に限って用途ごとに有効化します（近似した要求は共有cacheに何も登録しないため）。有効にしている間、要求に `"vllm_xargs": {"glm53_lpa_mode": "off"}` を指定すると通常計算し、通常状態の共有cacheを育てられます。`api.prompt_tokens_details = true`（任意キー、未指定は無効）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。APCなしの通常の `server ask` はH=0として同じ閾値を使います。[実装契約](apc-lpa-design.ja.md)を参照し、更新するTOMLには新しい閾値キーを明示してください。
-
-`runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` を持つイメージが必要ですが、このmarkerは設定対応を表し、EPの検収済み証明ではありません。初期範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。既存TOMLにも新しいキーを明示し、欠落時の暗黙fallbackは設けません。使用前に[EPの独立評価手順](performance-investigation.ja.md#expert-parallelp21)を参照してください。
-
-`runtime.vision` は任意キーで、未指定はfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は無効で、送ると拒否されます。受け付けるのは画像だけです。** 理由は起動時のメモリです。vLLMは最大の入力1件を一度エンコードしてメモリを見積もり、このチェックポイントの動画の上限（30,000 token＝120,000パッチに制限済み）は画像1枚（最大8,000 token）よりはるかに大きいためです。1 promptあたりの画像枚数はvLLMの既定のままです（チャットハーネスは過去の画像を毎ターン送り直すため）。Vision有効時は `cache.mm_processor_cache_gb`（任意キー、未指定は0.1）が `--mm-processor-cache-gb` を決めます。これは前処理済み画像のキャッシュで、vLLMはAPIプロセスとエンジンプロセスの両方に持ち、どちらもrank 0にだけ載ります。vLLMの既定4 GiBのままだと、headのホストRAMを最大8 GiB使い得ます。上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。視覚塔はBF16で量子化の対象外です（両方の除外リストに `model.visual*` があり、固定vLLMも量子化設定なしで組み立てる）。実測、headのメモリ余裕、未解決の事項は[画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
-
-`api.dev_endpoints`（任意キー、未指定はfalse）は両rankに `VLLM_SERVER_DEV_MODE=1` を渡し、loopbackのAPIにvLLMのdev経路（`/reset_prefix_cache`・`/reset_mm_cache`・`/collective_rpc`・`/sleep`・`/wake_up`・`/server_info`）を載せます。LPA・component・expertのprofileは元からこのモードで動きます。このキーは、LPA offの配布profileでもベンチやwarmupの後始末のために再起動なしでprefix cacheを消せるようにするためのものです。これらの経路は無認証です（[起動契約](launch-safety.ja.md#モデルapiクライアント)）。他のローカル利用者がいる機体では off のままにします。
-
-`validation.memory_probe`（任意、未指定はfalse）はworker拡張を一つ載せ、dev経路 `POST /collective_rpc`（`{"method": "allocator_stats"}`）から呼べるようにします。`allocator_stats` はrankごとにtorchのcaching allocatorのreserved・allocated・active・inactive-splitバイト、segment数、確保のretry回数、`mem_get_info` を返します。GB10ではGPUがホストのメモリを共有するので、allocatorの成長はworkerのRSSやコンテナのcgroupが平らなまま `MemAvailable` の減少として現れます。この探針はその二つを切り分けます。ほかのメソッドは、稼働中のworkerの中でしか見えないものを読みます。`host_stats` はworkerの常駐匿名メモリ、glibcの `mallinfo2` の内訳（使用中、保持している空き、mmapしたblock）、torchのpinned host cacheを返し、`{"trim": true}` を付けると二回の読みの間で `malloc_trim(0)` を呼びます。保持している空き・生きているオブジェクト・mallocの外のメモリを切り分けられます。`host_census` は生きているPythonオブジェクトを型ごとに数え、その中のCPU tensorの量を出します。`kernel_hashes` はkpool indexerの計算（fp32のhead gateとbf16のgate score、融合したFWHT量子化、pool cacheのprefillの書き込みとdecodeのtail update、DeepGEMMのpaged MQA logitsとstable top-k）と、1.11.1からは一つの層の実際の重みでの段階（compileされたlayer normとeager fp32、indexerのrotaryのqueryとkey、keyの射影。`layer` で選び、既定は19）を固定入力でworkerの中で走らせ、全出力のhashを返します。`tools/kernel_hashes.py` が両rankと前の起動の記録を比べるので、別の数値状態の起動が違って計算する箇所がその場で名指しされます（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。`fa2_stage` はFA2経路の一部だけ（`off`、圧縮の単一操作、`compact`、`plan`、`full`）を走らせて残りを参照経路で答えるので、増加が始まる段を、段ごとの再起動なしに名指しできます。`trace_begin` と `trace_end` は、traceするmodule・draftモデル・sparse NoPE attentionの入出力に1要求ぶんの指紋（呼び出しごとに、byte列をint64の語として読んだwrapする和を二つ、device上に保持。byteをint64へcastして足すとtensorの8倍を確保します）を取り、最初の要求を基準にして、後の同一要求で実行順に最初に食い違った呼び出しを名指しします。`sync` は traceした呼び出しごとに同期します。2次元の整数tensor（候補index）は行ごとに並べ替えてから指紋を取ります。top-kのkernelは同じ候補を呼び出しごとに違う並びで返し、並びはattentionの前で正規化されるので、候補の集合が違う時だけ食い違いとして読めます。基準のrunは、最大の呼び出しの行数とgatherした最大の行数を返します。attentionが触ったcache行のgatherはdecodeの大きさの呼び出しでだけ行います。prefillのchunkではそのgatherがMLA層ごとにGB級になり、GPUがホストと共有するメモリを使うためです。新しい読みを足す前に、本番の形で大きさを測ってください。4層fixtureの形は小さく、この費用は見えません。workerのメソッドが例外を出すとHTTP 500が返り、その次の `/collective_rpc` の呼び出しも、内容に関係なくHTTP 500になります。その後の呼び出しは正常で、各rankが自分の行を返します（基準の2台で2026-09-20に計測：不正な `fa2_stage` を1回、続けて `allocator_stats` を3回）。エラーの直後の1回は捨ててください。`weight_digest` はloadされた全parameterとbufferを（traceと同じ二つのbyte和で）層ごと・全体でfingerprintし、`{"tensors": true}` で行そのものを返します。`tools/weight_digest.py` が切替の後にそれを記録して前の起動の記録と比べるので、別の数値状態の起動にはまず「同じbitから計算したか」を問えます。`trace_end` に `{"keep": true, "export": true}` を渡すとtraceの行を返し、後の起動の行と `trace_differences` でoffline比較できます。LPAや他のworker拡張とは排他（起動につき拡張クラスは一つ）で、起動の他の点は変えません。
-
-`resources.stall_seconds`（任意、未指定は0＝無効、テンプレートは600）と `generation.warmup`／`generation.warmup_long_tokens`（任意、未指定はfalse／0）は[監視・停滞検知・warmup](operations.ja.md#監視停滞検知warmup)で説明します。いずれもprofileのfingerprintを変えるため、次の切替から有効になります。
-
-`runtime.nccl_channels`（任意、未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。各rankのエンジンはcommunicatorを2本開き、MTU 1500で8本にすると、実モデルの最小空きメモリが64本に比べてheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（1%速い）。decodeは設定の差より計測ごとのぶれの方が大きい値でした。数値は[チャネル数の測定](nccl-validation.ja.md#チャネル数)にあります。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択とfingerprintをそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。値を変えるとprofileのfingerprintが変わるため、次の切替から有効になります。
-
-`runtime.canonical_moe_order`（任意。テンプレートは `true`。未指定はimageの既定に従い、この版から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（[測定](validation.ja.md#フルモデルtp2の実験範囲)、上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。このとき `server preflight` はimageに `GLM53_MOE_ORDER_API` を要求するので、patchの無いimageには指定できません。この版以降のimageは `2` を持ちます。`1` も通します。切替は、動いている対を復旧先として新しいcheckoutで検査するので、要求を後から厳しくすると、古いimageからの切替がすべて拒否されるためです。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。8層fixtureでは全反復がbit一致になり、prefillは変わらず、decodeは約1%遅くなりました。参照機では同一要求がbit一致で反復し、decodeは遅くならず、MTPの採択長は上がりました（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。既定で有効にしているのは、今後graphや再量子化のA/Bを読む物差しとして、再現できる基準が要るためです。
-
-`runtime.fa2_attention`（任意、未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちprefillの大きさの呼び出し（query行が6を超えるもの）が、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。decodeのstep（最大6行＝MTPの深さ5）は参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。基準の2台では、38,962 tokenのprefillが572〜577 tok/sから、4回の起動で1,242〜1,272 tok/s（2.2倍）になりました。199,652 tokenの合言葉要求は361.1 sから、再量子化したprojectionも有効な状態で164〜167 sになりました。教師強制のNLLは3桁目が両方向に動き、同一要求の反復はbit一致のまま、`server mojibake` は合格でした。最初の全モデル実行では、256Kの系列の途中でhostのメモリを失いました。unpack融合のkernelが要素数ごとにTritonのkernelを一つcompileしていたためで、現在は要素数を実行時に受け取り、同じ系列でheadの空きは最小5.38 GiBを保ちました。この経路はLPAと排他です。checkoutは、この経路・そのdispatch・上記のunpack融合を、それらより前に作られたimageの上にmountします。`GLM53_FA2_ATTENTION_API=1` を持つimageでは冗長です。
-
-`runtime.stable_indexer_topk`（任意。テンプレートは `true`。未指定はimageの既定で、この版以降のimageではon）は、両rankに `GLM53_STABLE_INDEXER_TOPK` を設定します。kpool indexerは4 tokenを1 poolに畳み、query行ごとに512 poolを選びます。固定しているvLLMの `persistent_topk`（decode）と `top_k_per_row_prefill` は、正しいpoolを呼び出しごとに違う並びで返し、512位の境界にpoolの同点があると、同じ入力から違う*集合*を返します。並びはattentionの前で既に正規化していましたが、集合はそうではなく、ある1 stepの同点一つでcompletionが割れていました。場所は決定的で、発生は時々です。GB10では、decodeのkernel単体で同一の呼び出し1,200回に3通りの集合、prefillのkernelで18,000行に4通りが出ました。4層のMTP fixtureでは同一要求12本のうち5本が同じindexerの呼び出しで最初に食い違い、選択を決定的にすると12本とも食い違いませんでした。キーが `true` の時、同点は低いpool indexに決まります。decodeは安定なsort（最大6行、1回0.07〜0.25 ms。kernelは0.01〜0.02 ms。同期なし）、prefillはkernelのまま、512位の値を収まりきらない数のpoolが共有している行だけを選び直します（呼び出しごとに同期1回）。`server preflight` はimageに `GLM53_INDEXER_TOPK_API=1` を要求します。`false` は比較用のarmで、imageの対応は要りません。投機の深さは割れの原因ではなく、completionがどの位置を通るかを決めるだけです。
-
-`runtime.inductor_deterministic`（任意。1.12.0から両方のexampleで `true`。未指定か `false` はInductorの計測による選択）は、両rankに `TORCHINDUCTOR_DETERMINISTIC=1` を設定し、`TORCHINDUCTOR_CACHE_DIR` を `/root/.cache/torchinductor-deterministic` に移します。複製されたkpool indexerはkeyを `torch.compile` のleafで正規化し、Inductorはそれを候補configが三つのpersistent reductionにします。各rankは起動のたびに計測で一つを選び、三つのうち一つは行の足し算の順が違います。両rankが別のclassを引くとkeyがrank間で食い違い、poolが同点になる所でcompletionが分かれました（[起動の数値状態](validation.ja.md#フルモデルtp2の実験範囲)）。決定性モードのInductorはreductionのconfigを計測せずに、どのrankでも同じものに決めます。これには障害が二つあり、このkeyは両方を取り除きます。torch 2.13は最初にcompileしたframeの後でモードを切ります。2.12.1でも同じです（GB10で [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636) に報告があり、PyTorchのissueの再現例でも確認）。Dynamoが `torch.use_deterministic_algorithms(False)` でglobalな状態を戻し、この関数がInductorの設定も書き換えるためです（[pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)）。そこでlauncherは `glm53_setup/runtime/inductor_pin.py` と一行の `.pth` をmountし、設定を強制値で保ちます。また、モードなしでcompileしたgraphは既存のcacheから計測の候補ごと戻ってくるので、モードは専用のcacheにcompileします。keyを付けた最初の起動ではindexerのleafを作り直します（rankごとに約45ファイル）。pointwiseのleafはrankごとに計測を続けますが、要素ごとに同じ命令で計算するのでblockの大きさはbitを変えません。imageの対応は要りません。keyを足すとprofileのfingerprintが変わります。
-
-`runtime.prefix_page_dedup`（任意。未指定はoff＝固定vLLMのpoolのまま。テンプレートは書かない）は、両rankに `GLM53_PREFIX_PAGE_DEDUP` を設定し、patchを持つimage（`GLM53_PREFIX_DEDUP_API=1`、1.9.0以降でbuildしたimage）を要求します。固定vLLMのblock poolは、同じhashのblockが既にcacheにあっても、fullになったblockをそのhashで登録します。draftがあるとprefix lookupは一致した末尾blockをhitから外して再計算するので、同じ履歴を再送するたびにKV cache groupごとに1 blockが既にあるhashでLRU queueに加わり、その複製が古い履歴を先に追い出します。keyをonにすると、そのblockは登録されません。hashを持たず、要求が終わるとfree queueの先頭に戻り、lookupは先にcacheされた複製にhitし続けます。block idと数値は変わりません。測定は[benchmarks](benchmarks.ja.md#190での測定)。
-
-`runtime.mla_decode_cpb`（任意。1.14.0から両方のexampleで `true`。未指定はoff＝FlashInferが呼び出しごとに選ぶ固定のまま）は、両rankに `GLM53_MLA_DECODE_CPB` を設定し、patchを持つimage（`GLM53_MLA_DECODE_CPB_API=1`）を要求します。FlashInfer 0.6.18のSM120 sparse MLA decodeは2,048の候補を32のchunkに分け、各CTAに `chunks_per_block` 個ずつ受け持たせます。未指定だとstep全体のtoken数からheuristicが選ぶので、2本目の系列が来ると要求の候補の足し方が変わり、呼び出しのたびにFlashInferのAutoTunerをPythonで通ります。keyをonにすると、長さの揃った1〜2系列のdecode stepは、1系列あたりのtoken数で値を決めます：draftの1 tokenは2、深さ3の検証stepの4 tokenは6（rankあたり32 head、top-k 2,048）。1系列のときのheuristicの値そのものなので、単独の要求は以前と同じ計算です。呼び出しはFlashInferのdecodeの入口へ直接進み、固定の経路が毎回通るwrapper、custom op、AutoTunerの照会を通りません。相手がいても要求の行は変わりません。それ以外のstepはFlashInferの選択のままです。値はeagerのdecode stepでだけ計ったので、launcherは `runtime.decode_graphs` と一緒のkeyを拒みます。参照対では両profileとも、単独の要求のcompletion、decodeの速度、NLL、長文の答えがkeyの有無で同じでした（[1.14.0での測定](benchmarks.ja.md#1140での測定)）。keyが消すのは要求が相手に依る理由の一つで、全部ではありません。`max_num_seqs` が2以上だと、他の要求とstepを共有した要求は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelを通して、なお違うcompletionになりえます。他に何が走っていても同じcompletionが欲しい場合は `max_num_seqs = 1` で配信します。同時に送った要求は待ち行列に入り、それぞれ単独のときのcompletionになります（[検証](validation.ja.md#同時実行の範囲)）。
-
-`runtime.derived_checkpoint`（任意のtable、既定では無し。持たないprofileのfingerprintは変わらない。table内の `enabled = false` はtableを残したまま固定snapshotを配信する）は、固定checkpointを手元で再量子化した複製をA/B用に配信します。`path`（両hostの絶対ディレクトリ。`/derived` に読み取り専用でmount）、`requant_target`（そのディレクトリの `quantization_config.producer.requant_target` と照合）、`overlays`（`{target, source, sha256, base_sha256, marker}` の列。`source` は絶対パスのファイルで、image内のGLMモデルディレクトリの `target` に重ねてmount）を取ります。`server preflight` は、checkpointが `MIXED_PRECISION` とそのtargetを宣言していること、MTP draft層に量子化宣言が無いこと、各overlayが指定のSHA-256でmarkerを含むこと、image内の `target` が `base_sha256` であることを確かめ、どれか一つでも違えば失敗します。別のimage向けに作ったoverlayはmountできません。derived checkpointではMTPのメタデータviewを使いません。`MIXED_PRECISION` では宣言の無いmodule（BF16のdraft層を含む）が無量子化で読まれるためです。テンプレートにこのtableはありません。本リポジトリが配信する2つのoverlayは [`overlays/`](../overlays/README.md) に同梱しています（`kda-quant-split.py` を `kda.py` に、`mla-quant-split.py` を `model.py` に重ねます）。targetは二つあり、`g`（attention projection）と `l`（attention projectionと `lm_head`）です。現行の `l` のcheckpointは分割したKDAのinput projectionを宣言しており（`quantization_config.producer.in_proj_layout = "split-qkv-bfg"`）、この2つのoverlayとしか組めません。以前の融合した対は、このキーを持たないrevisionのものです。基準の2台は `l` をMTP k=3で配信しており、そのcheckpointはoverlayの要件をmodel cardに書いて公開しています（[施策台帳](optimization-catalog.ja.md)のP23、[配信profile](benchmarks.ja.md#基準の2台の配信profile)）。
-
-`runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。初期範囲は1系列・eager・EP/MTP/LPA/fusion/APCなし。[小層の検証結果](component-validation.ja.md#8層ppの観測)は、全モデル速度・長文の数値同値・本番運用の認定ではありません。TOML更新時は両キーを明示してください。
-
-`validation.expert_worker=true` は、実際のexpert配置・kernel・parameter情報を返す型付きRPC `expert_info` を有効にします。独立したeager TP2の基準／EP条件、最大2系列が対象で、他の観測worker・MTP/LPA/APC・PPとは併用しません。層のhash観測は明示的な `pipeline_observe` RPCで初めて開始するため、性能測定中はそのhookを入れません。実験用のローカル制御経路であり、業務利用の認定ではありません。
-
-`runtime.index_checks` は `auto`／`sync`／`async`（配布既定） を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。MTP/LPA/fusionの直列併用はP18／P22で範囲を限定して確認済みです。
 
 コンテキスト長や同時数を変更する前に、[KV容量とRAMの条件](#kv容量とramの条件)も確認してください。
 
@@ -124,14 +161,14 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server plan --rank 1
 ```
 
-各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・他のコンテナがGPUを使っていないこと・空きメモリを確認できます（[各検査の範囲](operations.ja.md#フルモデルの起動検査)）。worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。
+各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・他のコンテナがGPUを使っていないこと・空きメモリを確認できます（[各検査の範囲](operations.ja.md#フルモデルの起動検査)）。動いていない対を起動するには、worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。稼働中の対を置き換えるには[両rankの切替](launch-safety.ja.md#全レール検査と両rankの切替)を使います。
 
 ```sh
 python -m glm53_setup server start --rank 1
 python -m glm53_setup server start --rank 0
 ```
 
-起動コマンドは前面に残り、自分のコンテナを監視します。端末を維持してください。`resources.run_seconds` の期限には**モデルのロード時間も含まれます**。長時間使う場合は起動前に延ばします。Ctrl+C・期限到達・空きメモリ不足でそのランクを停止します。分散実行に異常が出た場合は両ランクを停止します。コンテナと `records/` のログ・起動設定は残し、自動削除や自動再起動はしません。
+起動コマンドは前面に残り、自分のコンテナを監視します。端末を維持してください。`resources.run_seconds` の期限には**モデルのロード時間も含まれます**。Ctrl+C・期限到達・空きメモリ不足でそのランクを停止します。分散実行に異常が出た場合は両ランクを停止します。コンテナと `records/` のログ・起動設定は残し、自動削除や自動再起動はしません。
 
 APIが準備できたら、headの別端末から送信できます。
 
@@ -146,9 +183,9 @@ python -m glm53_setup server agreement
 python -m glm53_setup server stop --rank 0
 ```
 
-`agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。配信中の全モデルは、同じ要求を繰り返しても完全には同じ結果になりません。参照機では同じ文を2回流したときのargmax一致が約96%で、log確率が8 nat動いた位置もありました（4層fixtureの反復はbit一致です）。fixtureでは、出どころは呼ぶたびに変わるexpert内のtokenの並び順でした（[検証](validation.ja.md#フルモデルtp2の実験範囲)）。この版から作ったimageでは `runtime.canonical_moe_order` がこれを固定します。そのため記録は、全要求が検査した形で返れば合格とし、この差は物差しとして `self_agreement` に残します。文ごとの平均負log確率は実行間の動きがずっと小さく（0.003〜0.05）、こちらが安定した読みです。
+`agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。`self_agreement` は実行内の差を持ちます。再現性のスイッチが有効なら同じ文の2回はbit一致し、`runtime.canonical_moe_order` 以前はargmax一致が約96%で、log確率が8 nat動いた位置もありました。記録は、全要求が検査した形で返れば合格とします。文ごとの平均負log確率が、実行間で安定した読みです。実行内の一致は、起動を跨いだ一致の証拠ではありません（[候補の比較](validation.ja.md#候補と無改変対照の比較)）。
 
-`capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解し、stockの値が `max_concurrency × max_model_len` であることを添えます。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数。dense保持・block整列hit・稼働なしの前提）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外、または未対応の種別があるときは推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
+`capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解します。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外では推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。
 
@@ -162,7 +199,7 @@ workerの状態確認・停止はworker上で `--rank 1` を使います。全�
 run_seconds = 0
 ```
 
-これは予定時刻で停止しない設定であり、24時間365日の可用性を保証するものではありません。OS起動時の自動起動・障害時の両ランク協調再起動・冗長構成への切り替えは未実装です。前面の監視プロセスを維持する必要があり、本番・ハーネス検収も未完了です。
+これは予定時刻で停止しない設定であり、24時間365日の可用性を保証するものではありません。OS起動時の自動起動・切替の外での両ランク協調復旧・冗長構成への切り替えは未実装で、前面の監視プロセスを維持する必要があります。
 
 ## KV容量とRAMの条件
 
@@ -182,24 +219,41 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 
 ## 現行イメージの契約
 
-現行ソースから再ビルドし、`GLM53_LPA_API=2`、worker `glm53_setup.runtime.lpa.LPAWorkerExtension`、RPC `lpa_configure`・`lpa_report`、読み取り専用マウント `/lpa/projector.pt` を使います。preflightはmarkerなしのイメージを拒否します。両ノードの固定イメージIDを確認し、起動設定を更新してから起動します。
+起動するcheckoutから参照imageをビルドし（`python -m glm53_setup build-reference`）、両ホストでIDを確認して `reference_image`（LPAでは `runtime.lpa_image` も）に設定します。旧コマンド・旧イメージへのフォールバックはありません。現行ソースから作ったimageは下のmarkerをすべて持ちます。表は、どの設定のときに `server preflight` が各markerを要求するかと、どの版から作ったimageがそれを持つかを示します（—：CHANGELOGがmarkerを記録する以前から）。
 
-旧コマンド・旧設定名・旧イメージへのフォールバックはありません。新ソースをホストへ置くだけでは稼働中のイメージは変わらないため、再ビルドと実機検証を行います。
+| marker | preflightが要求する条件 | 持ち始めた版 |
+|---|---|---|
+| `GLM53_REFERENCE_ATTENTION=1` | 常に（`reference_attention`） | — |
+| `GLM53_LPA_API=2` | `lpa.enabled`（`lpa_worker`） | — |
+| `GLM53_APC_LPA_API=1` | LPAとprefix cachingの併用（`apc_lpa_support`） | — |
+| `GLM53_FUSED_UNPACK_SUPPORTED=1` | `cache.fused_unpack`（`fused_unpack_support`） | — |
+| `GLM53_ASYNC_INDEX_CHECK_API=1` | 非同期index検査（`async_index_check_support`） | — |
+| `GLM53_DECODE_GRAPH_API=1` | `runtime.decode_graphs`（`decode_graph_support`） | — |
+| `GLM53_EXPERT_PARALLEL_API=1` | `runtime.expert_parallel` または `validation.expert_worker`（`expert_parallel_support`） | — |
+| `GLM53_PIPELINE_API=1` | `runtime.pipeline_parallel_size = 2`（`pipeline_support`） | — |
+| `GLM53_COMPONENT_API=1` | `validation.component_worker`（`component_worker`） | — |
+| `GLM53_MOE_ORDER_API=2` | `runtime.canonical_moe_order`（`moe_order_support`。marker 1は復旧先に限る） | 1.7.0（1は1.6.0から） |
+| `GLM53_INDEXER_TOPK_API=1` | `runtime.stable_indexer_topk`（`indexer_topk_support`） | 1.6.0 |
+| `GLM53_FA2_ATTENTION_API=1` | 要求しない。無ければcheckoutがFA2経路をimageの上にmountする | 1.6.0 |
+| `GLM53_SLOT_MAPPING_GUARD=1` | 要求しない。無いと公開した任意設定で約25万tokenを超える要求が失敗する（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.7.0 |
+| `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup`（`prefix_dedup_support`） | 1.9.0 |
+| `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
+| `GLM53_MLA_DECODE_CPB_API=1` | `runtime.mla_decode_cpb`（`mla_decode_cpb_support`） | 1.14.0 |
+
+imageが持つmarkerは `docker image inspect IMAGE --format '{{json .Config.Env}}'` で確かめられます。
 
 ## LPAとMTP・制約
 
-`runtime.decode_graphs`（任意、テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileせず、イメージには `GLM53_DECODE_GRAPH_API=1` が必要です。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAは引き続きeagerが必要で、複数系列のGraph設定はbatchingで同じ一致がfixtureで示されるまで起動設定で拒否します。これは全モデルの受入完了を意味せず、全モデルA/Bを読むまで既定はeagerのままです。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
+`runtime.decode_graphs`（テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileしません。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAと `runtime.mla_decode_cpb` はeagerが必要で、複数系列のGraph設定は起動設定で拒否します。全モデルではGraphのdecodeがeagerより遅く、採用していません（[全モデルでのdecode Graphs](benchmarks.ja.md#全モデルでのdecode-graphs)）。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
 
-Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて検収する場合は、kごとにcacheを分けるか、kを変えたときに消してください。上のopt-inは何もcompileせず、MTPとの併用も拒否します。eagerの検査方式も `runtime.index_checks` に従い、配布既定はasyncです。
+Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて使う場合は、kごとにcacheを分けるか、kを変えたときに消してください。
 
-`validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。
+`validation.component_worker=true` は部品検証専用workerを選び、`GLM53_COMPONENT_API=1` を持つイメージを要求します。eager・同時1シーケンス・LPA/MTP/prefix cacheなしの独立構成です。型を制限したRPCでindexerの候補・時間を採取し、排他的なリクエスト間でunpack融合を切り替えてA/B/Aを検証できます。Reuse/Reindexを本番適用する設定ではありません。制御クライアントは一つに限定します。CUDA融合の実モデルA/Bとindexerの採取結果は[部品検証記録](component-validation.ja.md)にあります。
 
-`cache.fused_unpack=true` が配布既定です。falseならTorchの参照変換を使い、trueなら656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理します。イメージに `GLM53_FUSED_UNPACK_SUPPORTED=1` が必要で、preflightで確認します。部品一致と全モデルA/B／直列併用の実測範囲で使用します。広範な品質・本番検収とは区別します。候補集合の変更や層間のKV共有は行いません。
+`cache.fused_unpack=true` が配布既定です。falseならTorchの参照変換を使い、trueなら656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理し、`GLM53_FUSED_UNPACK_SUPPORTED=1` が必要です。候補集合の変更や層間のKV共有は行いません。
 
-CUDA融合の実モデルA/Bとindexerの採取結果・検証限界は [部品検証記録](component-validation.ja.md) を参照してください。
+`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受けます。五つとも再量子化したcheckpointで、1・3・4は固定のcheckpointで測定済みで、両方のexampleは3を使います（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。LPAは `runtime.fa2_attention` と排他で、MTPと併用するときは深さ1か3だけを受け、MTP対応を明示したLPA workerを含むイメージが必要です。
 
-`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受け、測定済みは1と3（[投機デコード](speculative-decoding.ja.md)）、2・4・5は同じ1層draftで深さを掃引するために起動できます。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。併用にはMTP対応を明示したLPA workerを含むイメージが必要で、旧LPAイメージは併用指定を拒否します。
+LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。
 
-LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。一般ハーネスや本番運用の認定は別です。
-
-範囲はTP=2・テキスト／ツール・Marlin W4A16・FP8 KVです。LPAには同時1シーケンス・eager実行が必要で、prefix cacheは上記のP22経路を使います。LPAなしのthroughput用構成では同時数を増やせますが、[性能調査計画](performance-investigation.ja.md)に従ってタスク品質・状態整合・資源を別途検証します。MTPの下書き数は1と3です。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[LPA](lpa.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。
+範囲はTP=2・Marlin W4A16・FP8 KV、テキスト・ツール呼び出し・画像です。LPAには同時1シーケンス・eager実行が必要で、LPAとprefix cacheの併用は上記のP22経路を使います。同時2系列以上を受け入れているのは、公開した任意設定の同時2系列profileだけです（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[LPA](lpa.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。

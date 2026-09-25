@@ -1,10 +1,10 @@
-# MTP投機的デコーディング — 実験用
+# MTP投機的デコーディング
 
 [English](speculative-decoding.md) · [MTPなしの基準値](benchmarks.ja.md)
 
 最初のTP=2 baselineは投機なしです。投機profileでは、取得済みNVIDIA checkpointに含まれるMTPを使います。別draftモデル、EXL3変換、DFlash2重みの取得は不要で、モデルライセンスは追加されません。既存の[成果物ごとのライセンス](licensing.ja.md)は引き続き適用されます。
 
-深さ1〜5を、配布のままのcheckpointと再量子化した複製の両方で測定済みです。**テンプレートはk=3のままで、基準の2台が再量子化したcheckpointで配信する深さもk=3です**（[2026-09-21の判断](#両方のcheckpointで深さ32026-09-21)）。[深さ1〜5](#深さ152026-09-1920)がそこに至った掃引で、以下のk=1とk=3の節はそれより前の小さい測定の記録です。掃引の後に試して採らなかったものは[固定の深さの先](#固定の深さの先2026-09-21)にあります。
+深さは、再量子化したcheckpointで1〜5のすべてを、固定したcheckpointで1・3・4を測定済みです。**テンプレートはk=3のままで、基準の2台が再量子化したcheckpointで配信する深さもk=3です**（[2026-09-21の判断](#両方のcheckpointで深さ32026-09-21)）。MTP k=3は配布既定の一部で、常用として受け入れ済みです（[導入手順のステップ6](../SETUP.ja.md#6-フルモデルの検証)）。[深さ1〜5](#深さ152026-09-1920)がそこに至った掃引で、以下のk=1とk=3の節はそれより前の小さい測定の記録です。掃引の後に試して採らなかったものは[固定の深さの先](#固定の深さの先2026-09-21)にあります。
 
 ## フラグを足すだけでは足りない理由
 
@@ -26,15 +26,7 @@ python tools/prepare_mtp_view.py \
 
 ツールはMTPのheaderを確認し、量子化済みMTPを誤ってBF16扱いすることを拒否します。header検査は本体checksumの代わりではありません。tensorデータは複製せず、リンクと変更メタデータだけを作ります。出所・hashのレポートを非公開で保存し、両台のview設定が一致することを確認します。既存viewは上書きしません。
 
-検証済みTP=2参照イメージ・設定で、モデルパスに**view側**を指定し、次を追加します。
-
-```sh
---speculative-config "$(cat examples/speculative.mtp1.json)"
-```
-
-[設定JSON](../examples/speculative.mtp1.json)はMTP・k=1・draft専用のTriton MoEを指定します。検証したk=3を使う場合は、`num_speculative_tokens`だけを3にした[speculative.mtp3.json](../examples/speculative.mtp3.json)へ置き換えます。本体のMarlin、eager、同時実行1、比較対象のcontext/KV設定を維持し、基準と同じくAPCは無効にします（配布テンプレートはAPC有効。[起動設定](server-configuration.ja.md#配布用の既定設定)を参照）。containerには元snapshotとviewを含むcache root全体を読み取り専用mountします。viewだけのmountではリンクが切れます。
-
-通常運用としての受け入れではありません。元へ戻す場合は原snapshotを指定し、投機設定を外します。viewと試験記録は保持します。
+`mtp.view`にはcacheからの相対パス（`local-views/glm53-mtp-compatible`。revisionはランチャーが付け足します）を指定します。`mtp.enabled = true`なら、`server start`はviewを配信し、cache root全体を読み取り専用でmountし（viewのリンクはsnapshotを指します）、`mtp.num_speculative_tokens`から`--speculative-config`を組み立てます。methodは`mtp`、draftのMoEは別の`triton` backendです。[speculative.mtp1.json](../examples/speculative.mtp1.json)と[speculative.mtp3.json](../examples/speculative.mtp3.json)は、手動の`vllm serve`で再現するための、ランチャーが渡すJSONの例です。`mtp.enabled = false`なら元のsnapshotを配信します。viewは残して構いません。`runtime.derived_checkpoint`を持つprofileは、viewなしでdraft層を読み込みます（[起動設定](server-configuration.ja.md#attentionとcacheとcheckpoint)）。
 
 ## 合否と性能比較
 
@@ -44,13 +36,13 @@ python tools/prepare_mtp_view.py \
 - case前後の`/metrics`原文を保存する。受理率は採用draft token増分／draft token増分、bonus込み平均受理長は`1 + 採用token増分 / draft回数増分`。この区間はwarmupや初期probeを含み得るため、測定要求のみの時間統計とは区別する。[vLLMの定義](https://docs.vllm.ai/en/v0.24.0/api/vllm/v1/spec_decode/metrics/)
 - 深さの比較は受理率ではなく平均受理長で行う。kを深くすると、1 stepあたりのtokenが増えても受理率は下がる。他レシピではk=5とk=7の優劣を受理率で逆に判断していた（tonyd2wild PR #12、コードは採用しない）。
 - 最終回答、ツール、SSE、EOS・長さ上限、状態を確認する。greedy token/logprob差は診断として残し、推論文の逐語一致を要求しない。
-- decodeだけでなく初動と全体throughputを見る。長い入力・短い出力では速くならない場合がある。kの増加はk=1合格後の別試験にする。
+- decodeだけでなく初動と全体throughputを見る。長い入力・短い出力では速くならない場合がある。
 
 amasuは自分の構成でk=3とk=4の総合点が同等と報告しています（benchmark §12、commit `73e19d8`）。これは外部の比較であり、本構成の深さは以下の手元の比較から判断します。
 
 ## k=1の実測結果
 
-2026-09-12（Asia/Tokyo）、全モデルでbaselineと同じ5条件・21測定要求・1,344出力tokenが完了し、要求エラーはありませんでした。全要求が指定どおり64 tokenを出力しました。イメージ、本体演算、通信、負荷条件は[MTPなしの基準](benchmarks.ja.md#全モデルの初期結果)と合わせています。別の実行同士の初期比較であり、A/B/Aを繰り返した統計評価ではありません。client同時数2でもserverは`max_num_seqs=1`で待ち行列を作ります。
+2026-09-12（Asia/Tokyo）の最初の全モデル測定で、後の[深さ3の判断](#両方のcheckpointで深さ32026-09-21)に置き換わっています。イメージ、本体演算、通信、5つの負荷条件は[MTPなしの基準](benchmarks.ja.md#全モデルの初期結果)と合わせた別の実行同士で、A/B/Aではありません。client同時数2でもserverは`max_num_seqs=1`で待ち行列を作ります。
 
 | 入力token | client同時数 | MTPのTTFT中央値（秒） | decode off → k=1（token/s） | 全体出力 off → k=1（token/s） | draft受理率 |
 |---:|---:|---:|---:|---:|---:|
@@ -60,19 +52,11 @@ amasuは自分の構成でk=3とk=4の総合点が同等と報告しています
 | 32 | 2 | 3.116 | 14.27 → 23.54 | 13.71 → 21.38 | 85.7% |
 | 2,048 | 2 | 15.820 | 14.22 → 21.49 | 6.08 → 6.80 | 84.0% |
 
-decodeは`1000 / mean_tpot_ms`です。受理率は前述のcase単位counter区間から求め、該当するclient準備・warmupを含みます。時間測定要求だけの集計ではありません。採用／draft数は表の順に122/132、122/134、105/149、204/238、204/243で、bonus込み平均受理長は1.70〜1.92 token/stepでした。
-
-runtimeのmodel memoryは各rank 95.17 GiBで、baselineより約6.97 GiB増えました。ホストの最小空きメモリは7.90/10.25 GiB、6 GiBの余裕を守る監視停止は発動せず、両rankともOOM killなしです。この回のAPI準備完了には約14.4分かかりました。重みロードは依然重く、要求ごとのTTFTとは別です。
-
-基礎APIの11項目はすべて合格しました。最終回答の再現、日本語計算、SSE、自動ツール引数・戻り値、Messages、token countingを含みます。テキストは`stop`、ツール要求は`tool_calls`、Messagesは`end_turn`で終了しました。推論文は再実行で異なり、診断扱いを維持します。出力分布全体の同等性や広範な品質を証明したものではありません。
-
-k=1の短い入力のdecodeはMTPなしの約1.69倍ですが、8,192入力・64出力では全体throughputが約1.3%低下し、TTFTは24.387→26.257秒へ増えました。比較用、およびメモリ余裕が少ない場合やprefill中心の用途にはMTPなしも残します。次の評価で使う候補は、後述のk=3比較で判断します。
-
-試験サーバーは両台とも停止し、メモリは回復しました。rank 0は終了コード0、rank 1はcontrollerのDocker stop猶予後に137で終了し、`OOMKilled=false`でした。分散構成の正常停止・復旧は未検収です。通常ランチャーへの昇格や、その検収証跡の発行は行っていません。
+decodeは`1000 / mean_tpot_ms`で、受理率は前述のcase単位counter区間（warmupを含む）から求めました。21要求すべてが64 tokenを出力し、bonus込み平均受理長は1.70〜1.92、model memoryは各rank 95.17 GiB（MTPなしより約6.97 GiB増）、基礎APIの11項目はすべて合格しました。短い入力のdecodeは約1.69倍になった一方、8,192 tokenの入力では全体throughputが約1.3%下がり、TTFTは24.387→26.257秒へ増えました。
 
 ## k=3の比較結果
 
-2026-09-12（Asia/Tokyo）の別実行で、先読み数だけを1→3へ変更しました。同じイメージ・checkpoint view・負荷条件・context/KV/chunk指定を維持しています。runtimeがattention blockを4,352→4,608 tokenへ自動調整しましたが、これはk=3の結果でありKV予算の手動調整ではありません。ロードと初期化を含むAPI準備時間は約924秒でした。
+同じ日の別実行で、深さだけを1→3へ変更しました。k=3の結果として、runtimeが整列したattention blockを4,352→4,608 tokenへ広げました。
 
 | 入力token | client同時数 | k=3のTTFT中央値（秒） | decode k=1 → k=3（token/s） | 全体出力 k=1 → k=3（token/s） |
 |---:|---:|---:|---:|---:|
@@ -82,7 +66,7 @@ k=1の短い入力のdecodeはMTPなしの約1.69倍ですが、8,192入力・64
 | 32 | 2 | 2.602 | 23.54 → 25.41 | 21.38 → 22.61 |
 | 2,048 | 2 | 15.305 | 21.49 → 27.04 | 6.80 → 7.19 |
 
-位置別採択率の分母は全draft step数であり、直前の位置が採択された場合だけの条件付き確率ではありません。前述と同じくwarmupを含むcounter区間です。
+位置別採択率の分母は全draft step数であり、直前の位置が採択された場合だけの条件付き確率ではありません。
 
 | case | 1個目 | 2個目 | 3個目 | 平均採択長 |
 |---|---:|---:|---:|---:|
@@ -92,9 +76,7 @@ k=1の短い入力のdecodeはMTPなしの約1.69倍ですが、8,192入力・64
 | short-c2 | 70.3% | 64.6% | 52.5% | 2.87 |
 | medium-c2 | 73.1% | 62.8% | 54.5% | 2.90 |
 
-21測定要求すべてが64 tokenを出力し、エラーなし、基礎APIの11項目もすべて合格しました。推論文の逐語一致は再びfalseで、広範な出力同等性やハーネス本体の検収とは区別します。model memoryは95.17 GiB/rankを維持。host空き最小は7.33/10.12 GiBで、余裕不足による監視停止・OOM killはありません。試験後は両台とも停止し、rank 1は今回もDocker stop猶予後に137で終了したため、復旧の検収は残ります。
-
-**判断:** 次の実験的なテキスト・ツール・ハーネス評価にはk=3を優先し、k=1とMTPなしの比較基準も保持します。今回のk=1比では短文decodeが25.5%、中程度の入力が34.7%改善しました。長文の全体throughput差は0.45%に留まり、再現性のある改善とは断定せず、TTFTも微増しています。少数要求・別実行の比較であり、最適値を統計的に探した試験ではありません。この測定ではk=2とk≥4は試していません。後日測りました（[深さ1〜5](#深さ152026-09-1920)）。実際の同時実行2、graphs、APC、画像、両ハーネス、常用デプロイは未検収です。
+21要求すべてが完了し、基礎APIの11項目も合格、model memoryは各rank 95.17 GiBのままでした。k=1比でk=3は短い入力のdecodeを25.5%、中程度の入力を34.7%改善し、長い入力の全体throughputの差（0.45%）は判断できない小ささでした。このため、以後の評価ではk=3を優先しました。
 
 ## 深さ1〜5（2026-09-19・20）
 
@@ -113,11 +95,9 @@ attention projectionを再量子化した場合（`runtime.derived_checkpoint`�
 
 固定したcheckpointのままの場合の比較です（どちらの深さも同点を決定的にした状態）。数え上げはk=4が33.08、k=3が32.50。散文は19.60対21.00、コードは28.37対28.30、短いpromptは28.10対27.17。再量子化したprojectionはすべてのstepを軽くするので、深いdraftの長い検証stepの費用は、その上では相対的に小さくなります。再量子化が無いと、深さ4は文が予測しやすい所で0〜3%得をし、散文では7%損をします。
 
-**判断（2026-09-20。翌日に置き換え）：** テンプレートはk=3のままにします。三つのpromptのどれでも最下位にならない深さです。k=4は `runtime.derived_checkpoint` と組にする設定として、基準の2台が2日間配信しました。散文だけならk=1が最速です。下の10入力の掃引で、再量子化した側もk=3に揃えました。
-
 ## 両方のcheckpointで深さ3（2026-09-21）
 
-掃引を10入力・各3回で取り直しました。基準の2台、attention projectionを再量子化した複製（route g）、prefillはFA2、1系列、要求あたり512 token。回帰用の4入力（上の三つのdecode promptと短い数え上げ）と、文書ごとに調整用・評価用に分けた日本語散文・コード・tool往復です。中央値のtok/s、括弧内は平均の採択長。各armは自分のcompletionを反復しましたが、**ほとんどの入力でcompletionは深さによって変わります**（draftの候補が検証のbatchに入り、targetのBF16 logitsの同点が別の側に倒れる）。列の差は速さの差だけでなく文章の差を含みます。
+上の掃引の後、テンプレートはk=3のままで、基準の2台は `runtime.derived_checkpoint` とk=4の組で2日間配信しました。その後、掃引を10入力・各3回で取り直しました。基準の2台、attention projectionを再量子化した複製（route g）、prefillはFA2、1系列、要求あたり512 token。回帰用の4入力（上の三つのdecode promptと短い数え上げ）と、文書ごとに調整用・評価用に分けた日本語散文・コード・tool往復です。中央値のtok/s、括弧内は平均の採択長。各armは自分のcompletionを反復しましたが、**ほとんどの入力でcompletionは深さによって変わります**（draftの候補が検証のbatchに入り、targetのBF16 logitsの同点が別の側に倒れる）。列の差は速さの差だけでなく文章の差を含みます。
 
 | 入力 | k=2 | k=3 | k=4 | k=5 |
 |---|---|---|---|---|
@@ -142,6 +122,6 @@ step時間は深さに対して直線です（この2台では1段あたり約13
 - **draftの確信度の関門**（1位の確率がしきい値以下になった段でdraftをやめる。draftの確率はどの深さでもAUC 0.89で採択を当てる）：仕組みは設計どおり動くが、止めるたびにhostの同期が入り、2台のTP=2ではそのたびに約1.3 msが次のcollectiveで待ちになる（rankの足並みが戻るまで）。step全体で約5 ms、射影した得がちょうど消える。vLLMの同じ規則の提案（[#36657](https://github.com/vllm-project/vllm/issues/36657)、[#48202](https://github.com/vllm-project/vllm/issues/48202)）も壁時計の得なしで閉じている。
 - **1段目のsparse top-kをdraftの段で使い回さない**（`index_share_for_mtp_iteration = false`）：採択は全入力で同じか低下、stepは2〜3 ms遅い。checkpointの設定が正しい。
 - **draftのlogitsをall-gatherせず各rankで縮約する**（`use_local_argmax_reduction`）：completion・採択・step時間とも同じ。all-gatherは1段0.2 ms。
-- **decodeのCUDA Graphs**を全モデルで：全入力でeagerより1 stepあたり7〜9 ms遅く、completionは同一（[概要](optimization-overview.ja.md#decode)）。
+- **decodeのCUDA Graphs**を全モデルで：全入力でeagerより遅く、completionは同一（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。
 
 この作業から後のdraft側の変更にも効く事実が二つ。draftする候補を変える変更は**completionを変える**ので、同じ文章かどうかではなく採択と教師強制NLLで判定すること。深さの費用は検証の行ごと・draftのforwardごとに掛かるので、draftする行を減らす案は検証する行も減らさなければ払わないこと。

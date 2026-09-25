@@ -55,9 +55,7 @@ Docker引数の`NCCL_IB_HCA==...`と`NCCL_SOCKET_IFNAME==...`は誤記ではあ�
 
 NVIDIAの[Spark移植ガイド](https://docs.nvidia.com/dgx/dgx-spark-porting-guide/porting/cuda.html)では、統合メモリの制約から従来のGPUDirect RDMAとnvidia-peermem／DMA-BUF／GDRCopyは非対応とされています。`NET/IB`と`GDR 0`が併記されても、それだけでRoCE失敗とは判断しません。表示を変えるためだけにkernel moduleをロードしたり、GDRを強制したりしません。
 
-初回のGB10 2台・MTU 1500では、NCCL実ランタイム2.30.7で全項目が合格しました。大きなAllReduceは約1.2 GB/sでしたが、別の転送が資源を共有していた可能性があります。`NCCL_NET_GDR_LEVEL=SYS`だけを追加した比較も合格したもののGDR有効化・帯域改善はなく、標準の実行例には採用していません。現在の適用範囲は[検証文書](validation.ja.md)を参照してください。
-
-最終試験はQSFP転送の終了後に同梱probeで再実施し、両rankとも11項目合格、256 MiB AllReduceは1.18〜1.21 GB/sでした。別モデルのディスクchecksumは稼働中だったため、ホスト全体が完全無負荷の測定とは呼びません。全試験コンテナは終了コード0・OOMなし。フルモデルTP=2は引き続き未検証です。
+参照の結果（GB10 2台、MTU 1500、NCCL実ランタイム2.30.7、fabricの転送終了後）：両rankとも11項目合格、全コンテナが終了コード0・OOMなし。256 MiB AllReduceは1.18〜1.21 GB/sで、別モデルのディスクchecksumが稼働中だったため無負荷ホストの測定ではありません。`NCCL_NET_GDR_LEVEL=SYS`を加えた比較も合格しましたが、GDRは有効にならず帯域も増えず、上の実行例には含めていません。
 
 ## チャネル数
 

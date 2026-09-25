@@ -8,32 +8,13 @@ The observed top-k kernels can return the same selected set in different orders 
 
 ## Installation and upgrades
 
-The fix is installed automatically by the existing reference-image build:
-
-```sh
-python -m glm53_setup build-reference
-```
-
-The official base image alone does not contain this repository's patches. The Docker build checks the pinned vLLM source hashes before applying them and refuses a different source. Do not manually edit an installed vLLM or bypass a failed hash check. Follow [setup step 4](../SETUP.md#4-prepare-images-and-test-the-reference-implementation).
-
-Updating the checkout does not update an existing image or running container. Rebuild from the reviewed checkout, record the resulting image ID, transfer the built image when appropriate, and verify the ID on every deployment host. Use the normal controlled replacement procedure; do not patch a running container.
-
-The new reference image sets `GLM53_CANONICAL_CANDIDATES=1`. Inspect the actual image before using it:
-
-```sh
-docker image inspect "$IMAGE" --format '{{.Id}}'
-docker image inspect "$IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}'
-```
-
-`IMAGE` is the reference image selected for the deployment. Confirm its build log completed the source-patch checks and its environment contains `GLM53_CANONICAL_CANDIDATES=1`. A tag name or an environment variable alone is not a replacement for the recorded build/image identity.
-
-For a controlled comparison or rollback, an explicit container environment override `GLM53_CANONICAL_CANDIDATES=0` disables this normalization. Other values are rejected for the GLM backend. Keep the override in the run record; it is not a performance recommendation.
+Every reference image carries the patch and sets `GLM53_CANONICAL_CANDIDATES=1`; build, verify and inspect images as the [current image contract](server-configuration.md#current-image-contract) describes. For a controlled comparison or rollback, a container environment override `GLM53_CANONICAL_CANDIDATES=0` disables the normalization; the GLM backend rejects other values. Keep the override in the run record; it is not a performance recommendation.
 
 ## Scope and validation
 
 The implementation is in `glm53_setup.runtime.candidate_order`, wired by the source-pinned reference patch into the GLM path of `FLASHINFER_MLA_SPARSE_SM120`. It is not a global change to all vLLM top-k operators or all model backends. No Euryale package is required by this runtime code.
 
-CPU contracts cover all permutations, duplicate IDs, padding, empty rows, noncontiguous tensors, integer limits, immutability and logical-before-physical mapping. GPU component checks and fixture evidence remain separate from full-model/TP=2 qualification. This change does not guarantee complete numerical reproducibility of other layers or deterministic selection membership when scores tie at the selection boundary. See [validation](validation.md) for the current qualification limits.
+CPU contracts cover all permutations, duplicate IDs, padding, empty rows, noncontiguous tensors, integer limits, immutability and logical-before-physical mapping. GPU component checks and fixture evidence remain separate from full-model/TP=2 qualification. This change does not guarantee complete numerical reproducibility of other layers. Tied *membership* at the 512th pool is settled separately by [`runtime.stable_indexer_topk`](server-configuration.md#repeatability-switches). See [validation](validation.md) for the current qualification limits.
 
 ### GB10 regression and cost measurements
 
@@ -66,6 +47,6 @@ On 2026-09-14 (Asia/Tokyo), both ranks used rebuilt image `sha256:f6fc154c5b5397
 
 Ordinary / LPA / restored task scores were 22 / 24 / 21 out of 24, with no LPA-only regression. All three tool round trips, cancellation followed by another request, and 32,704 input + 64 output capacity cases passed; capacity preemption deltas were zero. History passed independent rescoring of 61 answers, nine boundaries and eviction. A separate 30,100-token midpoint edit restored H=9,216 and answered correctly in all three arms.
 
-A same-request replay of eight existing heldout cases scored 8/8 in each arm. An overlapping external client request invalidated part of the original run; that evidence was retained. Aggregation uses request-ID-audited earlier cases and rerun later cases. This is not a fresh unused test set. Private evidence: `records/20260913-mia-updates/canonical-v78-assessment.json`.
+A same-request replay of eight existing heldout cases scored 8/8 in each arm, aggregated from request-ID-audited cases, part of them rerun; this is not a fresh unused test set. Private evidence: `records/20260913-mia-updates/canonical-v78-assessment.json`.
 
-For 128 output tokens, three measured requests after one warmup had median total seconds of 12.215 / 10.366 / 10.969 at 2,048 input; 28.205 / 24.529 / 28.790 at 8,192; and 39.976 / 34.547 / 40.099 at 16,320 with H=4,608. Generated token sequences differ in 34 of 36 paired measurements against the older image, so elapsed differences do not isolate sorting-kernel cost or establish a speed gain. Batching, sustained load, a trained Euryale proposer and numerical identity across all configurations remain unqualified.
+For 128 output tokens, three measured requests after one warmup had median total seconds of 12.215 / 10.366 / 10.969 at 2,048 input; 28.205 / 24.529 / 28.790 at 8,192; and 39.976 / 34.547 / 40.099 at 16,320 with H=4,608. Generated token sequences differ in 34 of 36 paired measurements against the older image, so elapsed differences do not isolate sorting-kernel cost or establish a speed gain. Sustained load, a trained Euryale proposer and numerical identity across all configurations remain unqualified.
