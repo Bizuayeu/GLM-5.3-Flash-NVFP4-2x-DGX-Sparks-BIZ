@@ -6,8 +6,13 @@
 
 ## Unreleased
 
+### Removed
+
+- `runtime.mla_decode_cpb` を退役した。servingでは一度も実行されていなかった：imageは `GLM53_REFERENCE_ATTENTION=1` を設定し、sparse MLAのforwardは、DSAの11層でもMTPのdraft層でも、keyのpatchが変えるFlashInferのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnする。1.14.0のkernelの根拠は、このflagを切った単体の結果だった。2026-09-26の到達性の調査では、配信中の対のtraceがsparse MLAの呼び出しを単独の要求で434、2本の組で448数え、すべて参照attentionを通っていた。keyが2系列のdecodeの分け方を固定する、要求のattentionがstepを共有する他の要求に依らなくなる、という1.14.0の記述は撤回する。1.14.0の測定（単独のcompletion・decodeの速度・NLLが不変、2系列のcompletionが1.13.0とbyte一致）は、効果が無かったことと整合する。両方のexampleからkeyを外した。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも変わらずに起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、decode Graphとは排他）、`server preflight` はkeyを外してよいという一行を `warnings` に足す。patch・helper・imageのmarker・keyの受理は、次のimageのbuildで外す（[起動設定](docs/server-configuration.ja.md#再現性のスイッチ)）。
+
 ### ドキュメント
 
+- attentionの経路の記述を正した。文書はdecodeが参照経路のままだと書いていたが、参照attentionはquery行が6を超える呼び出しをFA2へ送る。1系列のdecodeのstepは参照経路のままだが、MTPの深さ3では相方がいると検証stepが8行になってFA2を通り、ある行の結果が相方の行数と長さで1 BF16 ulp動く。これは2系列の差の主因ではない：同じ調査で配信中の対のattentionの呼び出しを全部eagerにしても、2系列のcompletion 8本のうち7本が単独のものと違ったままで、容疑者の先頭はMoE。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でもcompletionは反復し、2系列では反復しない（[測定](docs/benchmarks.ja.md#servingでの到達性2026-09-26)）。起動設定・検証・README・施策台帳（P26は退役、P05）・最適化の概観・運用・構成、両方のexampleと `glm53_setup/runtime/fa2_attention.py` の `fa2_attention` のコメント（コメントだけ。このファイルはimageの上にmountする）をそのように直した。
 - benchmarksの1.15.0：参照対でのCPU配置（2026-09-26）。公開しているdecodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちる。`nodes[].cpuset_cpus` で防げる。READMEの見出し表と起動設定からそこを指す。
 - 文書を1.15.0に合わせて更新し、短くし、事実ごとに正典を一つにした。後の版が追い越していた記述を現状に直した：同時2系列profileの受け入れ（2026-09-23）、「検証中」ではなく1.12.0と1.14.0の再現性のスイッチ、任意の実験ではなくテンプレートのMTP k=3、decode GraphsとExpert Parallelは測定して不採用、FreedomBenchは閉じた、ハーネスの経路は決定済み、「この版から作ったimage」はすべて版番号に置き換えた。
 - 起動設定を組み直した：配布既定と公開オプションを先に置き、続いてキーの解説（再現性のスイッチ、attention・cache・checkpoint、並列化、画像入力、APIと診断〔memory probeのmethodは表〕、prefix cacheと併用するLPA）、最後にコマンド。image契約は、すべてのcapability markerについて、preflightがそれを要求する設定と、imageがそれを持つ版を表にし、文書一覧の正典表にも載せた。訂正が二つ：MTPの深さ1〜5を測ったのは再量子化したcheckpointで、固定checkpointは1・3・4（両方で5つすべてではない）。LPAは `runtime.fa2_attention` と両立せず、MTPとは深さ1か3でだけ組める。
