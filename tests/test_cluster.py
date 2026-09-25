@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from glm53_setup import cluster, server, server_config
+from glm53_setup import cluster, server, server_config, switch
 
 
 class ClusterOwnershipTests(unittest.TestCase):
@@ -505,3 +505,99 @@ class ReadinessPollTests(unittest.TestCase):
     def test_a_head_that_never_logged_startup_is_not_ready(self):
         result, _ = self.poll(b"loading\n", b"loading\n")
         self.assertEqual(result, {"ready": False})
+
+
+class LostPair:
+    """Two ranks whose first readiness observation fails with `lost`."""
+
+    def __init__(self, lost, new_start_fails=False):
+        self.lost = lost
+        self.new_start_fails = new_start_fails
+        self.running = {
+            rank: {"name": f"old-{rank}", "fingerprint": "old", "launch": "old"}
+            for rank in (0, 1)
+        }
+
+    def current(self, rank):
+        return self.running.get(rank)
+
+    def prepare(self, rank, launch, *, recovery=False):
+        return {"common": launch}
+
+    def reserve(self, rank, launch, *, recovery=False):
+        return {"name": f"{launch}-{rank}", "fingerprint": launch, "launch": launch}
+
+    def stop(self, rank, identity):
+        self.running.pop(rank, None)
+
+    def start(self, rank, identity):
+        if self.new_start_fails and identity["launch"] == "new":
+            raise RuntimeError("launch failed")
+        self.running[rank] = identity
+
+    def ready(self, rows):
+        lost, self.lost = self.lost, None
+        if lost:
+            raise lost
+
+    def warmup(self, rows):
+        return {"passed": True}
+
+
+class SwitchVocabularyTests(unittest.TestCase):
+    """What the transport raises the switch recognises; what it writes resume reads."""
+
+    def test_the_words_are_the_ones_journals_and_docs_name(self):
+        self.assertEqual(
+            (
+                switch.TRANSPORT_TIMEOUT,
+                switch.SSH_UNAVAILABLE,
+                switch.READINESS_UNCONFIRMED,
+                switch.RECOVERY_READINESS_UNCONFIRMED,
+            ),
+            (
+                "transport-timeout",
+                "ssh-unavailable",
+                "readiness-unconfirmed",
+                "recovery-readiness-unconfirmed",
+            ),
+        )
+
+    def lost(self, **run):
+        backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
+        with (
+            patch.object(cluster.subprocess, "run", **run),
+            patch.object(cluster.time, "sleep"),
+            self.assertRaises(switch.OperationFailure) as caught,
+        ):
+            backend.call("poll", 1, {})
+        return caught.exception
+
+    def test_a_lost_observation_round_trips_from_the_transport_to_resume(self):
+        losses = {
+            switch.TRANSPORT_TIMEOUT: self.lost(
+                side_effect=subprocess.TimeoutExpired([], 120)
+            ),
+            switch.SSH_UNAVAILABLE: self.lost(
+                return_value=subprocess.CompletedProcess([], 255, "", "")
+            ),
+        }
+        for reason, error in losses.items():
+            self.assertEqual(error.evidence["reason"], reason)
+            self.assertTrue(switch.observation_lost(error))
+            for new_start_fails, status, resumed in (
+                (False, switch.READINESS_UNCONFIRMED, "complete"),
+                (True, switch.RECOVERY_READINESS_UNCONFIRMED, "failed"),
+            ):
+                with self.subTest(reason=reason, status=status):
+                    pair = LostPair(error, new_start_fails)
+                    reports = []
+                    with self.assertRaises(RuntimeError):
+                        switch.switch(
+                            pair,
+                            "new",
+                            save=lambda r: reports.append(copy.deepcopy(r)),
+                        )
+                    self.assertEqual(reports[-1]["status"], status)
+                    result = cluster.resume(pair, reports[-1])
+                    self.assertEqual(result["status"], resumed)

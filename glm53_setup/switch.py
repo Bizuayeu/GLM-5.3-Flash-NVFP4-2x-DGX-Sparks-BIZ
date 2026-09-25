@@ -1,5 +1,12 @@
 """Two-rank stop/start transaction, independent of its process transport."""
 
+# A transport raises these reasons when it loses a rank's reply; the switch
+# then journals one of the two statuses, which only resume carries forward.
+TRANSPORT_TIMEOUT = "transport-timeout"
+SSH_UNAVAILABLE = "ssh-unavailable"
+READINESS_UNCONFIRMED = "readiness-unconfirmed"
+RECOVERY_READINESS_UNCONFIRMED = "recovery-readiness-unconfirmed"
+
 
 class OperationFailure(RuntimeError):
     """Structured operational evidence without commands, credentials or payloads."""
@@ -21,7 +28,7 @@ def observation_lost(error):
     return (
         isinstance(error, OperationFailure)
         and error.evidence["action"] == "poll"
-        and error.evidence["reason"] in ("transport-timeout", "ssh-unavailable")
+        and error.evidence["reason"] in (TRANSPORT_TIMEOUT, SSH_UNAVAILABLE)
     )
 
 
@@ -131,7 +138,7 @@ def switch(backend, launch, *, save, config=None):
                 # A lost observation is not a failed model. Keep the already
                 # owned, supervised attempts under their memory/deadline guards
                 # and require identity-checked readiness resumption.
-                report["status"] = "readiness-unconfirmed"
+                report["status"] = READINESS_UNCONFIRMED
                 save(report)
                 raise RuntimeError(
                     "Readiness observation lost; resume this recorded attempt without replaying start"
@@ -167,7 +174,7 @@ def switch(backend, launch, *, save, config=None):
                     report["recovered"] = True
                 except Exception as recovery_error:  # noqa: BLE001 - preserve failed recovery
                     if observation_lost(recovery_error):
-                        report["status"] = "recovery-readiness-unconfirmed"
+                        report["status"] = RECOVERY_READINESS_UNCONFIRMED
                         report["recovery_observation_failure"] = recovery_error.evidence
                         save(report)
                         raise RuntimeError(

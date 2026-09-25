@@ -15,7 +15,15 @@ from pathlib import Path
 from . import host, launch_assets, model_http, server, server_config
 from .config import ROOT
 from .io import write_json
-from .switch import OperationFailure, finish, switch
+from .switch import (
+    READINESS_UNCONFIRMED,
+    RECOVERY_READINESS_UNCONFIRMED,
+    SSH_UNAVAILABLE,
+    TRANSPORT_TIMEOUT,
+    OperationFailure,
+    finish,
+    switch,
+)
 
 
 def current(rank):
@@ -293,7 +301,7 @@ class SSHBackend:
                 )
             except subprocess.TimeoutExpired:
                 if attempt + 1 == attempts:
-                    raise OperationFailure(action, rank, "transport-timeout") from None
+                    raise OperationFailure(action, rank, TRANSPORT_TIMEOUT) from None
             else:
                 if response.returncode == 0:
                     return json.loads(response.stdout)
@@ -301,7 +309,7 @@ class SSHBackend:
                     raise OperationFailure(
                         action,
                         rank,
-                        "ssh-unavailable"
+                        SSH_UNAVAILABLE
                         if response.returncode == 255
                         else "remote-operation-failed",
                         response.returncode,
@@ -348,11 +356,11 @@ class SSHBackend:
 
 
 def resume(backend, report, *, config=None, save=lambda report: None):
-    recovering = report["status"] == "recovery-readiness-unconfirmed"
+    recovering = report["status"] == RECOVERY_READINESS_UNCONFIRMED
     rows = report["recovery"] if recovering else report["new"]
     if report["status"] not in (
-        "readiness-unconfirmed",
-        "recovery-readiness-unconfirmed",
+        READINESS_UNCONFIRMED,
+        RECOVERY_READINESS_UNCONFIRMED,
     ) or {r["rank"] for r in rows} != {0, 1}:
         raise ValueError(
             "Only a recorded, unconfirmed two-rank readiness observation can resume"
