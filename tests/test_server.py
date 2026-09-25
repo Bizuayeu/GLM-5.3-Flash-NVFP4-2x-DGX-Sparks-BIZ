@@ -1477,6 +1477,8 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             canonical_moe_order=True,
             stable_indexer_topk=True,
             prefix_page_dedup=True,
+            # Retired and gone from the examples; a profile that carries it is
+            # still checked for the image marker until the next image build.
             mla_decode_cpb=True,
         )
         profile["validation"]["component_worker"] = True

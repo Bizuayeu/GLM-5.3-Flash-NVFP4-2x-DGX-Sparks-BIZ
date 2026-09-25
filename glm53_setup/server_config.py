@@ -374,7 +374,6 @@ def check_graph_scope(profile):
         # cc-defer: one sequence only (MTP k=3 and prefix caching were qualified on
         # the MTP fixture, records/20260918-stage1-graph); extend to batching after
         # a fixture with max_num_seqs > 1 shows the same eager/graph identity.
-        # runtime.mla_decode_cpb also refuses decode Graphs (check_optional_shapes).
         raise ValueError("Graph experiments require one sequence")
 
 
