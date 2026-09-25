@@ -111,7 +111,9 @@ class ServerConfigTests(unittest.TestCase):
             patch.object(server.host, "fabric_checks", return_value={}),
             patch.object(server.host, "run", side_effect=run),
             patch.object(server.host, "running_containers", return_value=[]),
-            patch.object(server.os, "sched_getaffinity", return_value={5, 6}),
+            patch.object(
+                server.os, "sched_getaffinity", return_value={5, 6}, create=True
+            ),
         ):
             read_json.return_value = {
                 "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
@@ -120,18 +122,25 @@ class ServerConfigTests(unittest.TestCase):
                 self.profile, ROOT / "state/server.toml", 0, check_memory=False
             )
             self.assertIs(result["checks"]["cpu_set_available"], True)
-            with patch.object(server.os, "sched_getaffinity", return_value={5}):
+            with patch.object(
+                server.os, "sched_getaffinity", return_value={5}, create=True
+            ):
                 denied = server.preflight(
                     self.profile, ROOT / "state/server.toml", 0, check_memory=False
                 )
             self.assertIs(denied["checks"]["cpu_set_available"], False)
             self.assertIs(denied["passed"], False)
         with patch.object(server, "inspect_owned") as inspect:
-            inspect.return_value = {"HostConfig": {"CpusetCpus": "5-6"}}
-            server.verify_cpu_set(self.profile, 0, "test")
-            inspect.return_value = {"HostConfig": {"CpusetCpus": "0-19"}}
-            with self.assertRaisesRegex(ValueError, "CPU set"):
+            for actual in ("5-6", "5,6"):
+                inspect.return_value = {"HostConfig": {"CpusetCpus": actual}}
                 server.verify_cpu_set(self.profile, 0, "test")
+            for actual in ("0-19", "", None):
+                inspect.return_value = {"HostConfig": {"CpusetCpus": actual}}
+                with (
+                    self.subTest(actual=actual),
+                    self.assertRaisesRegex(ValueError, "CPU set"),
+                ):
+                    server.verify_cpu_set(self.profile, 0, "test")
 
     def test_failed_cpu_set_readback_stops_the_new_container(self):
         self.profile["nodes"][0]["cpuset_cpus"] = "5-6"

@@ -149,12 +149,13 @@ def inspect_owned(name, fingerprint=None):
 
 def verify_cpu_set(profile, rank, name):
     """Read back an explicitly requested Docker placement before recording a start."""
-    requested = profile["nodes"][rank].get("cpuset_cpus")
+    requested = settings.cpuset_cpus(profile, rank)
     if requested is None:
         return
     info = inspect_owned(name, settings.fingerprint(profile))
     actual = info["HostConfig"].get("CpusetCpus") or ""
-    if actual != requested:
+    # Docker may write the list in its own form; compare the CPUs, not the text.
+    if not actual or settings.cpu_list(actual, "Docker CPU set") != requested:
         raise ValueError("Docker CPU set does not match the configured node")
 
 
