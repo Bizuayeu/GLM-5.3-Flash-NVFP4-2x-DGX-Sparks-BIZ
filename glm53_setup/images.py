@@ -29,6 +29,15 @@ print(json.dumps(result))
 """
 
 
+def probe_verdict(payload):
+    """A GB10 (SM 12.1), exact integer results, and the GLM model registered."""
+    return (
+        payload["capability"] == [12, 1]
+        and not payload["gpu_mismatches"]
+        and bool(payload["glm_architectures"])
+    )
+
+
 def run(record: Path):
     lock = load_lock()
     image = lock["image"]
@@ -87,11 +96,7 @@ def run(record: Path):
         result.check_returncode()
         payload = json.loads(result.stdout.strip().splitlines()[-1])
         write_json(record / "runtime-probe.json", payload)
-        if (
-            payload["capability"] != [12, 1]
-            or payload["gpu_mismatches"]
-            or not payload["glm_architectures"]
-        ):
+        if not probe_verdict(payload):
             raise RuntimeError("GPU or model registration validation failed")
         status["status"] = "prepared_not_inference_validated"
     except Exception as error:
