@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from ..config import MODEL, REVISION
+from ..io import write_json
 
 
 def keep_tensor(name, layers=4):
@@ -187,18 +188,17 @@ def main(argv=None):
             indent=2,
         )
     )
-    (args.output / "fixture-status.json").write_text(
-        json.dumps(
-            {
-                "status": "complete",
-                "layers": args.layers,
-                "mtp_layer": args.with_mtp,
-                "tensor_count": len(manifest),
-                "total_bytes": total_bytes,
-                "all_tensor_bytes_verified": True,
-            },
-            indent=2,
-        )
+    # Written last and atomically: the runners admit a fixture only on this file.
+    write_json(
+        args.output / "fixture-status.json",
+        {
+            "status": "complete",
+            "layers": args.layers,
+            "mtp_layer": args.with_mtp,
+            "tensor_count": len(manifest),
+            "total_bytes": total_bytes,
+            "all_tensor_bytes_verified": True,
+        },
     )
     print(
         json.dumps(

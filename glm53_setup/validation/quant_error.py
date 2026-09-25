@@ -3,8 +3,9 @@
 import argparse
 import json
 import math
-import os
 from pathlib import Path
+
+from ..io import write_json
 
 E2M1 = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
 GROUP = 16
@@ -179,10 +180,8 @@ def main(argv=None):
             requantized_tensors=len(rows),
             byte_identical_tensors=copied,
         )
-        # requant.py hard-links small files, so write beside and replace the link.
-        temporary = args.quantized / "fixture-status.json.tmp"
-        temporary.write_text(json.dumps(inherited, indent=2), encoding="utf-8")
-        os.replace(temporary, args.quantized / "fixture-status.json")
+        # requant.py hard-links small files; write_json replaces the link, not the source.
+        write_json(args.quantized / "fixture-status.json", inherited)
     print(json.dumps({k: report[k] for k in report if k != "tensors"}, indent=2))
     if not report["passed"]:
         raise SystemExit(2)
