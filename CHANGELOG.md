@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.15.0 — 2026-09-26
+
+### Added
+
+- `nodes[].cpuset_cpus` (optional, per rank; contributed by circlemouth in #2): a Docker CPU list passed to `--cpuset-cpus` when the rank's container is created. On a BIZ 1.11.2 pair, #1 measured short-input decode at 36.13 tokens/s with rank 0 on performance cores and 17.01 on efficiency cores, at the same 2.4 GHz cap and with matching output hashes and MTP acceptance. The launcher rejects malformed, reversed or repeated ranges; `server preflight` checks that the CPUs are in the launcher's affinity mask; after `docker run` a rank is recorded only when `HostConfig.CpusetCpus` names the same CPUs, and the new container is stopped otherwise. Unset, the Docker command is unchanged, and both examples leave the key commented out because core IDs are host-specific ([server configuration](docs/server-configuration.md#optional-cpu-placement)). On the reference pair, rank 0's host has ten 2.8 GHz cores (0–4, 10–14) and ten 3.9 GHz cores (5–9, 15–19), and without a CPU set its worker was on a 3.9 GHz core when checked on 2026-09-26; pinned against unpinned placement has not been measured here.
+
 ## 1.14.0 — 2026-09-26
 
 ### Added

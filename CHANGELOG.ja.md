@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.15.0 — 2026-09-26
+
+### Added
+
+- `nodes[].cpuset_cpus`（任意、rankごと。circlemouthさんの#2による）：rankのコンテナ作成時に `--cpuset-cpus` へ渡すDockerのCPUリスト。#1はBIZ 1.11.2の対で、同じ2.4 GHz上限・出力hashとMTP一致率が一致した条件のまま、rank 0を高性能コアに置くと短い入力のdecodeが36.13 tokens/s、高効率コアでは17.01と測った。launcherは形式の不正な指定と逆順・重複した範囲を拒み、`server preflight` は指定CPUがlauncherのaffinityの範囲にあるかを確かめ、`docker run` の後は `HostConfig.CpusetCpus` が同じCPUを指すときだけrankを起動済みとして記録し、違えば新しいコンテナを止める。未指定ならDockerのコマンドは従来どおりで、コア番号はホストごとに違うため両exampleともkeyはコメントのまま（[サーバー設定](docs/server-configuration.ja.md#cpu配置の任意指定)）。参照対のrank 0のホストは2.8 GHzのコア10個（0〜4、10〜14）と3.9 GHzのコア10個（5〜9、15〜19）を持ち、2026-09-26に見たときはCPU setなしでworkerが3.9 GHzのコアにいた。固定あり／なしの比較はここでは測っていない。
+
 ## 1.14.0 — 2026-09-26
 
 ### Added
