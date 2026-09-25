@@ -889,3 +889,42 @@ On one GB10, the same four rows (one decode step at depth 3) computed alone and 
 | NVFP4 fused Marlin MoE (32 experts, top 4, routing fixed per row) | different | different |
 
 The MoE is the one tested kernel whose rows change when another request's decode rows share the call. Attention and KDA were not tested.
+
+## Measurements on 1.14.0
+
+### What makes a request depend on another in the same step (2026-09-25)
+
+Kernel runs on one GB10 (the serving image, no restart; `records/20260925-moe-batch/`) named two mechanisms, both of which choose how to split a sum from the size of the whole call:
+
+- **The NVFP4 Marlin MoE** lays its (expert block, output tile) tiles out in block order and cuts the last ones along K, summing the pieces in fp32; where it cuts follows the number of expert blocks in the call. At decode sizes the kernel, its thread configuration and its grid stay the same (four and eight rows alike); only the block count moves. With a second request's four rows next to a request's four, 29 of 40 random routings and inputs changed at least one row. Pinning the launch and padding the blocks until no tile is cut made it 0 of 40, at 3 to 13% on the MoE call; the release does not adopt that (below).
+- **The sparse-MLA decode** (FlashInfer 0.6.18, the 11 DSA layers and the MTP draft layer) lets each CTA take `chunks_per_block` of the 32 candidate chunks and picks the value from the call's token count: on 48 SMs 2 for one draft token and 3 for two, 6 for one verification step of four tokens and 15 for two. A second sequence therefore changed every row of a request's attention (all 128 rows of four tokens × 32 heads); with the value pinned, none.
+- The KDA recurrent decode and the draft layer's BF16 Triton MoE gave the same rows with and without a partner.
+
+`runtime.mla_decode_cpb` pins the second: the value comes from the tokens of one sequence (2 for a draft step, 6 for a verification step), the heuristic's own at one sequence. Through the patched backend on one GB10 a request alone computed bit for bit as before, and a call took 151 to 502 µs against 226 to 798 without the FlashInfer wrapper around it (synchronous timing).
+
+### On the reference pair (2026-09-25 and 26)
+
+Image `8444078038c0…` (source `b7cd765`), every switch complete without recovery.
+
+| Profile | Decode check, counting / prose / code | Other checks |
+|---|---|---|
+| Published option, two sequences (the served profile) | the 1.13 completions, 46.16 / 28.38 / 38.66 tok/s; acceptance length 3.70 / 2.15 / 3.10 | mojibake passed; the same completions again after three more switches |
+| Published option, `max_num_seqs = 1` | the 1.13 completions, 46.17 / 28.12 / 38.33 tok/s | — |
+| Distributed defaults | the 1.13 completions, 32.75 / 20.75 / 27.51 tok/s | NLL 1.5963 / 2.0241 / 0.9479 / 0.5931, identical to 1.13.0 in every digit; 199,652-token passphrase correct in 166.7 s; prefill 38,962 tokens 1,294.8 tok/s, decode after a short prompt 27.38; mojibake passed |
+| Distributed defaults, `max_num_seqs = 2` | the 1.13 completions, 32.59 / 20.72 / 27.55 tok/s | — |
+
+Decode speed did not move: the wrapper time the key removes did not show in tokens per second on the pair.
+
+The decode check's prompts were then sent in pairs (at once, and the second after the first's first token, each three times; 2,048- and 1,024-token prompts) against each profile's lone completions:
+
+| Profile | Requests whose completion equals their lone one | Two 512-token completions together |
+|---|---|---|
+| Published option, two sequences | 0 of 18 at 2,048 tokens and 0 of 18 at 1,024; the pairs sent one after the other first differ at the same token as on 1.13.0 | 26.2 to 27.7 s, 37.0 to 39.1 tok/s together |
+| Published option, `max_num_seqs = 1` | 18 of 18 (the second request queues: 13 to 22 s to its first token) | 33.2 to 34.1 s, 30.0 to 30.9 tok/s together |
+| Distributed defaults, `max_num_seqs = 2` | 0 of 18 at each length | — |
+
+With the attention split pinned, a request sharing steps with another still changes through the MoE and through the prefill-sized kernels of a step shared with a prefill, on both weights; a pair still repeats when it is sent in the same order. `max_num_seqs = 1` gives repeatable completions under any load, two sequences about a quarter more throughput when requests overlap.
+
+A 19,851-token prompt with a passphrase at the midpoint was answered correctly cold, straight from the prefix cache (13,824 cached tokens: with a draft the lookup recomputes the last matching block) and again from the cache after three other ~20K-token prompts, with the same completion token for token each time: the kpool seed fix of 1.13.0 keeps a cached prefix intact while other prefills run.
+
+Reported upstream: [flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553) (the split follows the call's token count; still so on FlashInfer main), and the NVFP4 case on [vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639) (Marlin MoE batch invariance, open).

@@ -2,6 +2,18 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.14.0 — 2026-09-26
+
+### Added
+
+- `runtime.mla_decode_cpb`: the sparse-MLA decode takes FlashInfer's `chunks_per_block` from the tokens of one sequence (2 for a draft step, 6 for a verification step at depth 3; 32 heads per rank, top-k 2,048) instead of from the whole step. FlashInfer 0.6.18 picks the value from the step's token count, so a second sequence changed how a request's candidates are summed (every attention row of the request, on one GB10); the pinned values are its own at one sequence, so a request alone computes bit for bit as before. The key is on in both examples, needs an image built from 1.14.0 (marker `GLM53_MLA_DECODE_CPB_API=1`, required by preflight; source-pinned patch `glm53_setup/runtime/patch_mla_decode_cpb.py` on the SM120 backend) and is refused together with `runtime.decode_graphs`. On the reference pair, on both profiles, lone completions, decode speed, NLL and long-input answers are unchanged ([measurements](docs/benchmarks.md#measurements-on-1140)). Rebuild the reference image and update `reference_image`, or set the key to `false`.
+
+### Documentation
+
+- Repeatability with more than one sequence, measured on both weights: a request that shares steps with another still changes through the NVFP4 Marlin MoE (its split along K follows the number of expert blocks in the step) and through the prefill-sized kernels of a step shared with a prefill, so completions repeat under any load only with `max_num_seqs = 1`, where requests sent together queue (18 of 18 equal to their lone completions); two sequences give about a quarter more throughput when requests overlap. Validation's concurrency scope, the README row and server configuration say so.
+- A prompt longer than one 4,608-token cache block, reused from the prefix cache before and after other long prefills, answers correctly with the same completion each time (the kpool seed fix of 1.13.0).
+- Reported upstream: flashinfer-ai/flashinfer#5553 (the decode split follows the call's token count), and the NVFP4 case on vllm-project/vllm#46639 (Marlin MoE batch invariance). The optimization catalog adds P26 with the variants not adopted.
+
 ## 1.13.0 — 2026-09-25
 
 ### Fixed

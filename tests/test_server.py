@@ -22,6 +22,7 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["stable_indexer_topk"] = False
         self.profile["runtime"]["fa2_attention"] = False
         self.profile["runtime"]["inductor_deterministic"] = False
+        self.profile["runtime"]["mla_decode_cpb"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -437,10 +438,16 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
-    def test_mla_decode_cpb_is_off_unless_set_and_needs_the_image_marker(self):
-        distributed = config.load(ROOT / "examples/server.example.toml")
-        self.assertNotIn("mla_decode_cpb", distributed["runtime"])
-        self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(distributed, 0))
+    def test_mla_decode_cpb_is_set_in_the_examples_and_needs_the_image_marker(self):
+        for name in ("server.example.toml", "server.axl.example.toml"):
+            example = config.load(ROOT / "examples" / name)
+            self.assertIs(example["runtime"]["mla_decode_cpb"], True)
+            self.assertEqual(
+                config.environment(example, 0)["GLM53_MLA_DECODE_CPB"], "1"
+            )
+        self.profile["runtime"].pop("mla_decode_cpb")
+        config.validate(self.profile)
+        self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(self.profile, 0))
         self.profile["runtime"]["mla_decode_cpb"] = True
         config.validate(self.profile)
         self.assertEqual(

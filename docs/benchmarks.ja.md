@@ -889,3 +889,42 @@ decode検査の3つのpromptを、単独で、2本同時に、1本目が最初�
 | NVFP4のfused Marlin MoE（32 expert、top 4、行ごとにroutingを固定） | 違う | 違う |
 
 試したkernelのうち、別の要求のdecode行と同じ呼び出しに載るだけで行の結果が変わるのはMoEだけでした。attentionとKDAは試していません。
+
+## 1.14.0での測定
+
+### 同じstepの他の要求で要求が変わる理由（2026-09-25）
+
+GB10一台でのkernel単体（配信image、再起動なし。`records/20260925-moe-batch/`）で、仕組みを二つ名指しした。どちらも、呼び出し全体の大きさから和の分け方を選ぶ：
+
+- **NVFP4のMarlin MoE** は（expert block, 出力tile）のtileをblock順に並べ、末尾のtileをK方向で切って断片をfp32で足す。どこで切るかは呼び出しのexpert block数で決まる。decodeの大きさではkernel・thread設定・gridは変わらず（4行でも8行でも同じ）、動くのはblock数だけ。要求の4行の隣に別の要求の4行が入ると、乱数のroutingと入力40通りのうち29通りで少なくとも1行が変わった。launchを固定し、どのtileも切られなくなるまでblockを埋めると40通り中0になったが、MoEの呼び出しが3〜13%重く、このreleaseでは採らない（下記）。
+- **sparse MLAのdecode**（FlashInfer 0.6.18、DSAの11層とMTPのdraft層）は、32ある候補のchunkを各CTAに `chunks_per_block` 個ずつ受け持たせ、その値を呼び出しのtoken数から選ぶ：48 SMで、draftの1 tokenは2、2 tokenは3、深さ3の検証stepの4 tokenは6、2系列では15。そのため2本目の系列が来ると、要求のattentionの全行（4 token×32 headの128行）が変わった。値を固定すると0。
+- KDAのrecurrent decodeと、draft層のBF16 Triton MoEは、相手の有無で行が変わらなかった。
+
+`runtime.mla_decode_cpb` は二つ目を固定する：値を1系列あたりのtoken数から決める（draftのstepは2、検証のstepは6）。1系列のときのheuristicの値そのもの。GB10一台でpatch後のbackendを通すと、単独の要求は従来とbit単位で同じに計算し、呼び出しはFlashInferのwrapperを通らないぶん151〜502 µs（keyなしは226〜798 µs、同期して計測）だった。
+
+### 参照対で（2026-09-25〜26）
+
+image `8444078038c0…`（source `b7cd765`）。切替はすべて復旧なしで完了。
+
+| profile | decode検査（counting／prose／code） | ほかの検査 |
+|---|---|---|
+| 公開した任意設定、2系列（配信中のprofile） | 1.13と同じcompletion、46.16／28.38／38.66 tok/s。受理の長さ 3.70／2.15／3.10 | 文字化け検査合格。さらに3回の切替の後も同じcompletion |
+| 公開した任意設定、`max_num_seqs = 1` | 1.13と同じcompletion、46.17／28.12／38.33 tok/s | — |
+| 配布既定 | 1.13と同じcompletion、32.75／20.75／27.51 tok/s | NLL 1.5963／2.0241／0.9479／0.5931＝1.13.0と全桁一致。199,652トークンの合言葉に166.7 sで正答。38,962トークンのprefill 1,294.8 tok/s、短いpromptの後のdecode 27.38。文字化け検査合格 |
+| 配布既定、`max_num_seqs = 2` | 1.13と同じcompletion、32.59／20.72／27.55 tok/s | — |
+
+decodeの速度は動かなかった。keyが消すwrapperの時間は、参照対のtokens/sには現れなかった。
+
+続けてdecode検査のpromptを2本ずつ送り（同時、および2本目を1本目の最初のtokenの後に、各3回。2,048と1,024トークンのprompt）、各profileの単独のcompletionと比べた：
+
+| profile | 単独のcompletionと同じになった要求 | 512トークンのcompletion 2本を一緒に |
+|---|---|---|
+| 公開した任意設定、2系列 | 2,048トークンで18本中0、1,024トークンで18本中0。後追いの組が最初に違うtokenは1.13.0と同じ位置 | 26.2〜27.7 s、合計37.0〜39.1 tok/s |
+| 公開した任意設定、`max_num_seqs = 1` | 18本中18（2本目は待ち行列に入る：最初のtokenまで13〜22 s） | 33.2〜34.1 s、合計30.0〜30.9 tok/s |
+| 配布既定、`max_num_seqs = 2` | どちらの長さでも18本中0 | — |
+
+attentionの分け方を固定しても、他の要求とstepを共有した要求は、MoEと、prefillと共有したstepのprefill用のkernelを通して、どちらの重みでもなお変わる。同じ順に送った組は反復する。どんな負荷でも反復するcompletionが要るなら `max_num_seqs = 1`、要求が重なるときの処理量なら2系列（約4分の1多い）。
+
+中央に合言葉を置いた19,851トークンのpromptは、cacheを空にした1回目、prefix cacheからの再送（cache済み13,824トークン：draftがあると検索は一致した最後のblockを計算し直す）、別の約2万トークンのprompt 3本の後の再送のすべてで正答し、completionはtoken単位で毎回同じだった。1.13.0のkpool seedの修正で、他のprefillが走ってもcache済みのprefixは壊れない。
+
+上流へ報告した：[flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553)（分け方が呼び出しのtoken数で決まる。FlashInferのmainでも同じ）と、[vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639)（Marlin MoEのbatch不変化、open）へのNVFP4の実測。

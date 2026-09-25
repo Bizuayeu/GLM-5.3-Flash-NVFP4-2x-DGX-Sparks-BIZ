@@ -21,6 +21,11 @@ inductor_deterministic = true # Inductor picks reduction configs without timing,
 # bits, and a launch then computes in one of three numerical states (docs/validation.md). Also keeps the
 # mode on through torch 2.13's state restore (pytorch/pytorch#198563); compiles into its own cache.
 # false or omitted = the timed choice. indexerのkey正規化のconfigを計測なしで両rank同じに決める（起動ごとの数値状態の原因）。
+mla_decode_cpb = true # Sparse-MLA decode takes chunks_per_block from the tokens of one sequence; needs an image with GLM53_MLA_DECODE_CPB_API=1
+# The pinned FlashInfer picks it from the whole step's token count, so a second sequence changed how a request's
+# candidates are summed. The values are its own at one sequence, so a request alone computes as before
+# (docs/server-configuration.md). Excludes decode Graphs. false or omitted = FlashInfer's choice.
+# sparse MLAのdecodeの分け方を1系列あたりのtoken数で決める。単独の計算は従来と同じ。decode Graphとは排他。
 fa2_attention = true # Prefill-sized NoPE attention through FlashInfer FA2; decode steps stay on the reference path
 # Prefill of 38,962 tokens went from 572-577 to 1,242-1,272 tok/s on the reference pair and identical requests
 # still repeat bit for bit (docs/server-configuration.md). Excludes LPA. false or omitted = the reference path.

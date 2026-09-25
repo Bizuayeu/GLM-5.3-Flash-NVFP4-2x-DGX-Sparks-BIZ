@@ -4,6 +4,18 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.14.0 — 2026-09-26
+
+### Added
+
+- `runtime.mla_decode_cpb`：sparse MLAのdecodeが、FlashInferの `chunks_per_block` をstep全体ではなく1系列あたりのtoken数から決める（draftのstepは2、深さ3の検証stepは6。rankあたり32 head、top-k 2,048）。FlashInfer 0.6.18はstepのtoken数から値を選ぶため、2本目の系列が来ると要求の候補の足し方が変わっていた（GB10一台で、要求のattentionの全行）。固定値は1系列のときのその値そのものなので、単独の要求は従来とbit単位で同じに計算する。keyは両exampleでon、1.14.0以降でbuildしたimageが必要（marker `GLM53_MLA_DECODE_CPB_API=1`、preflightで必須。SM120 backendへのsource固定patch `glm53_setup/runtime/patch_mla_decode_cpb.py`）、`runtime.decode_graphs` との併用は拒む。参照対では両profileとも、単独のcompletion、decodeの速度、NLL、長文の答えは不変（[測定](docs/benchmarks.ja.md#1140での測定)）。reference imageを作り直して `reference_image` を更新するか、keyを `false` にする。
+
+### Documentation
+
+- 複数系列での反復性を両方の重みで測った：他の要求とstepを共有した要求は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelを通して、なお変わる。どんな負荷でも反復するのは `max_num_seqs = 1` のときだけで、同時に送った要求は待ち行列に入る（18本中18本が単独のcompletionと同じ）。要求が重なるときの処理量は2系列の方が約4分の1多い。検証の同時実行の範囲、READMEの行、サーバー設定に書いた。
+- 4,608トークンのcache block一つより長いpromptを、他の長いprefillの前後でprefix cacheから再利用しても、毎回正答し同じcompletionになる（1.13.0のkpool seedの修正）。
+- 上流へ報告した：flashinfer-ai/flashinfer#5553（decodeの分け方が呼び出しのtoken数で決まる）と、vllm-project/vllm#46639（Marlin MoEのbatch不変化）へのNVFP4の実測。施策台帳にP26を足し、採らなかった案も記録した。
+
 ## 1.13.0 — 2026-09-25
 
 ### Fixed

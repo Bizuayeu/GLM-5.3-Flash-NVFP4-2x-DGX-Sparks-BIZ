@@ -14,7 +14,8 @@ the stock route ends in, with the value taken from the tokens of one sequence. T
 heuristic's own at one sequence, so a request alone computes bit for bit as before, and with a
 partner its rows no longer change. On one GB10 through the patched backend the call skipped the
 wrapper cost: a verification step of one sequence took 221 us against 633 and of two 535 against
-917 (records/20260925-moe-batch, run 4). Every other step keeps the stock call.
+917 (records/20260925-moe-batch, run 4); on the serving pair decode tokens/s did not move.
+Every other step keeps the stock call.
 """
 
 import os
