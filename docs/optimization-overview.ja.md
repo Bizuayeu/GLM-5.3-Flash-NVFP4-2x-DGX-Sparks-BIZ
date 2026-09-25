@@ -14,7 +14,7 @@
 flowchart LR
     R[要求] --> A[prefix復元<br/>P19 APC・checkpoint保持・P22 判定・P25 page重複排除]
     A --> P[prefill<br/>P11 chunk・P05 FA2 prefill・P02 LPA・P03 unpack融合]
-    P --> D[decode<br/>P01 MTP k=3・P08 非同期index検査・P23 再パックした重み・P26 系列ごとのdecode分割]
+    P --> D[decode<br/>P01 MTP k=3・P08 非同期index検査・P23 再パックした重み・P26 decode分割は退役]
     D --> O[出力]
     S[並列・throughput<br/>P13 公開した任意設定で2系列・P21 EP 不採用・P17 PP 不採用] -.- P
     S -.- D
@@ -51,7 +51,7 @@ flowchart LR
 | P08 非同期index検査 | 範囲検査を省かずGPU assertへ移し、hostとの同期・copyを減らす代わりにGPU kernelが少し増える | 受入（独立opt-in） | async（`runtime.index_checks`） | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
 | P06 CUDA Graphs | decodeのみcapture／replay | 不採用（2026-09-21）：全モデルでeagerより1 stepあたり遅い。選択肢としては残し、後のruntimeで測り直す | off（`runtime.decode_graphs=false`） | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価)／[全モデル](benchmarks.ja.md#全モデルでのdecode-graphs) |
 | P23 再パックした重み | attention projectionと `lm_head` をW4A16 NVFP4に再パック（route l）し、`runtime.derived_checkpoint` で配信 | 公開した任意設定として採用。losslessではないので配布既定には入れない | off。公開した任意設定ではon | [台帳](optimization-catalog.ja.md#性能施策一覧)／[配信profile](benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3) |
-| P26 系列ごとのdecode分割 | sparse MLA decodeの分け方を、step全体ではなく1系列のtoken数から決める | 採用（1.14.0）：要求のattentionが、stepを共有する他の要求に依らなくなる | on（`runtime.mla_decode_cpb`） | [1.14.0](benchmarks.ja.md#1140での測定) |
+| P26 系列ごとのdecode分割 | sparse MLA decodeの分け方を、step全体ではなく1系列のtoken数から決める | 退役（1.16.0）：servingでは届かない。参照attentionがpatchしたdecodeの呼び出しより前にreturnする | off（exampleから `runtime.mla_decode_cpb` を外した） | [到達性](benchmarks.ja.md#servingでの到達性2026-09-26) |
 
 ### 並列・throughput
 
@@ -67,7 +67,7 @@ flowchart LR
 | 施策 | 仕組み | 状態 | 既定 | 正典 |
 |---|---|---|---|---|
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
-| P05 FA2 prefill（SM121 backend選定） | prefillの大きさのNoPE attentionを、BF16に展開した行でFlashInferのSM90 FA2 wrapperに通す。SM120の直接差し替えは不採用 | prefillに採用（1.6.0） | on（`runtime.fa2_attention`）。decodeは参照経路、LPAと排他 | [1.6.0](benchmarks.ja.md#160でのprefillとdecode)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験)／[SM120の試験](component-validation.ja.md#padding付きnative-attentionの直接試験) |
+| P05 FA2 prefill（SM121 backend選定） | prefillの大きさのNoPE attentionを、BF16に展開した行でFlashInferのSM90 FA2 wrapperに通す。SM120の直接差し替えは不採用 | prefillに採用（1.6.0） | on（`runtime.fa2_attention`）。1系列のdecodeは参照経路、LPAと排他 | [1.6.0](benchmarks.ja.md#160でのprefillとdecode)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験)／[SM120の試験](component-validation.ja.md#padding付きnative-attentionの直接試験) |
 | P16 CSA2 | 層間の候補再利用・限定再採点 | 第一の門で中止（2026-09-21）：indexerがprefillに占める割合が小さすぎる。部品は保持 | —（未統合） | [CSA2](indexer-reuse.ja.md) |
 | 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：すべての参照imageが持つruntimeの修正。上記の初期比較は変更前 | on（参照image） | [候補順序](candidate-order.ja.md) |
 

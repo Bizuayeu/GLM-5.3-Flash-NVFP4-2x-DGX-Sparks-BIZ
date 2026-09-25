@@ -17,7 +17,7 @@
 | [1.10.2](#1102での測定) | 2026-09-23 | 公開した任意設定での同時2系列 |
 | [1.10.4](#1104での測定) | 2026-09-23 | 同時2系列profileでのsparkDashとtool-eval-bench |
 | [1.13.0](#1130での測定) | 2026-09-25 | 両profileでのkpool seedの修正、同時2系列のcompletion |
-| [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方、`max_num_seqs = 1` での再現性、cacheした長いprompt |
+| [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方（servingでは届かない）、`max_num_seqs = 1` での再現性、cacheした長いprompt |
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
@@ -912,10 +912,10 @@ decode検査の3つのpromptを、単独で、2本同時に、1本目が最初�
 GB10一台でのkernel単体（配信image、再起動なし。`records/20260925-moe-batch/`）で、仕組みを二つ名指しした。どちらも、呼び出し全体の大きさから和の分け方を選ぶ：
 
 - **NVFP4のMarlin MoE** は（expert block, 出力tile）のtileをblock順に並べ、末尾のtileをK方向で切って断片をfp32で足す。どこで切るかは呼び出しのexpert block数で決まる。decodeの大きさではkernel・thread設定・gridは変わらず（4行でも8行でも同じ）、動くのはblock数だけ。要求の4行の隣に別の要求の4行が入ると、乱数のroutingと入力40通りのうち29通りで少なくとも1行が変わった。launchを固定し、どのtileも切られなくなるまでblockを埋めると40通り中0になったが、MoEの呼び出しが3〜13%重く、このreleaseでは採らない（下記）。
-- **sparse MLAのdecode**（FlashInfer 0.6.18、DSAの11層とMTPのdraft層）は、32ある候補のchunkを各CTAに `chunks_per_block` 個ずつ受け持たせ、その値を呼び出しのtoken数から選ぶ：48 SMで、draftの1 tokenは2、2 tokenは3、深さ3の検証stepの4 tokenは6、2系列では15。そのため2本目の系列が来ると、要求のattentionの全行（4 token×32 headの128行）が変わった。値を固定すると0。
+- **sparse MLAのdecode**（SM120 backendの参照flagを切って通したFlashInfer 0.6.18。servingでは届かない、[下記](#servingでの到達性2026-09-26)）は、32ある候補のchunkを各CTAに `chunks_per_block` 個ずつ受け持たせ、その値を呼び出しのtoken数から選ぶ：48 SMで、draftの1 tokenは2、2 tokenは3、深さ3の検証stepの4 tokenは6、2系列では15。そのため2本目の系列が来ると、要求のattentionの全行（4 token×32 headの128行）が変わった。値を固定すると0。
 - KDAのrecurrent decodeと、draft層のBF16 Triton MoEは、相手の有無で行が変わらなかった。
 
-`runtime.mla_decode_cpb` は二つ目を固定する：値を1系列あたりのtoken数から決める（draftのstepは2、検証のstepは6）。1系列のときのheuristicの値そのもの。GB10一台でpatch後のbackendを通すと、単独の要求は従来とbit単位で同じに計算し、呼び出しはFlashInferのwrapperを通らないぶん151〜502 µs（keyなしは226〜798 µs、同期して計測）だった。
+`runtime.mla_decode_cpb` は二つ目を固定する：値を1系列あたりのtoken数から決める（draftのstepは2、検証のstepは6）。1系列のときのheuristicの値そのもの。GB10一台でpatch後のbackendを通すと、単独の要求は従来とbit単位で同じに計算し、呼び出しはFlashInferのwrapperを通らないぶん151〜502 µs（keyなしは226〜798 µs、同期して計測）だった。servingはpatchした呼び出しに届かない（[下記](#servingでの到達性2026-09-26)）。
 
 ### 参照対で（2026-09-25〜26）
 
@@ -928,7 +928,7 @@ image `8444078038c0…`（source `b7cd765`）。切替はすべて復旧なし�
 | 配布既定 | 1.13と同じcompletion、32.75／20.75／27.51 tok/s | NLL 1.5963／2.0241／0.9479／0.5931＝1.13.0と全桁一致。199,652トークンの合言葉に166.7 sで正答。38,962トークンのprefill 1,294.8 tok/s、短いpromptの後のdecode 27.38。文字化け検査合格 |
 | 配布既定、`max_num_seqs = 2` | 1.13と同じcompletion、32.59／20.72／27.55 tok/s | — |
 
-decodeの速度は動かなかった。keyが消すwrapperの時間は、参照対のtokens/sには現れなかった。
+decodeの速度は動かなかった。servingで一度も実行されないkeyなので当然である（[下記](#servingでの到達性2026-09-26)）。
 
 続けてdecode検査のpromptを2本ずつ送り（同時、および2本目を1本目の最初のtokenの後に、各3回。2,048と1,024トークンのprompt）、各profileの単独のcompletionと比べた：
 
@@ -938,11 +938,17 @@ decodeの速度は動かなかった。keyが消すwrapperの時間は、参照�
 | 公開した任意設定、`max_num_seqs = 1` | 18本中18（2本目は待ち行列に入る：最初のtokenまで13〜22 s） | 33.2〜34.1 s、合計30.0〜30.9 tok/s |
 | 配布既定、`max_num_seqs = 2` | どちらの長さでも18本中0 | — |
 
-attentionの分け方を固定しても、他の要求とstepを共有した要求は、MoEと、prefillと共有したstepのprefill用のkernelを通して、どちらの重みでもなお変わる。同じ順に送った組は反復する。どんな負荷でも反復するcompletionが要るなら `max_num_seqs = 1`、要求が重なるときの処理量なら2系列（約4分の1多い）。
+他の要求とstepを共有した要求は、どちらの重みでもなお変わる。容疑者の先頭は、MoEと、prefillと共有したstepのprefill用のkernel（[下記](#servingでの到達性2026-09-26)）。同じ順に送った組は反復する。どんな負荷でも反復するcompletionが要るなら `max_num_seqs = 1`、要求が重なるときの処理量なら2系列（約4分の1多い）。
 
 中央に合言葉を置いた19,851トークンのpromptは、cacheを空にした1回目、prefix cacheからの再送（cache済み13,824トークン：draftがあると検索は一致した最後のblockを計算し直す）、別の約2万トークンのprompt 3本の後の再送のすべてで正答し、completionはtoken単位で毎回同じだった。1.13.0のkpool seedの修正で、他のprefillが走ってもcache済みのprefixは壊れない。
 
 上流へ報告した：[flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553)（分け方が呼び出しのtoken数で決まる。2026-09-26時点のFlashInferのmainでも同じ）と、[vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639)（Marlin MoEのbatch不変化、2026-09-26時点でopen）へのNVFP4の実測。
+
+### servingでの到達性（2026-09-26）
+
+`runtime.mla_decode_cpb` はservingで一度も実行されず、上の参照対には効いていなかった。稼働中の対（上と同じ2系列の公開した任意設定、memory probeはon。再起動なし。`records/20260926-cpb-reachability/`）のtraceで、sparse MLAのforwardを全部数えた：単独の要求で434、2本の組で448。DSAの11層とMTPのdraft層のattentionのhookと同じ数で、どれも参照のNoPE attentionを通ってreturnした。imageは `GLM53_REFERENCE_ATTENTION=1` を設定し、backendはkeyのpatchが変えるFlashInferのdecodeの呼び出しより前にその経路でreturnする。上のkernel単体は、このflagを手で切っていた。この節の結果（単独のcompletion・decodeの速度・NLLが変わらず、2系列のcompletionが1.13.0とbyte一致）は、効果が無かったことと整合する。flashinfer#5553が書くのはFlashInfer自身の挙動で、このservingはそこを通らない。
+
+相方がいると変わるとtraceが示したのは、attentionの経路だった。参照attentionはquery行が6を超える呼び出しをFA2へ送る（`runtime.fa2_attention`）：深さ3の検証stepは単独で4行（eagerのFP32）、相方ありで8行（BF16 KVのFA2）。GB10一台の合成入力のkernel単体で、eagerはある系列の行を、呼び出しが4行でも5〜8行でも12行でも、系列の位置、paddingのある相方、cache pageの交互配置に依らずbit一致で計算した。FA2は相方の行数と長さで全行を1 BF16 ulp動かし（中身・順序・pageには依らない）、反復はbit一致だった。この切り替わりは2系列の差の主因ではない：稼働中の対でattentionの呼び出しを全部eagerにしても（memory probeの `fa2_stage("off")` を約8分、その後に戻して確認）、2系列のcompletion 8本のうち7本が単独のものと違ったままで（1本は一致、5本は最初に違うtokenが動き、2本は同じ位置）、どの組も反復した。容疑者の先頭は、呼び出しの中の他の要求の行で行が変わるMoE（上記）。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でも反復する。
 
 ## 1.15.0での測定
 

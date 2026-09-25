@@ -29,11 +29,11 @@
 | 実行 | TP=2、eager、1系列、262,144 token、chunk 2048（[実測](benchmarks.ja.md#200k画像profileでのchunk予算2026-09-17)） |
 | 入力 | テキスト・ツール呼び出し・画像（`runtime.vision = true`）。動画は拒否 |
 | キャッシュ | FP8、各rank 3 GiB、APC有効、checkpoint保持 `dense`、unpack融合有効、画像前処理キャッシュ0.1 GiB |
-| prefillのattention | `fa2_attention = true`：prefillの大きさのNoPE attentionをFlashInfer FA2へ、decodeは参照経路。LPAとは排他 |
+| prefillのattention | `fa2_attention = true`：query行が6を超えるNoPE attentionの呼び出し（prefillと、2系列が共有するdecodeのstep）をFlashInfer FA2へ、1系列のdecodeは参照経路。LPAとは排他 |
 | 投機・近似 | MTP k=3（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
-| 再現性 | `canonical_moe_order`・`stable_indexer_topk`・`inductor_deterministic`・`mla_decode_cpb` をすべて `true`：同一要求はbit一致で反復し、どの起動も同じ数値状態で計算する（[再現性のスイッチ](#再現性のスイッチ)） |
+| 再現性 | `canonical_moe_order`・`stable_indexer_topk`・`inductor_deterministic` をすべて `true`：同一要求はbit一致で反復し、どの起動も同じ数値状態で計算する（[再現性のスイッチ](#再現性のスイッチ)） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
@@ -83,7 +83,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 ### 再現性のスイッチ
 
-四つのスイッチで、同一要求はbit一致で反復し、どの起動も同じ数値状態で計算します。四つとも両方のexampleで有効です。差の出どころをそれぞれどう見つけて測ったかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にあります。
+三つのスイッチで、同一要求はbit一致で反復し、どの起動も同じ数値状態で計算します。三つとも両方のexampleで有効です。差の出どころをそれぞれどう見つけて測ったかは[検証](validation.ja.md#フルモデルtp2の実験範囲)にあります。
 
 `runtime.canonical_moe_order`（テンプレートは `true`。未指定はimageの既定に従い、1.6.0から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。新規の起動には `GLM53_MOE_ORDER_API=2`（1.7.0から作ったimage）が要ります。marker 1は、切替の復旧先として残す稼働中の対にだけ認めます（[起動検査](operations.ja.md#フルモデルの起動検査)）。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。参照機では同一要求がbit一致で反復し、decodeは遅くならず、MTPの採択長は上がりました。既定で有効にしているのは、今後のA/Bを読む物差しとして、再現できる基準が要るためです。
 
@@ -91,13 +91,13 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 `runtime.inductor_deterministic`（1.12.0からテンプレートは `true`。未指定か `false` はInductorの計測による選択）は、両rankに `TORCHINDUCTOR_DETERMINISTIC=1` を設定し、`TORCHINDUCTOR_CACHE_DIR` を `/root/.cache/torchinductor-deterministic` に移します。複製されたindexerはkeyを、候補configが三つの `torch.compile` のleafで正規化します。以前は各rankが起動のたびに計測で一つを選び、三つのうち一つは行の足し算の順が違うため、両rankが別のclassを引くとpoolが同点になる所でcompletionが分かれました。決定性モードのInductorはreductionのconfigを計測せずに、どのrankでも同じものに決めます。torch 2.13と2.12.1は最初にcompileしたframeの後でモードを切るので（[pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)。GB10では [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636) に報告）、launcherは `glm53_setup/runtime/inductor_pin.py` と一行の `.pth` をmountし、設定を強制値で保ちます。モードなしでcompileしたgraphは既存のcacheから計測の候補ごと戻ってくるので、モードは専用のcacheにcompileします。keyを付けた最初の起動ではindexerのleafを作り直します（rankごとに約45ファイル）。pointwiseのleafはrankごとに計測を続けますが、要素ごとに同じ命令で計算するのでblockの大きさはbitを変えません。imageの対応は要りません。
 
-`runtime.mla_decode_cpb`（1.14.0から両方のexampleで設定。未指定は固定のとおりFlashInferが呼び出しごとに選ぶ）は、両rankに `GLM53_MLA_DECODE_CPB` を設定し、`GLM53_MLA_DECODE_CPB_API=1`（1.14.0から作ったimage）を要求します。FlashInfer 0.6.18のSM120 sparse MLA decodeは2,048の候補を32のchunkに分け、各CTAに `chunks_per_block` 個ずつ受け持たせます。heuristicがstep全体のtoken数からその値を選ぶので、2本目の系列が来ると要求の候補の足し方が変わります。keyをonにすると、長さの揃った1〜2系列のdecode stepは、1系列あたりのtoken数で値を決めます：draftの1 tokenは2、検証stepの4 tokenは6（rankあたり32 head、top-k 2,048）。1系列のときのheuristicの値そのものなので、単独の要求は以前と同じ計算です。呼び出しはFlashInferのdecodeの入口へ直接進み、wrapper、custom op、AutoTunerの照会を通りません。それ以外のstepはFlashInferの選択のままです。値はeagerのdecode stepでだけ計ったので、launcherは `runtime.decode_graphs` と一緒のkeyを拒みます。参照対では両profileとも、単独の要求のcompletion、decodeの速度、NLL、長文の答えがkeyの有無で同じでした（[1.14.0での測定](benchmarks.ja.md#1140での測定)）。
+これらのスイッチが扱うのは単独の要求です。`max_num_seqs` が2以上だと、他の要求とstepを共有した要求は、なお違うcompletionになりえます。attentionの経路も変わります：MTPの深さ3では相方がいるとdecodeのstepのquery行が8になり、6を超えるのでFA2を通ります（`runtime.fa2_attention`、下記）。ただしこれは主因ではありません：attentionの呼び出しをすべて参照計算に切り替えても、2系列のcompletionの多くは単独のものと違ったままでした（[測定](benchmarks.ja.md#servingでの到達性2026-09-26)）。残る容疑者の先頭は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelです。他に何が走っていても同じcompletionが欲しい場合は `max_num_seqs = 1` で配信します（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
 
-これらのスイッチが扱うのは単独の要求です。`max_num_seqs` が2以上だと、他の要求とstepを共有した要求は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelを通して、なお違うcompletionになりえます。他に何が走っていても同じcompletionが欲しい場合は `max_num_seqs = 1` で配信します（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
+`runtime.mla_decode_cpb`（1.14.0と1.15.0では両方のexampleで設定）は退役しました。servingでは一度も実行されていません。このkeyは、FlashInferのSM120 sparse MLA decodeに1系列から決めた `chunks_per_block` を渡すsource固定patchのために `GLM53_MLA_DECODE_CPB` を設定します。しかしimageは `GLM53_REFERENCE_ATTENTION=1` を設定し、backendはそのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnします。DSAの11層でもMTPのdraft層でも同じです（[servingでの到達性](benchmarks.ja.md#servingでの到達性2026-09-26)）。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも以前のまま起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、`runtime.decode_graphs` と一緒には拒まれる）、`server preflight` はkeyを外してよいという警告を足します。patch・imageのmarker・keyの受理は、次のimageのbuildで外します。
 
 ### attentionとcacheとcheckpoint
 
-`runtime.fa2_attention`（未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちprefillの大きさの呼び出し（query行が6を超えるもの）が、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。decodeのstep（最大6行＝MTPの深さ5）は参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。基準の2台では、38,962 tokenのprefillが約2.2倍速くなりました（[1.6.0での測定](benchmarks.ja.md#160での測定)）。unpack融合は要素数を実行時に受け取るので、256Kの系列で要素数ごとにTritonのkernelを一つcompileすることはもうありません。この経路はLPAと排他です。checkoutは、この経路・そのdispatch・上記のunpack融合を、それらより前に作られたimageの上にmountします。`GLM53_FA2_ATTENTION_API=1` を持つimageでは冗長です。
+`runtime.fa2_attention`（未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちquery行が6を超える呼び出しが、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。6行までの呼び出しは参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。閾値は呼び出し全体の行数で数えます。1系列のdecodeのstep（最大6行＝MTPの深さ5）はすべて参照経路ですが、2系列では深さ3の検証stepが8行になってFA2を通り、ある行の結果が相手の系列の行数と長さにわずかに依存します。参照計算の結果は依存しません（[測定](benchmarks.ja.md#servingでの到達性2026-09-26)）。基準の2台では、38,962 tokenのprefillが約2.2倍速くなりました（[1.6.0での測定](benchmarks.ja.md#160での測定)）。unpack融合は要素数を実行時に受け取るので、256Kの系列で要素数ごとにTritonのkernelを一つcompileすることはもうありません。この経路はLPAと排他です。checkoutは、この経路・そのdispatch・上記のunpack融合を、それらより前に作られたimageの上にmountします。`GLM53_FA2_ATTENTION_API=1` を持つimageでは冗長です。
 
 `runtime.prefix_page_dedup`（未指定はoff＝固定vLLMのpoolのまま。AXLの例で設定）は、両rankに `GLM53_PREFIX_PAGE_DEDUP` を設定し、`GLM53_PREFIX_DEDUP_API=1`（1.9.0から作ったimage）を要求します。固定vLLMのblock poolは、同じhashのblockが既にcacheにあっても、fullになったblockをそのhashで登録します。draftがあるとprefix lookupは一致した末尾blockをhitから外して再計算するので、同じ履歴を再送するたびにKV cache groupごとに1 blockが既にあるhashでLRU queueに加わり、その複製が古い履歴を先に追い出します。keyをonにすると、そのblockは登録されません。hashを持たず、要求が終わるとfree queueの先頭に戻り、lookupは先にcacheされた複製にhitし続けます。block idと数値は変わりません（[1.9.0での測定](benchmarks.ja.md#190での測定)）。
 
@@ -238,13 +238,13 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_SLOT_MAPPING_GUARD=1` | 要求しない。無いと公開した任意設定で約25万tokenを超える要求が失敗する（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.7.0 |
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup`（`prefix_dedup_support`） | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
-| `GLM53_MLA_DECODE_CPB_API=1` | `runtime.mla_decode_cpb`（`mla_decode_cpb_support`） | 1.14.0 |
+| `GLM53_MLA_DECODE_CPB_API=1` | `runtime.mla_decode_cpb = true`。古いprofileだけが持つ退役したkey（`mla_decode_cpb_support`） | 1.14.0 |
 
 imageが持つmarkerは `docker image inspect IMAGE --format '{{json .Config.Env}}'` で確かめられます。
 
 ## LPAとMTP・制約
 
-`runtime.decode_graphs`（テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileしません。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAと `runtime.mla_decode_cpb` はeagerが必要で、複数系列のGraph設定は起動設定で拒否します。全モデルではGraphのdecodeがeagerより遅く、採用していません（[全モデルでのdecode Graphs](benchmarks.ja.md#全モデルでのdecode-graphs)）。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
+`runtime.decode_graphs`（テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileしません。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAはeagerが必要で（退役した `runtime.mla_decode_cpb` を `true` のまま持つprofileも同じ）、複数系列のGraph設定は起動設定で拒否します。全モデルではGraphのdecodeがeagerより遅く、採用していません（[全モデルでのdecode Graphs](benchmarks.ja.md#全モデルでのdecode-graphs)）。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
 
 Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて使う場合は、kごとにcacheを分けるか、kを変えたときに消してください。
 

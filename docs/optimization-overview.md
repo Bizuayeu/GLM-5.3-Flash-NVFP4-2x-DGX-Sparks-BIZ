@@ -14,7 +14,7 @@ The baseline is the [catalog's dated reference point](optimization-catalog.md#ba
 flowchart LR
     R[request] --> A[prefix restore<br/>P19 APC, checkpoint retention, P22 policy, P25 page dedup]
     A --> P[prefill<br/>P11 chunk, P05 FA2 prefill, P02 LPA, P03 fused unpack]
-    P --> D[decode<br/>P01 MTP k=3, P08 async index checks, P23 repacked weights, P26 per-sequence decode split]
+    P --> D[decode<br/>P01 MTP k=3, P08 async index checks, P23 repacked weights, P26 decode split retired]
     D --> O[output]
     S[parallelism / throughput<br/>P13 two sequences on the published option, P21 EP rejected, P17 PP rejected] -.- P
     S -.- D
@@ -51,7 +51,7 @@ flowchart LR
 | P08 async index checks | Keep range checks but move them to a GPU assert, trading host syncs and copies for a few more GPU kernels | Accepted (independent opt-in) | async (`runtime.index_checks`) | [P08](benchmarks.md#independent-cpu-synchronization-reduction-p08) |
 | P06 CUDA Graphs | Capture/replay for decode only | Not adopted (2026-09-21): slower per step than eager on the full model; the option stays for a later runtime | off (`runtime.decode_graphs=false`) | [Graph fixture](component-validation.md#independent-decode-graph-fixture) / [full model](benchmarks.md#decode-graphs-on-the-full-model) |
 | P23 repacked weights | The attention projections and `lm_head` repacked to W4A16 NVFP4 (route l), served through `runtime.derived_checkpoint` | Adopted as the published option; not lossless, so not in the defaults | off; on in the published option | [Catalog](optimization-catalog.md#performance-initiatives) / [serving profile](benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) |
-| P26 per-sequence decode split | Take the sparse-MLA decode's split from the tokens of one sequence instead of the whole step | Adopted (1.14.0): a request's attention no longer depends on the requests sharing its step | on (`runtime.mla_decode_cpb`) | [1.14.0](benchmarks.md#measurements-on-1140) |
+| P26 per-sequence decode split | Take the sparse-MLA decode's split from the tokens of one sequence instead of the whole step | Retired (1.16.0): never reached in serving, where the reference attention returns before the patched decode call | off (the examples drop `runtime.mla_decode_cpb`) | [Reachability](benchmarks.md#reachability-in-serving-2026-09-26) |
 
 ### Parallelism and throughput
 
@@ -67,7 +67,7 @@ flowchart LR
 | Measure | Mechanism | Status | Default | Owner |
 |---|---|---|---|---|
 | P04 NoPE attention fusion | Replace the Python query loop and multi-stage arithmetic | Rejected (fewer launches did not make it faster) | — (not wired into serving) | [P04](component-validation.md#nope-attention-fusion-and-query-batching-p04) |
-| P05 FA2 prefill (SM121 backend selection) | Prefill-sized NoPE attention through FlashInfer's SM90 FA2 wrapper over rows unpacked to BF16; direct SM120 substitution was rejected | Adopted for prefill (1.6.0) | on (`runtime.fa2_attention`); decode on the reference path; excludes LPA | [1.6.0](benchmarks.md#prefill-and-decode-on-160) / [SM90 FA2](component-validation.md#sm90-fa2-mla-wrapper-probe) / [SM120 probe](component-validation.md#direct-padded-native-attention-probe) |
+| P05 FA2 prefill (SM121 backend selection) | Prefill-sized NoPE attention through FlashInfer's SM90 FA2 wrapper over rows unpacked to BF16; direct SM120 substitution was rejected | Adopted for prefill (1.6.0) | on (`runtime.fa2_attention`); one sequence's decode on the reference path; excludes LPA | [1.6.0](benchmarks.md#prefill-and-decode-on-160) / [SM90 FA2](component-validation.md#sm90-fa2-mla-wrapper-probe) / [SM120 probe](component-validation.md#direct-padded-native-attention-probe) |
 | P16 CSA2 | Cross-layer candidate reuse and restricted rescoring | Stopped at its first gate (2026-09-21): the indexer is too small a share of prefill; components retained | — (not integrated) | [CSA2](indexer-reuse.md) |
 | Canonical candidate order | Sort sparse-MLA candidates into logical token order before physical index mapping, removing top-k order variation | Not a catalog initiative: a runtime fix every reference image carries; the initial comparisons above predate it | on (reference images) | [Candidate order](candidate-order.md) |
 

@@ -134,12 +134,12 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | 同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ：両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)が、expert内のtoken順、indexerのtop-kの同点、Inductorのrankごとのconfigの選択、sparse MLAのdecodeの分け方を固定する。どちらのprofileでも3起動とも同じcompletion。新しい起動は今も切替ごとに確かめる（重みのdigest、decode検査、kernel hash）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
+| 全モデル | temperature 0での同一要求 | 同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ：両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)が、expert内のtoken順、indexerのtop-kの同点、Inductorのrankごとのconfigの選択を固定する。どちらのprofileでも3起動とも同じcompletion。新しい起動は今も切替ごとに確かめる（重みのdigest、decode検査、kernel hash）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。他の要求とstepを共有した要求は違うcompletionになりうる（宣言した挙動）。どんな負荷でも反復するcompletionが要るなら `max_num_seqs = 1` で配信する。それを超える同時数：TP=4を推奨、TP=3は非推奨。どちらもここでは未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
-| テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、decodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
+| テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、1系列のdecodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 10入力で、再量子化したcheckpointでは深さ1〜5を、固定のcheckpointでは1・3・4を測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
 | テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
 | テンプレートで有効 | checkpoint保持 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |

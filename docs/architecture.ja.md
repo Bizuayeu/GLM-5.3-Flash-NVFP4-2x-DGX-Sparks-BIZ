@@ -29,14 +29,14 @@
 | `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 両rankの停止前検査、所有権つきの切替・復旧、読み取り専用の起動識別情報、RoCEレール検査（[起動契約](launch-safety.ja.md)） |
 | `glm53_setup/model_http.py`、`io.py` | モデルAPIに限定しredirectに従わないHTTP transport、ローカル状態の永続化helper |
 | `glm53_setup/runtime/pinned_patch.py`、`patch_*.py` | image buildが当てるsource固定のvLLM patch群。`pinned_patch` が共通部分（固定ファイルのhash検査、`--package`／`--check` コマンド、package脇に書くrecord）を持ち、各 `patch_*` moduleは対象・pin・anchorだけを、逸脱した・適用済みのsourceを拒む純粋関数 `patch_text(text)` として述べる |
-| `glm53_setup/runtime/reference_attention.py`、`patch_nope_reference.py`、`fa2_attention.py` | 候補を保存するeagerなNoPE MLA参照計算、そのsource固定の導入、FA2のprefill経路（`runtime.fa2_attention`） |
+| `glm53_setup/runtime/reference_attention.py`、`patch_nope_reference.py`、`fa2_attention.py` | 候補を保存するeagerなNoPE MLA参照計算、そのsource固定の導入、6行を超える呼び出しのFA2経路（`runtime.fa2_attention`） |
 | `glm53_setup/runtime/candidate_order.py` | 共通のsparse-MLA境界での論理候補順序の正規化（[候補順序](candidate-order.ja.md)） |
 | `glm53_setup/runtime/moe_token_order.py`、`patch_moe_order.py` | Marlin MoE kernelの前で各expert内のtoken順を一つに固定（`runtime.canonical_moe_order`）と、そのsource固定patch |
 | `glm53_setup/runtime/stable_topk.py`、`patch_indexer_topk.py` | kpool indexerのtop-kの同点を規則で決める（`runtime.stable_indexer_topk`）と、そのsource固定patch |
 | `glm53_setup/runtime/prefix_dedup.py`、`patch_prefix_dedup.py` | 同じ内容のprefix pageをcacheに一つだけ持つ（`runtime.prefix_page_dedup`）と、そのsource固定patch |
 | `glm53_setup/runtime/patch_slot_mapping.py` | source固定patch：slot対応付けのkernelがblock tableを行の中だけで読む |
 | `glm53_setup/runtime/patch_kpool_seed.py` | source固定patch：kpoolのprefill seedがtailのblockをtailのstrideで番地付けする（vLLM #57477） |
-| `glm53_setup/runtime/mla_decode_cpb.py`、`patch_mla_decode_cpb.py` | sparse MLAのdecodeで、FlashInferの `chunks_per_block` を1系列あたりのtoken数から決める（`runtime.mla_decode_cpb`）と、そのsource固定patch |
+| `glm53_setup/runtime/mla_decode_cpb.py`、`patch_mla_decode_cpb.py` | 退役、次のimageのbuildまで残す：sparse MLAのdecodeの `chunks_per_block` を1系列から決める（`runtime.mla_decode_cpb`）と、そのsource固定patch。参照attentionが先にreturnするため、servingでは届かない |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |

@@ -17,7 +17,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.10.2](#measurements-on-1102) | 2026-09-23 | Two active sequences on the published option |
 | [1.10.4](#measurements-on-1104) | 2026-09-23 | sparkDash and tool-eval-bench on the two-sequence profile |
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
-| [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split; repeatability with `max_num_seqs = 1`; a cached long prompt |
+| [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -912,10 +912,10 @@ The MoE is the one tested kernel whose rows change when another request's decode
 Kernel runs on one GB10 (the serving image, no restart; `records/20260925-moe-batch/`) named two mechanisms, both of which choose how to split a sum from the size of the whole call:
 
 - **The NVFP4 Marlin MoE** lays its (expert block, output tile) tiles out in block order and cuts the last ones along K, summing the pieces in fp32; where it cuts follows the number of expert blocks in the call. At decode sizes the kernel, its thread configuration and its grid stay the same (four and eight rows alike); only the block count moves. With a second request's four rows next to a request's four, 29 of 40 random routings and inputs changed at least one row. Pinning the launch and padding the blocks until no tile is cut made it 0 of 40, at 3 to 13% on the MoE call; the release does not adopt that (below).
-- **The sparse-MLA decode** (FlashInfer 0.6.18, the 11 DSA layers and the MTP draft layer) lets each CTA take `chunks_per_block` of the 32 candidate chunks and picks the value from the call's token count: on 48 SMs 2 for one draft token and 3 for two, 6 for one verification step of four tokens and 15 for two. A second sequence therefore changed every row of a request's attention (all 128 rows of four tokens × 32 heads); with the value pinned, none.
+- **The sparse-MLA decode** (FlashInfer 0.6.18 through the SM120 backend with its reference flag set off; serving never reaches it, [below](#reachability-in-serving-2026-09-26)) lets each CTA take `chunks_per_block` of the 32 candidate chunks and picks the value from the call's token count: on 48 SMs 2 for one draft token and 3 for two, 6 for one verification step of four tokens and 15 for two. A second sequence therefore changed every row of a request's attention (all 128 rows of four tokens × 32 heads); with the value pinned, none.
 - The KDA recurrent decode and the draft layer's BF16 Triton MoE gave the same rows with and without a partner.
 
-`runtime.mla_decode_cpb` pins the second: the value comes from the tokens of one sequence (2 for a draft step, 6 for a verification step), the heuristic's own at one sequence. Through the patched backend on one GB10 a request alone computed bit for bit as before, and a call took 151 to 502 µs against 226 to 798 without the FlashInfer wrapper around it (synchronous timing).
+`runtime.mla_decode_cpb` pins the second: the value comes from the tokens of one sequence (2 for a draft step, 6 for a verification step), the heuristic's own at one sequence. Through the patched backend on one GB10 a request alone computed bit for bit as before, and a call took 151 to 502 µs against 226 to 798 without the FlashInfer wrapper around it (synchronous timing). Serving never reaches the patched call ([below](#reachability-in-serving-2026-09-26)).
 
 ### On the reference pair (2026-09-25 and 26)
 
@@ -928,7 +928,7 @@ Image `8444078038c0…` (source `b7cd765`), every switch complete without recove
 | Distributed defaults | the 1.13 completions, 32.75 / 20.75 / 27.51 tok/s | NLL 1.5963 / 2.0241 / 0.9479 / 0.5931, identical to 1.13.0 in every digit; 199,652-token passphrase correct in 166.7 s; prefill 38,962 tokens 1,294.8 tok/s, decode after a short prompt 27.38; mojibake passed |
 | Distributed defaults, `max_num_seqs = 2` | the 1.13 completions, 32.59 / 20.72 / 27.55 tok/s | — |
 
-Decode speed did not move: the wrapper time the key removes did not show in tokens per second on the pair.
+Decode speed did not move, as expected of a key that never ran in serving ([below](#reachability-in-serving-2026-09-26)).
 
 The decode check's prompts were then sent in pairs (at once, and the second after the first's first token, each three times; 2,048- and 1,024-token prompts) against each profile's lone completions:
 
@@ -938,11 +938,17 @@ The decode check's prompts were then sent in pairs (at once, and the second afte
 | Published option, `max_num_seqs = 1` | 18 of 18 (the second request queues: 13 to 22 s to its first token) | 33.2 to 34.1 s, 30.0 to 30.9 tok/s together |
 | Distributed defaults, `max_num_seqs = 2` | 0 of 18 at each length | — |
 
-With the attention split pinned, a request sharing steps with another still changes through the MoE and through the prefill-sized kernels of a step shared with a prefill, on both weights; a pair still repeats when it is sent in the same order. `max_num_seqs = 1` gives repeatable completions under any load, two sequences about a quarter more throughput when requests overlap.
+A request sharing steps with another still changes, on both weights, and the lead suspects are the MoE and the prefill-sized kernels of a step shared with a prefill ([below](#reachability-in-serving-2026-09-26)); a pair still repeats when it is sent in the same order. `max_num_seqs = 1` gives repeatable completions under any load, two sequences about a quarter more throughput when requests overlap.
 
 A 19,851-token prompt with a passphrase at the midpoint was answered correctly cold, straight from the prefix cache (13,824 cached tokens: with a draft the lookup recomputes the last matching block) and again from the cache after three other ~20K-token prompts, with the same completion token for token each time: the kpool seed fix of 1.13.0 keeps a cached prefix intact while other prefills run.
 
 Reported upstream: [flashinfer-ai/flashinfer#5553](https://github.com/flashinfer-ai/flashinfer/issues/5553) (the split follows the call's token count; still so on FlashInfer main as of 2026-09-26), and the NVFP4 case on [vllm-project/vllm#46639](https://github.com/vllm-project/vllm/pull/46639) (Marlin MoE batch invariance, open as of 2026-09-26).
+
+### Reachability in serving (2026-09-26)
+
+`runtime.mla_decode_cpb` never ran in serving, so it had no effect on the pair above. A trace on the running pair (the published option with two sequences, as above, with the memory probe on; no restart; `records/20260926-cpb-reachability/`) counted every sparse-MLA forward: 434 for a request alone and 448 for a pair, as many as the attention hooks of the 11 DSA layers and the MTP draft layer, and every one returned through the reference NoPE attention. The image sets `GLM53_REFERENCE_ATTENTION=1`, and the backend returns through that path before the FlashInfer decode call the key's patch changes; the kernel runs above set the flag off by hand. The results in this section, lone completions, decode speed and NLL unchanged and two-sequence completions byte-identical to 1.13.0's, are consistent with no effect. flashinfer#5553 describes FlashInfer's own behaviour, which this serving does not exercise.
+
+What the trace did show changing with a partner is the attention's path. The reference attention sends calls of more than six query rows to FA2 (`runtime.fa2_attention`): a verification step at depth 3 was four rows alone, computed eagerly in FP32, and eight with a partner, through FA2 over BF16 KV. In kernel runs on one GB10 with synthetic inputs, the eager result for a sequence's rows was bit-identical whether the call had 4, 5 to 8 or 12 rows, wherever the sequence sat, beside a padded partner and over interleaved cache pages; FA2 moved every row by one BF16 ulp with the partner's row count and lengths (not its content, order or pages) and repeated bit for bit. That switch is not the main cause of two-sequence differences: with every attention call forced onto the eager path on the running pair (the memory probe's `fa2_stage("off")` for about eight minutes, then restored and checked), 7 of the 8 two-sequence completions still differed from their lone ones (one no longer did, five first differed at another token, two at the same one), and every pair still repeated. The MoE, whose rows change with another request's rows in the call (above), is the lead suspect. The operating rule stands: `max_num_seqs = 1` repeats under any load.
 
 ## Measurements on 1.15.0
 
