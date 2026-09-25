@@ -1,8 +1,10 @@
 """What the source-pinned vLLM patches share: anchors, the hash gate and the command.
 
-Each ``runtime/patch_*`` module names one file of the pinned vLLM (its target),
-the SHA-256 of that file as pinned, and a pure ``patch_text(text)`` that refuses
-a drifted or already patched source. The image build runs each module as
+A single-target ``runtime/patch_*`` module names one file of the pinned vLLM
+(its target), the SHA-256 of that file as pinned, and a pure ``patch_text(text)``
+that refuses a drifted or already patched source; ``patch_apc_lpa`` and
+``patch_nope_reference`` change several files and use only ``replace_once`` and
+``default_package``. The image build runs each module as
 ``python3 -m glm53_setup.runtime.patch_X``; this module holds the parts that
 are the same for all of them, so a patch module states only what it changes.
 """

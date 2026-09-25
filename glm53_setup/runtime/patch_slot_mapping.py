@@ -7,10 +7,12 @@ from position 128 on, one byte further per token of context. The read is harmles
 behind the table are mapped; when they are not, the step ends in a CUDA illegal memory access. On the
 reference pair that happened at about 250K tokens with the requantized checkpoint's allocation
 layout and not with the stock one; compute-sanitizer reports the same read on a stock four-layer
-fixture. Upstream: vllm-project/vllm issue #53982, fix proposed in PR #54296 (open on 2026-09-21);
-this is the same guard on the pinned source, to be dropped when the pin moves past the merge. A
-position the row cannot index now reads nothing and gets no slot.
+fixture. Upstream: vllm-project/vllm issue #53982, fix proposed in PR #54296; this is the same
+guard on the pinned source. A position the row cannot index now reads nothing and gets no slot.
 """
+
+# cc-defer: carries the proposed upstream guard on the pinned source; drop it (and
+# the Dockerfile RUN) when the vLLM pin moves past the merge of PR #54296.
 
 from . import pinned_patch
 from .pinned_patch import replace_once

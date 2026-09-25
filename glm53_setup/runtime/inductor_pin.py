@@ -1,4 +1,4 @@
-"""Keep Inductor's deterministic mode on through Dynamo's state restore (torch 2.13).
+"""Keep Inductor's deterministic mode on through Dynamo's state restore (torch 2.12.1, 2.13).
 
 ``TORCHINDUCTOR_DETERMINISTIC=1`` sets ``torch._inductor.config.deterministic`` on
 import, and the mode picks reduction configs without timing, the same on every

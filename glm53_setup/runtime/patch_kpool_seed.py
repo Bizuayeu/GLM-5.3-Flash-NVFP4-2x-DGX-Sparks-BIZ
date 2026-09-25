@@ -9,8 +9,11 @@ which may belong to another live or cached request. The MLA KV is untouched; the
 sparse top-k selection once a context exceeds ``index_topk``. Upstream: vllm-project/vllm pull
 request #57477 (merged 2026-09-20 as ``db1bfdd4``), which addresses blocks through
 ``tail.stride(0)`` and ``tail.stride(1)`` as the decode kernel already did; this is the same change
-on the pinned source, to be dropped when the pin moves past the merge.
+on the pinned source.
 """
+
+# cc-defer: carries the upstream fix on the pinned source; drop it (and the
+# Dockerfile RUN) when the vLLM pin moves past db1bfdd4.
 
 from . import pinned_patch
 from .pinned_patch import replace_once

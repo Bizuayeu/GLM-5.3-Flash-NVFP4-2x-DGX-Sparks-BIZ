@@ -1,15 +1,24 @@
-"""Read the CUDA caching allocator from a serving worker (dev `/collective_rpc`).
+"""Diagnostics inside a serving worker, reached through dev `/collective_rpc`.
 
-On GB10 the GPU shares the host's memory, so a growing allocator shows up as
-falling MemAvailable while the worker's RSS and its container's cgroup stay
-flat. This extension answers whether such growth is inside torch's allocator
-(reserved bytes, retries, segments) or somewhere else.
+Memory: ``allocator_stats`` reads the CUDA caching allocator. On GB10 the GPU
+shares the host's memory, so a growing allocator shows up as falling
+MemAvailable while the worker's RSS and its container's cgroup stay flat. This
+answers whether such growth is inside torch's allocator (reserved bytes,
+retries, segments) or somewhere else.
 
 ``host_stats`` is the other side: a worker whose own anonymous memory grows.
 glibc's ``mallinfo2`` splits the heap into bytes in use, free bytes it keeps
 and mapped blocks, torch reports its pinned host cache, and ``trim=True`` calls
 ``malloc_trim(0)`` between two readings, so retained free memory, live objects
-and memory outside malloc can be told apart.
+and memory outside malloc can be told apart. ``host_census`` counts live
+Python objects.
+
+Computation: ``trace_begin``/``trace_end`` fingerprint what the traced modules,
+the draft and the sparse NoPE attention take and return, and name the first
+call that differs in a later identical request. ``weight_digest`` fingerprints
+the weights as loaded, ``kernel_hashes`` the indexer's computations on fixed
+inputs; ``autotuners`` and ``inductor_state`` report the Inductor configs served
+and Inductor's settings; ``fa2_stage`` runs part of the FA2 path.
 """
 
 import ctypes

@@ -79,8 +79,8 @@ def candidate_scores_cuda(q_quant, k_quant, k_scale, weights, candidates, pool_l
         or pool_limits.dtype not in (torch.int32, torch.int64)
     ):
         raise ValueError("Expected FP8 Q/K, FP32 scales/weights and integer pool IDs")
-    # Kept at the standalone boundary until a validated engine adapter supplies
-    # these invariants without host synchronizations.
+    # Checked at the standalone boundary with host synchronizations; no engine
+    # adapter exists (P16 stopped at its cost gate).
     if bool(((pool_limits < 0) | (pool_limits > k_quant.shape[0])).any()) or bool(
         ((candidates < -1) | (candidates >= k_quant.shape[0])).any()
     ):

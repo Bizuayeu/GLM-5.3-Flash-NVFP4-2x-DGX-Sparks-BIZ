@@ -7,10 +7,11 @@ prefill rows). The order of a set is canonicalised before attention; the set
 is not, so one tie at one step forks a completion. Here a tie always goes to
 the lower pool index.
 
-Decode replaces the kernel with a stable descending sort: at most six rows, a
-fraction of a millisecond, no synchronisation. Prefill keeps the kernel, which
-is 25 times faster than the sort on a 2,048-row chunk, and repairs only the rows
-whose k-th value is shared by more pools than fit; finding them costs one
+Decode replaces the kernel with a stable descending sort over its few rows (one
+per decode token, max_num_seqs x (draft depth + 1)), with no synchronisation; at
+up to six rows it takes a fraction of a millisecond. Prefill keeps the kernel,
+which is 25 times faster than the sort on a 2,048-row chunk, and repairs only the
+rows whose k-th value is shared by more pools than fit; finding them costs one
 synchronisation per call, which a prefill chunk already pays elsewhere.
 """
 

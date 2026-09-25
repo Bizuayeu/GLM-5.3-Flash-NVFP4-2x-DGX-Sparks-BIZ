@@ -1,8 +1,12 @@
-"""Conservative eager NoPE MLA reference; preserves every selected candidate.
+"""Candidate-preserving NoPE MLA attention; every selected candidate is kept.
 
 The packed cache layout follows vLLM's Apache-2.0 concat_and_cache_ds_mla_kernel:
-512 E4M3 bytes, four FP32 scales, 64 BF16 RoPE values. Used only for validation
-and a future correctness-first fallback, never advertised as a fast kernel.
+512 E4M3 bytes, four FP32 scales, 64 BF16 RoPE values. With
+GLM53_REFERENCE_ATTENTION=1 (the reference image sets it) the backend that
+patch_nope_reference installs returns this function's result from every
+sparse-MLA ``forward_mqa`` call of a GLM NoPE model, prefill and decode alike.
+With GLM53_FA2_ATTENTION=1, calls of more than ``fa2_attention.DECODE_MAX_ROWS``
+query rows go to FlashInfer FA2; the rest run the eager FP32 loop below.
 """
 
 import os
@@ -52,7 +56,8 @@ def sparse_nope_reference(
         if bool((physical_indices < -1).any().item()):
             raise ValueError("Only -1 is a padding index")
     if os.environ.get("GLM53_FA2_ATTENTION") == "1":
-        # Opt-in prefill kernel; decode-sized calls continue below.
+        # Calls of more than DECODE_MAX_ROWS query rows go to FA2; smaller ones
+        # continue below.
         from glm53_setup.runtime.fa2_attention import sparse_nope_fa2, use_fa2
 
         if use_fa2(query.shape[0]):

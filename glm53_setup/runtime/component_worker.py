@@ -1,4 +1,4 @@
-"""Exclusive component diagnostics before LPA/MTP integration."""
+"""Exclusive CUDA/indexer component diagnostics: eager, one sequence, no LPA/MTP/APC."""
 
 import os
 

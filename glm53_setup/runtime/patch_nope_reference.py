@@ -1,4 +1,4 @@
-"""Install a source-pinned, candidate-preserving eager NoPE fallback.
+"""Install the source-pinned route of GLM NoPE sparse MLA to the candidate-preserving attention.
 
 Zero-padding adaptation follows the MIT kingjones30 recipe (notice in LICENSES).
 Modified vLLM source retains its Apache-2.0 notices. No top-k entries are removed.
