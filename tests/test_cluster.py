@@ -601,3 +601,30 @@ class SwitchVocabularyTests(unittest.TestCase):
                     self.assertEqual(reports[-1]["status"], status)
                     result = cluster.resume(pair, reports[-1])
                     self.assertEqual(result["status"], resumed)
+
+    def test_only_a_lost_poll_is_a_lost_observation(self):
+        failed = self.lost(return_value=subprocess.CompletedProcess([], 1, "", ""))
+        self.assertEqual(failed.evidence["reason"], "remote-operation-failed")
+        for error in (
+            failed,
+            switch.OperationFailure("stop", 0, switch.TRANSPORT_TIMEOUT),
+            switch.OperationFailure("ready", 1, switch.SSH_UNAVAILABLE, 255),
+            RuntimeError(switch.TRANSPORT_TIMEOUT),
+        ):
+            with self.subTest(error=str(error)):
+                self.assertFalse(switch.observation_lost(error))
+
+    def test_resume_refuses_every_other_status(self):
+        rows = [
+            {"rank": i, "identity": {"name": f"owned-{i}", "fingerprint": "fixed"}}
+            for i in (0, 1)
+        ]
+        for status in ("complete", "failed", "", switch.TRANSPORT_TIMEOUT):
+            backend = MagicMock()
+            with (
+                self.subTest(status=status),
+                self.assertRaisesRegex(ValueError, "unconfirmed two-rank readiness"),
+            ):
+                cluster.resume(backend, {"status": status, "new": rows})
+            backend.current.assert_not_called()
+            backend.ready.assert_not_called()

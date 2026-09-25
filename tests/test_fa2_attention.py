@@ -28,6 +28,29 @@ class Fa2SwitchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fa2_attention.use_fa2(2048)
 
+    def test_the_decode_bound_is_one_sequence_at_the_deepest_accepted_depth(self):
+        profile = config.load(ROOT / "examples/server.example.toml")
+
+        def accepted(depth):
+            p = copy.deepcopy(profile)
+            p["mtp"]["num_speculative_tokens"] = depth
+            try:
+                config.check_speculation(p)
+            except ValueError:
+                return False
+            return True
+
+        # server_config exposes no constant for the ceiling; probe past it.
+        deepest = max(depth for depth in range(1, 17) if accepted(depth))
+        self.assertEqual(fa2_attention.DECODE_MAX_ROWS, 1 * (deepest + 1))
+
+    def test_two_sequences_verifying_at_depth_three_take_the_kernel(self):
+        # A step carries max_num_seqs x (depth + 1) rows; the bound counts one
+        # sequence. See the investigation of 1.14.0's reachability.
+        with patch.dict(os.environ, {"GLM53_FA2_ATTENTION": "1"}):
+            self.assertFalse(fa2_attention.use_fa2(1 * (3 + 1)))
+            self.assertTrue(fa2_attention.use_fa2(2 * (3 + 1)))
+
     def test_profile_key_sets_the_switch_and_mounts_the_newer_modules(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         # On in the template from 1.6.0. A profile written before the key has none,

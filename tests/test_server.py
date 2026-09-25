@@ -355,6 +355,7 @@ class ServerConfigTests(unittest.TestCase):
         # pair with the checkout that switches away from it: that path keeps 1.
         for marker, recovery, expected in (
             ("GLM53_MOE_ORDER_API=2", False, True),
+            ("GLM53_MOE_ORDER_API=2", True, True),
             ("GLM53_MOE_ORDER_API=1", False, False),
             ("GLM53_MOE_ORDER_API=1", True, True),
         ):
@@ -1088,6 +1089,22 @@ class ServerConfigTests(unittest.TestCase):
             ),
         )
 
+    def test_speculative_config_carries_each_depth_in_a_fresh_dict(self):
+        for depth in (1, 2, 3, 4, 5):
+            spec = config.speculative_config(depth)
+            # Key order is what serve_args dumps and records store.
+            self.assertEqual(
+                list(spec), ["method", "num_speculative_tokens", "moe_backend"]
+            )
+            self.assertEqual(spec["num_speculative_tokens"], depth)
+        first = config.speculative_config(3)
+        first["num_speculative_tokens"] = 9
+        first["extra"] = True
+        self.assertEqual(
+            config.speculative_config(3),
+            {"method": "mtp", "num_speculative_tokens": 3, "moe_backend": "triton"},
+        )
+
     def test_command_mounts_mtp_view_and_projector_without_mutating_cache(self):
         self.profile["lpa"]["enabled"] = True
         self.profile["mtp"]["enabled"] = True
@@ -1410,9 +1427,21 @@ class ServerConfigTests(unittest.TestCase):
 class ReferenceImageMarkerTests(unittest.TestCase):
     """The markers preflight requires are the ones the reference build bakes."""
 
-    def test_the_reference_dockerfile_satisfies_every_capability_check(self):
+    # The reference build's ENV lines no capability check requires, and why.
+    UNCHECKED_MARKERS = {
+        "GLM53_FA2_ATTENTION_API=1": "not checked yet; slated to join the checks",
+        "GLM53_KPOOL_SEED_STRIDE=1": "build-patch record, no reader (CHANGELOG 1.13.0)",
+        "GLM53_SLOT_MAPPING_GUARD=1": "build-patch record, no reader (CHANGELOG 1.7.0)",
+        "GLM53_CANONICAL_CANDIDATES=1": "switch default read by candidate_order",
+        "GLM53_CANONICAL_MOE_ORDER=1": "switch default read by moe_token_order",
+        "GLM53_STABLE_INDEXER_TOPK=1": "switch default read by stable_topk",
+    }
+
+    def dockerfile_env(self):
         dockerfile = (ROOT / "docker/Dockerfile.reference").read_text(encoding="utf-8")
-        env = re.findall(r"^ENV (GLM53_\w+=\S+)$", dockerfile, re.MULTILINE)
+        return re.findall(r"^ENV (GLM53_\w+=\S+)$", dockerfile, re.MULTILINE)
+
+    def enabled_profile(self):
         profile = config.load(ROOT / "examples/server.example.toml")
         # Every feature a check is conditional on, turned on.
         profile["runtime"].update(
@@ -1427,6 +1456,24 @@ class ReferenceImageMarkerTests(unittest.TestCase):
         profile["validation"]["component_worker"] = True
         profile["cache"].update(fused_unpack=True, prefix_caching=True)
         profile["lpa"]["enabled"] = True
+        return profile
+
+    def test_every_reference_marker_is_required_or_named_unchecked(self):
+        env, profile = self.dockerfile_env(), self.enabled_profile()
+        # A marker is required when the checks fail without it (new launch).
+        unchecked = {
+            marker
+            for marker in env
+            if all(
+                server.image_capability_checks(
+                    profile, {"Config": {"Env": [m for m in env if m != marker]}}
+                ).values()
+            )
+        }
+        self.assertEqual(unchecked, set(self.UNCHECKED_MARKERS))
+
+    def test_the_reference_dockerfile_satisfies_every_capability_check(self):
+        env, profile = self.dockerfile_env(), self.enabled_profile()
         # A new launch: the stricter requirement.
         checks = server.image_capability_checks(profile, {"Config": {"Env": env}})
         # A check added without turning its feature on above fails this list.
