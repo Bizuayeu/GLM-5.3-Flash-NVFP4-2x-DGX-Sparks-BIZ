@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -1385,6 +1386,50 @@ class ServerConfigTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             config.request_body(self.profile, {"messages": [], "stream": True})
+
+
+class ReferenceImageMarkerTests(unittest.TestCase):
+    """The markers preflight requires are the ones the reference build bakes."""
+
+    def test_the_reference_dockerfile_satisfies_every_capability_check(self):
+        dockerfile = (ROOT / "docker/Dockerfile.reference").read_text(encoding="utf-8")
+        env = re.findall(r"^ENV (GLM53_\w+=\S+)$", dockerfile, re.MULTILINE)
+        profile = config.load(ROOT / "examples/server.example.toml")
+        # Every feature a check is conditional on, turned on.
+        profile["runtime"].update(
+            pipeline_parallel_size=2,
+            expert_parallel=True,
+            decode_graphs=True,
+            canonical_moe_order=True,
+            stable_indexer_topk=True,
+            prefix_page_dedup=True,
+            mla_decode_cpb=True,
+        )
+        profile["validation"]["component_worker"] = True
+        profile["cache"].update(fused_unpack=True, prefix_caching=True)
+        profile["lpa"]["enabled"] = True
+        # A new launch: the stricter requirement.
+        checks = server.image_capability_checks(profile, {"Config": {"Env": env}})
+        # A check added without turning its feature on above fails this list.
+        self.assertEqual(
+            list(checks),
+            [
+                "pipeline_support",
+                "expert_parallel_support",
+                "component_worker",
+                "fused_unpack_support",
+                "decode_graph_support",
+                "async_index_check_support",
+                "lpa_worker",
+                "apc_lpa_support",
+                "reference_attention",
+                "moe_order_support",
+                "indexer_topk_support",
+                "prefix_dedup_support",
+                "mla_decode_cpb_support",
+            ],
+        )
+        self.assertEqual([key for key, ok in checks.items() if not ok], [])
 
 
 if __name__ == "__main__":

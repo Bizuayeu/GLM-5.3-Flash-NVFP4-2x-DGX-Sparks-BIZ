@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from glm53_setup.__main__ import COMMANDS
 from glm53_setup.runtime import pinned_patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,13 +96,38 @@ class PinnedPatchCommandTests(unittest.TestCase):
                 self.run_main(package)
 
 
+DOCKERFILE = ROOT / "docker/Dockerfile.reference"
+
+# Patches no reference image build runs, both slated for deletion:
+# patch_graph_prefill serves the dead LPA x Graph path, patch_pipeline_layout
+# is unneeded for the full-model split.
+CANDIDATE_IMAGE_ONLY = {"patch_graph_prefill", "patch_pipeline_layout"}
+
+
 class ImageBuildContractTests(unittest.TestCase):
+    def test_every_runtime_patch_is_built_into_the_image_or_named_as_left_out(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        built = set(
+            re.findall(
+                r"^RUN python3 -m glm53_setup\.runtime\.(patch_\w+)$", dockerfile, re.M
+            )
+        )
+        # A subcommand of the package CLI resolves through its command table.
+        for name in re.findall(r"^RUN python3 -m glm53_setup (\S+)$", dockerfile, re.M):
+            if COMMANDS[name].startswith("runtime.patch_"):
+                built.add(COMMANDS[name].removeprefix("runtime."))
+        present = {
+            path.stem for path in (ROOT / "glm53_setup/runtime").glob("patch_*.py")
+        }
+        self.assertEqual(built - present, set())
+        self.assertEqual(built & CANDIDATE_IMAGE_ONLY, set())
+        self.assertEqual(present - built, CANDIDATE_IMAGE_ONLY)
+
     def test_every_patch_the_image_build_runs_exposes_the_shared_surface(self):
-        dockerfile = (ROOT / "docker/Dockerfile.reference").read_text(encoding="utf-8")
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
         modules = re.findall(
             r"python3 -m (glm53_setup\.runtime\.patch_\w+)", dockerfile
         )
-        self.assertGreaterEqual(len(modules), 6)
         for name in modules:
             with self.subTest(module=name):
                 module = importlib.import_module(name)
