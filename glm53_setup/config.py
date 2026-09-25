@@ -15,6 +15,8 @@ MODEL_LAYERS = 45
 HIDDEN_SIZE = 4096
 FIXTURE_LAYERS = 4
 TEACHER_PRECISION = "NVFP4-Marlin-W4A16"
+# Where tools/prepare_mtp_view.py marks the view's config.json; server preflight reads it.
+MTP_VIEW_KEY = "_local_mtp_metadata"
 
 
 def load_lock():

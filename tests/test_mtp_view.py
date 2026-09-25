@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from glm53_setup.config import MTP_VIEW_KEY
 from tools.prepare_mtp_view import inspect_mtp, metadata_configs
 
 
@@ -42,6 +43,10 @@ class MtpViewTests(unittest.TestCase):
                 fnmatch.fnmatch(f"language_model.model.layers.{i}.mlp.experts", pattern)
             )
         self.assertFalse(fnmatch.fnmatch("model.layers.450.mlp.experts", pattern))
+        # The mark server preflight checks the view by.
+        mark = updated[MTP_VIEW_KEY]
+        self.assertEqual(mark["source_revision"], "test-revision")
+        self.assertIs(mark["weight_bytes_modified"], False)
 
     def test_quantized_mtp_cannot_be_silently_treated_as_bf16(self):
         with tempfile.TemporaryDirectory() as tmp:

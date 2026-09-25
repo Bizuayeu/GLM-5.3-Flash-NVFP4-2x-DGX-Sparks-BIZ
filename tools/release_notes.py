@@ -3,10 +3,13 @@
 import argparse
 import re
 import sys
-import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1])
+)  # run as a script from any directory
+
+from glm53_setup.config import ROOT, version  # noqa: E402
 
 
 def section(changelog, version):
@@ -30,8 +33,7 @@ def main():
     )
     args = parser.parse_args()
     if args.match_project:
-        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        if project["project"]["version"] != args.version:
+        if version() != args.version:
             raise SystemExit("tag and pyproject.toml disagree on the version")
     notes = section((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), args.version)
     sys.stdout.buffer.write(notes.encode("utf-8"))

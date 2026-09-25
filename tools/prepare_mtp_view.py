@@ -6,9 +6,14 @@ import hashlib
 import json
 import os
 import struct
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1])
+)  # run as a script from any directory
+
+from glm53_setup.config import MTP_VIEW_KEY, load_lock  # noqa: E402
 
 
 def metadata_configs(config, legacy, revision):
@@ -28,7 +33,7 @@ def metadata_configs(config, legacy, revision):
     ):
         if pattern not in exclusions:
             exclusions.append(pattern)
-    config["_local_mtp_metadata"] = {
+    config[MTP_VIEW_KEY] = {
         "source_revision": revision,
         "weight_bytes_modified": False,
         "change": "Exclude only the BF16 MTP layer from global NVFP4",
@@ -78,7 +83,7 @@ def main():
     args = parser.parse_args()
     if os.name != "posix":
         parser.error("Create the symlink view on the Linux model host")
-    lock = json.loads((ROOT / "config/runtime.lock.json").read_text(encoding="utf-8"))
+    lock = load_lock()
     source, output = args.snapshot.resolve(), args.output.resolve()
     if source.name != lock["revision"]:
         parser.error("Use the pinned, checksum-verified snapshot")

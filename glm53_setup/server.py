@@ -16,21 +16,30 @@ from pathlib import Path
 
 from . import agreement, capacity, host, model_http, mojibake, warmup
 from . import server_config as settings
-from .config import DEFAULT_PROFILE, MODEL_LAYERS, RECORDS, ROOT, STATE, load_lock
+from .config import (
+    DEFAULT_PROFILE,
+    MODEL_LAYERS,
+    MTP_VIEW_KEY,
+    RECORDS,
+    ROOT,
+    STATE,
+    load_lock,
+)
 from .download import STATUS_FILE
 from .host import available_gib
 from .io import read_json, write_json
+from .runtime.patch_nope_reference import REFERENCE_FILE
 
 LABEL = "glm53.experiment.startup"
+# The image's site directory; site runs the import lines of .pth files found here.
+SITE_PACKAGES = "/usr/local/lib/python3.12/dist-packages"
 # Where the pinned image keeps the GLM model sources that overlays replace.
-VLLM_MODEL_DIR = "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia"
+VLLM_MODEL_DIR = f"{SITE_PACKAGES}/vllm/models/glm5next/nvidia"
 # Where the reference image installs this package (build-reference); a module
 # newer than the image is bind-mounted there so a worker extension can import it.
 IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
-# The image's site directory; site runs the import lines of .pth files found here.
-SITE_PACKAGES = "/usr/local/lib/python3.12/dist-packages"
 # The backend patch imports the reference attention from this copy.
-IMAGE_REFERENCE = "/usr/local/lib/python3.12/dist-packages/glm53_reference.py"
+IMAGE_REFERENCE = f"{SITE_PACKAGES}/{REFERENCE_FILE}"
 
 
 def hf_cache():
@@ -347,7 +356,7 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
     ] == MODEL_LAYERS and not metadata.get("_test_fixture_only")
     checks.update(derived_checks(profile, metadata))
     if profile["mtp"]["enabled"] and not settings.derived_checkpoint(profile):
-        view = metadata.get("_local_mtp_metadata", {})
+        view = metadata.get(MTP_VIEW_KEY, {})
         checks["mtp_view"] = (
             view.get("source_revision") == lock["revision"]
             and view.get("weight_bytes_modified") is False

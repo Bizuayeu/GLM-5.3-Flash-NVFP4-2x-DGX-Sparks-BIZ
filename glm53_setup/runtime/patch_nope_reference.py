@@ -11,6 +11,9 @@ from pathlib import Path
 
 from .pinned_patch import default_package, replace_once
 
+# The copy of reference_attention.py beside the vLLM package; the patched backend imports it.
+REFERENCE_FILE = "glm53_reference.py"
+
 HASHES = {
     "model_executor/layers/mla.py": "936b06c4671d52fce52ae85bb24b986db17855f32740bf55b226053fc385c4b4",
     "v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py": "a0023f72125cb0d5599b5bf940c86be1f0c9985bd62b0919f243a8fda76f4449",
@@ -124,7 +127,7 @@ def main(argv=None):
     if not args.check:
         for name, data in outputs.items():
             (package / name).write_bytes(data)
-        (package.parent / "glm53_reference.py").write_bytes(
+        (package.parent / REFERENCE_FILE).write_bytes(
             Path(__file__).with_name("reference_attention.py").read_bytes()
         )
         (package.parent / "glm53-reference-patch.json").write_text(
