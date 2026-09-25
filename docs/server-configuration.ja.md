@@ -97,7 +97,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 ### attentionとcacheとcheckpoint
 
-`runtime.fa2_attention`（未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちquery行が6を超える呼び出しが、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。6行までの呼び出しは参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。閾値は呼び出し全体の行数で数えます。1系列のdecodeのstep（最大6行＝MTPの深さ5）はすべて参照経路ですが、2系列では深さ3の検証stepが8行になってFA2を通り、ある行の結果が相手の系列の行数と長さにわずかに依存します。参照計算の結果は依存しません（[測定](benchmarks.ja.md#servingでの到達性2026-09-26)）。基準の2台では、38,962 tokenのprefillが約2.2倍速くなりました（[1.6.0での測定](benchmarks.ja.md#160での測定)）。unpack融合は要素数を実行時に受け取るので、256Kの系列で要素数ごとにTritonのkernelを一つcompileすることはもうありません。この経路はLPAと排他です。checkoutは、この経路・そのdispatch・上記のunpack融合を、それらより前に作られたimageの上にmountします。`GLM53_FA2_ATTENTION_API=1` を持つimageでは冗長です。
+`runtime.fa2_attention`（未指定はfalse、テンプレートは `true`）は、両rankに `GLM53_FA2_ATTENTION` を設定します。`true` にすると、候補を保持するNoPE attentionのうちquery行が6を超える呼び出しが、参照計算の代わりにFlashInferの `BatchMLAPagedAttentionWrapper`（backendは `fa2`、page sizeは1、各行の候補をその行のKV pageとして渡す）を通ります。packedの `fp8_ds_mla` cacheはそのままで、呼び出しが触る行だけをBF16に展開します。FlashInfer 0.6.18はSM90以外でFP8のMLA KVを受け付けないためです。選ばれた候補はすべて保持するので、この呼び出しより上流のprefix cache・unpack融合・候補の並びは変わりません。6行までの呼び出しは参照経路のままです。`plan()` は各行の長さをhost側に要求し、MLA層ごとに同期が1回入ります。prefillのchunkに対しては安く、decodeのstepに対しては高い費用です。閾値は呼び出し全体の行数で数えます。1系列のdecodeのstep（最大6行＝MTPの深さ5）はすべて参照経路ですが、2系列では深さ3の検証stepが8行になってFA2を通り、ある行の結果が相手の系列の行数と長さにわずかに依存します。参照計算の結果は依存しません（[測定](benchmarks.ja.md#servingでの到達性2026-09-26)）。基準の2台では、38,962 tokenのprefillが約2.2倍速くなりました（[1.6.0での測定](benchmarks.ja.md#160での測定)）。unpack融合は要素数を実行時に受け取るので、256Kの系列で要素数ごとにTritonのkernelを一つcompileすることはもうありません。この経路はLPAと排他です。`server preflight` は、この経路を持つimage（`GLM53_FA2_ATTENTION_API=1`、行 `fa2_attention_support`）を、復旧先も含めて要求します。checkoutは今も、この経路・そのdispatch・上記のunpack融合をimageの上にmountします。
 
 `runtime.prefix_page_dedup`（未指定はoff＝固定vLLMのpoolのまま。AXLの例で設定）は、両rankに `GLM53_PREFIX_PAGE_DEDUP` を設定し、`GLM53_PREFIX_DEDUP_API=1`（1.9.0から作ったimage）を要求します。固定vLLMのblock poolは、同じhashのblockが既にcacheにあっても、fullになったblockをそのhashで登録します。draftがあるとprefix lookupは一致した末尾blockをhitから外して再計算するので、同じ履歴を再送するたびにKV cache groupごとに1 blockが既にあるhashでLRU queueに加わり、その複製が古い履歴を先に追い出します。keyをonにすると、そのblockは登録されません。hashを持たず、要求が終わるとfree queueの先頭に戻り、lookupは先にcacheされた複製にhitし続けます。block idと数値は変わりません（[1.9.0での測定](benchmarks.ja.md#190での測定)）。
 
@@ -234,7 +234,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_COMPONENT_API=1` | `validation.component_worker`（`component_worker`） | — |
 | `GLM53_MOE_ORDER_API=2` | `runtime.canonical_moe_order`（`moe_order_support`。marker 1は復旧先に限る） | 1.7.0（1は1.6.0から） |
 | `GLM53_INDEXER_TOPK_API=1` | `runtime.stable_indexer_topk`（`indexer_topk_support`） | 1.6.0 |
-| `GLM53_FA2_ATTENTION_API=1` | 要求しない。無ければcheckoutがFA2経路をimageの上にmountする | 1.6.0 |
+| `GLM53_FA2_ATTENTION_API=1` | `runtime.fa2_attention = true`（`fa2_attention_support`） | 1.6.0 |
 | `GLM53_SLOT_MAPPING_GUARD=1` | 要求しない。無いと公開した任意設定で約25万tokenを超える要求が失敗する（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.7.0 |
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup`（`prefix_dedup_support`） | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |

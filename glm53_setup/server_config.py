@@ -682,6 +682,11 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_MLA_DECODE_CPB_API=1",
             optional(profile, "runtime", "mla_decode_cpb"),
         ),
+        (
+            "fa2_attention_support",
+            "GLM53_FA2_ATTENTION_API=1",
+            optional(profile, "runtime", "fa2_attention"),
+        ),
     ]
     env = image["Config"].get("Env") or []
     return {

@@ -1475,7 +1475,6 @@ class ReferenceImageMarkerTests(unittest.TestCase):
 
     # The reference build's ENV lines no capability check requires, and why.
     UNCHECKED_MARKERS = {
-        "GLM53_FA2_ATTENTION_API=1": "not checked yet; slated to join the checks",
         "GLM53_KPOOL_SEED_STRIDE=1": "build-patch record, no reader (CHANGELOG 1.13.0)",
         "GLM53_SLOT_MAPPING_GUARD=1": "build-patch record, no reader (CHANGELOG 1.7.0)",
         "GLM53_CANONICAL_CANDIDATES=1": "switch default read by candidate_order",
@@ -1497,6 +1496,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             canonical_moe_order=True,
             stable_indexer_topk=True,
             prefix_page_dedup=True,
+            fa2_attention=True,
             # Retired and gone from the examples; a profile that carries it is
             # still checked for the image marker until the next image build.
             mla_decode_cpb=True,
@@ -1541,6 +1541,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
                 "indexer_topk_support",
                 "prefix_dedup_support",
                 "mla_decode_cpb_support",
+                "fa2_attention_support",
             ],
         )
         self.assertEqual([key for key, ok in checks.items() if not ok], [])

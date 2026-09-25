@@ -76,10 +76,24 @@ class Fa2SwitchTests(unittest.TestCase):
             ":/usr/local/lib/python3.12/dist-packages/glm53_reference.py:ro",
         ):
             self.assertTrue(any(v.endswith(target) for v in command), target)
-        # An image built before the path shipped in it stays a valid recovery
-        # target: the mounts serve it, and the marker it lacks is not required.
+        # The image must carry the path (1.6.0) whatever the mounts deliver, a
+        # recovery target included; without FA2 the marker is not asked for.
         bare = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
-        self.assertNotIn("fa2_support", config.image_capability_checks(profile, bare))
+        marked = {
+            "Config": {"Env": [*bare["Config"]["Env"], "GLM53_FA2_ATTENTION_API=1"]}
+        }
+        for recovery in (False, True):
+            with self.subTest(recovery=recovery):
+                for image, expected in ((bare, False), (marked, True)):
+                    checks = config.image_capability_checks(
+                        profile, image, recovery=recovery
+                    )
+                    self.assertIs(checks["fa2_attention_support"], expected)
+        without = copy.deepcopy(profile)
+        without["runtime"]["fa2_attention"] = False
+        self.assertNotIn(
+            "fa2_attention_support", config.image_capability_checks(without, bare)
+        )
         profile["runtime"]["fa2_attention"] = False
         self.assertEqual(config.environment(profile, 0)["GLM53_FA2_ATTENTION"], "0")
         off = server.command(

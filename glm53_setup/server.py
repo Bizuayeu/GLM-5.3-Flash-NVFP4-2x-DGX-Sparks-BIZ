@@ -137,7 +137,9 @@ def command(profile, config_path, rank, name, cache=None):
         ]
     if settings.optional(profile, "runtime", "fa2_attention"):
         # cc-defer: redundant on images that carry GLM53_FA2_ATTENTION_API=1; drop
-        # the mounts once no image without it can be a recovery target.
+        # the mounts once no image without it can be a recovery target. That is now
+        # checked: preflight requires the marker of an FA2 profile, recovery
+        # included (fa2_attention_support).
         # The FA2 path and its dispatch are newer than the image, and so is the
         # fused unpack that takes its element count at run time: the image's
         # copy compiles one kernel per size, which FA2's varying row counts leak.
