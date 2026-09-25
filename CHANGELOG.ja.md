@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## 1.12.1 — 2026-09-25
+
+### Documentation
+
+- `runtime.inductor_deterministic` を付けた配布既定（出荷どおりのテンプレート）を3回起動した：両rankがindexerのkey正規化を一つのconfigで動かし、すべての呼び出しで同じkeyを受け取り、rank間で違うInductorのconfigはなく、3起動とも同じcompletionで、decodeは配布既定の公開値と同じ（count／prose／codeで32.80〜32.84／20.76〜20.82／27.53〜27.64 tok/s、公開値は32.01／20.67／26.68）。検証・ベンチマーク・READMEの反復性の行から「配布既定はkeyを付けて起動していない」を外した。
+
 ## 1.12.0 — 2026-09-25
 
 ### Added

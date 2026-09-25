@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## 1.12.1 — 2026-09-25
+
+### Documentation
+
+- The distributed defaults with `runtime.inductor_deterministic` (the template as shipped) were launched three times: both ranks served the indexer's key norm at one config and received the same key at every call, no Inductor config differed between the ranks, all three launches gave the same completions, and decode matched the defaults' published speeds (32.80–32.84 / 20.76–20.82 / 27.53–27.64 against 32.01 / 20.67 / 26.68 tok/s on counting / prose / code). Validation, benchmarks and the README repeatability rows no longer say the defaults were not launched with the key.
+
 ## 1.12.0 — 2026-09-25
 
 ### Added

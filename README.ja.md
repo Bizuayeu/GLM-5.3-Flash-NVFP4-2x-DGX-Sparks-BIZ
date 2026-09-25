@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.12.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.12.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
 
@@ -111,7 +111,7 @@ GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-k
 | 長文入力 | 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限（2026-09-22） |
 | 品質 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6645／2.0024／1.0031／0.6279（2026-09-22） |
 | 品質 | tool-eval-bench、標準69シナリオ | 90／100（1.0.0、2026-09-14） | 88／100、failは同じ3件、Safety Gate未達 |
-| 反復性 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0 | 単独の要求なら同じ（3回中3回、どの起動でも）。1.12.0からはどの起動も同じ数値状態で計算する（3起動中3起動）。以前の三つの状態の原因は[検証](docs/validation.ja.md#フルモデルtp2の実験範囲)に名指しした。要求が2本走っている間のcompletionは単独時と一致しない |
+| 反復性 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0。1.12.0からはどの起動も同じ数値状態で計算する（3起動中3起動） | 単独の要求なら同じ（3回中3回、どの起動でも）。1.12.0からはどの起動も同じ数値状態で計算する（3起動中3起動）。以前の三つの状態の原因は[検証](docs/validation.ja.md#フルモデルtp2の実験範囲)に名指しした。要求が2本走っている間のcompletionは単独時と一致しない |
 | メモリ | bench中のheadの最小空きメモリ | 5.53 GiB（KV 3 GiB） | 200K 2本の同時で6.46 GiB、sparkDash中は7.24 GiB（KV 6 GiB） |
 
 | | 配布既定 | 公開した任意設定 |
@@ -134,7 +134,7 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、同じ起動の中ではbit一致で反復する。1.12.0までは、起動を跨ぐと対は三つの数値状態のどれかに落ちていた（状態を確かめた配信imageの16起動で11・3・2）。各rankが複製されたindexerのcompileされたkey正規化のconfigを計測で選び、三つのconfigのうち一つは行の足し算の順が違うため。`runtime.inductor_deterministic`（両テンプレートでon）はそのconfigを計測せず両rankで同じに決める：公開した任意設定のprofileで3起動とも状態1で同じcompletion。新しい起動は今も仮定せずに確かめる：切替ごとに重みのdigest・decode検査・kernel hash。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
+| 全モデル | temperature 0での同一要求 | 原因を二つ（expert内のtoken順、indexerのtop-kの同点）直した結果、同じ起動の中ではbit一致で反復する。1.12.0までは、起動を跨ぐと対は三つの数値状態のどれかに落ちていた（状態を確かめた配信imageの16起動で11・3・2）。各rankが複製されたindexerのcompileされたkey正規化のconfigを計測で選び、三つのconfigのうち一つは行の足し算の順が違うため。`runtime.inductor_deterministic`（両テンプレートでon）はそのconfigを計測せず両rankで同じに決める：どちらのprofileでも3起動とも同じcompletion（公開した任意設定では状態1）。新しい起動は今も仮定せずに確かめる：切替ごとに重みのdigest・decode検査・kernel hash。[見つけた経緯](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信する：1起動で200K要求2本の同時、tool呼び出し2本の同時、画像と散文の同時がすべて正答・preemptionなし、200K 2本で330 s（単独166 s）。同時2系列のcompletionは単独時と一致しない（batch invarianceはoff。宣言した挙動で、patchは検証中）。3起動を経て**2026-09-23から通常運用として受け入れ済み**。2系列を超えるにはrankを増やす：TP=4を推奨、TP=3は非推奨。どちらも未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
