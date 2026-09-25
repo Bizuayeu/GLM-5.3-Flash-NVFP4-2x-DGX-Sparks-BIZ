@@ -146,7 +146,7 @@ source固定の実験的なモデルpatchは、BF16のhidden／residual tensor�
 
 再試行（`pipeline-v17-pp2-b`）は **不合格** です。ログにはstageごとのMamba cache仕様の不一致があり、両コンテナともOOMなしで終了しました。固定版のGLMのcacheグループ化は、Mamba層を持つすべてのstageにMLA層があることも明示的に要求します。したがって、4層モデルを2+2に分割する構成はPP fixtureとして不適切です。これを動かすためにcacheの契約を緩めたりはしません。
 
-fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要です。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](server-configuration.ja.md)では、対応するimageと併せてPPを選択できます。
+fixture builderは `--layers 8` を受け付け、各stageにKDA/KDA/KDA/MLAのblockを1つずつ配置します。両ノードで、選択した17,526 tensor（25,606,617,384 bytes）すべてをビルドし、固定した元の重みとbyte単位で照合しました。8層の比較は両側とも元の `b9ae526…` PP imageを使います。両stageが同じ対応を宣言する場合、layoutの積集合patchは不要なため、削除しました。観測器は、転送のhashに加えて、有限なattention出力と使用中のKDAのconv／再帰stateを記録します。[実験的な起動設定](server-configuration.ja.md)では、対応するimageと併せてPPを選択できます。
 
 ### 8層PPの観測
 

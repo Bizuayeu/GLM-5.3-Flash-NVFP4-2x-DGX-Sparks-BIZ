@@ -42,7 +42,7 @@
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
 | `glm53_setup/runtime/fused_unpack.py`、`fused_nope*.py`、`graph_policy.py` | FP8 unpack融合kernel、実験的な融合NoPE attentionの試作、LPAがeager実行を要する条件 |
 | `glm53_setup/runtime/indexer_*.py`、`component_worker.py`、`memory_probe.py` | CSA2のindexer観測・再利用部品、排他的な部品診断worker、配信workerからのallocator読み出し（[Indexer再利用](indexer-reuse.ja.md)） |
-| `glm53_setup/runtime/pipeline_state.py`、`patch_pipeline*.py` | PP fixtureの転送とlayoutのpatch（P17） |
+| `glm53_setup/runtime/pipeline_state.py`、`patch_pipeline.py` | PP fixtureの転送と、そのsource固定patch（P17） |
 | `glm53_setup/validation/make_fixture.py`、`run_fixture.py`、`summarize_fixture.py`、`inspect_runtime.py`、`probe_attention.py`、`reference_check.py` | fixtureの作成・実行・判定、コンテナ内の確認、NoPE dispatchの探査、参照Attentionの一致（[検証範囲](validation.ja.md)） |
 | `glm53_setup/validation/run_agreement_fixture.py`、`compare_agreement.py`、`quant_error.py`、`run_repeat_trace.py` | fixture上の再量子化検査と、反復実行で最初に出力が違うモジュールの特定（[検証範囲](validation.ja.md#フルモデルtp2の実験範囲)） |
 | `glm53_setup/validation/run_components.py`、`run_graph_fixture.py`、`run_indexer_fixture.py`、`run_apc_lpa_fixture.py`、`indexer_overlap.py`、`expert_worker.py`、`pipeline_worker.py`、`apc_fixture_worker.py` | 部品A/B/A、Graph、indexer、APC/LPA、EP、PPの各fixtureと、fixture専用のworker（[部品検証](component-validation.ja.md)） |

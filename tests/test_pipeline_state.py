@@ -57,20 +57,6 @@ class PipelineStartupTests(unittest.TestCase):
 
 
 class PipelineScopeTests(unittest.TestCase):
-    def test_stage_layout_intersection_preserves_support_and_preference(self):
-        from glm53_setup.runtime.pipeline_state import common_layout_names
-
-        self.assertEqual(
-            common_layout_names([["LBNHC", "LBHNC"], ["LBHNC"]]), ["LBHNC"]
-        )
-        self.assertEqual(
-            common_layout_names([["LBHNC", "LBNHC"], ["LBNHC", "LBHNC"]]),
-            ["LBHNC", "LBNHC"],
-        )
-        for layouts in ([], [[]], [["LBHNC"], []], [["LBHNC"], ["LBNHC"]]):
-            with self.assertRaises(ValueError):
-                common_layout_names(layouts)
-
     def test_independent_scope_rejects_untested_combinations(self):
         config = NS(
             parallel_config=NS(

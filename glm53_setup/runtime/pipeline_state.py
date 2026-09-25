@@ -1,16 +1,6 @@
 """Typed intermediate buffers for the independent GLM mHC PP fixture."""
 
 
-def common_layout_names(supported):
-    """Retain only layouts supported by every stage, in rank-zero preference."""
-    if not supported or not all(supported):
-        raise ValueError("No worker reported supported KV cache layouts")
-    common = set.intersection(*(set(names) for names in supported))
-    if not common:
-        raise ValueError(f"No common pipeline KV cache layout: {supported}")
-    return [name for name in supported[0] if name in common]
-
-
 def validate_pipeline(config):
     parallel = config.parallel_config
     if parallel.pipeline_parallel_size == 1:

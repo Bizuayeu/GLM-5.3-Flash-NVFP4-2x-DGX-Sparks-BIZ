@@ -98,13 +98,9 @@ class PinnedPatchCommandTests(unittest.TestCase):
 
 DOCKERFILE = ROOT / "docker/Dockerfile.reference"
 
-# Patches no reference image build runs, slated for deletion:
-# patch_pipeline_layout is unneeded for the full-model split.
-CANDIDATE_IMAGE_ONLY = {"patch_pipeline_layout"}
-
 
 class ImageBuildContractTests(unittest.TestCase):
-    def test_every_runtime_patch_is_built_into_the_image_or_named_as_left_out(self):
+    def test_every_runtime_patch_is_built_into_the_image(self):
         dockerfile = DOCKERFILE.read_text(encoding="utf-8")
         built = set(
             re.findall(
@@ -118,9 +114,7 @@ class ImageBuildContractTests(unittest.TestCase):
         present = {
             path.stem for path in (ROOT / "glm53_setup/runtime").glob("patch_*.py")
         }
-        self.assertEqual(built - present, set())
-        self.assertEqual(built & CANDIDATE_IMAGE_ONLY, set())
-        self.assertEqual(present - built, CANDIDATE_IMAGE_ONLY)
+        self.assertEqual(built, present)
 
     def test_every_patch_the_image_build_runs_exposes_the_shared_surface(self):
         dockerfile = DOCKERFILE.read_text(encoding="utf-8")

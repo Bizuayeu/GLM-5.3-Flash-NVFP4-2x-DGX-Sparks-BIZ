@@ -146,7 +146,7 @@ The first two-stage attempt (`pipeline-v17-pp2-a`) loaded stage weights but fail
 
 The retry (`pipeline-v17-pp2-b`) is **not accepted**: its log showed a mismatch between stage-local Mamba cache specs, and both containers exited without OOM. The fixed GLM cache grouping also explicitly requires an MLA layer on every stage that has Mamba layers. A four-layer model split 2+2 is therefore an unsuitable PP fixture. Do not relax those cache contracts to make it run.
 
-The fixture builder accepts `--layers 8`, providing one KDA/KDA/KDA/MLA block per stage. Both nodes built and byte-verified all 17,526 selected tensors (25,606,617,384 bytes) against the pinned original weights. The eight-layer comparison uses the original `b9ae526…` PP image on both sides; the layout-intersection patch is unnecessary when both stages declare the same support. Its observer records finite attention outputs and active KDA conv/recurrent state as well as transfer hashes. The [server profile](server-configuration.md) can select PP with a matching image.
+The fixture builder accepts `--layers 8`, providing one KDA/KDA/KDA/MLA block per stage. Both nodes built and byte-verified all 17,526 selected tensors (25,606,617,384 bytes) against the pinned original weights. The eight-layer comparison uses the original `b9ae526…` PP image on both sides; the layout-intersection patch is unnecessary when both stages declare the same support, and has been removed. Its observer records finite attention outputs and active KDA conv/recurrent state as well as transfer hashes. The [server profile](server-configuration.md) can select PP with a matching image.
 
 ### Eight-layer PP observations
 
