@@ -206,11 +206,11 @@ class ClusterOwnershipTests(unittest.TestCase):
             backend.prepare.side_effect = [{"rank": 0}, {"rank": 1}]
             if changed:
                 with self.assertRaises(ValueError):
-                    cluster.resume(backend, copy.deepcopy(report))
+                    switch.resume(backend, copy.deepcopy(report))
                 backend.ready.assert_not_called()
             else:
                 self.assertEqual(
-                    cluster.resume(backend, copy.deepcopy(report))["status"], "complete"
+                    switch.resume(backend, copy.deepcopy(report))["status"], "complete"
                 )
                 backend.ready.assert_called_once()
             backend.start.assert_not_called()
@@ -252,7 +252,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             return fake
 
         fake = backend()
-        result = cluster.resume(
+        result = switch.resume(
             fake, unconfirmed("readiness-unconfirmed", "new"), config="text"
         )
         self.assertEqual(result["status"], "complete")
@@ -262,20 +262,20 @@ class ClusterOwnershipTests(unittest.TestCase):
         self.assertEqual(result["warmup"], {"passed": True})
 
         fake = backend()
-        result = cluster.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
+        result = switch.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
         fake.install.assert_not_called()  # no text given: the files stay as they are
         fake.warmup.assert_called_once()
 
         # A failed ladder is recorded and leaves the pair complete, as in a switch.
         fake = backend()
         fake.warmup.side_effect = RuntimeError("ladder")
-        result = cluster.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
+        result = switch.resume(fake, unconfirmed("readiness-unconfirmed", "new"))
         self.assertEqual(result["status"], "complete")
         self.assertTrue(result["warmup"]["failed"])
 
         # The recovered old pair keeps its file, and a recovery is never warmed.
         fake = backend()
-        result = cluster.resume(
+        result = switch.resume(
             fake,
             unconfirmed("recovery-readiness-unconfirmed", "recovery"),
             config="text",
@@ -326,7 +326,7 @@ class ClusterOwnershipTests(unittest.TestCase):
             {"name": f"old-{i}", "fingerprint": "old"} for i in (0, 1)
         ]
         backend.prepare.side_effect = report["recovery_assets"]
-        result = cluster.resume(backend, report)
+        result = switch.resume(backend, report)
         self.assertEqual(result["status"], "failed")
         self.assertTrue(result["recovered"])
         self.assertEqual(result["failure"]["reason"], "candidate-failed")
@@ -615,7 +615,7 @@ class SwitchVocabularyTests(unittest.TestCase):
                             save=lambda r: reports.append(copy.deepcopy(r)),
                         )
                     self.assertEqual(reports[-1]["status"], status)
-                    result = cluster.resume(pair, reports[-1])
+                    result = switch.resume(pair, reports[-1])
                     self.assertEqual(result["status"], resumed)
 
     def test_only_a_lost_poll_is_a_lost_observation(self):
@@ -641,6 +641,6 @@ class SwitchVocabularyTests(unittest.TestCase):
                 self.subTest(status=status),
                 self.assertRaisesRegex(ValueError, "unconfirmed two-rank readiness"),
             ):
-                cluster.resume(backend, {"status": status, "new": rows})
+                switch.resume(backend, {"status": status, "new": rows})
             backend.current.assert_not_called()
             backend.ready.assert_not_called()

@@ -16,12 +16,10 @@ from . import host, launch_assets, model_http, server, server_config
 from .config import RECORDS, ROOT
 from .io import read_json, write_json
 from .switch import (
-    READINESS_UNCONFIRMED,
-    RECOVERY_READINESS_UNCONFIRMED,
     SSH_UNAVAILABLE,
     TRANSPORT_TIMEOUT,
     OperationFailure,
-    finish,
+    resume,
     switch,
 )
 
@@ -353,45 +351,6 @@ class SSHBackend:
                 return
             time.sleep(5)
         raise OperationFailure("ready", None, "readiness-deadline")
-
-
-def resume(backend, report, *, config=None, save=lambda report: None):
-    recovering = report["status"] == RECOVERY_READINESS_UNCONFIRMED
-    rows = report["recovery"] if recovering else report["new"]
-    if report["status"] not in (
-        READINESS_UNCONFIRMED,
-        RECOVERY_READINESS_UNCONFIRMED,
-    ) or {r["rank"] for r in rows} != {0, 1}:
-        raise ValueError(
-            "Only a recorded, unconfirmed two-rank readiness observation can resume"
-        )
-    assets = report["recovery_assets"] if recovering else report["assets"]
-    for row in rows:
-        current_rank = backend.current(row["rank"])
-        identity = row["identity"]
-        if current_rank is None or any(
-            current_rank[key] != identity[key] for key in ("name", "fingerprint")
-        ):
-            raise ValueError("Running identity changed; readiness cannot resume")
-        if backend.prepare(row["rank"], identity["launch"]) != assets[row["rank"]]:
-            raise ValueError("Assets changed since the recorded launch")
-    backend.ready(rows)
-    if recovering:
-        report["prior_recovery_observation_failure"] = report.pop(
-            "recovery_observation_failure"
-        )
-        report["recovered"] = True
-        report["status"] = (
-            "failed"  # The candidate still failed; the old profile recovered.
-        )
-    else:
-        report["prior_observation_failure"] = report.pop("failure")
-        report.pop("error")
-        report["status"] = "complete"
-        save(report)
-        # The switch that lost its observation never reached its last steps.
-        finish(backend, report, save=save, config=config)
-    return report
 
 
 def ssh_backend(args):
