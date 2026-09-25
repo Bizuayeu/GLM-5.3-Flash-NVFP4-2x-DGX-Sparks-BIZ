@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import subprocess
 import tempfile
@@ -6,6 +7,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from glm53_setup import cluster, server, server_config, switch
+
+
+@contextlib.contextmanager
+def rooted(root):
+    """Redirect the rank state and the attempt records under ``root``."""
+    with (
+        patch.object(server, "STATE", root / "state"),
+        patch.object(cluster, "RECORDS", root / "records"),
+    ):
+        yield
 
 
 class ClusterOwnershipTests(unittest.TestCase):
@@ -19,7 +30,7 @@ class ClusterOwnershipTests(unittest.TestCase):
         }
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             identity = cluster.rpc("reserve", 0, launch)
             with patch.object(cluster, "inspect_attempt", return_value=None):
@@ -48,7 +59,7 @@ class ClusterOwnershipTests(unittest.TestCase):
         }
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
             patch.object(cluster.subprocess, "Popen") as spawn,
         ):
             identity = cluster.rpc("reserve", 0, launch)
@@ -72,7 +83,7 @@ class ClusterOwnershipTests(unittest.TestCase):
         }
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
             patch.object(
                 server, "warmup_running", return_value={"passed": True}
             ) as run,
@@ -96,10 +107,15 @@ class ClusterOwnershipTests(unittest.TestCase):
             quiet = cluster.rpc("reserve", 0, off)
             self.assertEqual(cluster.rpc("warmup", 0, quiet), {"skipped": True})
 
+    def test_a_reserved_attempt_is_named_as_the_launcher_names_its_container(self):
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            identity = cluster.rpc("reserve", 1, {"manifest": {"fingerprint": "f"}})
+        self.assertEqual(identity["name"], server.container_name(1, identity["run_id"]))
+
     def test_swapped_attempt_record_is_not_allowed_to_stop_a_container(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             identity = cluster.rpc("reserve", 0, {"manifest": {"fingerprint": "test"}})
             identity["name"] = "unrelated-workload"
@@ -342,7 +358,7 @@ class ProfileInstallTests(unittest.TestCase):
         text = EXAMPLE.read_text(encoding="utf-8")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
             config.write_text("old = true\n", encoding="utf-8")
@@ -361,7 +377,7 @@ class ProfileInstallTests(unittest.TestCase):
         text = EXAMPLE.read_text(encoding="utf-8")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
             result = cluster.rpc("install", 0, {"identity": identity, "text": text})
@@ -374,7 +390,7 @@ class ProfileInstallTests(unittest.TestCase):
         self.assertNotEqual(text, other)
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
             with self.assertRaises(ValueError):
@@ -385,7 +401,7 @@ class ProfileInstallTests(unittest.TestCase):
         text = EXAMPLE.read_text(encoding="utf-8")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
             identity["launch"]["manifest"] = server.freeze(
@@ -401,7 +417,7 @@ class ProfileInstallTests(unittest.TestCase):
         text = EXAMPLE.read_text(encoding="utf-8")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             config, identity = self.running(tmp, text)
             cluster.write_json(
@@ -464,7 +480,7 @@ class ReadinessPollTests(unittest.TestCase):
         response.__enter__.return_value.status = 200
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(cluster, "ROOT", Path(tmp)),
+            rooted(Path(tmp)),
         ):
             launch = {
                 "manifest": server.freeze(server_config.loads(text), {}),

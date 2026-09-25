@@ -16,7 +16,8 @@ from pathlib import Path
 
 from . import agreement, capacity, host, model_http, mojibake, warmup
 from . import server_config as settings
-from .config import MODEL_LAYERS, ROOT, load_lock
+from .config import DEFAULT_PROFILE, MODEL_LAYERS, RECORDS, ROOT, STATE, load_lock
+from .download import STATUS_FILE
 from .host import available_gib
 from .io import read_json, write_json
 
@@ -30,6 +31,11 @@ IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
 SITE_PACKAGES = "/usr/local/lib/python3.12/dist-packages"
 # The backend patch imports the reference attention from this copy.
 IMAGE_REFERENCE = "/usr/local/lib/python3.12/dist-packages/glm53_reference.py"
+
+
+def hf_cache():
+    """The host's shared Hugging Face cache, which the download fills."""
+    return Path.home() / ".cache/huggingface"
 
 
 def projector_path(profile, config_path):
@@ -56,7 +62,7 @@ def model_path(profile, cache):
 
 def command(profile, config_path, rank, name, cache=None):
     settings.validate(profile)
-    cache = cache or Path.home() / ".cache/huggingface"
+    cache = cache or hf_cache()
     model = model_path(profile, cache)
     limit = f"{profile['resources']['container_memory_gib']}g"
     args = [
@@ -91,7 +97,7 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{cache.resolve()}:/hf:ro",
         "-v",
-        f"{ROOT / 'state/tp2-runtime-cache'}:/root/.cache",
+        f"{STATE / 'tp2-runtime-cache'}:/root/.cache",
     ]
     if profile["nodes"][rank].get("cpuset_cpus") is not None:
         args += ["--cpuset-cpus", profile["nodes"][rank]["cpuset_cpus"]]
@@ -139,7 +145,7 @@ def command(profile, config_path, rank, name, cache=None):
             f"{reference}:{IMAGE_REFERENCE}:ro",
         ]
     if profile["profiling"]["enabled"]:
-        args += ["-v", f"{ROOT / 'records/profiles' / name}:/profiles"]
+        args += ["-v", f"{RECORDS / 'profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():
         args += ["-e", f"{key}={value}"]
     return args + [
@@ -315,11 +321,9 @@ def derived_checks(profile, metadata):
 
 
 def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
-    cache = Path.home() / ".cache/huggingface"
+    cache = hf_cache()
     lock = load_lock()
-    source = host.snapshot_from_state(
-        read_json(ROOT / "state/download-status.json"), lock
-    )
+    source = host.snapshot_from_state(read_json(STATE / STATUS_FILE), lock)
     # The pinned snapshot must be on the host whatever is served from it.
     pinned = dict(profile["runtime"])
     pinned.pop("derived_checkpoint", None)
@@ -490,14 +494,14 @@ def request_lock():
     """Hold the host lock that serializes direct clients of the running head."""
     import fcntl
 
-    with (ROOT / "state/startup-request.lock").open("a") as lock:
+    with (STATE / "startup-request.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
 
 
 def running_head(profile):
     """Return rank 0's recorded state and container info owned by this profile."""
-    state = read_json(ROOT / "state/startup-rank0.json")
+    state = read_json(state_path(0))
     return state, inspect_owned(state["name"], settings.fingerprint(profile))
 
 
@@ -574,7 +578,7 @@ def warmup_running(profile):
         raise ValueError("warmup requires the running rank 0")
     with request_lock():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = ROOT / "records" / (stamp + "-warmup-r0")
+        record = RECORDS / (stamp + "-warmup-r0")
         record.mkdir(parents=True)
         result = warmup_report(profile, state["name"])
     result["record"] = str(record)
@@ -589,7 +593,7 @@ def mojibake_running(profile):
         raise ValueError("mojibake requires the running rank 0")
     with request_lock():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = ROOT / "records" / (stamp + "-mojibake-r0")
+        record = RECORDS / (stamp + "-mojibake-r0")
         record.mkdir(parents=True)
         result = mojibake.run(lambda request: ask(profile, request))
     result["record"] = str(record)
@@ -639,7 +643,7 @@ def agreement_running(profile, reference=None):
     tokenize, complete = agreement_senders(profile)
     with request_lock():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        record = ROOT / "records" / (stamp + "-agreement-r0")
+        record = RECORDS / (stamp + "-agreement-r0")
         record.mkdir(parents=True)
         result = agreement.run(tokenize, complete)
     if reference is not None:
@@ -709,7 +713,12 @@ def ask(profile, request, sender=post):
 
 def state_path(rank):
     """Where this rank records the container it owns."""
-    return ROOT / f"state/startup-rank{rank}.json"
+    return STATE / f"startup-rank{rank}.json"
+
+
+def container_name(rank, run_id):
+    """The container a launch of this rank runs as; the coordinator polls it by name."""
+    return f"glm53-startup-r{rank}-{run_id}"
 
 
 def report_verdict(result):
@@ -727,7 +736,7 @@ def act_plan(cli, args, profile):
                 "scope": "experimental-reference",
                 "fingerprint": settings.fingerprint(profile),
                 "command": command(
-                    profile, args.config, args.rank, f"glm53-startup-r{args.rank}-RUN"
+                    profile, args.config, args.rank, container_name(args.rank, "RUN")
                 ),
                 "generation": profile["generation"],
                 "resources": profile["resources"],
@@ -862,12 +871,12 @@ def start_rank(cli, args, profile, result):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     if args.run_id and not re.fullmatch(r"[0-9a-f]{32}", args.run_id):
         cli.error("run-id must be a 32-character hexadecimal launch ID")
-    name = f"glm53-startup-r{args.rank}-{args.run_id or stamp.lower()}"
-    record = ROOT / "records" / (stamp + f"-server-r{args.rank}")
+    name = container_name(args.rank, args.run_id or stamp.lower())
+    record = RECORDS / (stamp + f"-server-r{args.rank}")
     record.mkdir(parents=True)
-    (ROOT / "state/tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
+    (STATE / "tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
     if profile["profiling"]["enabled"]:
-        (ROOT / "records/profiles" / name).mkdir(parents=True)
+        (RECORDS / "profiles" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)
     write_json(record / "preflight.json", result)
     write_json(record / "settings.json", profile)
@@ -940,7 +949,7 @@ def parser():
         type=Path,
         help="Saved agreement result.json to compare this run against",
     )
-    cli.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
+    cli.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     cli.add_argument("--rank", type=int, choices=[0, 1], default=0)
     cli.add_argument("--prompt")
     cli.add_argument("--run-id", help="Unique coordinator-owned launch ID")

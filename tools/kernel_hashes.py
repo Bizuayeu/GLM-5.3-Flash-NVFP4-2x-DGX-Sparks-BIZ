@@ -27,7 +27,7 @@ sys.path.insert(
 )  # run as a script from any directory
 
 from glm53_setup import server, server_config  # noqa: E402
-from glm53_setup.config import ROOT
+from glm53_setup.config import DEFAULT_PROFILE
 from glm53_setup.runtime.memory_probe import (  # noqa: E402
     autotuner_differences,
     kernel_hash_differences,
@@ -48,7 +48,7 @@ def reference_differences(reference, ranks):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
+    parser.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--reference", type=Path, help="An earlier record of the same profile"

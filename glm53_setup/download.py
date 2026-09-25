@@ -11,6 +11,9 @@ from pathlib import Path
 from .config import MODEL, REVISION, ROOT, STATE
 from .io import write_json
 
+# Under STATE; the preflight and the checksum run read what this writes there.
+STATUS_FILE = "download-status.json"
+
 
 def download():
     os.environ.setdefault("HF_XET_NUM_CONCURRENT_RANGE_GETS", "4")
@@ -26,7 +29,7 @@ def download():
     }
 
     def save():
-        write_json(STATE / "download-status.json", status)
+        write_json(STATE / STATUS_FILE, status)
 
     save()
     try:

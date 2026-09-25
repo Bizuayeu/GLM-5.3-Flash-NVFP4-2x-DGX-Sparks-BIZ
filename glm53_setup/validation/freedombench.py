@@ -10,8 +10,8 @@ import urllib.error
 from pathlib import Path
 
 from .. import server, server_config
-from ..config import ROOT, load_lock
-from ..io import write_json
+from ..config import DEFAULT_PROFILE, ROOT, load_lock
+from ..io import read_json, write_json
 from .freedom_scoring import classify_attempt, summarize
 
 # Adapted from the pinned Apache-2.0 upstream runner; see NOTICE.
@@ -24,7 +24,7 @@ SYSTEM_PROMPT = (
 
 
 def load_questions(directory):
-    lock = server.read_json(ROOT / "config/freedombench.lock.json")
+    lock = read_json(ROOT / "config/freedombench.lock.json")
     data = (directory / "freedombench/questions.py").read_bytes()
     if hashlib.sha256(data).hexdigest() != lock["questions_sha256"]:
         raise ValueError("FreedomBench question revision/hash mismatch")
@@ -78,7 +78,7 @@ def load_questions(directory):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark-dir", type=Path, required=True)
-    parser.add_argument("--config", type=Path, default=ROOT / "state/server.toml")
+    parser.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--limit", type=int, help="Pilot only; never a full-suite score"

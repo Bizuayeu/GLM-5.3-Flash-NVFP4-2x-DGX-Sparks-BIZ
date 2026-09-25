@@ -7,6 +7,7 @@ from pathlib import Path
 from . import host, server
 from . import server_config as settings
 from .config import ROOT, load_lock
+from .io import read_json
 
 
 def sha(path):
@@ -21,13 +22,13 @@ def inspect(profile, config_path, rank, *, recovery=False):
     if not checks["passed"]:
         detail = {key: checks[key] for key in ("checks", "foreign_gpu_containers")}
         raise ValueError("Static launch checks failed: " + json.dumps(detail))
-    model = server.model_path(profile, Path.home() / ".cache/huggingface")
+    model = server.model_path(profile, server.hf_cache())
     if not all(
         (model / name).is_file() for name in ("tokenizer.json", "tokenizer_config.json")
     ):
         raise ValueError("Tokenizer assets required by the pinned model are missing")
     index_path = model / "model.safetensors.index.json"
-    index = server.read_json(index_path)
+    index = read_json(index_path)
     names = sorted(set(index["weight_map"].values()))
     if not names:
         raise ValueError("Empty model weight index")

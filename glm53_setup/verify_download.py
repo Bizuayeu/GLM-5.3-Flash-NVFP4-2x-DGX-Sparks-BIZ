@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import MODEL, REVISION, STATE
+from .download import STATUS_FILE
 from .io import write_json
 
 
@@ -34,7 +35,7 @@ def main(argv=None):
 
     save("waiting_for_download")
     while True:
-        status = json.loads((STATE / "download-status.json").read_text())
+        status = json.loads((STATE / STATUS_FILE).read_text())
         if status["model"] != MODEL or status["revision"] != REVISION:
             save("failed", reason="revision mismatch")
             raise SystemExit(1)

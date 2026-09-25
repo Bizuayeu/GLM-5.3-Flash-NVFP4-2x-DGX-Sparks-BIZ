@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import ROOT, load_lock
+from .config import RECORDS, ROOT, load_lock
 from .io import write_json
 
 PROBE = """
@@ -113,9 +113,7 @@ def main(argv=None):
         parser.error("Background preparation requires Linux; use foreground mode here")
     record = (
         args.record_dir
-        or ROOT
-        / "records"
-        / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-prepare")
+        or RECORDS / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-prepare")
     ).resolve()
     if not args.background:
         run(record)

@@ -13,8 +13,8 @@ import uuid
 from pathlib import Path
 
 from . import host, launch_assets, model_http, server, server_config
-from .config import ROOT
-from .io import write_json
+from .config import RECORDS, ROOT
+from .io import read_json, write_json
 from .switch import (
     READINESS_UNCONFIRMED,
     RECOVERY_READINESS_UNCONFIRMED,
@@ -27,16 +27,16 @@ from .switch import (
 
 
 def current(rank):
-    path = ROOT / f"state/startup-rank{rank}.json"
+    path = server.state_path(rank)
     if not path.exists():
         return None
-    state = server.read_json(path)
+    state = read_json(path)
     info = server.inspect_owned(state["name"], state["fingerprint"])
     if not info["State"]["Running"]:
         return None
     if "config_path" not in state:
         raise ValueError("Running rank has no recorded configuration path for recovery")
-    profile = server.read_json(Path(state["record"]) / "settings.json")
+    profile = read_json(Path(state["record"]) / "settings.json")
     manifest = {"profile": profile, "fingerprint": state["fingerprint"]}
     server.thaw(manifest)
     return {
@@ -58,9 +58,9 @@ def inspect_attempt(identity):
 
 def owned_record(identity):
     record = Path(identity["record"]).resolve()
-    if not record.is_relative_to((ROOT / "records").resolve()):
+    if not record.is_relative_to(RECORDS.resolve()):
         raise ValueError("Attempt record must belong to this checkout")
-    if server.read_json(record / "identity.json") != identity:
+    if read_json(record / "identity.json") != identity:
         raise ValueError("Attempt identity changed")
     return record
 
@@ -69,8 +69,8 @@ def install(rank, value):
     """Write the profile text this rank was switched to at its recorded path."""
     identity, text = value["identity"], value["text"]
     owned_record(identity)
-    state = ROOT / f"state/startup-rank{rank}.json"
-    if not state.exists() or server.read_json(state)["name"] != identity["name"]:
+    state = server.state_path(rank)
+    if not state.exists() or read_json(state)["name"] != identity["name"]:
         raise ValueError("This attempt is not the running rank")
     running = server.thaw(identity["launch"]["manifest"])
     profile = server_config.loads(text)
@@ -118,12 +118,12 @@ def rpc(action, rank, value):
         )
     if action == "reserve":
         run_id = uuid.uuid4().hex
-        record = ROOT / "records" / f"switch-{run_id}-r{rank}"
+        record = RECORDS / f"switch-{run_id}-r{rank}"
         record.mkdir(parents=True)
         identity = {
             "rank": rank,
             "run_id": run_id,
-            "name": f"glm53-startup-r{rank}-{run_id}",
+            "name": server.container_name(rank, run_id),
             "fingerprint": value["manifest"]["fingerprint"],
             "record": str(record),
             "launch": value,
@@ -167,7 +167,7 @@ def rpc(action, rank, value):
             write_json(record / "cancel.json", {"cancelled": True})
             job = record / "job.json"
             if job.exists():
-                pid = server.read_json(job)["pid"]
+                pid = read_json(job)["pid"]
                 cmdline = Path(f"/proc/{pid}/cmdline")
                 if cmdline.exists():
                     args = cmdline.read_bytes().split(b"\0")
@@ -196,14 +196,14 @@ def rpc(action, rank, value):
         record = owned_record(value)
         finished = record / "finished.json"
         if finished.exists():
-            return {"failed": True, "finished": server.read_json(finished)}
+            return {"failed": True, "finished": read_json(finished)}
         info = inspect_attempt(value)
         if info is None:
             return {"ready": False}
         if not info["State"]["Running"]:
             return {"failed": True}
-        state = ROOT / f"state/startup-rank{rank}.json"
-        if not state.exists() or server.read_json(state)["name"] != value["name"]:
+        state = server.state_path(rank)
+        if not state.exists() or read_json(state)["name"] != value["name"]:
             return {"ready": False}
         if rank == 0:
             profile = server.thaw(value["launch"]["manifest"])
@@ -238,8 +238,8 @@ def rpc(action, rank, value):
         if rank != 0 or not profile["generation"].get("warmup", False):
             return {"skipped": True}
         owned_record(value)
-        state = ROOT / "state/startup-rank0.json"
-        if server.read_json(state)["name"] != value["name"]:
+        state = server.state_path(0)
+        if read_json(state)["name"] != value["name"]:
             raise ValueError("Running rank 0 is not this attempt")
         return server.warmup_running(profile)
     raise ValueError("Unknown cluster operation")
@@ -407,7 +407,7 @@ def act_resume(cli, args):
         )
     result = resume(
         ssh_backend(args),
-        server.read_json(args.output / "result.json"),
+        read_json(args.output / "result.json"),
         config=args.config.read_text(encoding="utf-8") if args.config else None,
         save=lambda report: write_json(args.output / "result.json", report),
     )
@@ -431,7 +431,7 @@ def act_rpc(cli, args):
 
 def act_job(cli, args):
     """Run a reserved attempt's supervisor; the coordinator owns the identity."""
-    identity = server.read_json(args.record / "identity.json")
+    identity = read_json(args.record / "identity.json")
     owned_record(identity)
     write_json(args.record / "job.json", {"pid": os.getpid()})
     if (args.record / "cancel.json").exists():

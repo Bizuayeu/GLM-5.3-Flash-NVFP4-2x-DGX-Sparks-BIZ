@@ -24,6 +24,16 @@ from glm53_setup import server_config as config
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@contextlib.contextmanager
+def rooted(root):
+    """Redirect the rank state and the attempt records under ``root``."""
+    with (
+        patch.object(server, "STATE", root / "state"),
+        patch.object(cluster, "RECORDS", root / "records"),
+    ):
+        yield
+
+
 def profile():
     return config.load(ROOT / "examples/server.example.toml")
 
@@ -104,7 +114,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
 
     def test_current_reports_nothing_when_this_rank_has_no_recorded_state(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(cluster, "ROOT", Path(tmp)):
+            with rooted(Path(tmp)):
                 self.assertIsNone(cluster.rpc("current", 0, None))
 
     def test_current_reports_nothing_when_the_recorded_container_is_not_running(self):
@@ -116,7 +126,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
                 {"name": "owned", "fingerprint": "f", "record": str(root)},
             )
             with (
-                patch.object(cluster, "ROOT", root),
+                rooted(root),
                 patch.object(
                     server, "inspect_owned", return_value={"State": {"Running": False}}
                 ),
@@ -132,7 +142,7 @@ class RemoteProcedureGapTests(unittest.TestCase):
                 {"name": "owned", "fingerprint": "f", "record": str(root)},
             )
             with (
-                patch.object(cluster, "ROOT", root),
+                rooted(root),
                 patch.object(
                     server, "inspect_owned", return_value={"State": {"Running": True}}
                 ),

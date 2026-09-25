@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "state"
 RECORDS = ROOT / "records"
+# The operator's profile, which every host command reads unless given --config.
+DEFAULT_PROFILE = STATE / "server.toml"
 LOCK_PATH = ROOT / "config/runtime.lock.json"
 MODEL_LAYERS = 45
 HIDDEN_SIZE = 4096

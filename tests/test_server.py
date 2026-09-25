@@ -12,6 +12,7 @@ from unittest.mock import mock_open, patch
 
 from glm53_setup import server
 from glm53_setup import server_config as config
+from glm53_setup.config import DEFAULT_PROFILE, STATE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -152,7 +153,8 @@ class ServerConfigTests(unittest.TestCase):
             temporary_root = Path(directory)
             args = SimpleNamespace(rank=0, run_id=None, config=Path("server.toml"))
             with (
-                patch.object(server, "ROOT", temporary_root),
+                patch.object(server, "RECORDS", temporary_root / "records"),
+                patch.object(server, "STATE", temporary_root / "state"),
                 patch.object(
                     server, "state_path", return_value=temporary_root / "rank.json"
                 ),
@@ -175,7 +177,8 @@ class ServerConfigTests(unittest.TestCase):
             args = SimpleNamespace(rank=0, run_id=None, config=Path("server.toml"))
             out = io.StringIO()
             with (
-                patch.object(server, "ROOT", temporary_root),
+                patch.object(server, "RECORDS", temporary_root / "records"),
+                patch.object(server, "STATE", temporary_root / "state"),
                 patch.object(
                     server, "state_path", return_value=temporary_root / "rank.json"
                 ),
@@ -1524,6 +1527,25 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             ],
         )
         self.assertEqual([key for key, ok in checks.items() if not ok], [])
+
+
+class HostFactOwnerTests(unittest.TestCase):
+    """Names and paths the launcher, the coordinator and the tools must agree on."""
+
+    def test_container_name_is_the_startup_name_per_rank_and_run(self):
+        # A coordinator that spelled it differently could not confirm readiness.
+        self.assertEqual(server.container_name(1, "abc"), "glm53-startup-r1-abc")
+
+    def test_rank_state_lives_in_the_state_directory(self):
+        self.assertEqual(server.state_path(1), STATE / "startup-rank1.json")
+
+    def test_hf_cache_is_read_from_the_home_directory_at_call_time(self):
+        with patch.object(server.Path, "home", return_value=Path("/elsewhere")):
+            self.assertEqual(server.hf_cache(), Path("/elsewhere/.cache/huggingface"))
+
+    def test_every_command_defaults_to_the_operator_profile(self):
+        self.assertEqual(DEFAULT_PROFILE, STATE / "server.toml")
+        self.assertEqual(server.parser().get_default("config"), DEFAULT_PROFILE)
 
 
 if __name__ == "__main__":
