@@ -943,33 +943,6 @@ class MemoryProbeWorker:
             result["rows"] = rows
         return result
 
-    def zero_moe_scratch(self):
-        """Diagnostic: hand the Marlin MoE kernel zeroed scratch buffers on every call.
-
-        If repeats become identical, the kernel reads scratch memory it did not write.
-        """
-        from vllm.model_executor.layers.fused_moe.experts import marlin_moe
-
-        if not hasattr(self, "probe_zeroed"):
-            original = marlin_moe.fused_marlin_moe
-            self.probe_zeroed = counts = {"calls": 0, "buffers": 0}
-
-            def zeroed(*args, **kwargs):
-                counts["calls"] += 1
-                for key in (
-                    "intermediate_cache13",
-                    "intermediate_cache2",
-                    "output",
-                    "workspace",
-                ):
-                    if kwargs.get(key) is not None:
-                        kwargs[key].zero_()
-                        counts["buffers"] += 1
-                return original(*args, **kwargs)
-
-            marlin_moe.fused_marlin_moe = zeroed
-        return {"rank": self.rank, **self.probe_zeroed}
-
     def fa2_stage(self, stage):
         return {"rank": self.rank, "stage": fa2_stage(stage)}
 
