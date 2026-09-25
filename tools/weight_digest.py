@@ -38,7 +38,7 @@ def main(argv=None):
     record = {
         "fingerprint": server_config.fingerprint(profile),
         "image": info["Image"],
-        "container": current if isinstance(current, str) else current.get("name"),
+        "container": current["name"],
         "ranks": sorted(ranks, key=lambda r: r["rank"]),
     }
     code = 0

@@ -187,7 +187,7 @@ class ToolTests(unittest.TestCase):
                 patch.object(
                     weight_digest.server,
                     "running_head",
-                    return_value=("c", {"Image": "sha256:img"}),
+                    return_value=({"name": "c"}, {"Image": "sha256:img"}),
                 ),
                 patch.object(
                     weight_digest.server, "collective_rpc", return_value=ranks
@@ -217,6 +217,8 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(record["fingerprint"], "fp")
         self.assertEqual(record["image"], "sha256:img")
         self.assertEqual([r["rank"] for r in record["ranks"]], [0, 1])
+        # The container rank 0's state names, not the state itself.
+        self.assertEqual(record["container"], "c")
         same, _ = self.run_tool([], ranks, reference=record)
         self.assertEqual(same, 0)
         moved = json.loads(json.dumps(ranks))

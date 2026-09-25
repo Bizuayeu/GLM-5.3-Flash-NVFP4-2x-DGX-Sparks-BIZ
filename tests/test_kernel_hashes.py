@@ -502,7 +502,7 @@ class ToolTests(unittest.TestCase):
                 patch.object(
                     kernel_hashes.server,
                     "running_head",
-                    return_value=("c", {"Image": "sha256:img"}),
+                    return_value=({"name": "c"}, {"Image": "sha256:img"}),
                 ),
                 patch.object(
                     kernel_hashes.server,
@@ -542,6 +542,8 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual([r["rank"] for r in record["ranks"]], [0, 1])
         self.assertTrue(record["across_ranks"]["agree"])
+        # The container rank 0's state names, not the state itself.
+        self.assertEqual(record["container"], "c")
         same, compared = self.run_tool(ranks, reference=record)
         self.assertEqual(same, 0)
         self.assertEqual(compared["against_reference"], {"0": [], "1": []})
