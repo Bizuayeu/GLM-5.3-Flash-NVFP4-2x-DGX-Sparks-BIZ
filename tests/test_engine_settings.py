@@ -12,6 +12,8 @@ in a subprocess with both modules blocked, because a test that merely calls
 the function proves nothing on a machine that has them installed.
 """
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -171,6 +173,23 @@ class FixtureRunnerTests(unittest.TestCase):
         ):
             with self.subTest(key=key):
                 self.assertFalse(config[key])
+
+
+class LpaRunnerTests(unittest.TestCase):
+    def test_the_lpa_fixture_runs_eager_and_offers_no_graph_switch(self):
+        # LPA's Python hooks need eager execution; the server refuses LPA with
+        # decode Graphs, so the runner has no Graph path to measure.
+        kwargs = kwargs_without_gpu("run_lpa", argv(), ENGINE_RUNNERS["run_lpa"])
+        self.assertTrue(kwargs["enforce_eager"])
+        self.assertEqual(kwargs["compilation_config"]["cudagraph_mode"], "NONE")
+        self.assertIsNone(kwargs["profiler_config"])
+        from glm53_setup.validation import run_lpa
+
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            run_lpa.parser().parse_args(argv() + ["--graphs"])
 
 
 COMPLETE = {"status": "complete", "all_tensor_bytes_verified": True}

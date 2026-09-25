@@ -537,9 +537,7 @@ class LPAWorkerExtension:
         from .graph_policy import lpa_execution_supported
 
         if not lpa_execution_supported(config):
-            raise ValueError(
-                "LPA requires eager execution or guarded decode-only graphs with uncompiled prefill"
-            )
+            raise ValueError("LPA requires eager execution")
         if not hasattr(self, "lpa_experiment"):
             # get_model() is the target model, never model_runner.drafter.model.
             # The constructor rejects any MTP layer in this module tree. Draft

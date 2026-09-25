@@ -98,10 +98,9 @@ class PinnedPatchCommandTests(unittest.TestCase):
 
 DOCKERFILE = ROOT / "docker/Dockerfile.reference"
 
-# Patches no reference image build runs, both slated for deletion:
-# patch_graph_prefill serves the dead LPA x Graph path, patch_pipeline_layout
-# is unneeded for the full-model split.
-CANDIDATE_IMAGE_ONLY = {"patch_graph_prefill", "patch_pipeline_layout"}
+# Patches no reference image build runs, slated for deletion:
+# patch_pipeline_layout is unneeded for the full-model split.
+CANDIDATE_IMAGE_ONLY = {"patch_pipeline_layout"}
 
 
 class ImageBuildContractTests(unittest.TestCase):

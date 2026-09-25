@@ -1,11 +1,8 @@
 """Exercise teacher attention-input replay on a verified four-layer fixture."""
 
 import argparse
-import hashlib
 import json
 import math
-import os
-import sysconfig
 import time
 from pathlib import Path
 
@@ -26,11 +23,6 @@ def parser():
     cli.add_argument("--cut", type=int, default=2)
     cli.add_argument("--skip-mla-queries", action="store_true")
     cli.add_argument(
-        "--graphs",
-        action="store_true",
-        help="Guarded decode-only graphs; prefill remains eager",
-    )
-    cli.add_argument(
         "--mtp", type=int, choices=[1, 3], help="Opt-in MTP coexistence check"
     )
     return cli
@@ -45,26 +37,15 @@ def engine_kwargs(args, compilation_mode):
         "model": str(args.fixture),
         "tensor_parallel_size": 1,
         "language_model_only": True,
-        "enforce_eager": not args.graphs,
+        "enforce_eager": True,
         "compilation_config": {
             "mode": compilation_mode,
-            "cudagraph_mode": "FULL_DECODE_ONLY" if args.graphs else "NONE",
+            "cudagraph_mode": "NONE",
             "cudagraph_capture_sizes": [
                 n for n in (1, 2, 4) if n <= (args.mtp or 0) + 1
             ],
         },
-        "profiler_config": {
-            "profiler": "torch",
-            "torch_profiler_dir": str(args.output / "profiles"),
-            "torch_profiler_with_stack": False,
-            "torch_profiler_record_shapes": False,
-            "torch_profiler_with_memory": False,
-            "torch_profiler_use_gzip": True,
-            "ignore_frontend": True,
-            "torch_profiler_dump_cuda_time_total": False,
-        }
-        if args.graphs
-        else None,
+        "profiler_config": None,
         "enable_prefix_caching": False,
         "enable_chunked_prefill": True,
         "max_model_len": 16384,
@@ -95,30 +76,6 @@ def engine_kwargs(args, compilation_mode):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    if args.graphs:
-        os.environ.update(
-            GLM53_ASYNC_INDEX_CHECKS="1",
-            GLM53_LPA_GRAPH_PREFILL="1",
-            GLM53_FUSED_UNPACK="1",
-        )
-        package = Path(sysconfig.get_paths()["purelib"])
-        manifest = json.loads((package / "glm53-graph-prefill-patch.json").read_text())
-        runner = package / "vllm/v1/worker/gpu/model_runner.py"
-        if (
-            hashlib.sha256(runner.read_bytes()).hexdigest()
-            != manifest["patched_sha256"]
-        ):
-            raise ValueError(
-                "Deployed eager-prefill routing does not match its manifest"
-            )
-        from glm53_setup.runtime import reference_attention
-
-        if (package / "glm53_reference.py").read_bytes() != Path(
-            reference_attention.__file__
-        ).read_bytes():
-            raise ValueError(
-                "Deployed reference attention does not match the graph component"
-            )
     status = json.loads((args.fixture / "fixture-status.json").read_text())
     config = json.loads((args.fixture / "config.json").read_text())
     if not (
@@ -132,7 +89,7 @@ def main(argv=None):
         "status": "loading",
         "scope": "fixture-oracle-replay",
         "mtp": args.mtp,
-        "decode_graphs": args.graphs,
+        "decode_graphs": False,
         "cases": [],
     }
 
@@ -245,35 +202,6 @@ def main(argv=None):
             and case["state_comparisons"] > 0
         )
         save()
-    if args.graphs:
-        from glm53_setup.validation.profile_trace import read_trace
-
-        ids = (base * 5)[:64]
-        llm.collective_rpc(
-            "lpa_configure",
-            kwargs={
-                "mode": "off",
-                "cut": args.cut,
-                "prompt_length": len(ids),
-                "tail": 1,
-                "allow_mtp": bool(args.mtp),
-            },
-        )
-        llm.start_profile()
-        try:
-            llm.generate([{"prompt_token_ids": ids}], params, use_tqdm=False)
-        finally:
-            llm.stop_profile()
-        report["graph_launches_observed"] = sum(
-            1
-            for p in (args.output / "profiles").rglob("*.gz")
-            for e in read_trace(p).get("traceEvents", [])
-            if e.get("ph") == "X"
-            and e.get("cat") in {"cuda_runtime", "cuda_driver"}
-            and "graphlaunch" in e.get("name", "").lower()
-        )
-        if not report["graph_launches_observed"]:
-            raise ValueError("No Graph replay observed with LPA hooks attached")
     report["passed"] = all(case["passed"] for case in report["cases"])
     report["status"] = "complete"
     save()
