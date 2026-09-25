@@ -1,22 +1,15 @@
-"""One chunks_per_block per decode step shape in the sparse-MLA decode, whatever the partner.
+"""Retired in 1.16.0: one chunks_per_block per decode step shape in the sparse-MLA decode.
 
-FlashInfer 0.6.18's SM120 sparse-MLA decode (``sparse_mla_sm120_decode_dsv3_2``) splits the 2,048
-candidates into 32 chunks of 64 and lets each CTA take ``chunks_per_block`` of them. Left unset, a
-C++ heuristic picks it from the token count of the whole call and the SM count, so a request's rows
-are summed in another order as soon as a second sequence shares the step (on GB10, 2 for one draft
-token and 3 for two; 6 for one verification step of four tokens and 15 for two). The stock route
-also rebuilds FlashInfer's runner, normalizes the index segments, goes through a custom op and asks
-FlashInfer's AutoTuner on every call.
-
-With ``GLM53_MLA_DECODE_CPB=1`` (``runtime.mla_decode_cpb``) the patched backend asks
-``decode_chunks_per_block`` first and, for a step it names, calls the same FlashInfer decode entry
-the stock route ends in, with the value taken from the tokens of one sequence. The values are the
-heuristic's own at one sequence, so a request alone computes bit for bit as before, and with a
-partner its rows no longer change. On one GB10 through the patched backend the call skipped the
-wrapper cost: a verification step of one sequence took 221 us against 633 and of two 535 against
-917 (records/20260925-moe-batch, run 4); on the serving pair decode tokens/s did not move.
-Every other step keeps the stock call.
+With ``GLM53_MLA_DECODE_CPB=1`` (``runtime.mla_decode_cpb``) the patched SM120 backend asks
+``decode_chunks_per_block`` for the value FlashInfer 0.6.18's decode heuristic picks at one
+sequence. It never ran in serving: the image sets ``GLM53_REFERENCE_ATTENTION=1``, so every
+sparse-MLA forward, the 11 DSA layers and the MTP draft layer alike, returns through the reference
+NoPE attention before the patched call. Its 1.14.0 evidence came from a harness on one GB10 that
+forced that flag off.
 """
+
+# cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper, the
+# Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
 
 import os
 

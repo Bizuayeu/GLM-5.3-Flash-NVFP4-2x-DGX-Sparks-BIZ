@@ -152,6 +152,9 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(profile["runtime"].get("prefix_page_dedup", False)) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
+    # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
+    # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
+    # Until then a profile that carries it is checked as it was when it launched.
     if type(profile["runtime"].get("mla_decode_cpb", False)) is not bool:
         raise ValueError("runtime.mla_decode_cpb must be true or false")
     if profile["runtime"].get("mla_decode_cpb") and decode_graphs(profile):
@@ -561,7 +564,8 @@ def environment(profile, rank):
             int(profile["runtime"]["prefix_page_dedup"])
         )
     if "mla_decode_cpb" in profile["runtime"]:
-        # Absent: off, FlashInfer picks chunks_per_block per call as pinned.
+        # Retired (see check_optional_shapes); still set so a profile that carries the key
+        # keeps its environment and fingerprint.
         result["GLM53_MLA_DECODE_CPB"] = str(int(profile["runtime"]["mla_decode_cpb"]))
     if (
         profile["lpa"]["enabled"]

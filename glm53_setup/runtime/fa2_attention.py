@@ -1,4 +1,4 @@
-"""FlashInfer FA2 MLA for the candidate-preserving NoPE attention, prefill only.
+"""FlashInfer FA2 MLA for the candidate-preserving NoPE attention, calls of more than six rows.
 
 Same contract as ``reference_attention.sparse_nope_reference``: every selected
 candidate is kept, ``-1`` is padding, a row without candidates yields zeros.
@@ -11,13 +11,18 @@ candidate order are upstream of this call and unchanged.
 
 ``plan`` needs the per-row lengths on the host, one synchronisation per MLA
 layer. That is cheap beside a prefill chunk and costly in a decode step, so
-decode-sized calls stay on the reference path.
+calls of up to six rows stay on the reference path: every decode step of one
+sequence. The threshold counts the rows of the whole call, so with two
+sequences a verification step at depth 3 (eight rows) goes to FA2, whose result
+for a row then moves by up to one BF16 ulp with the partner's row count and
+lengths; the reference's does not.
 """
 
 import os
 
 # With one sequence a decode step carries at most num_speculative_tokens + 1 = 6
-# query rows (server_config accepts depths 1 to 5); anything larger is prefill.
+# query rows (server_config accepts depths 1 to 5). Rows are counted per call, so
+# a decode step of two sequences can exceed it.
 DECODE_MAX_ROWS = 6
 # FlashInfer's float workspace, the size the pinned SM90 backend reserves.
 WORKSPACE_BYTES = 128 * 1024**2

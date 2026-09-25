@@ -1,12 +1,13 @@
-"""Source-pinned patch: the sparse-MLA decode takes chunks_per_block from the tokens of one sequence.
+"""Retired source-pinned patch: the sparse-MLA decode takes chunks_per_block from one sequence.
 
-The SM120 backend of the image (vLLM 385dce36 after ``patch-reference``) hands every decode step to
-FlashInfer without ``chunks_per_block``, whose heuristic then follows the token count of the whole
-step, so a partner sequence changes how a request's candidates are summed. This patch asks
-``glm53_setup.runtime.mla_decode_cpb`` first, from the host-side step shape already in the metadata;
-for the steps it names it runs the same FlashInfer decode entry with the value pinned. Off
-(``GLM53_MLA_DECODE_CPB`` unset or 0) and for every other step, the backend calls FlashInfer as pinned.
+It inserts a call to ``glm53_setup.runtime.mla_decode_cpb`` below the SM120 backend's return
+through the reference NoPE attention, which the image always takes (``GLM53_REFERENCE_ATTENTION=1``),
+so the inserted call is never reached in serving. Retired in 1.16.0; kept until the next image build.
 """
+
+# cc-defer: retired in 1.16.0 (never reached in serving); remove this patch, the helper, the
+# Dockerfile lines "RUN python3 -m glm53_setup.runtime.patch_mla_decode_cpb" and
+# "ENV GLM53_MLA_DECODE_CPB_API=1", and the key's acceptance together in the next image build.
 
 from . import pinned_patch
 from .pinned_patch import replace_once

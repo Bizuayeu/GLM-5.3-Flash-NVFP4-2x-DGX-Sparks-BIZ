@@ -229,6 +229,9 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_PREFIX_DEDUP_API=1",
             runtime.get("prefix_page_dedup", False),
         ),
+        # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the
+        # helper, the Dockerfile RUN/ENV lines and the key's acceptance together in the
+        # next image build.
         (
             "mla_decode_cpb_support",
             "GLM53_MLA_DECODE_CPB_API=1",
@@ -245,17 +248,28 @@ def image_capability_checks(profile, image, *, recovery=False):
     }
 
 
+RETIRED_CPB = (
+    "runtime.mla_decode_cpb is retired: it never ran in serving, because the "
+    "reference attention returns before the decode it patched; remove it from the profile"
+)
+
+
 def capability_warnings(profile, image, *, recovery=False):
-    """What a recovery target was allowed that a new launch would be refused."""
+    """What a recovery target was allowed that a new launch would be refused, and retired keys."""
     env = image["Config"].get("Env") or []
+    warnings = []
     if (
         recovery
         and profile["runtime"].get("canonical_moe_order", False)
         and MOE_ORDER_MARKERS[1] not in env
         and MOE_ORDER_MARKERS[0] in env
     ):
-        return ["moe_order_marker_1_accepted_for_recovery"]
-    return []
+        warnings.append("moe_order_marker_1_accepted_for_recovery")
+    # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
+    # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
+    if "mla_decode_cpb" in profile["runtime"]:
+        warnings.append(RETIRED_CPB)
+    return warnings
 
 
 def derived_checks(profile, metadata):

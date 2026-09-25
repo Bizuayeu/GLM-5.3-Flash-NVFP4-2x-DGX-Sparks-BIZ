@@ -23,7 +23,6 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["stable_indexer_topk"] = False
         self.profile["runtime"]["fa2_attention"] = False
         self.profile["runtime"]["inductor_deterministic"] = False
-        self.profile["runtime"]["mla_decode_cpb"] = False
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False
@@ -538,52 +537,77 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
-    def test_mla_decode_cpb_is_set_in_the_examples_and_needs_the_image_marker(self):
+    def test_retired_mla_decode_cpb_is_gone_from_the_examples(self):
         for name in ("server.example.toml", "server.axl.example.toml"):
             example = config.load(ROOT / "examples" / name)
-            self.assertIs(example["runtime"]["mla_decode_cpb"], True)
-            self.assertEqual(
-                config.environment(example, 0)["GLM53_MLA_DECODE_CPB"], "1"
+            self.assertNotIn("mla_decode_cpb", example["runtime"])
+            self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(example, 0))
+            image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
+            self.assertNotIn(
+                "mla_decode_cpb_support",
+                server.image_capability_checks(example, image),
             )
-        self.profile["runtime"].pop("mla_decode_cpb")
-        config.validate(self.profile)
-        self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(self.profile, 0))
-        self.profile["runtime"]["mla_decode_cpb"] = True
-        config.validate(self.profile)
-        self.assertEqual(
-            config.environment(self.profile, 0)["GLM53_MLA_DECODE_CPB"], "1"
-        )
+            self.assertEqual(server.capability_warnings(example, image), [])
+
+    def test_a_profile_that_still_carries_mla_decode_cpb_launches_as_before(self):
+        # Retired in 1.16.0: it never ran in serving. A profile that carries it keeps
+        # its environment, arguments and fingerprint, and is told it can drop it.
+        self.profile["runtime"].pop("mla_decode_cpb", None)
+        without = config.environment(self.profile, 0)
+        args = config.serve_args(self.profile, 0, "/hf/model")
         image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
-        self.assertIs(
-            server.image_capability_checks(self.profile, image)[
-                "mla_decode_cpb_support"
-            ],
-            False,
-        )
-        image["Config"]["Env"].append("GLM53_MLA_DECODE_CPB_API=1")
-        self.assertIs(
-            server.image_capability_checks(self.profile, image)[
-                "mla_decode_cpb_support"
-            ],
-            True,
-        )
-        self.profile["runtime"]["mla_decode_cpb"] = False
-        config.validate(self.profile)
-        self.assertEqual(
-            config.environment(self.profile, 1)["GLM53_MLA_DECODE_CPB"], "0"
-        )
+        for value in (True, False):
+            profile = copy.deepcopy(self.profile)
+            profile["runtime"]["mla_decode_cpb"] = value
+            config.validate(profile)
+            self.assertEqual(
+                config.environment(profile, 0),
+                {**without, "GLM53_MLA_DECODE_CPB": str(int(value))},
+            )
+            self.assertEqual(config.serve_args(profile, 0, "/hf/model"), args)
+            for recovery in (False, True):
+                warnings = server.capability_warnings(profile, image, recovery=recovery)
+                self.assertEqual(len(warnings), 1)
+                self.assertIn("runtime.mla_decode_cpb is retired", warnings[0])
+            checks = server.image_capability_checks(profile, image)
+            if value:
+                self.assertIs(checks["mla_decode_cpb_support"], False)
+                image_with = {
+                    "Config": {
+                        "Env": [*image["Config"]["Env"], "GLM53_MLA_DECODE_CPB_API=1"]
+                    }
+                }
+                self.assertIs(
+                    server.image_capability_checks(profile, image_with)[
+                        "mla_decode_cpb_support"
+                    ],
+                    True,
+                )
+            else:
+                self.assertNotIn("mla_decode_cpb_support", checks)
         for bad in (1, 0, "true", None):
             profile = copy.deepcopy(self.profile)
             profile["runtime"]["mla_decode_cpb"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
-        # Measured on eager decode only; a Graph profile is refused, not assumed.
+        # Still refused beside decode Graphs when true, as it was.
         profile = copy.deepcopy(self.profile)
         profile["runtime"]["mla_decode_cpb"] = True
         profile["runtime"].pop("enforce_eager", None)
         profile["runtime"]["decode_graphs"] = True
         with self.assertRaises(ValueError):
             config.validate(profile)
+
+    def test_retired_warning_comes_beside_the_recovery_warning(self):
+        self.profile["runtime"]["canonical_moe_order"] = True
+        self.profile["runtime"]["mla_decode_cpb"] = False
+        warnings = server.capability_warnings(
+            self.profile,
+            {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}},
+            recovery=True,
+        )
+        self.assertEqual(warnings[0], "moe_order_marker_1_accepted_for_recovery")
+        self.assertIn("runtime.mla_decode_cpb is retired", warnings[1])
 
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)
