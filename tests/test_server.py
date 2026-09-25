@@ -470,6 +470,13 @@ class ServerConfigTests(unittest.TestCase):
             profile["runtime"]["mla_decode_cpb"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
+        # Measured on eager decode only; a Graph profile is refused, not assumed.
+        profile = copy.deepcopy(self.profile)
+        profile["runtime"]["mla_decode_cpb"] = True
+        profile["runtime"].pop("enforce_eager", None)
+        profile["runtime"]["decode_graphs"] = True
+        with self.assertRaises(ValueError):
+            config.validate(profile)
 
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)

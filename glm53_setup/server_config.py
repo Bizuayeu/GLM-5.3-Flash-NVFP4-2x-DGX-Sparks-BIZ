@@ -154,6 +154,9 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.prefix_page_dedup must be true or false")
     if type(profile["runtime"].get("mla_decode_cpb", False)) is not bool:
         raise ValueError("runtime.mla_decode_cpb must be true or false")
+    if profile["runtime"].get("mla_decode_cpb") and decode_graphs(profile):
+        # The pinned values were timed on eager decode steps only.
+        raise ValueError("runtime.mla_decode_cpb excludes decode Graphs")
     if profile["runtime"].get("fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
