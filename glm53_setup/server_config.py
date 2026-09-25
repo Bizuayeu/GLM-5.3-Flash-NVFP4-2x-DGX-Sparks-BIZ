@@ -74,7 +74,7 @@ OPTIONAL_KEYS = {
     "server.validation": frozenset({"memory_probe"}),
     "server.resources": frozenset({"stall_seconds"}),
     "server.generation": frozenset({"warmup", "warmup_long_tokens"}),
-    "server.nodes[]": frozenset({"additional_rails"}),
+    "server.nodes[]": frozenset({"additional_rails", "cpuset_cpus"}),
 }
 
 
@@ -177,6 +177,33 @@ def check_optional_shapes(profile):
         value = profile[section].get(key, 0)
         if type(value) is not int or value < 0:
             raise ValueError(f"{section}.{key} must be a nonnegative integer")
+    for rank in (0, 1):
+        cpuset_cpus(profile, rank)
+
+
+def cpuset_cpus(profile, rank):
+    """Parse an operator-supplied Docker CPU set, or leave placement unchanged."""
+    value = profile["nodes"][rank].get("cpuset_cpus")
+    if value is None:
+        return None
+    return cpu_list(value, f"nodes[{rank}].cpuset_cpus")
+
+
+def cpu_list(value, name):
+    """The CPUs of a Docker CPU list, so that equal sets compare equal."""
+    if type(value) is not str or not re.fullmatch(
+        r"[0-9]{1,4}(?:-[0-9]{1,4})?(?:,[0-9]{1,4}(?:-[0-9]{1,4})?)*",
+        value,
+    ):
+        raise ValueError(f"{name} must be a Docker CPU list")
+    cpus = set()
+    for item in value.split(","):
+        first, separator, last = item.partition("-")
+        start, end = int(first), int(last) if separator else int(first)
+        if end < start or cpus.intersection(range(start, end + 1)):
+            raise ValueError(f"{name} has a reversed or repeated CPU")
+        cpus.update(range(start, end + 1))
+    return cpus
 
 
 def check_pinned_identity(profile):

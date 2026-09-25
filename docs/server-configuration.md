@@ -16,7 +16,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 | `api` | Loopback/rendezvous ports, served name and parsers |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline |
-| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs |
+| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set |
 
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
@@ -43,6 +43,10 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Warmup | `warmup=true`, `warmup_long_tokens=0`: text, tool and image rungs after readiness; no long rung until set |
 
 The text-only alternative sets `runtime.vision = false` and keeps the length and KV above. It loads no vision tower and keeps no image preprocessing cache, and stays available for text-only serving and for checks with less memory headroom. Its [256K checks](benchmarks.md#real-input-checks-at-256k) ran on 2026-09-14 with a 4 GiB reserve at chunk 512; the template's 3 GiB reserve at chunk 2048 is not validated without images.
+
+### Optional CPU placement
+
+`nodes[].cpuset_cpus` optionally passes a Docker CPU list (for example, `"5-9,15-19"`) to `--cpuset-cpus` for that rank. Omit it to retain Docker's existing CPU placement. Determine the performance-core IDs separately on each host from its topology and a controlled workload; core numbering is not portable between hosts. The launcher rejects malformed, reversed or overlapping ranges. On each host, `server preflight` checks that the requested CPUs are in the launcher's available affinity mask. After `docker run`, the launcher reads back `HostConfig.CpusetCpus` before recording the rank as started and stops the new container if this check fails. This is a placement control, not a throughput guarantee.
 
 **Supply image IDs, both nodes' connection details and the MTP view before launch. Supply the LPA projector/hash only when enabling LPA.** Zero hashes are placeholders to replace for enabled features; missing assets never silently disable features. The [trained projector download](lpa.md#download-the-trained-projector) avoids retraining; [operations](operations.md#artifact-storage-and-paths) owns asset placement. MTP/LPA can be disabled separately; baseline comparisons also explicitly reset APC, retention, fusion and async checks.
 

@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import mock_open, patch
 
 from glm53_setup import server
@@ -66,6 +67,105 @@ class ServerConfigTests(unittest.TestCase):
             profile["resources"]["reserve_gib"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
+
+    def test_optional_per_node_cpu_sets_keep_the_default_command_unchanged(self):
+        for rank in (0, 1):
+            self.assertNotIn(
+                "--cpuset-cpus",
+                server.command(self.profile, ROOT / "state/server.toml", rank, "test"),
+            )
+        self.profile["nodes"][0]["cpuset_cpus"] = "5-9,15-19"
+        self.profile["nodes"][1]["cpuset_cpus"] = "1,3-4"
+        config.validate(self.profile)
+        for rank, requested in ((0, "5-9,15-19"), (1, "1,3-4")):
+            args = server.command(
+                self.profile, ROOT / "state/server.toml", rank, "test"
+            )
+            self.assertEqual(args[args.index("--cpuset-cpus") + 1], requested)
+        for invalid in ("", "1-", "4-2", "1,1", "1-3,3-4", "1, 2", "10000", 5):
+            profile = copy.deepcopy(self.profile)
+            profile["nodes"][0]["cpuset_cpus"] = invalid
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                config.validate(profile)
+
+    def test_explicit_cpu_set_preflight_and_docker_readback(self):
+        self.profile["nodes"][0]["cpuset_cpus"] = "5-6"
+        config.validate(self.profile)
+        cache = Path.home() / ".cache/huggingface"
+        model = server.model_path(self.profile, cache)
+        image_id = config.selected_image(self.profile)
+
+        def run(*args):
+            if args[:3] == ("docker", "image", "inspect"):
+                return json.dumps(
+                    [
+                        {
+                            "Id": image_id,
+                            "Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]},
+                        }
+                    ]
+                )
+            raise AssertionError(args)
+
+        with (
+            patch.object(server, "read_json") as read_json,
+            patch.object(server.host, "snapshot_from_state", return_value=model),
+            patch.object(server.host, "fabric_checks", return_value={}),
+            patch.object(server.host, "run", side_effect=run),
+            patch.object(server.host, "running_containers", return_value=[]),
+            patch.object(
+                server.os, "sched_getaffinity", return_value={5, 6}, create=True
+            ),
+        ):
+            read_json.return_value = {
+                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
+            }
+            result = server.preflight(
+                self.profile, ROOT / "state/server.toml", 0, check_memory=False
+            )
+            self.assertIs(result["checks"]["cpu_set_available"], True)
+            with patch.object(
+                server.os, "sched_getaffinity", return_value={5}, create=True
+            ):
+                denied = server.preflight(
+                    self.profile, ROOT / "state/server.toml", 0, check_memory=False
+                )
+            self.assertIs(denied["checks"]["cpu_set_available"], False)
+            self.assertIs(denied["passed"], False)
+        with patch.object(server, "inspect_owned") as inspect:
+            for actual in ("5-6", "5,6"):
+                inspect.return_value = {"HostConfig": {"CpusetCpus": actual}}
+                server.verify_cpu_set(self.profile, 0, "test")
+            for actual in ("0-19", "", None):
+                inspect.return_value = {"HostConfig": {"CpusetCpus": actual}}
+                with (
+                    self.subTest(actual=actual),
+                    self.assertRaisesRegex(ValueError, "CPU set"),
+                ):
+                    server.verify_cpu_set(self.profile, 0, "test")
+
+    def test_failed_cpu_set_readback_stops_the_new_container(self):
+        self.profile["nodes"][0]["cpuset_cpus"] = "5-6"
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            args = SimpleNamespace(rank=0, run_id=None, config=Path("server.toml"))
+            with (
+                patch.object(server, "ROOT", temporary_root),
+                patch.object(
+                    server, "state_path", return_value=temporary_root / "rank.json"
+                ),
+                patch.object(server, "command", return_value=["docker", "run"]),
+                patch.object(
+                    server, "verify_cpu_set", side_effect=OSError("inspect failed")
+                ),
+                patch.object(
+                    server.host, "run", side_effect=["created", "stopped"]
+                ) as run,
+            ):
+                with self.assertRaisesRegex(OSError, "inspect failed"):
+                    server.start_rank(None, args, self.profile, {"passed": True})
+            self.assertEqual(run.call_args_list[-1].args[:2], ("docker", "stop"))
+            self.assertFalse((temporary_root / "rank.json").exists())
 
     def test_jit_caches_live_in_the_mounted_runtime_cache(self):
         for rank in (0, 1):
