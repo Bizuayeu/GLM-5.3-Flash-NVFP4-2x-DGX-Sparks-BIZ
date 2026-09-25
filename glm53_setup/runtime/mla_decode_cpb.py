@@ -4,21 +4,23 @@ FlashInfer 0.6.18's SM120 sparse-MLA decode (``sparse_mla_sm120_decode_dsv3_2``)
 candidates into 32 chunks of 64 and lets each CTA take ``chunks_per_block`` of them. Left unset, a
 C++ heuristic picks it from the token count of the whole call and the SM count, so a request's rows
 are summed in another order as soon as a second sequence shares the step (on GB10, 2 for one draft
-token and 3 for two; 6 for one verification step of four tokens and 15 for two), and every call walks
-FlashInfer's AutoTuner in Python first. Pinning the value to the tokens of one sequence keeps a
-request's rows the same with or without a partner and, at the steps measured on GB10
-(records/20260925-moe-batch, run 3), is as fast or faster: 26.8 us against 37.9 and 33.7 for one and
-two draft tokens, 39.1 against 39.6 and 73.4 against 76.4 for one and two verification steps.
+token and 3 for two; 6 for one verification step of four tokens and 15 for two). The stock route
+also rebuilds FlashInfer's runner, normalizes the index segments, goes through a custom op and asks
+FlashInfer's AutoTuner on every call.
 
 With ``GLM53_MLA_DECODE_CPB=1`` (``runtime.mla_decode_cpb``) the patched backend asks
 ``decode_chunks_per_block`` first and, for a step it names, calls the same FlashInfer decode entry
-the stock path reaches, with the value set. Every other step keeps the stock call.
+the stock route ends in, with the value taken from the tokens of one sequence. The values are the
+heuristic's own at one sequence, so a request alone computes bit for bit as before, and with a
+partner its rows no longer change. On one GB10 through the patched backend the call skipped the
+wrapper cost: a verification step of one sequence took 221 us against 633 and of two 535 against
+917 (records/20260925-moe-batch, run 4). Every other step keeps the stock call.
 """
 
 import os
 
 # Tokens of one sequence -> chunks_per_block, for 32 heads per rank and top-k 2,048 on GB10.
-CHUNKS_PER_BLOCK = {1: 3, 4: 6}
+CHUNKS_PER_BLOCK = {1: 2, 4: 6}
 HEADS = 32
 TOP_K = 2048
 # cc-defer: measured for one and two sequences only; a profile with max_num_seqs > 2 needs the

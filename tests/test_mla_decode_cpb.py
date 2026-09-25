@@ -23,9 +23,10 @@ class MlaDecodeCpbTest(unittest.TestCase):
 
     def test_one_value_per_tokens_of_one_sequence_whatever_the_partner(self):
         with mock.patch.dict(os.environ, {"GLM53_MLA_DECODE_CPB": "1"}):
-            # Draft steps: one token per sequence, alone and with a partner.
-            self.assertEqual(cpb(1, 1, 1), 3)
-            self.assertEqual(cpb(2, 2, 1), 3)
+            # Draft steps: one token per sequence, alone and with a partner. The values are the
+            # heuristic's own at one sequence, so a lone request computes exactly as before.
+            self.assertEqual(cpb(1, 1, 1), 2)
+            self.assertEqual(cpb(2, 2, 1), 2)
             # Verification steps at MTP depth 3: four tokens per sequence.
             self.assertEqual(cpb(4, 1, 4), 6)
             self.assertEqual(cpb(8, 2, 4), 6)
