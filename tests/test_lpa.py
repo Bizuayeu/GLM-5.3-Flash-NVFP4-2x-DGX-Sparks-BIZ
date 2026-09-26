@@ -213,5 +213,253 @@ class ExperimentSpecTests(unittest.TestCase):
                 ExperimentSpec(**values)
 
 
+def split_model(torch):
+    """Four fake layers, KDA/KDA/KDA/MLA, with the pinned projection call sites."""
+    nn = torch.nn
+    functional = torch.nn.functional
+    width, heads, head_dim, q_rank, kv_rank, index_dim = 8, 2, 3, 5, 4, 3
+
+    class Linear(nn.Linear):
+        def forward(self, x):
+            return super().forward(x), None
+
+    class KDA(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.local_num_heads, self.head_dim = heads, head_dim
+            self.q_proj, self.k_proj, self.v_proj = (
+                Linear(width, 6, bias=False) for _ in range(3)
+            )
+            self.in_proj_bfg_a = Linear(width, heads + 2 * head_dim, bias=False)
+            self.o_proj = Linear(18 + heads + 2 * head_dim, width, bias=False)
+
+        def forward(self, hidden_states, positions):
+            q, k, v = (
+                m(hidden_states)[0] for m in (self.q_proj, self.k_proj, self.v_proj)
+            )
+            b, f, g = self.in_proj_bfg_a(hidden_states)[0].split(
+                [heads, head_dim, head_dim], dim=-1
+            )
+            self.seen = dict(x=hidden_states, q=q, k=k, v=v, b=b, f=f, g=g)
+            return self.o_proj(torch.cat([q, k, v, b, f, g], dim=-1).tanh())[0]
+
+    class IndexerOp(nn.Module):
+        def forward(self, hidden_states, q, k, weights, gate_score=None):
+            self.seen = dict(k=k, weights=weights, gate=gate_score)
+
+    class Indexer(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.head_dim = index_dim
+            self.wq_b = Linear(q_rank, index_dim, bias=False)
+            self.wk_weights_proj = Linear(width, index_dim + 2, bias=False)
+            self.index_kpool_compress_gate = nn.Parameter(torch.randn(index_dim, width))
+            self.indexer_op = IndexerOp()
+
+        def forward(self, hidden_states, qr, positions, rotary_emb):
+            k = self.wk_weights_proj(hidden_states)[0][:, : self.head_dim]
+            weights = hidden_states.float() @ (
+                self.wk_weights_proj.weight[self.head_dim :].t().float()
+            )
+            gate = functional.linear(hidden_states, self.index_kpool_compress_gate)
+            self.indexer_op(
+                hidden_states, self.wq_b(qr)[0], k, weights, gate_score=gate
+            )
+
+    class Wrapper(nn.Module):
+        def __init__(self, fused, indexer):
+            super().__init__()
+            self.fused_qkv_a_proj, self.indexer = fused, indexer
+            self.q_b_proj = Linear(q_rank, 6, bias=False)
+            self.o_proj = Linear(6 + kv_rank, width, bias=False)
+
+        def forward(self, positions, hidden_states):
+            q_c, kv = self.fused_qkv_a_proj(hidden_states)[0].split(
+                [q_rank, kv_rank], dim=-1
+            )
+            self.indexer(hidden_states, q_c, positions, None)
+            self.seen = dict(x=hidden_states, q_c=q_c, kv=kv)
+            q = self.q_b_proj(q_c)[0]
+            return self.o_proj(torch.cat([q, kv], dim=-1).tanh())[0]
+
+    class MLA(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q_lora_rank = q_rank
+            self.fused_qkv_a_proj = Linear(width, q_rank + kv_rank, bias=False)
+            self.indexer = Indexer()
+            self.mla_attn = Wrapper(self.fused_qkv_a_proj, self.indexer)
+
+        def forward(self, hidden_states, positions):
+            return self.mla_attn(positions, hidden_states)
+
+    class Glm5NextDecoderLayer(nn.Module):
+        def __init__(self, index, kind):
+            super().__init__()
+            self.layer_idx, self.layer_kind, self.hidden_size = index, kind, width
+            self.is_mtp_layer = self.is_sequence_parallel = False
+            self.self_attn = KDA() if kind == "kda" else MLA()
+            self.mlp = Linear(width, width, bias=False)
+
+        def forward(self, x, positions):
+            x = x + self.self_attn(hidden_states=x.tanh(), positions=positions)
+            return x + self.mlp(x)[0].tanh()
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layers = nn.ModuleList(
+                Glm5NextDecoderLayer(i, k)
+                for i, k in enumerate(("kda", "kda", "kda", "mla"))
+            )
+
+        def forward(self, x, positions):
+            for layer in self.layers:
+                x = layer(x, positions)
+            return x
+
+    return Model()
+
+
+class SplitModeTests(unittest.TestCase):
+    """Late layers write state from p and read with their own input x."""
+
+    def setUp(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("Torch environment required")
+        self.torch = torch
+        torch.manual_seed(0)
+        self.model = split_model(torch)
+        self.experiment = AttentionInputExperiment(self.model)
+        self.x = torch.randn(5, 8)
+        self.positions = torch.arange(5)
+        width = 8
+        # p = scale * source + bias; a constant row keeps its origin visible.
+        self.weights = {
+            i: {
+                "mean": torch.zeros(width),
+                "down": torch.zeros(width, 1),
+                "up": torch.zeros(1, width),
+                "scale": torch.zeros(width),
+                "bias": torch.linspace(-0.5, 0.5, width),
+            }
+            for i in (2, 3)
+        }
+
+    def run_mode(self, mode, **kwargs):
+        with (
+            patch(
+                "pathlib.Path.stat",
+                return_value=SimpleNamespace(st_mtime_ns=1, st_size=1),
+            ),
+            patch.object(self.experiment, "_load_predictor", return_value=self.weights),
+        ):
+            result = self.experiment.configure(
+                mode, 1, 5, predictor_path="projector.pt", **kwargs
+            )
+        with self.torch.no_grad():
+            output = self.model(self.x, self.positions)
+        seen = [
+            dict(
+                getattr(layer.self_attn, "seen", {}),
+                **getattr(getattr(layer.self_attn, "mla_attn", None), "seen", {}),
+            )
+            for layer in self.model.layers
+        ]
+        index = self.model.layers[3].self_attn.indexer.indexer_op.seen
+        return result, output, seen, index
+
+    def test_split_self_is_the_native_forward(self):
+        _, off, off_seen, off_index = self.run_mode("off")
+        result, split, split_seen, split_index = self.run_mode("split-self")
+        self.assertEqual(result["mode"], "split-self")
+        self.assertTrue(self.torch.equal(off, split))
+        for before, after in zip(off_seen, split_seen):
+            for key in before:
+                self.assertTrue(self.torch.equal(before[key], after[key]), key)
+        for key in off_index:
+            self.assertTrue(self.torch.equal(off_index[key], split_index[key]), key)
+
+    def test_split_writes_from_the_projection_and_reads_from_the_layer_input(self):
+        torch = self.torch
+        _, off, off_seen, _ = self.run_mode("off")
+        _, split, seen, index = self.run_mode("split")
+        self.assertFalse(torch.equal(off, split))
+        # The cut layer and every layer before it are unchanged.
+        for i in (0, 1):
+            for key in off_seen[i]:
+                self.assertTrue(torch.equal(off_seen[i][key], seen[i][key]), key)
+        self.assertEqual(self.experiment.counts["split_tokens"], {2: 5, 3: 5})
+        # Outside a split forward the wrapped projections are the native ones.
+        self.experiment.configure("off", 1, 5)
+        p = self.weights[2]["bias"].expand(5, 8)
+        attn = self.model.layers[2].self_attn
+        x = seen[2]["x"]
+        self.assertTrue(torch.equal(seen[2]["q"], attn.q_proj(x)[0]))
+        self.assertTrue(torch.equal(seen[2]["k"], attn.k_proj(p)[0]))
+        self.assertTrue(torch.equal(seen[2]["v"], attn.v_proj(p)[0]))
+        from_p = attn.in_proj_bfg_a(p)[0]
+        self.assertTrue(torch.equal(seen[2]["b"], from_p[:, :2]))
+        self.assertTrue(torch.equal(seen[2]["f"], from_p[:, 2:5]))
+        self.assertTrue(torch.equal(seen[2]["g"], attn.in_proj_bfg_a(x)[0][:, 5:]))
+        attn = self.model.layers[3].self_attn
+        p = self.weights[3]["bias"].expand(5, 8)
+        x = seen[3]["x"]
+        self.assertTrue(torch.equal(seen[3]["q_c"], attn.fused_qkv_a_proj(x)[0][:, :5]))
+        self.assertTrue(torch.equal(seen[3]["kv"], attn.fused_qkv_a_proj(p)[0][:, 5:]))
+        indexer = attn.indexer
+        wk = indexer.wk_weights_proj
+        self.assertTrue(torch.equal(index["k"], wk(p)[0][:, :3]))
+        self.assertTrue(
+            torch.equal(index["weights"], x.float() @ wk.weight[3:].t().float())
+        )
+        self.assertTrue(
+            torch.equal(
+                index["gate"],
+                torch.nn.functional.linear(p, indexer.index_kpool_compress_gate),
+            )
+        )
+
+    def test_projection_inputs_are_released_after_each_attention(self):
+        self.run_mode("split")
+        self.assertEqual(self.experiment.split_inputs, {})
+        # Off again: every wrapped projection is the native call.
+        _, off, _, _ = self.run_mode("off")
+        _, again, _, _ = self.run_mode("off")
+        self.assertTrue(self.torch.equal(off, again))
+
+    def test_split_refuses_what_it_does_not_cover(self):
+        for kwargs in ({"skip_mla_queries": True}, {"tail": 2}):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                self.run_mode("split", **kwargs)
+        with self.assertRaises(ValueError):
+            ExperimentSpec("split-self", 1, 5, approximate_start=1)
+        with self.assertRaises(ValueError):
+            self.experiment.configure("split", 1, 5)  # no projector
+
+    def test_split_refuses_mtp_and_prefix_caching(self):
+        for speculative, caching in (
+            (SimpleNamespace(method="mtp", num_speculative_tokens=1), False),
+            (None, True),
+        ):
+            worker = LPAWorkerExtension()
+            worker.vllm_config = SimpleNamespace(
+                scheduler_config=SimpleNamespace(max_num_seqs=1),
+                cache_config=SimpleNamespace(enable_prefix_caching=caching),
+                model_config=SimpleNamespace(enforce_eager=True),
+                speculative_config=speculative,
+            )
+            worker.get_model = lambda: "target-only"
+            for mode in ("split", "split-self"):
+                with (
+                    self.subTest(mode=mode, caching=caching),
+                    patch("glm53_setup.runtime.lpa.AttentionInputExperiment"),
+                    self.assertRaises(ValueError),
+                ):
+                    worker.lpa_configure(allow_mtp=True, mode=mode, cut=1)
+
+
 if __name__ == "__main__":
     unittest.main()

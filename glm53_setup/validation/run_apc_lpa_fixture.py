@@ -93,7 +93,7 @@ def lpa_config(projector, digest):
     )
 
 
-def write_synthetic_projector(path, width):
+def write_synthetic_projector(path, width, cut=0):
     """A format-2 projector with fixed, visibly non-teacher weights for four layers."""
     import torch
 
@@ -102,7 +102,7 @@ def write_synthetic_projector(path, width):
             "format_version": PROJECTOR_FORMAT,
             "teacher_revision": REVISION,
             "teacher_precision": TEACHER_PRECISION,
-            "cut": 0,
+            "cut": cut,
             "layers": 4,
             "test_fixture_only": True,
             "weights": {
@@ -113,7 +113,7 @@ def write_synthetic_projector(path, width):
                     "scale": torch.full((width,), 0.5),
                     "bias": torch.linspace(-0.25, 0.25, width),
                 }
-                for i in range(1, 4)
+                for i in range(cut + 1, 4)
             },
         },
         path,
