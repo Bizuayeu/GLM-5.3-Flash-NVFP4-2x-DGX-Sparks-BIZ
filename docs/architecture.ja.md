@@ -69,6 +69,12 @@ CLIは、選択したコマンドが実際に必要とする場合にだけGPU�
 
 reference imageのbuild時patchは、変更する固定vLLMファイルの完全なSHA-256を確認してから当てます。公開した任意設定のoverlayも起動時に同じ方法で照合します。選択したAttention候補はすべて保持します。runtimeの数値計算と検証ハーネスは別のモジュールにしてあるため、CLIコードを移動しても数学的な実装は変わりません。
 
+## モジュールの置き場所
+
+**worker拡張。** `runtime/` には配信の起動が読み込むworkerクラスを置きます。`server_config.apply_worker_extension` が指すのは `lpa.LPAWorkerExtension`、`component_worker.ComponentWorker`、`memory_probe.MemoryProbeWorker` で、`ComponentWorker` は `indexer_worker.IndexerCaptureWorker` を継承します（`run_indexer_fixture` もこれを単独で読み込みます）。`validation/` にはfixture runnerだけが読み込むworker（`apc_fixture_worker`・`pipeline_worker`）を置きます。例外は `expert_worker` です。配信はEP観測の起動でこれを読み込みます（`validation.expert_worker`）が、`validation.pipeline_worker.PipelineFixtureWorker` を継承するため `validation/` に置いています。ベンチとテストからしかimportされない退役した試作も `validation/` に置きます。
+
+**コマンド。** 検証runnerの多くは `python -m glm53_setup` のsubcommand（`__main__.COMMANDS`）です。次は `python -m glm53_setup.validation.<module>` としてだけ実行します：`benchmark_apc_lpa`（`apc-lpa-benchmark` として登録）を除くすべての `benchmark_*`、`run_components`、`run_graph_fixture`、`run_indexer_fixture`、`run_repeat_trace`。`indexer-overlap` はこの群に当てはまるのに登録されています。`runtime/indexer_capture.py` が記録し `run_indexer_fixture` が駆動する候補の行を、CPUで比較するものです。
+
 ## 検証の境界
 
 ダウンロードの完了、checksumの合格、GPUスモーク、設定の解釈、Attentionの一致、fixtureの統合、フルモデルTP=2の検収は、それぞれ別種の証拠です。ある水準の結果を、別の水準の代わりにはできません。とくに、GPU 1台のfixtureは2 rankの証拠の代わりになりません。

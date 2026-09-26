@@ -69,6 +69,12 @@ Model ID and revision have one configuration source: [runtime.lock.json](../conf
 
 Every build-time patch of the reference image checks the full SHA-256 of the pinned vLLM file it modifies before changing it, and the overlays for the published option are checked the same way at launch. The image keeps all selected attention candidates. The runtime math and the validation harness are separate modules so moving CLI code does not change the mathematical implementation.
 
+## Where a module belongs
+
+**Worker extensions.** `runtime/` holds the worker classes a serving launch loads. `server_config.apply_worker_extension` names `lpa.LPAWorkerExtension`, `component_worker.ComponentWorker` and `memory_probe.MemoryProbeWorker`; `ComponentWorker` subclasses `indexer_worker.IndexerCaptureWorker`, which `run_indexer_fixture` also loads on its own. `validation/` holds the workers only a fixture runner loads: `apc_fixture_worker` and `pipeline_worker`. `expert_worker` is the exception: serving loads it for the EP observer launch (`validation.expert_worker`), and it stays in `validation/` because it subclasses `validation.pipeline_worker.PipelineFixtureWorker`. Retired prototypes that only their benchmarks and tests import also live in `validation/`.
+
+**Commands.** Most validation runners are subcommands of `python -m glm53_setup` (`__main__.COMMANDS`). These run only as `python -m glm53_setup.validation.<module>`: every `benchmark_*` except `benchmark_apc_lpa` (registered as `apc-lpa-benchmark`), `run_components`, `run_graph_fixture`, `run_indexer_fixture` and `run_repeat_trace`. `indexer-overlap` is registered although it fits that group: it is the CPU comparison of the candidate rows `runtime/indexer_capture.py` records, which `run_indexer_fixture` drives.
+
 ## Validation boundaries
 
 Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model TP=2 qualification are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot stand in for two-rank evidence.
