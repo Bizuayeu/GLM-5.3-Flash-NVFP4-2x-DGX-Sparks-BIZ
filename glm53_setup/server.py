@@ -504,24 +504,37 @@ def mojibake_running(profile):
     )
 
 
-def agreement_senders(profile, sender=post):
+AGREEMENT_LPA_MODES = ("split", "native")
+
+
+def agreement_senders(profile, sender=post, lpa_mode=None):
     """Tokenize and completions senders for the running rank 0.
 
     The text is tokenized once, then sent back as token ids, so the scored
     positions are exactly the tokens the server saw. LPA's native mode
-    rewrites prefill outside the shared cache, so the reading is only taken
-    with LPA off or in its APC-first form (the same guard as ``ask``).
+    rewrites prefill outside the shared cache, so by default the reading is
+    only taken with LPA off or in its APC-first form (the same guard as
+    ``ask``). On a native-LPA profile, ``lpa_mode`` configures the worker for
+    each scored request as ``ask`` does: ``split`` writes every late-layer
+    state from the projection and still scores every position; ``native`` is
+    the profile's own request, whose approximated positions are not the
+    model's reading (only its exact tail is).
     """
-    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
+    native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
+    if lpa_mode is None and native:
         raise ValueError(
             "agreement requires LPA off or APC-first; native LPA rewrites prefill"
+        )
+    if lpa_mode is not None and (lpa_mode not in AGREEMENT_LPA_MODES or not native):
+        raise ValueError(
+            f"--lpa-mode takes {AGREEMENT_LPA_MODES} on a native-LPA profile"
         )
     model = profile["api"]["served_model_name"]
 
     def tokenize(text):
         return sender(profile, "/tokenize", {"model": model, "prompt": text})["tokens"]
 
-    def complete(token_ids, top_k):
+    def score(token_ids, top_k):
         return sender(
             profile,
             "/v1/completions",
@@ -535,16 +548,38 @@ def agreement_senders(profile, sender=post):
             },
         )
 
+    if lpa_mode is None:
+        return tokenize, score
+
+    def complete(token_ids, top_k):
+        length = len(token_ids)
+        rpc = {
+            "method": "lpa_configure",
+            "kwargs": settings.lpa_request(profile, length, split=lpa_mode == "split"),
+            "timeout": profile["generation"]["timeout_seconds"],
+        }
+        try:
+            sender(profile, "/collective_rpc", rpc)
+            result = score(token_ids, top_k)
+            if result["usage"]["prompt_tokens"] != length:
+                raise ValueError("Scored length differs from the configured one")
+            return result
+        finally:
+            reset = dict(rpc["kwargs"], mode="off")
+            sender(profile, "/collective_rpc", dict(rpc, kwargs=reset))
+
     return tokenize, complete
 
 
-def agreement_running(profile, reference=None):
+def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
     """Teacher-forced reading on the running rank 0; compared with a saved run."""
     # A profile the reading cannot be taken under is refused before the head is read.
-    tokenize, complete = agreement_senders(profile)
+    tokenize, complete = agreement_senders(profile, lpa_mode=lpa_mode)
 
     def run(state):
-        result = agreement.run(tokenize, complete)
+        result = agreement.run(tokenize, complete, *([texts] if texts else []))
+        if lpa_mode is not None:
+            result["lpa_mode"] = lpa_mode
         if reference is not None:
             result["reference"] = str(reference)
             result["comparison"] = agreement.compare_records(
@@ -731,7 +766,8 @@ def act_mojibake(cli, args, profile):
 
 def act_agreement(cli, args, profile):
     """Score the running head against a saved reading."""
-    result = agreement_running(profile, args.reference)
+    texts = read_json(args.texts) if args.texts else None
+    result = agreement_running(profile, args.reference, args.lpa_mode, texts)
     # Per-position rows stay in the record; the terminal gets the rates.
     for row in result["texts"]:
         for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
@@ -849,6 +885,14 @@ def parser():
         "--reference",
         type=Path,
         help="Saved agreement result.json to compare this run against",
+    )
+    cli.add_argument(
+        "--lpa-mode",
+        choices=AGREEMENT_LPA_MODES,
+        help="agreement on a native-LPA profile: configure each scored request",
+    )
+    cli.add_argument(
+        "--texts", type=Path, help="agreement: JSON object of name -> text to score"
     )
     cli.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     cli.add_argument("--rank", type=int, choices=[0, 1], default=0)
