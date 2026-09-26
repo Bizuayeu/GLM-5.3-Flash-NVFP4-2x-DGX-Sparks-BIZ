@@ -119,6 +119,10 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["lpa"]["enabled"]:
         target = settings.LPA_PROJECTOR
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
+        # The image bakes the worker it was built with; the split modes are
+        # newer than that, so the launched worker is the checkout's copy.
+        source = ROOT / "glm53_setup/runtime/lpa.py"
+        args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/lpa.py:ro"]
     if settings.optional(profile, "validation", "memory_probe"):
         # The probe is newer than the image; mount the checkout's copy.
         source = ROOT / "glm53_setup/runtime/memory_probe.py"

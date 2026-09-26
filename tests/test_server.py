@@ -1136,6 +1136,20 @@ class ServerConfigTests(unittest.TestCase):
         self.assertNotIn("--rm", args)
         self.assertNotIn("--privileged", args)
 
+    def test_an_lpa_launch_runs_the_checkouts_worker_not_the_images(self):
+        # The image bakes the LPA worker it was built with; a mode added after
+        # it (split, split-self) was refused as unsupported by a full-model
+        # launch on 2026-09-26. The launched worker must be this checkout's.
+        mount = (
+            f"{server.ROOT / 'glm53_setup/runtime/lpa.py'}"
+            f":{server.IMAGE_PACKAGE_DIR}/runtime/lpa.py:ro"
+        )
+        path = ROOT / "state/server.toml"
+        hf = ROOT / "state/test-hf"
+        self.assertNotIn(mount, server.command(self.profile, path, 0, "c", hf))
+        self.profile["lpa"]["enabled"] = True
+        self.assertIn(mount, server.command(self.profile, path, 0, "c", hf))
+
     def derived(self, root, real=False):
         overlay = root / "kda-quant.py"
         overlay.write_text("x = 1  # kda-quant-overlay\n", encoding="utf-8")
