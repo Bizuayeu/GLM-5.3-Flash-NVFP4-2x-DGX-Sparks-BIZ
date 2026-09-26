@@ -217,6 +217,8 @@ N=18,432、H=8,704では、近似suffixが層3で9,216 queryを省略しまし�
 
 続く `p22-fixture-v62` は、source `3df93c9`、image `sha256:0de1ef13b7bfebb088ac7d9399e2d45decf058f16819d72f5a8e89c1bc993b81` で非同期schedulerを動かしました。MTPのdraftが棄却された後はCPUのcursorがGPUより先行することがあり、LPAのguardは生成tokenのdecodeでのみこれを認め、prompt内の不一致は引き続き拒否します。2件の近似要求はどちらもこの補正を13回観測しました。8件の要求、cache境界の検査、prefix hashの不変はすべて通過し、このrunでは3件の厳密な16 token対照も一致して、OOMなしでexit 0しました。先のnativeのみの変動は、別の結果として引き続き保持します。全モデルでの併用は[ベンチマーク](benchmarks.ja.md#apclpamtp融合非同期検査の併用p22)にあります。
 
+**LPAとMTPの深さ2（2026-09-26）。** 1.18.0のsourceから作ったimage（`sha256:03c12804…`）と、byte検証済みの4層MTP fixture（重みは元のまま、GB10 1台、他の負荷は止めずに実施）で、各検査を対照の深さ3と深さ2で走らせた。`apc-lpa-fixture` は両方の深さで合格した（exactの対照は一致、合成の状態は区別され、戻ったprefixは深さ3で8,960 token、深さ2で8,704 token）。`lpa-fixture` は、文書の長さ（3〜513と8,705）で深さ3は合格した。深さ2は、1回目はすべての長さで合格し、2回目は長さ512だけを外した。そこではoracleのtokenが違った一方、oracleの状態とfull-MLPのoracleは一致し、共有token上のlog確率の差の最大（0.062）は合格した回と同じ大きさだった。上で深さ3について書いた同点に近い分岐で、深さ2の欠陥ではない。runnerの既定の長さでは、両方の深さとも1 tokenのpromptだけを、基準の計算そのもので外した。全モデルでは深さ2のLPAを走らせていない。
+
 ## 履歴fixtureの追加
 
 `fixture-v66-target` と `fixture-v66-mtp3` は、source `441384c`、image `sha256:569538ce8b1c259f3ee13242f387320417b2d63a0b4122b6dc74d92ae74dae33` を使いました。それぞれ62要求を完了し、pool境界、scheduler blockの境界、10／50／90%位置での編集・分岐18条件を含みます。元の共有prefix hashはすべての条件で変化せず、編集した要求が変更したprefixより先を復元することはなく、厳密な再訪では元の共有stateが保たれました。`3df93c9` からのランタイム差は読み取り専用のcache layout RPCで、forwardとcache公開のアルゴリズムは変えていません。

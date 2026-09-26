@@ -2,7 +2,7 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased
+## 1.18.0 — 2026-09-26
 
 ### Removed
 
@@ -10,6 +10,8 @@
 
 ### Documentation
 
+- The reference pair serves with `nodes[].cpuset_cpus = "5-9,15-19"` on both ranks since the switch to this version: `server preflight` reported `cpu_set_available` on both hosts, the read-back after `docker run` held, the busiest worker threads ran on performance cores, and the decode check and sparkDash matched the earlier numbers with the same completions. Benchmarks 1.15.0 replaces its "not yet run" sentence with this result, and server configuration says so.
+- LPA with MTP depth 2 was checked on the four-layer fixture: the APC-first cache isolation passed at depths 2 and 3, and the replay check passed at depth 3 and, at depth 2, in one of two runs, the other missing one length on a near tie that the retained depth-3 results also show. The full model has not run LPA at depth 2 ([component validation](docs/component-validation.md#apc-first-lpa-cache-isolation-p22)).
 - The Japanese changelog now covers every release: 1.0.0 to 1.5.0, which had existed in English only, are translated, and the document map no longer calls the changelog a pair only from 1.6.0.
 - Third-party notices list the published option's weights (NVFP4 BIZ AXL on Hugging Face, MIT, a weight-only repack of the NVIDIA weights).
 - Server configuration: the Japanese KV capacity section follows the English order, and the `profiling` row says what the category does in both languages. Component validation says what its early full-target run did not establish and points at the repeatability that came later.
