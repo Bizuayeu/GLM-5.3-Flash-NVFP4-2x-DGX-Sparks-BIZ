@@ -4,6 +4,19 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## Unreleased
+
+### Added
+
+- LPA workerに実験的なmode `split` を追加しました（`glm53_setup/runtime/lpa.py`）。後段の各層（cutより後ろ）は、prefillでもdecodeでも全トークンについて、attentionの状態をprojectorの出力から書きます。queryと出力の経路はその層本来の入力のままです。同じトークンの後段の状態が計算の経路によらず同じになり、共有prefix cacheの条件を満たします。DeepSeek-V4.1-Flashのcausal encoder-decoderがdecoderのKVをこの形で作っています。まとめて計算している投影（`fused_qkv_a_proj`、indexerの `wk_weights_proj` とkpool gate、KDAの `in_proj_bfg_a`）は二回計算して列ごとにつなぎます。`split-self` は同じ経路にその層自身の入力を通す対照で、通常の計算とビット一致しなければなりません。どちらのmodeもMTP・prefix caching・MLAのquery省略とは併用できません。配布したcut 32のprojectorでの最初の全モデル計測では、`split-self` は通常の計算とビット一致しましたが、`split` は品質を大きく落としました（長文照合の課題で15件中6件。今のLPAは14件）。このmodeは実験のままです。
+- `server agreement` と `server ask` は、native LPAのprofileで `--lpa-mode off|native|split|split-self` を受け付けます。要求ごとに `lpa_configure` で設定してから送り、終わったらoffに戻します。`native` はprofile自身の要求、`off` は同じサーバーでの通常の計算です。`server agreement --texts` は、組み込みの文章の代わりにJSONで渡した文章を採点します。
+- `lpa-fixture --split` は、4層fixtureで合成projectorを使い、capture・off・split-self・split・offを走らせます。split-selfはoffとtoken・log確率（厳密に一致）・KDAの状態が一致しなければなりません。cutの後ろにKDAとMLAの層が両方残らないcutは拒否します（4層fixtureでは0か1。runnerの既定のcut 2ではMLAの層しか残りません）。
+
+### Fixed
+
+- LPAの起動は、checkoutのLPA workerではなく、imageに焼き込まれたworkerを走らせていました。imageを作った後のworkerの変更がサーバーに届きませんでした（参照対でsplitのmodeが未対応として拒否されて見つかりました）。LPAの起動では、checkoutの `lpa.py` をimageの上にmountするようになりました。memory probeとFA2のモジュールと同じやり方です。
+- native LPAのprofileでの `server ask` は、送った後の要求を書き換えてworkerを戻していました。コピーを送るようにしました。
+
 ## 1.19.0 — 2026-09-26
 
 ### Fixed
