@@ -27,6 +27,7 @@ COMMANDS = {
     "lpa-corpus": "validation.lpa_corpus",
     "lpa-train": "validation.train_lpa",
     "freedombench": "validation.freedombench",
+    "hle": "validation.hle",
     "profile-assess": "validation.profile_trace",
     "indexer-overlap": "validation.indexer_overlap",
     "quant-error": "validation.quant_error",
