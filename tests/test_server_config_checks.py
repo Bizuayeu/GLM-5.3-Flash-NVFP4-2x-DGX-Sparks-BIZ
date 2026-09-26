@@ -110,14 +110,24 @@ class CheckMessageTests(unittest.TestCase):
         ("check_generation", ("generation", "temperature"), -1, "temperature"),
         ("check_speculation", ("mtp", "num_speculative_tokens"), 6, "MTP depth"),
         ("check_lpa", ("lpa", "cut"), 45, "LPA cut"),
+        (
+            "check_lpa",
+            ("mtp", "num_speculative_tokens"),
+            4,
+            "LPA with MTP",
+            {("lpa", "enabled"): True},
+        ),
         ("check_identifiers", ("api", "served_model_name"), "bad name", "api."),
     ]
 
     def test_each_rule_reports_from_the_check_that_owns_it(self):
+        # An optional fifth element sets what the rule needs besides the edit.
         by_name = {check.__name__: check for check in config.VALIDATORS}
-        for name, path, value, fragment in self.CASES:
+        for name, path, value, fragment, *preset in self.CASES:
             with self.subTest(check=name, key=".".join(path)):
                 bad = profile()
+                for (section, key), setting in (preset[0] if preset else {}).items():
+                    bad[section][key] = setting
                 target = bad
                 for step in path[:-1]:
                     target = target[step]

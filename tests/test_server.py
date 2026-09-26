@@ -1452,6 +1452,19 @@ class ServerConfigTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     config.validate(p)
 
+    def test_lpa_with_mtp_launches_only_the_depths_its_workers_accept(self):
+        # The LPA and APC/LPA workers refuse the others on every request.
+        self.profile["lpa"]["enabled"] = True
+        self.profile["mtp"]["enabled"] = True
+        for depth in (1, 2, 3, 4, 5):
+            with self.subTest(depth=depth):
+                self.profile["mtp"]["num_speculative_tokens"] = depth
+                if depth <= 3:
+                    config.validate(self.profile)
+                    continue
+                with self.assertRaises(ValueError):
+                    config.validate(self.profile)
+
     def test_request_uses_template_and_protects_short_prompt(self):
         self.profile["lpa"]["enabled"] = True
         body = config.request_body(

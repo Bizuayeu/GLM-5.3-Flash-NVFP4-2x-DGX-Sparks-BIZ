@@ -120,7 +120,7 @@ class EveryEngineRunnerTests(unittest.TestCase):
 class SpeculativeConfigTests(unittest.TestCase):
     def test_the_mtp_runners_ask_for_the_draft_the_server_launches(self):
         for module in ("run_graph_fixture", "run_apc_lpa_fixture", "run_lpa"):
-            for depth in (1, 3):
+            for depth in (1, 2, 3):
                 with self.subTest(runner=module, depth=depth):
                     kwargs = kwargs_without_gpu(
                         module, argv(mtp=depth), ENGINE_RUNNERS[module]

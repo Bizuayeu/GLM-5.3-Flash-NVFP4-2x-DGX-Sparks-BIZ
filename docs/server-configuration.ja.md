@@ -252,7 +252,7 @@ Graph経路では内部候補indexの範囲検査をGPU上で非同期に行い�
 
 `cache.fused_unpack=true` が配布既定です。falseならTorchの参照変換を使い、trueなら656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理し、`GLM53_FUSED_UNPACK_SUPPORTED=1` が必要です。候補集合の変更や層間のKV共有は行いません。
 
-`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受けます。五つとも再量子化したcheckpointで、1・3・4は固定のcheckpointで測定済みで、両方のexampleは3を使います（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。LPAは `runtime.fa2_attention` と排他で、MTPと併用するときは深さ1か3だけを受け、MTP対応を明示したLPA workerを含むイメージが必要です。
+`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受けます。五つとも再量子化したcheckpointで、1・3・4は固定のcheckpointで測定済みで、両方のexampleは3を使います（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。LPAは `runtime.fa2_attention` と排他で、MTPと併用するときは深さ1・2・3を受け（4と5は検証で拒否します）、MTP対応を明示したLPA workerを含むイメージが必要です。深さ2はLPAとの併用で未測定です。`lpa.py` と `apc_worker.py` はマウントではなくイメージに焼き込まれるため、深さ2を許す前に作ったイメージは要求のたびにこれを拒否します。
 
 LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。
 

@@ -27,7 +27,7 @@ def parser():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--fixture", type=Path, required=True)
     cli.add_argument("--output", type=Path, required=True)
-    cli.add_argument("--mtp", type=int, choices=(1, 3))
+    cli.add_argument("--mtp", type=int, choices=(1, 2, 3))
     cli.add_argument("--fused-unpack", action="store_true")
     cli.add_argument("--async-index-checks", action="store_true")
     cli.add_argument("--async-scheduling", action="store_true")

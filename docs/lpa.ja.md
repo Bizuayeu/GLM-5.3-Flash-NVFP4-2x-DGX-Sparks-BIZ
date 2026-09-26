@@ -18,7 +18,7 @@
 
 LPAはMTP・unpack融合・非同期index検査と併用できる。証拠は[P18](benchmarks.ja.md#直列併用の評価p18)にある。
 
-- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1/k=3併用は `allow_mtp=true` を明示し、[起動設定TOML](server-configuration.ja.md)では自動設定する。APCは以下のscheduler統合済みP22経路を使う。
+- eager、テキスト専用、TP=2、同時実行1、制御クライアント1つ。sequence-parallel MoE・複数の制御クライアントは未対応。APCなしのMTP k=1・2・3併用は `allow_mtp=true` を明示し、[起動設定TOML](server-configuration.ja.md)では自動設定する（LPAとのk=4・5は拒否する）。k=2はLPAとの併用で未測定で、LPA workerはイメージに焼き込まれるため、k=2を許した後に作ったイメージが要る。APCは以下のscheduler統合済みP22経路を使う。
 - 入力末尾の指定範囲は通常計算する。全入力が保護範囲に収まる場合は、補助器の読込・実行をせず通常経路へ戻す。
 - 過去の状態は近似になる。Decodeを全層で行っても、元モデルの確率分布が厳密に復元されるわけではない。
 - 実験用worker extensionであり、配信profileの常用検収の範囲外。開発用RPCはloopbackに限定する。

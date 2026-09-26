@@ -66,7 +66,8 @@ def validate_worker(config):
         )
     speculative = config.speculative_config
     if speculative is not None and (
-        speculative.method != "mtp" or speculative.num_speculative_tokens not in (1, 3)
+        speculative.method != "mtp"
+        or speculative.num_speculative_tokens not in (1, 2, 3)
     ):
         raise ValueError("APC/LPA supports only the GLM MTP candidate")
 

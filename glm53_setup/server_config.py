@@ -394,6 +394,13 @@ def check_lpa(profile):
         raise ValueError("Invalid projector_sha256")
     if lpa["enabled"] and decode_graphs(profile):
         raise ValueError("LPA requires eager execution")
+    if (
+        lpa["enabled"]
+        and profile["mtp"]["enabled"]
+        and profile["mtp"]["num_speculative_tokens"] not in (1, 2, 3)
+    ):
+        # The LPA and APC/LPA workers refuse the others on every request.
+        raise ValueError("LPA with MTP accepts depth 1, 2 or 3")
 
 
 def check_graph_scope(profile):

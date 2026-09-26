@@ -18,7 +18,7 @@ The projector uses a learned diagonal scale plus a low-rank residual map. Layer 
 
 LPA runs together with MTP, fused unpack and asynchronous index checks; the evidence is [P18](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18).
 
-- Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1/k=3 requires explicit `allow_mtp=true`; the [server TOML](server-configuration.md) wires this automatically. APC uses the separate scheduler-integrated P22 path described below.
+- Eager, text-only, TP=2, one active sequence and one controlling client. Sequence-parallel MoE and concurrent controllers are unsupported. Without APC, MTP k=1, 2 or 3 requires explicit `allow_mtp=true`; the [server TOML](server-configuration.md) wires this automatically and refuses k=4 and 5 with LPA. k=2 has not been measured with LPA, and because the LPA workers are baked into the image, it needs an image built since k=2 was allowed. APC uses the separate scheduler-integrated P22 path described below.
 - A configurable final prompt window is computed normally. Fully protected short prompts use the ordinary path without loading or running a projector.
 - The auxiliary model changes historical state. Running all decode layers does not restore exact target-model probabilities.
 - This is an experimental worker extension, outside the routine-use acceptance of the serving profile. Keep its development RPC on loopback.

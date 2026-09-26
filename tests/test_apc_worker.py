@@ -5,7 +5,12 @@ from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
 from glm53_setup.runtime.apc_runtime import POLICY_KEY, allocation_guard
-from glm53_setup.runtime.apc_worker import before_forward, report, warmup_scope
+from glm53_setup.runtime.apc_worker import (
+    before_forward,
+    report,
+    validate_worker,
+    warmup_scope,
+)
 from glm53_setup.runtime.lpa import LPAWorkerExtension
 
 CONFIG = json.dumps(
@@ -157,6 +162,18 @@ class APCWorkerTests(unittest.TestCase):
                 self.worker, step([data("a", 16), data("b", 16)], {"a": 8, "b": 8})
             )
         self.worker.get_model.assert_not_called()
+
+    def test_mtp_depths_one_to_three_are_the_candidates(self):
+        for depth in (1, 2, 3, 4, 5):
+            with self.subTest(depth=depth):
+                self.worker.vllm_config.speculative_config = NS(
+                    method="mtp", num_speculative_tokens=depth
+                )
+                if depth <= 3:
+                    validate_worker(self.worker.vllm_config)
+                    continue
+                with self.assertRaises(ValueError):
+                    validate_worker(self.worker.vllm_config)
 
     def test_only_mtp_decode_uses_the_optimistic_cursor_contract(self):
         self.worker.vllm_config.speculative_config = NS(

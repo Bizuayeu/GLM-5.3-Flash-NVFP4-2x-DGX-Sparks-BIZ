@@ -532,9 +532,9 @@ class LPAWorkerExtension:
         if speculative and (
             not allow_mtp
             or speculative.method != "mtp"
-            or speculative.num_speculative_tokens not in (1, 3)
+            or speculative.num_speculative_tokens not in (1, 2, 3)
         ):
-            raise ValueError("Only explicitly enabled MTP k=1/k=3 is supported")
+            raise ValueError("Only explicitly enabled MTP k=1/k=2/k=3 is supported")
         if config.cache_config.enable_prefix_caching:
             raise ValueError("Prefix caching must be disabled")
         from .graph_policy import lpa_execution_supported

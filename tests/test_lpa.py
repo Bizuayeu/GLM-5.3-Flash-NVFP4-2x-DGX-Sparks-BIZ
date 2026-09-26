@@ -130,6 +130,26 @@ class ExperimentSpecTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             worker.lpa_configure(allow_mtp=True)
 
+    def test_mtp_depths_one_to_three_are_accepted(self):
+        for depth in (1, 2, 3, 4, 5):
+            with self.subTest(depth=depth):
+                worker = LPAWorkerExtension()
+                worker.vllm_config = SimpleNamespace(
+                    scheduler_config=SimpleNamespace(max_num_seqs=1),
+                    cache_config=SimpleNamespace(enable_prefix_caching=False),
+                    model_config=SimpleNamespace(enforce_eager=True),
+                    speculative_config=SimpleNamespace(
+                        method="mtp", num_speculative_tokens=depth
+                    ),
+                )
+                worker.get_model = lambda: "target-only"
+                with patch("glm53_setup.runtime.lpa.AttentionInputExperiment"):
+                    if depth <= 3:
+                        worker.lpa_configure(allow_mtp=True, mode="off")
+                        continue
+                    with self.assertRaises(ValueError):
+                        worker.lpa_configure(allow_mtp=True, mode="off")
+
     def test_fully_protected_prompt_bypasses_loading_and_prediction(self):
         experiment = AttentionInputExperiment.__new__(AttentionInputExperiment)
         experiment.layers = [None, None]
