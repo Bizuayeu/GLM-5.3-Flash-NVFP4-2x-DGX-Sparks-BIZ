@@ -8,7 +8,7 @@ from glm53_setup.config import (
     REVISION,
     TEACHER_PRECISION,
 )
-from glm53_setup.validation.train_lpa import validate_teacher
+from glm53_setup.validation.train_lpa import basis_rank, validate_teacher
 
 
 class TeacherProvenanceTests(unittest.TestCase):
@@ -30,6 +30,16 @@ class TeacherProvenanceTests(unittest.TestCase):
                 validate_teacher({"teacher": {**teacher, key: value}})
         with self.assertRaises(ValueError):
             validate_teacher({})
+
+
+class BasisRankTests(unittest.TestCase):
+    def test_the_width_asks_for_a_full_rank_fit_over_every_token(self):
+        # A PCA basis is drawn from the sampled rows, so it cannot exceed them;
+        # asking for the width skips it and fits the full affine map instead.
+        self.assertEqual(basis_rank(HIDDEN_SIZE, 1680, HIDDEN_SIZE), HIDDEN_SIZE)
+        self.assertEqual(basis_rank(HIDDEN_SIZE + 1, 1680, HIDDEN_SIZE), HIDDEN_SIZE)
+        self.assertEqual(basis_rank(256, 1680, HIDDEN_SIZE), 256)
+        self.assertEqual(basis_rank(2048, 1680, HIDDEN_SIZE), 1679)
 
 
 @unittest.skipUnless(

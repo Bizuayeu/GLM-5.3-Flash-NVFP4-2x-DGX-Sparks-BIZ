@@ -37,6 +37,16 @@ def solve_projected_ridge(gram, cross, ridge):
     return torch.linalg.solve(matrix, cross)
 
 
+def basis_rank(requested, samples, width):
+    """The rank of the fitted map's basis.
+
+    Below the width it is a PCA basis drawn from the sampled rows, so at most
+    one less than their count. Asking for the width fits the full affine map
+    over every training token (identity basis), with no sampling bound.
+    """
+    return width if requested >= width else min(requested, samples - 1)
+
+
 def cpu_weights(weights):
     """Keep shared basis tensors shared in the serialized artifact."""
     converted = {}
@@ -132,8 +142,11 @@ def main(argv=None):
     }
     del source_square, paired_sum, target_sum
     sampled = torch.cat(sample, dim=0) - mean
-    rank = min(args.rank, sampled.shape[0] - 1, HIDDEN_SIZE)
-    _, _, down = torch.pca_lowrank(sampled, q=rank, center=False, niter=2)
+    rank = basis_rank(args.rank, sampled.shape[0], HIDDEN_SIZE)
+    if rank == HIDDEN_SIZE:
+        down = torch.eye(HIDDEN_SIZE, device=args.device)
+    else:
+        _, _, down = torch.pca_lowrank(sampled, q=rank, center=False, niter=2)
     del sample, sampled
     gram = torch.zeros((rank, rank), device=args.device)
     cross = {
@@ -205,7 +218,9 @@ def main(argv=None):
         "teacher_precision": teacher["precision"],
         "seed": 42,
         "format_version": PROJECTOR_FORMAT,
-        "representation": "diagonal-low-rank",
+        "representation": (
+            "diagonal-full-affine" if rank == HIDDEN_SIZE else "diagonal-low-rank"
+        ),
         "weights": cpu_weights(weights),
     }
     torch.save(artifact, args.output / "projector.pt")
