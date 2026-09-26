@@ -1450,13 +1450,23 @@ class ServerConfigTests(unittest.TestCase):
 
     def test_split_request_covers_every_token_whatever_the_length(self):
         self.profile["lpa"]["enabled"] = True
-        for length in (1, 100, 2048):
-            spec = config.lpa_request(self.profile, length, split=True)
-            self.assertEqual(spec["mode"], "split")
-            self.assertEqual((spec["prompt_length"], spec["tail"]), (length, 1))
-            self.assertFalse(spec["skip_mla_queries"])
-            self.assertFalse(spec["allow_mtp"])
-            self.assertEqual(spec["predictor_path"], "/lpa/projector.pt")
+        for mode in ("split", "split-self"):
+            for length in (1, 100, 2048):
+                spec = config.lpa_request(self.profile, length, mode=mode)
+                self.assertEqual(spec["mode"], mode)
+                self.assertEqual((spec["prompt_length"], spec["tail"]), (length, 1))
+                self.assertFalse(spec["skip_mla_queries"])
+                self.assertFalse(spec["allow_mtp"])
+                self.assertEqual(spec["predictor_path"], "/lpa/projector.pt")
+
+    def test_off_request_is_the_profiles_request_computed_normally(self):
+        self.profile["lpa"]["enabled"] = True
+        native = config.lpa_request(self.profile, 2048)
+        off = config.lpa_request(self.profile, 2048, mode="off")
+        self.assertEqual(native["mode"], "predict")
+        self.assertEqual(off, dict(native, mode="off"))
+        with self.assertRaises(ValueError):
+            config.lpa_request(self.profile, 2048, mode="predict")
 
 
 class ReferenceImageMarkerTests(unittest.TestCase):

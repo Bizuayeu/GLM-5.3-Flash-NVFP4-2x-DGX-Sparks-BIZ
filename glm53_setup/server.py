@@ -504,7 +504,18 @@ def mojibake_running(profile):
     )
 
 
-AGREEMENT_LPA_MODES = ("split", "native")
+# native is the profile's own request; the others name the worker mode.
+LPA_MODES = ("off", "native", "split", "split-self")
+
+
+def lpa_mode_request(profile, length, lpa_mode):
+    """lpa_configure kwargs for a named mode on a native-LPA profile."""
+    native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
+    if lpa_mode not in LPA_MODES or not native:
+        raise ValueError(f"--lpa-mode takes {LPA_MODES} on a native-LPA profile")
+    return settings.lpa_request(
+        profile, length, mode=None if lpa_mode == "native" else lpa_mode
+    )
 
 
 def agreement_senders(profile, sender=post, lpa_mode=None):
@@ -516,19 +527,18 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
     only taken with LPA off or in its APC-first form (the same guard as
     ``ask``). On a native-LPA profile, ``lpa_mode`` configures the worker for
     each scored request as ``ask`` does: ``split`` writes every late-layer
-    state from the projection and still scores every position; ``native`` is
-    the profile's own request, whose approximated positions are not the
-    model's reading (only its exact tail is).
+    state from the projection and still scores every position (``split-self``
+    is its control, ``off`` the normal computation); ``native`` is the
+    profile's own request, whose approximated positions are not the model's
+    reading (only its exact tail is).
     """
     native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
     if lpa_mode is None and native:
         raise ValueError(
             "agreement requires LPA off or APC-first; native LPA rewrites prefill"
         )
-    if lpa_mode is not None and (lpa_mode not in AGREEMENT_LPA_MODES or not native):
-        raise ValueError(
-            f"--lpa-mode takes {AGREEMENT_LPA_MODES} on a native-LPA profile"
-        )
+    if lpa_mode is not None:
+        lpa_mode_request(profile, 1, lpa_mode)
     model = profile["api"]["served_model_name"]
 
     def tokenize(text):
@@ -555,7 +565,7 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
         length = len(token_ids)
         rpc = {
             "method": "lpa_configure",
-            "kwargs": settings.lpa_request(profile, length, split=lpa_mode == "split"),
+            "kwargs": lpa_mode_request(profile, length, lpa_mode),
             "timeout": profile["generation"]["timeout_seconds"],
         }
         try:
@@ -590,9 +600,11 @@ def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
     return recorded_on_head(profile, "agreement", run)
 
 
-def ask(profile, request, sender=post):
+def ask(profile, request, sender=post, lpa_mode=None):
     body = settings.request_body(profile, request)
-    if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
+    if lpa_mode is not None:
+        lpa_mode_request(profile, 1, lpa_mode)
+    elif not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
     allowed = {
@@ -631,7 +643,11 @@ def ask(profile, request, sender=post):
         raise ValueError("Prompt plus max_tokens exceeds configured context")
     rpc = {
         "method": "lpa_configure",
-        "kwargs": settings.lpa_request(profile, length),
+        "kwargs": (
+            settings.lpa_request(profile, length)
+            if lpa_mode is None
+            else lpa_mode_request(profile, length, lpa_mode)
+        ),
         "timeout": profile["generation"]["timeout_seconds"],
     }
     try:
@@ -643,8 +659,8 @@ def ask(profile, request, sender=post):
     finally:
         # Leave the worker in native mode after successful or failed generation.
         # Concurrent direct clients remain unsupported; the CLI holds a host lock.
-        rpc["kwargs"]["mode"] = "off"
-        sender(profile, "/collective_rpc", rpc)
+        reset = dict(rpc["kwargs"], mode="off")
+        sender(profile, "/collective_rpc", dict(rpc, kwargs=reset))
 
 
 def state_path(rank):
@@ -738,7 +754,8 @@ def act_ask(cli, args, profile):
             if args.request
             else {"messages": [{"role": "user", "content": args.prompt}]}
         )
-        print(json.dumps(ask(profile, body), ensure_ascii=False, indent=2))
+        result = ask(profile, body, lpa_mode=args.lpa_mode)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def act_capacity(cli, args, profile):
@@ -888,8 +905,8 @@ def parser():
     )
     cli.add_argument(
         "--lpa-mode",
-        choices=AGREEMENT_LPA_MODES,
-        help="agreement on a native-LPA profile: configure each scored request",
+        choices=LPA_MODES,
+        help="ask/agreement on a native-LPA profile: configure each request",
     )
     cli.add_argument(
         "--texts", type=Path, help="agreement: JSON object of name -> text to score"

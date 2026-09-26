@@ -1021,13 +1021,21 @@ def request_body(profile, request):
     return body
 
 
-def lpa_request(profile, length, split=False):
+def lpa_request(profile, length, mode=None):
+    """The worker's lpa_configure for one request of ``length`` tokens.
+
+    Without ``mode`` it is the profile's own request (predict past the
+    break-even, else off); ``off`` is that request computed normally;
+    ``split``/``split-self`` cover every token.
+    """
     lpa = profile["lpa"]
-    if split:
+    if mode not in (None, "off", "split", "split-self"):
+        raise ValueError(f"Unsupported LPA request mode: {mode}")
+    if mode in ("split", "split-self"):
         # Split writes every late-layer state from the projection: no tail, no
         # query skipping, no drafts (the worker refuses them too).
         return {
-            "mode": "split",
+            "mode": mode,
             "cut": lpa["cut"],
             "prompt_length": length,
             "tail": 1,
@@ -1035,10 +1043,9 @@ def lpa_request(profile, length, split=False):
             "skip_mla_queries": False,
             "allow_mtp": False,
         }
+    predict = lpa["enabled"] and length - lpa["tail"] > lpa["break_even_tokens"]
     return {
-        "mode": "predict"
-        if lpa["enabled"] and length - lpa["tail"] > lpa["break_even_tokens"]
-        else "off",
+        "mode": "predict" if predict and mode is None else "off",
         "cut": lpa["cut"],
         "prompt_length": length,
         "tail": min(lpa["tail"], length),
