@@ -216,7 +216,7 @@ FOUR_LAYER = {"_test_fixture_only": True, "text_config": {"num_hidden_layers": 4
 
 
 class FixtureGateTests(unittest.TestCase):
-    """Only a byte-verified four-layer fixture may be run."""
+    """Only a complete, byte-verified fixture of the runner's layer count may run."""
 
     def test_a_byte_verified_four_layer_fixture_is_accepted(self):
         from glm53_setup.validation import run_fixture

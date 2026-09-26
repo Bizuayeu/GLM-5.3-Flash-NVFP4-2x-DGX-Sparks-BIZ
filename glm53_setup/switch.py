@@ -1,4 +1,4 @@
-"""Two-rank stop/start transaction, independent of its process transport."""
+"""Two-rank stop/start transaction and its resume, independent of the transport."""
 
 # A transport raises these reasons when it loses a rank's reply; the switch
 # then journals one of the two statuses, which only resume carries forward.

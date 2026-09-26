@@ -1,4 +1,5 @@
-"""Typed operator settings shared by the launcher and its chat client."""
+"""Typed operator settings shared by the launcher and its chat client, and what
+is derived from them: the vLLM argv, the image checks and the frozen manifest."""
 
 import copy
 import hashlib
@@ -382,7 +383,8 @@ def check_speculation(profile):
 
 
 def check_lpa(profile):
-    """Where the approximation cuts, and the projector it is pinned to."""
+    """Where the approximation cuts, the projector it is pinned to, and the MTP
+    depths its workers accept (1, 2 or 3)."""
     lpa = profile["lpa"]
     if (
         not 0 <= lpa["cut"] < MODEL_LAYERS
