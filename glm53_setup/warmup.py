@@ -4,7 +4,10 @@ The pinned launch disables vLLM's own JIT warmup, so a prompt shape seen for the
 first time compiles while serving. On this kit that compile burst once pushed the
 head below its memory reserve (docs/vision.md). The rungs come from the shapes
 that were observed compiling during serving: a short text turn, a tool call, one
-image and the longest prompt the operator intends to serve.
+image and the longest prompt the operator intends to serve. A profile that
+admits more than one sequence also decodes with several at once, a shape one
+rung at a time never reaches, so bursts of 2..max_num_seqs concurrent requests
+follow the rungs.
 """
 
 import base64
@@ -12,6 +15,7 @@ import math
 import re
 import struct
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 
 from .server_config import optional
 
@@ -147,11 +151,74 @@ def rungs(profile):
     return ladder
 
 
-def run(profile, *, ask, count_tokens, logs, clock, reset=None):
+def burst_widths(profile):
+    """One burst per concurrent width the profile admits; none at one sequence."""
+    return list(range(2, profile["context"]["max_num_seqs"] + 1))
+
+
+def burst_request(width, member):
+    """A short turn per member; the texts differ so each sequence decodes its own."""
+    return {
+        "messages": [
+            {
+                "role": "user",
+                "content": f"Reply with the word ready. ({member + 1} of {width})",
+            }
+        ],
+        "max_tokens": ANSWER_TOKENS,
+    }
+
+
+def threads(calls):
+    """Run the calls at once; each result, or the exception it raised."""
+
+    def guarded(call):
+        try:
+            return call()
+        except Exception as error:  # noqa: BLE001 - a member's failure is its result
+            return error
+
+    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+        return list(pool.map(guarded, calls))
+
+
+def burst(width, ask, gather, clock):
+    """Send width requests together through gather; the row records every member."""
+    row = {"burst": width}
+    started = clock()
+    try:
+        results = gather(
+            [lambda m=member: ask(burst_request(width, m)) for member in range(width)]
+        )
+        members = []
+        for result in results:
+            if isinstance(result, Exception):
+                members.append({"status": "failed", "error": type(result).__name__})
+                continue
+            members.append(
+                {
+                    "status": "ok",
+                    "prompt_tokens": result["usage"]["prompt_tokens"],
+                    "finish_reason": result["choices"][0]["finish_reason"],
+                }
+            )
+        if len(members) != width:
+            raise ValueError("A burst returned a different number of results")
+        row["members"] = members
+        row["status"] = "ok" if all(m["status"] == "ok" for m in members) else "failed"
+    except Exception as error:  # noqa: BLE001 - every burst is recorded, none aborts the ladder
+        row["status"] = "failed"
+        row["error"] = type(error).__name__
+    row["seconds"] = round(clock() - started, 3)
+    return row
+
+
+def run(profile, *, ask, count_tokens, logs, clock, reset=None, gather=threads):
     """Send every rung through ask(request); return the record, never raise.
 
-    ask, count_tokens and logs are injected so the CPU tests exercise the ladder
-    without a server. reset, when given, drops the warmup prefixes afterwards.
+    ask, count_tokens, logs and gather (which runs a burst's requests at once)
+    are injected so the CPU tests exercise the ladder without a server. reset,
+    when given, drops the warmup prefixes afterwards.
     """
     before = compiled_kernels(logs())
     limit = profile["context"]["max_model_len"] - profile["generation"]["max_tokens"]
@@ -178,9 +245,11 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None):
             row["error"] = type(error).__name__
         row["seconds"] = round(clock() - started, 3)
         rows.append(row)
+    bursts = [burst(width, ask, gather, clock) for width in burst_widths(profile)]
     after = compiled_kernels(logs())
     record = {
         "rungs": rows,
+        "bursts": bursts,
         "compiled_during_warmup": sorted(after - before),
         "compiled_before_warmup": sorted(before),
         "prefix_cache_reset": False,
@@ -191,5 +260,5 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None):
             record["prefix_cache_reset"] = True
         except Exception as error:  # noqa: BLE001 - reset failure is evidence, not a ladder failure
             record["prefix_cache_reset_error"] = type(error).__name__
-    record["passed"] = all(row["status"] == "ok" for row in rows)
+    record["passed"] = all(row["status"] == "ok" for row in rows + bursts)
     return record
