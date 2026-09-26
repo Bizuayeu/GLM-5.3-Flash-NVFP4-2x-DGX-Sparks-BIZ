@@ -288,3 +288,92 @@ class ServerSenderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.agreement_senders(self.profile(lpa=True, apc=False), lambda *a: None)
         server.agreement_senders(self.profile(lpa=True, apc=True), lambda *a: None)
+
+    def native_profile(self):
+        profile = self.profile(lpa=True, apc=False)
+        profile["lpa"].update(
+            cut=32, tail=512, break_even_tokens=0, skip_mla_queries=False
+        )
+        profile["mtp"] = {"enabled": False}
+        profile["generation"] = {"timeout_seconds": 60}
+        return profile
+
+    def test_an_lpa_mode_needs_a_native_lpa_profile(self):
+        from glm53_setup import server
+
+        for lpa, apc in ((False, True), (True, True)):
+            with self.subTest(lpa=lpa, apc=apc), self.assertRaises(ValueError):
+                server.agreement_senders(
+                    self.profile(lpa=lpa, apc=apc), lambda *a: None, lpa_mode="split"
+                )
+        with self.assertRaises(ValueError):
+            server.agreement_senders(
+                self.native_profile(), lambda *a: None, lpa_mode="predict"
+            )
+
+    def test_split_configures_each_scored_request_and_resets_to_off(self):
+        from glm53_setup import server
+
+        posts = []
+
+        def sender(profile, path, body):
+            posts.append((path, body))
+            if path == "/v1/completions":
+                answer = response(GOOD)
+                answer["usage"] = {"prompt_tokens": len(body["prompt"])}
+                return answer
+            return {}
+
+        _, complete = server.agreement_senders(
+            self.native_profile(), sender, lpa_mode="split"
+        )
+        complete([1, 2, 3], 5)
+        self.assertEqual(
+            [path for path, _ in posts],
+            ["/collective_rpc", "/v1/completions", "/collective_rpc"],
+        )
+        configured = posts[0][1]
+        self.assertEqual(configured["method"], "lpa_configure")
+        self.assertEqual(
+            {k: configured["kwargs"][k] for k in ("mode", "cut", "prompt_length")},
+            {"mode": "split", "cut": 32, "prompt_length": 3},
+        )
+        self.assertEqual(configured["kwargs"]["tail"], 1)
+        self.assertFalse(configured["kwargs"]["skip_mla_queries"])
+        self.assertEqual(posts[2][1]["kwargs"]["mode"], "off")
+
+    def test_native_mode_scores_under_the_profiles_lpa_request(self):
+        from glm53_setup import server
+
+        posts = []
+
+        def sender(profile, path, body):
+            posts.append((path, body))
+            if path == "/v1/completions":
+                return {"usage": {"prompt_tokens": len(body["prompt"])}}
+            return {}
+
+        _, complete = server.agreement_senders(
+            self.native_profile(), sender, lpa_mode="native"
+        )
+        complete(list(range(600)), 5)
+        kwargs = posts[0][1]["kwargs"]
+        self.assertEqual((kwargs["mode"], kwargs["tail"]), ("predict", 512))
+
+    def test_a_scored_request_whose_length_differs_is_refused_and_reset(self):
+        from glm53_setup import server
+
+        posts = []
+
+        def sender(profile, path, body):
+            posts.append((path, body))
+            if path == "/v1/completions":
+                return {"usage": {"prompt_tokens": 99}}
+            return {}
+
+        _, complete = server.agreement_senders(
+            self.native_profile(), sender, lpa_mode="split"
+        )
+        with self.assertRaises(ValueError):
+            complete([1, 2, 3], 5)
+        self.assertEqual(posts[-1][1]["kwargs"]["mode"], "off")

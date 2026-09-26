@@ -1448,6 +1448,16 @@ class ServerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.request_body(self.profile, {"messages": [], "stream": True})
 
+    def test_split_request_covers_every_token_whatever_the_length(self):
+        self.profile["lpa"]["enabled"] = True
+        for length in (1, 100, 2048):
+            spec = config.lpa_request(self.profile, length, split=True)
+            self.assertEqual(spec["mode"], "split")
+            self.assertEqual((spec["prompt_length"], spec["tail"]), (length, 1))
+            self.assertFalse(spec["skip_mla_queries"])
+            self.assertFalse(spec["allow_mtp"])
+            self.assertEqual(spec["predictor_path"], "/lpa/projector.pt")
+
 
 class ReferenceImageMarkerTests(unittest.TestCase):
     """The markers preflight requires are the ones the reference build bakes."""

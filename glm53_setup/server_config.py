@@ -1021,8 +1021,20 @@ def request_body(profile, request):
     return body
 
 
-def lpa_request(profile, length):
+def lpa_request(profile, length, split=False):
     lpa = profile["lpa"]
+    if split:
+        # Split writes every late-layer state from the projection: no tail, no
+        # query skipping, no drafts (the worker refuses them too).
+        return {
+            "mode": "split",
+            "cut": lpa["cut"],
+            "prompt_length": length,
+            "tail": 1,
+            "predictor_path": LPA_PROJECTOR,
+            "skip_mla_queries": False,
+            "allow_mtp": False,
+        }
     return {
         "mode": "predict"
         if lpa["enabled"] and length - lpa["tail"] > lpa["break_even_tokens"]
