@@ -126,6 +126,79 @@ class ConfigureKwargsTests(unittest.TestCase):
         self.assertIs(kwargs["allow_mtp"], True)
 
 
+def split_modes(**changed):
+    names = ("capture", "off", "split-self", "split", "restored")
+    return {name: changed.get(name) or mode() for name in names}
+
+
+class SplitCaseTests(unittest.TestCase):
+    """The split-state check: split-self is off; split is recorded, not judged."""
+
+    def test_split_self_equal_to_off_passes_whatever_split_does(self):
+        split = mode(
+            tokens=(1, 3),
+            logprobs=[{"1": -0.75}, {"3": -1.0}],
+            errors=({"finite": True, "max_abs": 0.5},),
+        )
+        verdict = run_lpa.assess_split_case(split_modes(split=split))
+        self.assertTrue(verdict["passed"])
+        self.assertEqual(verdict["split_self_logprob_error"], 0)
+        self.assertEqual(verdict["split_token_agreement"], 0.5)
+        self.assertEqual(verdict["split_max_state_error"], 0.5)
+        self.assertEqual(verdict["split_self_state_comparisons"], 1)
+
+    def test_each_failed_condition_fails_the_split_case(self):
+        cases = {
+            "baseline_token_equal": split_modes(restored=mode(tokens=(1, 3))),
+            "split_self_token_equal": split_modes(**{"split-self": mode((1, 3))}),
+            "split_self_state_equal": split_modes(
+                **{"split-self": mode(errors=({"finite": True, "max_abs": 1e-6},))}
+            ),
+            "finite": split_modes(split=mode(logprobs=[{"1": math.nan}, {"2": 0}])),
+            "state_finite": split_modes(
+                split=mode(errors=({"finite": False, "max_abs": 0},))
+            ),
+        }
+        for key, replay in cases.items():
+            with self.subTest(condition=key):
+                verdict = run_lpa.assess_split_case(replay)
+                self.assertFalse(verdict[key])
+                self.assertFalse(verdict["passed"])
+        empty = split_modes(**{"split-self": mode(errors=())})
+        self.assertFalse(run_lpa.assess_split_case(empty)["passed"])
+
+    def test_the_split_sequence_and_its_worker_settings(self):
+        args = run_lpa.parser().parse_args(
+            ["--fixture", "/f", "--output", "/o", "--cut", "0", "--split"]
+        )
+        self.assertEqual(
+            run_lpa.replay_modes(args),
+            ("capture", "off", "split-self", "split", "off"),
+        )
+        split = run_lpa.configure_kwargs("split", args, 5)
+        self.assertEqual(split["mode"], "split")
+        self.assertEqual(
+            split["predictor_path"],
+            str((Path("/o") / run_lpa.SPLIT_PROJECTOR).resolve()),
+        )
+        self.assertNotIn(
+            "predictor_path", run_lpa.configure_kwargs("split-self", args, 5)
+        )
+        plain = run_lpa.parser().parse_args(["--fixture", "/f", "--output", "/o"])
+        self.assertEqual(
+            run_lpa.replay_modes(plain),
+            ("capture", "off", "oracle_full_mlp", "oracle", "off"),
+        )
+
+    def test_split_refuses_mtp_and_query_skipping(self):
+        for more in (["--mtp", "1"], ["--skip-mla-queries"]):
+            args = run_lpa.parser().parse_args(
+                ["--fixture", "/f", "--output", "/o", "--split", *more]
+            )
+            with self.subTest(more=more), self.assertRaises(ValueError):
+                run_lpa.replay_modes(args)
+
+
 class EngineRefused(Exception):
     pass
 

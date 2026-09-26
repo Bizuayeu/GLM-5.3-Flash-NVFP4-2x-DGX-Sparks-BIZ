@@ -12,6 +12,9 @@ from ..config import REVISION, TEACHER_PRECISION
 
 # The projector artifact this loader reads; train_lpa and the APC/LPA fixture write it.
 PROJECTOR_FORMAT = 2
+# Late layers write attention state from the projection p and read with their
+# own input x; split-self writes from x through the same path, as a control.
+SPLIT_MODES = frozenset({"split", "split-self"})
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class ExperimentSpec:
             "oracle",
             "identity",
             "predict",
+            *SPLIT_MODES,
         }:
             raise ValueError("Unsupported experiment mode")
         if any(
@@ -47,6 +51,8 @@ class ExperimentSpec:
             raise ValueError("The exact tail must include the final prompt token")
         if not 0 <= self.approximate_start <= self.prompt_length:
             raise ValueError("Invalid first approximation position")
+        if self.mode in SPLIT_MODES and (self.tail != 1 or self.approximate_start):
+            raise ValueError("Split modes cover every token; no tail or start")
 
     def approximate_count(self, positions):
         start, stop = self.approximate_span(positions)
@@ -120,6 +126,8 @@ class AttentionInputExperiment:
         self.verify_state = False
         self.state_reference = {}
         self.state_errors = []
+        self.split_inputs = {}
+        self.split_installed = False
         self.handles = []
         for layer in self.layers:
             # cc-defer: Historical mHC and KDA output work still run; reduce them
@@ -229,6 +237,8 @@ class AttentionInputExperiment:
             raise ValueError("Cut must precede the final layer")
         if type(skip_mla_queries) is not bool:
             raise ValueError("skip_mla_queries must be boolean")
+        if mode in SPLIT_MODES and skip_mla_queries:
+            raise ValueError("Split modes keep every MLA query")
         if skip_mla_queries and self.reference_mask is None:
             import glm53_reference
 
@@ -259,7 +269,7 @@ class AttentionInputExperiment:
             self.capture = {}
             self.oracle = {}
             self.state_reference = {}
-        if mode == "predict":
+        if mode in {"predict", "split"}:
             if not predictor_path:
                 raise ValueError("Predictor artifact is required")
             path = Path(predictor_path).resolve()
@@ -274,6 +284,8 @@ class AttentionInputExperiment:
             if identity != self.predictor_identity:
                 self.predictor = self._load_predictor(path, cut)
                 self.predictor_identity = identity
+        if mode in SPLIT_MODES and not self.split_installed:
+            self._install_split()
         self.spec = spec
         self.profile = profile
         self.verify_state = verify_state
@@ -285,6 +297,9 @@ class AttentionInputExperiment:
         self.speculative_decode = False
         self.speculative_position_corrections = 0
         self.counts = {"attention_tokens": {}, "mlp_skipped_tokens": {}}
+        if mode in SPLIT_MODES:
+            self.counts["split_tokens"] = {}
+        self.split_inputs = {}
         self.events = []
         self.operation_events = []
         return {
@@ -404,9 +419,18 @@ class AttentionInputExperiment:
                     raise ValueError("Padded or packed attention input is unsupported")
                 self.source = (
                     x.detach().clone()
-                    if spec.mode in {"identity", "predict"} and approximate
+                    if (spec.mode in {"identity", "predict"} and approximate)
+                    or spec.mode == "split"
                     else None
                 )
+            if spec.mode in SPLIT_MODES:
+                if index > spec.cut:
+                    self.split_inputs[index] = (
+                        x if spec.mode == "split-self" else self._project(index, x)
+                    )
+                    counters = self.counts["split_tokens"]
+                    counters[index] = counters.get(index, 0) + x.shape[0]
+                return
             positions = self.current_positions
             span_start, span_stop = spec.approximate_span(positions)
             count = span_stop - span_start
@@ -423,14 +447,7 @@ class AttentionInputExperiment:
             elif spec.mode == "identity" or index == spec.cut:
                 replacement = self.source[span_start:span_stop]
             else:
-                w = self.predictor[index]
-                source = self.source[span_start:span_stop].float()
-                # Fitted low-rank residual map, evaluated in FP32 before BF16 cast.
-                replacement = (
-                    source * w["scale"]
-                    + ((source - w["mean"]) @ w["down"]) @ w["up"]
-                    + w["bias"]
-                )
+                replacement = self._predict(index, self.source[span_start:span_stop])
             updated = x.clone()
             updated[span_start:span_stop] = replacement.to(dtype=x.dtype)
             kwargs = dict(kwargs, hidden_states=updated)
@@ -439,6 +456,111 @@ class AttentionInputExperiment:
             return args, kwargs
 
         return hook
+
+    def _predict(self, index, source):
+        w = self.predictor[index]
+        source = source.float()
+        # Fitted low-rank residual map, evaluated in FP32 before BF16 cast.
+        return (
+            source * w["scale"]
+            + ((source - w["mean"]) @ w["down"]) @ w["up"]
+            + w["bias"]
+        )
+
+    def _project(self, index, x):
+        if self.source.shape != x.shape:
+            raise ValueError("Split source and layer input differ in shape")
+        return self._predict(index, self.source).to(dtype=x.dtype)
+
+    def _install_split(self):
+        """Wrap the late-layer projections that write attention state.
+
+        Call sites and column splits follow the pinned overlays and vLLM
+        385dce36: KDA k_proj, v_proj and the b|f_a columns of in_proj_bfg_a;
+        MLA the kv_a columns of fused_qkv_a_proj, the indexer's wk columns of
+        wk_weights_proj and its kpool gate score. Queries, weights_proj, g_a
+        and everything after attention still read the layer input.
+        """
+        # Every layer is checked before any forward is replaced.
+        plans = []
+        for layer in self.layers:
+            index, attn = layer.layer_idx, layer.self_attn
+            if layer.layer_kind == "kda":
+                wrapped = [
+                    (attn.k_proj, None),
+                    (attn.v_proj, None),
+                    (
+                        attn.in_proj_bfg_a,
+                        slice(0, attn.local_num_heads + attn.head_dim),
+                    ),
+                ]
+                indexer = None
+            else:
+                indexer = attn.indexer
+                if (
+                    indexer is None
+                    or attn.mla_attn.fused_qkv_a_proj is not attn.fused_qkv_a_proj
+                    or attn.mla_attn.indexer is not indexer
+                ):
+                    raise ValueError("Unexpected MLA projection layout")
+                wrapped = [
+                    (attn.fused_qkv_a_proj, slice(attn.q_lora_rank, None)),
+                    (indexer.wk_weights_proj, slice(0, indexer.head_dim)),
+                ]
+            plans.append((index, attn, wrapped, indexer))
+        for index, attn, wrapped, indexer in plans:
+            for module, columns in wrapped:
+                module.forward = self._split_projection(index, module.forward, columns)
+            if indexer is not None:
+                indexer.indexer_op.forward = self._split_gate(
+                    index, indexer, indexer.indexer_op.forward
+                )
+            self.handles.append(attn.register_forward_hook(self._split_release(index)))
+        self.split_installed = True
+
+    def _split_release(self, index):
+        def hook(module, args, output):
+            self.split_inputs.pop(index, None)
+
+        return hook
+
+    def _split_input(self, index, x):
+        spec = self.spec
+        if spec is None or spec.mode not in SPLIT_MODES or index <= spec.cut:
+            return None
+        p = self.split_inputs.get(index)
+        if p is None or p.shape != x.shape:
+            raise ValueError("Split projection input is missing or misaligned")
+        return p
+
+    def _split_projection(self, index, original, columns):
+        """Whole output from p, or only ``columns`` from p and the rest from x."""
+
+        def forward(x, *args, **kwargs):
+            p = self._split_input(index, x)
+            if p is None:
+                return original(x, *args, **kwargs)
+            written = original(p, *args, **kwargs)
+            if columns is None:
+                return written
+            read = original(x, *args, **kwargs)
+            output = read[0].clone()
+            output[..., columns] = written[0][..., columns]
+            return (output, *read[1:])
+
+        return forward
+
+    def _split_gate(self, index, indexer, original):
+        def forward(hidden_states, *args, **kwargs):
+            p = self._split_input(index, hidden_states)
+            if p is None:
+                return original(hidden_states, *args, **kwargs)
+            if kwargs.get("gate_score") is None:
+                raise ValueError("Indexer gate score was not passed by keyword")
+            gate = self.torch.nn.functional.linear(p, indexer.index_kpool_compress_gate)
+            return original(hidden_states, *args, **dict(kwargs, gate_score=gate))
+
+        return forward
 
     def _mlp_forward(self, index, original):
         def forward(x, *args, **kwargs):
@@ -537,6 +659,8 @@ class LPAWorkerExtension:
             raise ValueError("Only explicitly enabled MTP k=1/k=2/k=3 is supported")
         if config.cache_config.enable_prefix_caching:
             raise ValueError("Prefix caching must be disabled")
+        if speculative and kwargs.get("mode") in SPLIT_MODES:
+            raise ValueError("Split modes do not support MTP")
         from .graph_policy import lpa_execution_supported
 
         if not lpa_execution_supported(config):

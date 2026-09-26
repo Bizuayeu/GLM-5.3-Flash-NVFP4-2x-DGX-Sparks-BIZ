@@ -7,7 +7,11 @@ from pathlib import Path
 
 from ..io import write_json
 from ..server_config import speculative_config
+from .run_apc_lpa_fixture import write_synthetic_projector
 from .run_fixture import read_fixture
+
+# Written under --output for --split; its p is visibly not the teacher's.
+SPLIT_PROJECTOR = "synthetic-projector.pt"
 
 
 def parser():
@@ -26,7 +30,21 @@ def parser():
     cli.add_argument(
         "--mtp", type=int, choices=[1, 2, 3], help="Opt-in MTP coexistence check"
     )
+    cli.add_argument(
+        "--split",
+        action="store_true",
+        help="Split-state check: split-self must equal off; split is recorded",
+    )
     return cli
+
+
+def replay_modes(args):
+    """The modes one length runs, in order; the second off is the restored run."""
+    if not args.split:
+        return ("capture", "off", "oracle_full_mlp", "oracle", "off")
+    if args.mtp or args.skip_mla_queries:
+        raise ValueError("--split runs without MTP and keeps every MLA query")
+    return ("capture", "off", "split-self", "split", "off")
 
 
 def engine_kwargs(args, compilation_mode):
@@ -71,7 +89,7 @@ def engine_kwargs(args, compilation_mode):
 
 def configure_kwargs(mode, args, length):
     """What the worker's lpa_configure receives for one replay mode."""
-    return {
+    kwargs = {
         "mode": "oracle" if mode == "oracle_full_mlp" else mode,
         "cut": args.cut,
         "prompt_length": length,
@@ -82,6 +100,9 @@ def configure_kwargs(mode, args, length):
         "skip_mla_queries": args.skip_mla_queries,
         "allow_mtp": bool(args.mtp),
     }
+    if mode == "split":
+        kwargs["predictor_path"] = str((args.output / SPLIT_PROJECTOR).resolve())
+    return kwargs
 
 
 def assess_case(modes):
@@ -149,13 +170,68 @@ def assess_case(modes):
     return verdict
 
 
+def assess_split_case(modes):
+    """One length's split verdict: split-self reproduces the exact run's tokens and
+    captured state, and everything is finite. The split run itself is recorded."""
+    reference = modes["off"]
+    control = modes["split-self"]
+    split = modes["split"]
+
+    def errors(mode):
+        return [e for worker in modes[mode]["workers"] for e in worker["state_errors"]]
+
+    verdict = {
+        "baseline_token_equal": (
+            reference["token_ids"]
+            == modes["capture"]["token_ids"]
+            == modes["restored"]["token_ids"]
+        ),
+        "split_self_token_equal": reference["token_ids"] == control["token_ids"],
+        "split_self_logprob_error": max(
+            (
+                abs(row[token] - control["logprobs"][i][token])
+                for i, row in enumerate(reference["logprobs"])
+                for token in row
+                if token in control["logprobs"][i]
+            ),
+            default=None,
+        ),
+        "split_self_state_equal": all(e["max_abs"] == 0 for e in errors("split-self")),
+        "split_self_state_comparisons": len(errors("split-self")),
+        "split_token_agreement": sum(
+            a == b for a, b in zip(reference["token_ids"], split["token_ids"])
+        )
+        / max(1, len(reference["token_ids"])),
+        "split_max_state_error": max(
+            (e["max_abs"] for e in errors("split")), default=None
+        ),
+        "finite": all(
+            math.isfinite(v)
+            for mode in modes.values()
+            for row in mode["logprobs"]
+            for v in row.values()
+        ),
+        "state_finite": all(e["finite"] for mode in modes for e in errors(mode)),
+    }
+    verdict["passed"] = (
+        verdict["baseline_token_equal"]
+        and verdict["split_self_token_equal"]
+        and verdict["split_self_state_equal"]
+        and verdict["split_self_state_comparisons"] > 0
+        and verdict["finite"]
+        and verdict["state_finite"]
+    )
+    return verdict
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
-    read_fixture(args.fixture)
+    sequence = replay_modes(args)
+    configuration = read_fixture(args.fixture)[0]
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "loading",
-        "scope": "fixture-oracle-replay",
+        "scope": "fixture-split-state" if args.split else "fixture-oracle-replay",
         "mtp": args.mtp,
         "decode_graphs": False,
         "cases": [],
@@ -166,6 +242,12 @@ def main(argv=None):
 
     save()
     try:
+        if args.split:
+            report["synthetic_projector_sha256"] = write_synthetic_projector(
+                args.output / SPLIT_PROJECTOR,
+                configuration["text_config"]["hidden_size"],
+                cut=args.cut,
+            )
         from vllm import LLM, SamplingParams
         from vllm.config.compilation import CompilationMode
 
@@ -190,7 +272,7 @@ def main(argv=None):
             ids = (base * (length // len(base) + 1))[:length]
             case = {"length": length, "modes": {}}
             report["cases"].append(case)
-            for mode in ("capture", "off", "oracle_full_mlp", "oracle", "off"):
+            for mode in sequence:
                 key = mode if mode not in case["modes"] else "restored"
                 llm.collective_rpc(
                     "lpa_configure", kwargs=configure_kwargs(mode, args, length)
@@ -204,7 +286,8 @@ def main(argv=None):
                 row["workers"] = llm.collective_rpc("lpa_report")
                 case["modes"][key] = row
                 save()
-            case.update(assess_case(case["modes"]))
+            assess = assess_split_case if args.split else assess_case
+            case.update(assess(case["modes"]))
             save()
         report["passed"] = all(case["passed"] for case in report["cases"])
         report["status"] = "complete"
