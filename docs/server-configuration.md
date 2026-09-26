@@ -8,7 +8,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 |---|---|
 | `runtime` | Immutable image IDs, eager/decode Graph execution, independent EP/PP and stage boundary, seed, image-input switch, repeatability switches, derived checkpoint |
 | `context` | Total input/output context, active sequences, prefill chunk budget |
-| `profiling` | On-demand CUDA/kernel trace collection for a diagnostic run |
+| `profiling` | On-demand Torch/CUDA trace collection for a diagnostic run; off for timing measurements |
 | `validation` | Separate CUDA/indexer or expert-placement observer workers, memory probe |
 | `cache` | KV bytes per rank, requested block size, prefix cache, checkpoint retention, memory utilization, fused unpack |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
@@ -83,7 +83,7 @@ Three switches make identical requests repeat bit for bit and every launch compu
 
 These switches cover a request alone. With `max_num_seqs` of 2 or more a request that shares steps with another can still get a different completion. Its attention changes path: at MTP depth 3 a partner makes a decode step eight query rows, more than six, so it goes through FA2 (`runtime.fa2_attention`, below). That is not the main cause, though: with every attention call forced onto the reference computation, most two-sequence completions still differed from their lone ones ([measurements](benchmarks.md#reachability-in-serving-2026-09-26)). The lead suspects are the NVFP4 Marlin MoE (its split along K follows the number of expert blocks in the step) and the prefill-sized kernels of a step shared with a prefill. For completions that repeat whatever else is in flight, serve `max_num_seqs = 1` ([concurrency scope](validation.md#concurrency-scope)).
 
-`runtime.mla_decode_cpb` (in both examples of 1.14.0 and 1.15.0) is retired: it never ran in serving. It sets `GLM53_MLA_DECODE_CPB` for a source-pinned patch that hands FlashInfer's SM120 sparse-MLA decode a `chunks_per_block` taken from one sequence, but the image sets `GLM53_REFERENCE_ATTENTION=1`, and the backend returns through the reference NoPE attention before that decode call, in the 11 DSA layers and the MTP draft layer alike ([reachability in serving](benchmarks.md#reachability-in-serving-2026-09-26)). A profile that still carries the key launches as before, with the same environment, fingerprint and checks (`true` still needs `GLM53_MLA_DECODE_CPB_API=1` and is refused together with `runtime.decode_graphs`), and `server preflight` adds a warning that the key can be removed. The patch, the image marker and the key's acceptance go with the next image build.
+`runtime.mla_decode_cpb` (in both examples of 1.14.0 and 1.15.0) was retired in 1.16.0: it never ran in serving, because the reference NoPE attention returns before the decode call its patch changed ([reachability in serving](benchmarks.md#reachability-in-serving-2026-09-26)). 1.18.0 removed it, and a profile that still carries the key is refused with a message to delete it.
 
 ### Attention, cache and checkpoint
 
@@ -226,13 +226,14 @@ Build the reference image from the checkout you launch (`python -m glm53_setup b
 | `GLM53_SLOT_MAPPING_GUARD=1` | Never; without it requests above about 250K tokens fault on the published option ([operations](operations.md#full-model-launch-checks)) | 1.7.0 |
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup` (`prefix_dedup_support`) | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.13.0 |
-| `GLM53_MLA_DECODE_CPB_API=1` | `runtime.mla_decode_cpb = true`, a retired key that only older profiles carry (`mla_decode_cpb_support`) | 1.14.0 |
+
+Images built from 1.14.0 through 1.17.0 also carry `GLM53_MLA_DECODE_CPB_API=1` and the unreachable patch of the removed `runtime.mla_decode_cpb`; no check reads them, and they are harmless.
 
 `docker image inspect IMAGE --format '{{json .Config.Env}}'` shows the markers an image carries.
 
 ## Feature combinations and limits
 
-`runtime.decode_graphs` (template `false`; absent = eager) is the one switch for decode Graphs: `true` selects `CompilationMode.NONE` and `FULL_DECODE_ONLY`; the one capture size is `num_speculative_tokens + 1` with MTP on (the pinned runtime rounds decode sizes up to that multiple and rejects `[1]`) and `1` otherwise. Prefill is uncompiled. Graphs may be combined with MTP and prefix caching for one sequence: on the four-layer MTP fixture with the expert token order fixed, eager and graph runs gave identical tokens and logprobs at every length ([component validation](component-validation.md#independent-decode-graph-fixture)). LPA requires eager, as does the retired `runtime.mla_decode_cpb` where a profile still sets it `true`, and startup rejects multi-sequence Graph configurations. On the full model Graphs decoded slower than eager and were not adopted ([decode Graphs on the full model](benchmarks.md#decode-graphs-on-the-full-model)). The earlier spelling `runtime.enforce_eager` (`false` = Graphs) is still read, so existing profiles keep their fingerprint; a profile that carries both keys must not let them contradict.
+`runtime.decode_graphs` (template `false`; absent = eager) is the one switch for decode Graphs: `true` selects `CompilationMode.NONE` and `FULL_DECODE_ONLY`; the one capture size is `num_speculative_tokens + 1` with MTP on (the pinned runtime rounds decode sizes up to that multiple and rejects `[1]`) and `1` otherwise. Prefill is uncompiled. Graphs may be combined with MTP and prefix caching for one sequence: on the four-layer MTP fixture with the expert token order fixed, eager and graph runs gave identical tokens and logprobs at every length ([component validation](component-validation.md#independent-decode-graph-fixture)). LPA requires eager, and startup rejects multi-sequence Graph configurations. On the full model Graphs decoded slower than eager and were not adopted ([decode Graphs on the full model](benchmarks.md#decode-graphs-on-the-full-model)). The earlier spelling `runtime.enforce_eager` (`false` = Graphs) is still read, so existing profiles keep their fingerprint; a profile that carries both keys must not let them contradict.
 
 The Graph path checks internal candidate-index bounds asynchronously on the GPU. Invalid indices cause a device assertion rather than being ignored; unlike a regular Python exception, this can render the CUDA context unusable. Stop and reinitialize both ranks after such a failure. Include retained Graph memory and startup capture time in comparisons. [vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) reports that the compilation-cache hash omits the speculative token count; if compiled Graphs are ever used together with MTP, keep a separate cache per k or clear it when k changes.
 

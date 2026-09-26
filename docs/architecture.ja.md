@@ -36,7 +36,6 @@
 | `glm53_setup/runtime/prefix_dedup.py`、`patch_prefix_dedup.py` | 同じ内容のprefix pageをcacheに一つだけ持つ（`runtime.prefix_page_dedup`）と、そのsource固定patch |
 | `glm53_setup/runtime/patch_slot_mapping.py` | source固定patch：slot対応付けのkernelがblock tableを行の中だけで読む |
 | `glm53_setup/runtime/patch_kpool_seed.py` | source固定patch：kpoolのprefill seedがtailのblockをtailのstrideで番地付けする（vLLM #57477） |
-| `glm53_setup/runtime/mla_decode_cpb.py`、`patch_mla_decode_cpb.py` | 退役、次のimageのbuildまで残す：sparse MLAのdecodeの `chunks_per_block` を1系列から決める（`runtime.mla_decode_cpb`）と、そのsource固定patch。参照attentionが先にreturnするため、servingでは届かない |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |

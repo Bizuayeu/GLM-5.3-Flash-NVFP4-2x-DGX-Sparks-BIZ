@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from glm53_setup.runtime import patch_mla_decode_cpb, patch_nope_reference
+from glm53_setup.runtime import patch_nope_reference
 
 ROOT = Path(__file__).resolve().parents[1]
 MLA = "model_executor/layers/mla.py"
@@ -31,9 +31,9 @@ MLA_SOURCE = """class MultiHeadLatentAttentionWrapper:
         return attn_out
 """
 
-# The lines of the unpatched SM120 backend that patch-reference and, after it,
-# patch_mla_decode_cpb touch, in the pinned file's order: the flag in __init__,
-# the top-k read, then output = q.new_empty( above the workspace buffer.
+# The lines of the unpatched SM120 backend that patch-reference touches, in the
+# pinned file's order: the flag in __init__, the top-k read, then
+# output = q.new_empty( above the workspace buffer.
 BACKEND_SOURCE = """class FlashInferMLASparseSM120Impl:
     def __init__(self, vllm_config, model_type, indexer):
         self.kv_scale_format = _kv_scale_format_for_model(model_type)
@@ -164,14 +164,11 @@ class PatchNopeReferenceTests(unittest.TestCase):
 class BackendPatchOrderTests(unittest.TestCase):
     """What the image build leaves in forward_mqa of the SM120 backend."""
 
-    def test_the_backend_is_patched_by_patch_reference_then_by_mla_decode_cpb(self):
+    def test_the_backend_is_patched_by_patch_reference_only(self):
         dockerfile = (ROOT / "docker/Dockerfile.reference").read_text(encoding="utf-8")
         runs = re.findall(r"^RUN python3 -m glm53_setup[ .](\S+)$", dockerfile, re.M)
-        self.assertLess(
-            runs.index("patch-reference"),
-            runs.index("runtime.patch_mla_decode_cpb"),
-        )
-        # No build patch in between edits the same file.
+        self.assertIn("patch-reference", runs)
+        # No other build patch edits the same file.
         editors = [
             name
             for name in runs
@@ -179,20 +176,8 @@ class BackendPatchOrderTests(unittest.TestCase):
             and getattr(importlib.import_module("glm53_setup." + name), "TARGET", None)
             == BACKEND
         ]
-        self.assertEqual(editors, ["runtime.patch_mla_decode_cpb"])
+        self.assertEqual(editors, [])
         self.assertIn(BACKEND, patch_nope_reference.HASHES)
-
-    def test_cpb_insertion_sits_below_reference_return(self):
-        # A fact about the patch outputs, not a verdict on it: with the reference
-        # flag set, forward_mqa returns before the chunks_per_block question is
-        # asked. See the investigation of 1.14.0's reachability.
-        patched = patch_mla_decode_cpb.patch_text(prepare()[BACKEND])
-        self.assertTrue(patched.startswith(patch_mla_decode_cpb.HEADER))
-        forward = patched.index("def forward_mqa(")
-        reference = patched.index("return sparse_nope_reference(")
-        cpb = patched.index("glm53_cpb = glm53_decode_chunks_per_block(")
-        self.assertLess(forward, reference)
-        self.assertLess(reference, cpb)
 
 
 if __name__ == "__main__":

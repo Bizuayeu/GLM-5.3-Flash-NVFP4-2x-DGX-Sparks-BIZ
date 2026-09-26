@@ -29,7 +29,7 @@ prefillと出力生成を含む、クライアント要求時間の中央値（�
 
 GPU部品の検査は、全FP8 byteコードと選定したFP32 scale（符号付きゼロを含む）でTorchのunpackと厳密に一致し、paddingと空候補を含むattention出力も一致しました。全モデルの1出力A/B/Aは、全ケースでtoken IDが一致しました。
 
-128出力のケースは、native／offの反復どうしでも変動しました。別の32出力logprob診断では、offと融合のどちらのrunでも、共通prefix上で候補確率の同点や変化が見つかりました。nativeの反復における共有tokenのlogprob差は約1.31に達しており、摂動が一様に微小であることの証拠にはなりません。全モデルの決定的な同値性と言語品質の受け入れは未解決です。このbaselineの課題は部品の厳密な算術一致の結果とは分けて扱い、そこから融合固有の劣化も本番検収も推定しません。
+128出力のケースは、native／offの反復どうしでも変動しました。別の32出力logprob診断では、offと融合のどちらのrunでも、共通prefix上で候補確率の同点や変化が見つかりました。nativeの反復における共有tokenのlogprob差は約1.31に達しており、摂動が一様に微小であることの証拠にはなりません。このrunは全モデルの決定的な同値性を確かめていません（全モデルで同一要求がbit一致で反復するのは、後の[検証](validation.ja.md#再現性)の修正以降です）。言語品質の受け入れはこのrunの範囲外でした。このbaselineの課題は部品の厳密な算術一致の結果とは分けて扱い、そこから融合固有の劣化も本番検収も推定しません。
 
 ## Indexerの観測
 
@@ -54,7 +54,7 @@ P16は2026-09-21にコストの門で中止しました（[indexerの再利用](
 
 ## Decode Graphのfixture独立評価
 
-**decode Graphs（P06）：off。** 4層fixture、GB10 1台、context 16,384、chunk 512、1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperature 0で、64／2,048／8,192入力tokenのそれぞれで32 tokenを生成しました。2026-09-12にはGraphとeagerが2Kの出力token 12からlogprobの同点で分かれ、非同期eagerの対照はeagerと一致しました。2026-09-18にexpertのtoken順を固定して（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#再現性のスイッチ)有効、MTP k=3・融合unpack・非同期index検査、prefix cacheあり・なし）測り直すと、eagerと`FULL_DECODE_ONLY`のGraphsは全長・全実行で生成32 tokenとtop-10 logprobが一致したので、以前の分岐はexpert順によるものでした。prefix cacheにhitした実行はなく（hitには16,384のcontextを超えるprimingが要る）、hit経路は未検証です。全モデルではGraphsはeagerより遅く、採用していません（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。1.14.0からは`runtime.mla_decode_cpb`とも排他です。非公開run：`graph-component-v13-results/*`、driverは`eb30095`の`glm53_setup.validation.run_graph_fixture`。
+**decode Graphs（P06）：off。** 4層fixture、GB10 1台、context 16,384、chunk 512、1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperature 0で、64／2,048／8,192入力tokenのそれぞれで32 tokenを生成しました。2026-09-12にはGraphとeagerが2Kの出力token 12からlogprobの同点で分かれ、非同期eagerの対照はeagerと一致しました。2026-09-18にexpertのtoken順を固定して（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#再現性のスイッチ)有効、MTP k=3・融合unpack・非同期index検査、prefix cacheあり・なし）測り直すと、eagerと`FULL_DECODE_ONLY`のGraphsは全長・全実行で生成32 tokenとtop-10 logprobが一致したので、以前の分岐はexpert順によるものでした。prefix cacheにhitした実行はなく（hitには16,384のcontextを超えるprimingが要る）、hit経路は未検証です。全モデルではGraphsはeagerより遅く、採用していません（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。非公開run：`graph-component-v13-results/*`、driverは`eb30095`の`glm53_setup.validation.run_graph_fixture`。
 
 ## padding付きnative attentionの直接試験
 

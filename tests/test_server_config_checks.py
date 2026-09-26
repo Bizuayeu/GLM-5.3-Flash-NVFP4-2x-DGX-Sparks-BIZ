@@ -103,6 +103,7 @@ class CheckOrderTests(unittest.TestCase):
 
 class CheckMessageTests(unittest.TestCase):
     CASES = [
+        ("check_schema", ("runtime", "mla_decode_cpb"), False, "removed in 1.18.0"),
         ("check_optional_shapes", ("runtime", "vision"), "x", "runtime.vision"),
         ("check_optional_shapes", ("runtime", "nccl_channels"), 0, "nccl_channels"),
         ("check_pinned_identity", ("schema_version",), 2, "schema_version"),

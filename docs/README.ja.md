@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-文書ごとに役割を一つ決め、他の文書は内容を複製せずリンクで参照します。利用者向けの文書はすべて英日の対（`name.md`／`name.ja.md`）です。エージェント向け指示・ライセンスと通知の本文・overlayの台帳（hashの所有者を一つにする出所記録）だけは意図して英語のみとします。Changelogは1.6.0から英日の対です。正典は英語版で、GitHub Releaseは英語版から作られ、それ以前の版は英語版にしかありません。利用者に見える手順を変える際は両方を更新します（[Contributing](../CONTRIBUTING.ja.md)）。
+文書ごとに役割を一つ決め、他の文書は内容を複製せずリンクで参照します。利用者向けの文書はすべて英日の対（`name.md`／`name.ja.md`）です。エージェント向け指示・ライセンスと通知の本文・overlayの台帳（hashの所有者を一つにする出所記録）だけは意図して英語のみとします。Changelogも英日の対です。正典は英語版で、GitHub Releaseは英語版から作られます。利用者に見える手順を変える際は両方を更新します（[Contributing](../CONTRIBUTING.ja.md)）。
 
 ## 入口
 
@@ -11,7 +11,7 @@
 | README | 要約、導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
-| Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md)（1.6.0から） |
+| Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) |
 | リポジトリ指示 | このcheckoutを編集するAIエージェント・運用者向けの規則 | [EN](../AGENTS.md) | — |
 | ライセンス・通知 | Apache-2.0本文、帰属、第三者の出所 | [LICENSE](../LICENSE)、[NOTICE](../NOTICE)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)、[LICENSES/](../LICENSES/) | — |
 

@@ -70,7 +70,6 @@ OPTIONAL_KEYS = {
             "fa2_attention",
             "prefix_page_dedup",
             "inductor_deterministic",
-            "mla_decode_cpb",
         }
     ),
     "server.cache": frozenset(
@@ -92,7 +91,6 @@ OPTIONAL_DEFAULTS = {
         "fa2_attention": False,
         "prefix_page_dedup": False,
         "inductor_deterministic": False,
-        "mla_decode_cpb": False,
     },
     "cache": {"prefix_cache_retention_interval": 0, "mm_processor_cache_gb": 0.1},
     "api": {"prompt_tokens_details": False, "dev_endpoints": False},
@@ -120,6 +118,13 @@ def check_schema(profile):
     No silent defaults: a typo or a missing category must not quietly change
     a launch, so every key is either present, or named as optional above.
     """
+    # A removed key gets its own sentence, not "Unknown/missing settings".
+    runtime = profile.get("runtime") if isinstance(profile, dict) else None
+    if isinstance(runtime, dict) and "mla_decode_cpb" in runtime:
+        raise ValueError(
+            "runtime.mla_decode_cpb was retired in 1.16.0 and removed in 1.18.0; "
+            "delete the key from the profile"
+        )
     with (ROOT / "examples/server.example.toml").open("rb") as stream:
         schema = tomllib.load(stream)
 
@@ -181,14 +186,6 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(optional(profile, "runtime", "prefix_page_dedup")) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
-    # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
-    # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
-    # Until then a profile that carries it is checked as it was when it launched.
-    if type(optional(profile, "runtime", "mla_decode_cpb")) is not bool:
-        raise ValueError("runtime.mla_decode_cpb must be true or false")
-    if optional(profile, "runtime", "mla_decode_cpb") and decode_graphs(profile):
-        # The pinned values were timed on eager decode steps only.
-        raise ValueError("runtime.mla_decode_cpb excludes decode Graphs")
     if optional(profile, "runtime", "fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -599,10 +596,6 @@ def environment(profile, rank):
         result["GLM53_PREFIX_PAGE_DEDUP"] = str(
             int(profile["runtime"]["prefix_page_dedup"])
         )
-    if "mla_decode_cpb" in profile["runtime"]:
-        # Retired (see check_optional_shapes); still set so a profile that carries the key
-        # keeps its environment and fingerprint.
-        result["GLM53_MLA_DECODE_CPB"] = str(int(profile["runtime"]["mla_decode_cpb"]))
     if dev_mode(profile):
         result["VLLM_SERVER_DEV_MODE"] = "1"
     if profile["cache"]["fused_unpack"]:
@@ -683,14 +676,6 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_PREFIX_DEDUP_API=1",
             optional(profile, "runtime", "prefix_page_dedup"),
         ),
-        # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the
-        # helper, the Dockerfile RUN/ENV lines and the key's acceptance together in the
-        # next image build.
-        (
-            "mla_decode_cpb_support",
-            "GLM53_MLA_DECODE_CPB_API=1",
-            optional(profile, "runtime", "mla_decode_cpb"),
-        ),
         (
             "fa2_attention_support",
             "GLM53_FA2_ATTENTION_API=1",
@@ -707,13 +692,8 @@ def image_capability_checks(profile, image, *, recovery=False):
     }
 
 
-# The key never ran in serving (the reference attention returns before the decode it
-# patched); a profile that carries it can drop it.
-RETIRED_CPB = "mla_decode_cpb_retired"
-
-
 def capability_warnings(profile, image, *, recovery=False):
-    """What a recovery target was allowed that a new launch would be refused, and retired keys."""
+    """What a recovery target was allowed that a new launch would be refused."""
     env = image["Config"].get("Env") or []
     warnings = []
     if (
@@ -723,10 +703,6 @@ def capability_warnings(profile, image, *, recovery=False):
         and MOE_ORDER_MARKERS[0] in env
     ):
         warnings.append("moe_order_marker_1_accepted_for_recovery")
-    # cc-defer: retired in 1.16.0 (never reached in serving); remove the patch, the helper,
-    # the Dockerfile RUN/ENV lines and the key's acceptance together in the next image build.
-    if "mla_decode_cpb" in profile["runtime"]:
-        warnings.append(RETIRED_CPB)
     return warnings
 
 

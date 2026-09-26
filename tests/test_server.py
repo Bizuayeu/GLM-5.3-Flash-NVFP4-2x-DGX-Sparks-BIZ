@@ -575,71 +575,33 @@ class ServerConfigTests(unittest.TestCase):
             example = config.load(ROOT / "examples" / name)
             self.assertNotIn("mla_decode_cpb", example["runtime"])
             self.assertNotIn("GLM53_MLA_DECODE_CPB", config.environment(example, 0))
-            image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
-            self.assertNotIn(
-                "mla_decode_cpb_support",
-                config.image_capability_checks(example, image),
-            )
-            self.assertEqual(config.capability_warnings(example, image), [])
 
-    def test_a_profile_that_still_carries_mla_decode_cpb_launches_as_before(self):
-        # Retired in 1.16.0: it never ran in serving. A profile that carries it keeps
-        # its environment, arguments and fingerprint, and is told it can drop it.
-        self.profile["runtime"].pop("mla_decode_cpb", None)
-        without = config.environment(self.profile, 0)
-        args = config.serve_args(self.profile, 0, "/hf/model")
-        image = {"Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]}}
-        for value in (True, False):
+    def test_a_profile_that_still_carries_mla_decode_cpb_is_refused(self):
+        # Retired in 1.16.0 (it never ran in serving), removed in 1.18.0. The sentence
+        # comes before the schema's "Unknown/missing settings", whatever the value.
+        for value in (True, False, 1, 0, "true", None):
             profile = copy.deepcopy(self.profile)
             profile["runtime"]["mla_decode_cpb"] = value
-            config.validate(profile)
-            self.assertEqual(
-                config.environment(profile, 0),
-                {**without, "GLM53_MLA_DECODE_CPB": str(int(value))},
-            )
-            self.assertEqual(config.serve_args(profile, 0, "/hf/model"), args)
-            for recovery in (False, True):
-                warnings = config.capability_warnings(profile, image, recovery=recovery)
-                self.assertEqual(warnings, ["mla_decode_cpb_retired"])
-            checks = config.image_capability_checks(profile, image)
-            if value:
-                self.assertIs(checks["mla_decode_cpb_support"], False)
-                image_with = {
-                    "Config": {
-                        "Env": [*image["Config"]["Env"], "GLM53_MLA_DECODE_CPB_API=1"]
-                    }
-                }
-                self.assertIs(
-                    config.image_capability_checks(profile, image_with)[
-                        "mla_decode_cpb_support"
-                    ],
-                    True,
-                )
-            else:
-                self.assertNotIn("mla_decode_cpb_support", checks)
-        for bad in (1, 0, "true", None):
-            profile = copy.deepcopy(self.profile)
-            profile["runtime"]["mla_decode_cpb"] = bad
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(
+                ValueError,
+                r"^runtime\.mla_decode_cpb was retired in 1\.16\.0 and removed in "
+                r"1\.18\.0; delete the key from the profile$",
+            ):
                 config.validate(profile)
-        # Still refused beside decode Graphs when true, as it was.
-        profile = copy.deepcopy(self.profile)
-        profile["runtime"]["mla_decode_cpb"] = True
-        profile["runtime"].pop("enforce_eager", None)
-        profile["runtime"]["decode_graphs"] = True
-        with self.assertRaises(ValueError):
-            config.validate(profile)
 
-    def test_retired_warning_comes_beside_the_recovery_warning(self):
+    def test_no_capability_row_or_warning_names_mla_decode_cpb(self):
+        image = {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}}
         self.profile["runtime"]["canonical_moe_order"] = True
-        self.profile["runtime"]["mla_decode_cpb"] = False
-        warnings = config.capability_warnings(
-            self.profile,
-            {"Config": {"Env": ["GLM53_MOE_ORDER_API=1"]}},
-            recovery=True,
-        )
-        self.assertEqual(warnings[0], "moe_order_marker_1_accepted_for_recovery")
-        self.assertEqual(warnings[1], "mla_decode_cpb_retired")
+        for recovery in (False, True):
+            self.assertNotIn(
+                "mla_decode_cpb_support",
+                config.image_capability_checks(self.profile, image, recovery=recovery),
+            )
+            warnings = config.capability_warnings(
+                self.profile, image, recovery=recovery
+            )
+            self.assertNotIn("mla_decode_cpb_retired", warnings)
+        self.assertEqual(warnings, ["moe_order_marker_1_accepted_for_recovery"])
 
     def test_vision_is_optional_and_defaults_to_text_only(self):
         self.profile["runtime"].pop("vision", None)
@@ -1512,9 +1474,6 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             stable_indexer_topk=True,
             prefix_page_dedup=True,
             fa2_attention=True,
-            # Retired and gone from the examples; a profile that carries it is
-            # still checked for the image marker until the next image build.
-            mla_decode_cpb=True,
         )
         profile["validation"]["component_worker"] = True
         profile["cache"].update(fused_unpack=True, prefix_caching=True)
@@ -1555,7 +1514,6 @@ class ReferenceImageMarkerTests(unittest.TestCase):
                 "moe_order_support",
                 "indexer_topk_support",
                 "prefix_dedup_support",
-                "mla_decode_cpb_support",
                 "fa2_attention_support",
             ],
         )

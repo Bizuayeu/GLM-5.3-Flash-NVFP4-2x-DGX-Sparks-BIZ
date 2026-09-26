@@ -8,7 +8,7 @@
 |---|---|
 | `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed、画像入力の切替、再現性のスイッチ、derived checkpoint |
 | `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
-| `profiling` | 診断用のCUDAカーネル・launch計測。通常の速度測定時は無効 |
+| `profiling` | 診断用のTorch/CUDA traceの採取（必要なときだけ）。速度測定ではoff |
 | `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker、メモリ探針 |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、checkpoint保持、メモリ使用率、unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
@@ -93,7 +93,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 これらのスイッチが扱うのは単独の要求です。`max_num_seqs` が2以上だと、他の要求とstepを共有した要求は、なお違うcompletionになりえます。attentionの経路も変わります：MTPの深さ3では相方がいるとdecodeのstepのquery行が8になり、6を超えるのでFA2を通ります（`runtime.fa2_attention`、下記）。ただしこれは主因ではありません：attentionの呼び出しをすべて参照計算に切り替えても、2系列のcompletionの多くは単独のものと違ったままでした（[測定](benchmarks.ja.md#servingでの到達性2026-09-26)）。残る容疑者の先頭は、NVFP4のMarlin MoE（K方向の分け方がstepのexpert block数で決まる）と、prefillと共有したstepのprefill用のkernelです。他に何が走っていても同じcompletionが欲しい場合は `max_num_seqs = 1` で配信します（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
 
-`runtime.mla_decode_cpb`（1.14.0と1.15.0では両方のexampleで設定）は退役しました。servingでは一度も実行されていません。このkeyは、FlashInferのSM120 sparse MLA decodeに1系列から決めた `chunks_per_block` を渡すsource固定patchのために `GLM53_MLA_DECODE_CPB` を設定します。しかしimageは `GLM53_REFERENCE_ATTENTION=1` を設定し、backendはそのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnします。DSAの11層でもMTPのdraft層でも同じです（[servingでの到達性](benchmarks.ja.md#servingでの到達性2026-09-26)）。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも以前のまま起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、`runtime.decode_graphs` と一緒には拒まれる）、`server preflight` はkeyを外してよいという警告を足します。patch・imageのmarker・keyの受理は、次のimageのbuildで外します。
+`runtime.mla_decode_cpb`（1.14.0と1.15.0では両方のexampleで設定）は1.16.0で退役しました。patchが変えるdecodeの呼び出しより前に参照のNoPE attentionがreturnするため、servingでは一度も実行されていません（[servingでの到達性](benchmarks.ja.md#servingでの到達性2026-09-26)）。1.18.0で取り除いたので、keyを持つprofileは、keyを消すよう求めるメッセージとともに拒まれます。
 
 ### attentionとcacheとcheckpoint
 
@@ -205,8 +205,6 @@ run_seconds = 0
 
 **最大長の要求をB本同時に保持するなら、入出力合計の上限Cに対してB×C token分を収容できる容量の確認が必要です。** `max_model_len`は入力と生成の合計上限、`max_num_seqs`は同時実行の上限です。この二つを設定するだけで、最大長×同時数のKVが確保・検収されるわけではありません。2026-09-12の同時2系列の評価は1要求2,112 tokenまでで、公開した任意設定では2026-09-23に約200Kの要求2本を同時に配信しました（[1.10.2での測定](benchmarks.ja.md#1102での測定)）。Spark 2台の他レシピでは、25〜100Kの要求2本の同時処理が合計約4 tok/sまで落ちたと報告されています（tonyd2wild #14、コードは採用しない）。
 
-起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
-
 このランチャーの`cache.kv_cache_memory_bytes`は、**各rankで要求間共有する固定KV poolのバイト予算**です。1 GiBを指定したまま同時数を1→2にしても、各rankのKV予算は1 GiBのままです。要求1本あたり1 GiBでも、2台の予算を自由に合算した一つのpoolでもありません。バイト指定時は`gpu_memory_utilization`によるKV容量の自動推定を使わないため、この比率をRAM全体の保護上限として扱いません。[vLLMの設定仕様](https://docs.vllm.ai/en/latest/configuration/engine_args/#kv-cache-memory-bytes)
 
 実行中に必要なcacheは、保持中の各要求の入力＋生成済みtokenに従ってpool内のblockを消費します。最大長を同時に保証したい場合は、出力予算も含む最大条件で検証します。GLMは疎MLA・IndexPool・系列ごとのKDA状態を併用するため、一般的なdense attentionの単純なbytes/token式をそのまま使わず、**固定runtimeのcache spec・block整列・各groupの容量と状態slot数**で見積もります。MTP等の追加状態も別途含めます。
@@ -215,7 +213,7 @@ run_seconds = 0
 
 KVが不足すれば起動が拒否される場合があり、実行時は待ちやpreemption・再計算により性能が落ちることがあります。固定KV poolが勝手に必要量まで拡張されるわけではありません。KV以外の割当やRAM予算が不足すればOOMやガード停止も起こり得ます。[vLLMのpreemption説明](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
-起動時のcache容量・最大並列度は計算上の目安として保存し、**意図する入出力長×同時数の実要求、preemption回数、両rankの空きメモリ最小値、OOM・ガード停止**を確認してから対応範囲を表明します。現行preflightの合格は、最大長×同時数の収容試験の代わりにはなりません。実測範囲は[標準batchingの独立評価](benchmarks.ja.md#標準batchingの独立評価)を参照してください。
+起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。起動時のcache容量・最大並列度は計算上の目安として保存し、**意図する入出力長×同時数の実要求、preemption回数、両rankの空きメモリ最小値、OOM・ガード停止**を確認してから対応範囲を表明します。現行preflightの合格は、最大長×同時数の収容試験の代わりにはなりません。実測範囲は[標準batchingの独立評価](benchmarks.ja.md#標準batchingの独立評価)を参照してください。
 
 ## 現行イメージの契約
 
@@ -238,13 +236,14 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_SLOT_MAPPING_GUARD=1` | 要求しない。無いと公開した任意設定で約25万tokenを超える要求が失敗する（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.7.0 |
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup`（`prefix_dedup_support`） | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
-| `GLM53_MLA_DECODE_CPB_API=1` | `runtime.mla_decode_cpb = true`。古いprofileだけが持つ退役したkey（`mla_decode_cpb_support`） | 1.14.0 |
+
+1.14.0から1.17.0までに作ったimageは、取り除いた `runtime.mla_decode_cpb` の `GLM53_MLA_DECODE_CPB_API=1` と、届かないpatchも持ちます。どの検査もそれを読まず、害はありません。
 
 imageが持つmarkerは `docker image inspect IMAGE --format '{{json .Config.Env}}'` で確かめられます。
 
 ## LPAとMTP・制約
 
-`runtime.decode_graphs`（テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileしません。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAはeagerが必要で（退役した `runtime.mla_decode_cpb` を `true` のまま持つprofileも同じ）、複数系列のGraph設定は起動設定で拒否します。全モデルではGraphのdecodeがeagerより遅く、採用していません（[全モデルでのdecode Graphs](benchmarks.ja.md#全モデルでのdecode-graphs)）。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
+`runtime.decode_graphs`（テンプレートは `false`、未指定はeager）がdecode Graphの唯一のスイッチです。`true` で `CompilationMode.NONE`・`FULL_DECODE_ONLY` を渡します。capture size は一つで、MTP有効時は `num_speculative_tokens + 1`（固定ランタイムはdecodeのsizeをこの倍数に切り上げ、`[1]` は拒否します）、無効時は `1` です。prefillはcompileしません。同時1シーケンスならMTP・prefix cacheと併用できます。expertのtoken順を固定した4層MTP fixtureで、eagerとgraphは全長さでtokenもlogprobも一致しました（[部品検証](component-validation.ja.md#decode-graphのfixture独立評価)）。LPAはeagerが必要で、複数系列のGraph設定は起動設定で拒否します。全モデルではGraphのdecodeがeagerより遅く、採用していません（[全モデルでのdecode Graphs](benchmarks.ja.md#全モデルでのdecode-graphs)）。以前の書き方 `runtime.enforce_eager`（`false`＝Graph）も読むので既存profileのfingerprintは変わりませんが、両方を書く場合は矛盾させないでください。
 
 Graph経路では内部候補indexの範囲検査をGPU上で非同期に行います。不正indexを黙って許容せずdevice assertにしますが、通常のPython例外と異なりCUDA contextが使用不能になり得るため、障害時は両rankを停止して再初期化します。Graph用のメモリ保持・起動時capture時間も比較対象です。[vLLM #53366](https://github.com/vllm-project/vllm/issues/53366) は、compile cacheのhashに投機token数が入っていないと報告しています。compileするGraphをMTPと併せて使う場合は、kごとにcacheを分けるか、kを変えたときに消してください。
 

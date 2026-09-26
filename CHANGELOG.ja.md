@@ -2,7 +2,19 @@
 
 [English](CHANGELOG.md)
 
-正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
+正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
+
+## Unreleased
+
+### Removed
+
+- 退役した `runtime.mla_decode_cpb` を取り除いた：source固定patch（`glm53_setup/runtime/patch_mla_decode_cpb.py`）、helper（`glm53_setup/runtime/mla_decode_cpb.py`）、Dockerfileのpatchの `RUN` と `ENV GLM53_MLA_DECODE_CPB_API=1`、keyの受理。keyを持つprofileは、`true` でも `false` でも起動前に拒む（"runtime.mla_decode_cpb was retired in 1.16.0 and removed in 1.18.0; delete the key from the profile"）。1.14.0から1.17.0までに作ったimageはmarkerと届かないpatchをなお持つが、害はない。外すには参照imageを作り直す（[起動設定](docs/server-configuration.ja.md#再現性のスイッチ)）。
+
+### Documentation
+
+- 日本語の変更履歴がすべての版を扱うようになった。英語版にしか無かった1.0.0〜1.5.0を訳して加え、文書一覧も「1.6.0から英日の対」と書かなくなった。
+- 第三者の告知に、公開オプションの重み（Hugging FaceのNVFP4 BIZ AXL、MIT、NVIDIAの重みを重みだけで再パックしたもの）を載せた。
+- 起動設定：日本語版のKV容量の節を英語版と同じ順に並べ、`profiling` の行の説明を日英で揃えた。部品検証は、初期のfull-targetのrunが何を確かめなかったかを書き、後の再現性の節を指すようにした。
 
 ## 1.17.0 — 2026-09-26
 
@@ -26,7 +38,7 @@
 - memory probeの `zero_moe_scratch` RPC。呼ぶものは無く、配信workerで呼ぶとprocessが終わるまでMarlin MoEの呼び出しを置き換えていた。repeat traceのfixtureは自前のゼロ埋めの診断を持ち続ける。`validation.memory_probe` はcheckoutのprobeをimageの上にmountするので、次の起動からは古いimageでもこのRPCは無い。
 - 内部：`glm53_setup/runtime/patch_pipeline_layout.py` と `pipeline_state.common_layout_names`（参照imageは一度も当てていない）、`glm53_setup/validation/benchmark_attention_graph.py`（呼び手なし）。
 
-### ドキュメント
+### Documentation
 
 - 2系列のbatch不変性の調査を閉じた。2026-09-26に配信中の対で、decode規模の呼び出しでMarlin MoEの分け方を固定し、shared expertとrouterのGEMMを系列ごとに計算し、FA2を切って試した：スイッチは効いたが、2系列のcompletion 8本すべてが単独のものと違ったままだった。不採用。反復性は `max_num_seqs = 1`（配布既定）のまま、公開した任意設定は2系列を保つ。施策台帳（P26）とbenchmarksの到達性の節にそう書いた。
 - 構成：memory probeに全methodを挙げた独立の行を置き、`examples/` の行は二つのprofileを挙げ、層の表に `switch.resume`・capability検査・base imageの判定を足して `server_config` が副作用moduleをimportしないことを書いた。新しい節で、worker拡張の置き場所（配信の起動が読み込むものは `runtime/`、fixture専用のworkerは `validation/`、`expert_worker` が例外である理由）と、`python -m glm53_setup.validation.<module>` としてだけ走るrunnerを述べた。
@@ -40,7 +52,7 @@
 
 - `runtime.mla_decode_cpb` を退役した。servingでは一度も実行されていなかった：imageは `GLM53_REFERENCE_ATTENTION=1` を設定し、sparse MLAのforwardは、DSAの11層でもMTPのdraft層でも、keyのpatchが変えるFlashInferのdecodeの呼び出しより前に参照のNoPE attentionを通ってreturnする。1.14.0のkernelの根拠は、このflagを切った単体の結果だった。2026-09-26の到達性の調査では、配信中の対のtraceがsparse MLAの呼び出しを単独の要求で434、2本の組で448数え、すべて参照attentionを通っていた。keyが2系列のdecodeの分け方を固定する、要求のattentionがstepを共有する他の要求に依らなくなる、という1.14.0の記述は撤回する。1.14.0の測定（単独のcompletion・decodeの速度・NLLが不変、2系列のcompletionが1.13.0とbyte一致）は、効果が無かったことと整合する。両方のexampleからkeyを外した。keyを持つ既存のprofileは、環境変数・fingerprint・検査とも変わらずに起動し（`true` なら今も `GLM53_MLA_DECODE_CPB_API=1` を要求し、decode Graphとは排他）、`server preflight` は `warnings` に `mla_decode_cpb_retired` を記録する。patch・helper・imageのmarker・keyの受理は、次のimageのbuildで外す（[起動設定](docs/server-configuration.ja.md#再現性のスイッチ)）。
 
-### ドキュメント
+### Documentation
 
 - attentionの経路の記述を正した。文書はdecodeが参照経路のままだと書いていたが、参照attentionはquery行が6を超える呼び出しをFA2へ送る。1系列のdecodeのstepは参照経路のままだが、MTPの深さ3では相方がいると検証stepが8行になってFA2を通り、ある行の結果が相方の行数と長さで1 BF16 ulp動く。これは2系列の差の主因ではない：同じ調査で配信中の対のattentionの呼び出しを全部eagerにしても、2系列のcompletion 8本のうち7本が単独のものと違ったままで、容疑者の先頭はMoE。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でもcompletionは反復し、2系列では反復しない（[測定](docs/benchmarks.ja.md#servingでの到達性2026-09-26)）。起動設定・検証・README・施策台帳（P26は退役、P05）・最適化の概観・運用・構成、両方のexampleと `glm53_setup/runtime/fa2_attention.py` の `fa2_attention` のコメント（コメントだけ。このファイルはimageの上にmountする）をそのように直した。
 - benchmarksの1.15.0：参照対でのCPU配置（2026-09-26）。公開しているdecodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちる（completionと受理長は同じまま）。`nodes[].cpuset_cpus` で防げる。READMEの見出し表と起動設定からそこを指す。
@@ -372,3 +384,227 @@
 - `mtp.num_speculative_tokens` は、測定済みの1と3だけでなく1〜5を受け付けます。profileから深さの掃引を起動できます。テンプレートは3のままです。
 - `tools/check_publication.py` は、READMEの主要な測定値の表の版が、英日のどちらかでも、benchmark文書の最新の `Measurements on X.Y.Z` の節と違うと失敗します。
 - 非公開の計画書は `docs/plans/` に置き、この経路を無視対象にしました。それまで監査は、計画書を公開ファイルとして数えていました。
+
+## 1.5.0 — 2026-09-18
+
+### Changed
+
+- **テンプレートが画像入力を256Kで配信する**：`context.max_model_len = 262144`（従来204800）、`cache.kv_cache_memory_bytes = 3221225472`（rankあたり3 GiB、従来2.5）、`resources.reserve_gib = 3.0`（従来2.5）。1.3.1のNCCL 8チャネルで、200Kの要求中もheadの空きは6.40 GiB以上残っていたので、KVを0.5 GiB増やしても、保護とsupervisorの1.6 GiBの行き過ぎに対して約5.9 GiBが残ると見込んだ。参照対での実測は、headで起動中5.89 GiB、255,950 tokenの要求中5.82 GiB、peerで8.44 GiB。poolは301,645 tokenを収める（84 block、全長の要求1件あたり73、1.15×）。262,080 + 64の要求は488.6 s、最長の256Kの要求は492.5 sで、600 sのtimeoutに収まった。prefillは569.8 tok/sで、画像・tool・動画の検査は合格した。新しいprofileの200Kでは、速度は1.4.0と同じで、各rankの空きメモリは0.5〜0.7 GiB少なかった。変更のないprofileは200Kとfingerprintを保つ。先にKV 4 GiBの300K profileを見積もったが、実行していない：同じ計算では余裕が0.3 GiBしか残らず、全長の要求は570 s近くになる。テキスト専用の代替は残し、同じ長さとKVにした。
+
+### Documentation
+
+- ベンチマーク：1.5.0での測定（起動時のpoolとメモリ、prefillとdecode、256Kの合言葉、容量と3か所参照の要求、1.4.0と比べて繰り返したsparkDashと200Kの要求）。3か所参照は256Kで3回中2回正答し、200Kでは容量の要求の後にまた失敗した。1.4.0と同じ読み違い。
+- 起動設定：測定した二つの画像profile構成の両方で、KV poolがblockをどう数えたか（1 GiBあたり28 block、全長の要求1件あたりceil(L / 4608) + 16）。これで切替の前に256Kのpoolを予測できた。テキスト専用の代替は既定からvision towerを除いたものと説明し、その3 GiBの保護は未検証とした。
+- 画像入力：256Kの設定、それを選んだ理由、新しいprofileでの検査。README、運用、ハーネス、LPA、施策台帳と最適化の全体像も256Kの既定に合わせた。
+- ハーネス：ストリームのidle timeoutの段落が、試験した設定を60000 msとも700000 msとも書いていた。正しくは700000。
+
+## 1.4.0 — 2026-09-17
+
+### Added
+
+- **他のコンテナのGPU利用に対する起動ガード。** `server preflight`・`server start`・`server assets` に `exclusive_gpu` を足した。このランチャーのラベルを持たない稼働中のコンテナがGPUを要求している間は不合格になり、そのコンテナを `foreign_gpu_containers` に並べる。参照機のホストでは、`--gpus` とCDIの要求はどちらも `HostConfig.DeviceRequests` に現れ、GPUのデバイスノードが `Devices` に現れることはない。このランチャーの対はfingerprintによらずラベルを持つので、稼働中の古い対が `cluster switch` を妨げることはない。空のラベル値は数えず、一覧に載ったままinspectできないコンテナは検査を不合格にする。上書きの手段も、新しいprofileキーもない。着想はsfxnz PR #12（MIT、コードは採用しない）。
+- **`MemAvailable` と並べるメモリの読み。** supervisorの各行が、`mem_free_gib` と、2 MiB以上のbuddy blockにある空きメモリ `free_2mib_gib` を記録する。NVRMはそうしたblockを必要とし、ページキャッシュを回収しない。配信中のheadは、availableが7.1 GiBあるのにそうしたblockは0.49 GiBだった。rankを止めるのは `MemAvailable` だけで、読めなかった標本は `memory_sample_error` として記録する。
+- **`server mojibake`。** temperature 0で日本語と韓国語の長い回答を3本ずつ取り、置換文字・孤立サロゲート・制御文字を回答とreasoningの中で数える。短い・別言語・空・形の崩れた・失敗した回答は判定不能とする。1.3.1では6本すべて合格した。low effortではreasoningが空で、そちらは試せていない。固定したNVIDIAのcheckpointは、vLLM #54150のgate／upのscale不一致の影響を受けない。
+- **attentionの部品プローブ。** `validation.benchmark_sm90_attention` は、FlashInferのMLA paged wrapperを固定のSM90 backendと同じ形で、`fa2` を指定してGB10上で呼ぶ。候補の全幅ですべての数値検査に合格し、512行を3.5 msで処理した（参照は70.6 ms）。ただしBF16 KVだけ：FlashInfer 0.6.18はSM90以外でFP8のMLA KVを拒否する。`validation.benchmark_native_attention --by-row-kind` はSM120のプローブを再検討する：その3.03125は空行から来ており、0にすれば直るが、候補17個の行はなお上限を超える。どちらも配信は変えない。着想はsfxnz、tonyd2wild、drowzeys、Mia（コードは採用しない）。
+
+### Changed
+
+- **テンプレートが `context.max_num_batched_tokens = 2048` を設定する**（従来512）。1系列の200K画像profileで、新規の39K promptのprefillは512／1024／2048で476.9／545.2／563.0 tok/s、199,652 tokenの合言葉の要求は2048で361.3 s、512で410.8 sで、正答した。peerの最小空きメモリは最大0.7 GiB下がり（測定中はhead 6.71、peer 8.77 GiB、保護は2.5 GiB）、2048での読み込みではpeerにNVRMの割り当て再試行が28回記録され、decodeは実行ごとのばらつきを超えては変わらなかった。変更のないprofileは512とfingerprintを保つ。2系列では、P11が1024で測ったとおり、chunkを長くすると最長の停止が長くなる。200Kの3か所参照は、同じstackで2048では3回中1回、512では2回中1回正答した：どちらの大きさでも、モデルが各値をその後に続く記事として読むことがあるので、この検査では両者を区別できない。
+
+### Documentation
+
+- 部品検証：SM120のゼロ埋めの行の種類別の再検討と、新しいSM90 FA2 wrapperのプローブ。施策台帳のP05の行と最適化の全体像もこれに合わせた。
+- 運用、起動契約、起動設定、セットアップ手順：他のコンテナのGPU利用に対するガードとそれがいつ走るか、新しいメモリの読みの意味、checksumの実行と大きな読み出しが統合メモリ上でページキャッシュに及ぼす影響、`server mojibake`、他のレシピでの長い要求の崩壊に対する2系列の範囲、将来のcompile済みGraphとMTPの組み合わせに向けたvLLM #53366。
+- 検証、ハーネス、投機デコード：多バイト出力の検査と固定のcheckpointが影響を受けない理由、固定のvLLMに既に入っているXGrammarと投機デコードの修正、平均採択長による深さの比較。
+- ベンチマーク：200K画像profileでのchunk予算の比較。
+- 運用と施策台帳のP10：chunk 2048での `vm.swappiness` 0と60の比較。60ではswapに出たページを持つengineプロセスはなく、0ではswapは空のままで、prefillは再起動ごとのばらつきの中で動き、headの空きは0.45 GiB少なかったので、ホストは60のままにする。
+- ベンチマーク：1.4.0（chunk 2048）でのsparkDashと200Kの検査。decodeの中央値は36.51／25.67／29.31／26.29 token/sで、1.3.1と同じ。合言葉の要求は361.4 s、容量の要求は380.0 sで、1.3.1より12%と19%短く、headの空きは一度も6.40 GiBを下回らなかった。3か所参照の実行は、reasoningの長さと、それぞれの直前の要求とともに並べた。
+- 運用：2026-09-16のホストメモリの原因をどう突き止めたかと、修正の後に何が保たれたか。Bluetoothとディスプレイマネージャのグリーターは症状だった。新しいプロセスIDの数（10 sあたり6,642対176）、ログインメッセージのスクリプトの実行、SSHのログを数えて、ダッシュボードがメトリクスごとに張るログインに行き着いた。Bluetoothを再び有効にして電源を入れ直し、ダッシュボードが2台のホストを監視する状態で、`polkitd`・`bluetoothd`・`wireplumber` は300 sの間同じ大きさのままで、2026-09-17のダッシュボードの再起動では新しいログインはなかった。
+- 運用とテンプレート：timeoutの注記は、測定した最長の要求として200Kの506 sを挙げていた。今はchunk 2048の200Kで380 s、256Kの代替で582 sを挙げる。起動設定は、NCCL 64チャネルで測ったheadの余裕4.0〜4.2 GiBを現在の値としたままだった。今は8チャネルでの6.97 GiBとchunk 2048での6.40 GiBを添える。LPAの有効化へのリンクが1.1.0で改名した見出しを指したままで、英日の対4組でリンクか文言が片側にだけあった。
+- ベンチマーク：リリース候補のsparkDashと200Kの検査を1.3.1（LPA off、NCCL 8チャネル、MTU 1500）で繰り返した。decodeの中央値はstructured／prose／code／jsonで36.67／25.71／30.19／26.48 token/s、TTFTは4つとも短くなった。199,652 tokenの合言葉の要求は410.8 s（2026-09-15は506.1 s）、容量204,736 + 64は470.3 s、3か所参照は435.1 sで、すべて正答し、headの空きは一度も6.97 GiBを下回らなかった。実行の間には複数の変更があるので、どれか一つの効果とはしない。
+- NCCL検証とQSFPネットワーク：MTU 1500の全モデルの実行ではheadの監視ダッシュボードが動いていて（65 MiB、CPU約2%）、MTU 9000の実行では動いていなかった。1.3.1はすべての実行で止めていたと書いていた。したがって、MTU 9000によるprefillの2.3〜2.6%の向上は上限値。各MTUでのチャネル数の比較は影響を受けず、メモリの代価も同じで、ダッシュボードはそれを小さく見せることしかできない。
+
+## 1.3.1 — 2026-09-17
+
+### Changed
+
+- **テンプレートが `runtime.nccl_channels = 8` を設定する。** 参照対では、NCCLに任せると64チャネルを開き、各engineはcommunicatorを二つ開く。8にすると、MTU 1500で全モデルの最小空きメモリがheadで2.8 GiB、peerで3.0 GiB増え、prefillは1%速くなった。両MTUで64／32／16／8／4チャネルを掃引した2 rankのAllReduceでは、8がメモリと4 MiB（prefill chunk）での最適点だった。キーのないprofileはNCCLの選択とfingerprintを保つ。数値は新しい[チャネル数の節](docs/nccl-validation.ja.md#チャネル数)にある。
+
+### Documentation
+
+- **MTU：** 9000はprefillを2.3〜2.6%上げる代わりに、ホストあたりの空きメモリを1.1〜1.7 GiB減らしたので（NICの受信バッファ。モデルを動かしていないホストでも同じ1.4 GiBの差）、参照対は1500のまま（QSFPネットワーク、NCCL検証）。
+- **warmup ladder：** その10個のカーネルは起動のたびに報告されるが、コンパイルではなく読み込みである。固定のTritonは、バイナリがディスクのcacheから来た場合でも、プロセス内でカーネルを初めて使うときにpost-compile hookを呼び、jit monitorはそのhookから警告する。5回の起動でruntime cacheにファイルは一つも増えなかった。運用と画像入力は、cacheが温まればladderは空になるとは書かなくなった。
+
+## 1.3.0 — 2026-09-17
+
+### Added
+
+- **`runtime.nccl_channels`**（任意。未指定＝NCCLが選ぶ）。両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ値を設定する。NCCL 2.30.7は参照対の両rankで64チャネルを選び、2026-09-11と2026-09-17で同じ記録だったので、これは不一致の修正ではない：保護を数GiB上回る所で動いているheadに、チャネルを減らせばメモリが戻るかを測定で確かめるためのもの。値を測るまでテンプレートは値を設定しないので、稼働中の対はprofileのfingerprintを保つ。値は次の切替から効く。着想はMia PR #200（つまみだけ。そのTP=2ランチャーも値を空のままにしている）。
+
+### Documentation
+
+- 運用：待機中の片肺の対はどちらのsupervisorにも止められず、ホストが固まるとそのホストのsupervisorも一緒に止まり、peer喪失の停止理由は設計メモのまま。Mia issue #193による。これは2026-09-16の片肺の対を逆向きにした事例を報告している。
+
+## 1.2.1 — 2026-09-17
+
+この版の内容はすべて、1.2.0を参照対で初めて動かしたことから出たもの。その実行は `docs/plans/MIA_ADOPTION_2_PLAN.md` のStage 6が持つ。
+
+- **長いwarmupの段が目標の長さに収束する。** 最初の実機のladderは、65,536の目標に対して82,006 tokenを組み立てていた。行の番号の桁が一つ増えるとその行のtoken数が増えるので、256行の標本では少なく数えてしまう。組み立て側は、実測したtoken数に合わせて縮尺を直すようになった。
+- 片肺の対から得た、運用手順の**ホストのデーモンの衛生**：peer rankが2.5 GiBの余裕に対し2.49 GiBで停止した。もう一方のホストの監視ダッシュボードがメトリクスごとに新しいSSHログインを張っており（毎秒3.6回）、ログインのたびに `polkitd` が太り（3.40 GiBまで）、`wireplumber` と `bluetoothd` が登録し直して太り、MOTDのスクリプトが全部走っていたためである。ダッシュボード側でSSH接続を再利用させて解消した。ログイン数の数え方とデーモンの大きさの比べ方、`MemoryMax` のdrop-inに `Restart=on-failure` も要る理由、片肺の対でも `/health` には200で答えること。
+- **測っていたものを文書にした。** 82,018 tokenのprefillの間、token計数2つは202.8 s凍結したままだったが、進行の4信号がそろって凍結したのは最長でも8.3 sだった。これがKV使用率を信号の集合に残す根拠である。prefix cachingはblock単位で働く。N tokenのpromptを繰り返すと `(floor(N / block) - 1) x block` が復元され、2 block未満では何も復元されない。4,608 tokenのblockで、3,625／14,025／28,025 tokenに対して0／9,216／23,040 tokenと測った。
+- **P24を起票**：要求単位のprefix cache no-store。73,728 tokenがcacheされてwarmな、1ターン14.9 sの80,024 tokenの会話に対して、触れずに流す15,025 tokenのレーン2本では無傷、4本では完全に追い出され（次のターン182.6 s）、42,026 tokenのレーン1本は単独で追い出した（184.0 s）。このflagは前者を直すが、後者は直さない。走っているレーンが確保する量は減らないためである。候補にとどまり、runtime overlayとimageの作り直しが要る。
+
+## 1.2.0 — 2026-09-16
+
+### Added
+
+- **readiness後のwarmup ladder**（`server warmup`、`generation.warmup`、`generation.warmup_long_tokens`）。配信中にkernelのコンパイルが観測された要求の形（短文、tool呼び出し、画像1枚、配信中のtokenizerで長さを合わせる任意の長いprompt）を送り、段ごとの時間と、jit monitorがladderの前と最中に報告したkernelを記録し、dev経路が載っていれば最後にprefix cacheをリセットする。`cluster switch` は両rankがreadyになった後にrank 0でこれを流し、結果を `warmup` に保存する。ladderの失敗で切替が失敗したり巻き戻ったりすることはない。Mia PR #170を参考にした。段はこのキット自身の記録から選んでおり、そのPRのものではない。
+- **engineの停滞検知**（`resources.stall_seconds`、テンプレートは600、rank 0のみ）。supervisorは既存の2 sの周期で `/metrics` を読み、要求がrunningなのに生成token数・prompt token数・KV cache使用率・running数がすべてその秒数凍結していれば、`stop-reason: engine-stall` で停止する。engineが固まっても `/health` は200のままなので、生存の信号だったことは一度もない。prefillの進行は活動として数え、届かない `/metrics` は決して数えない。運用手順にはswapの出入りの繰り返しについての注記も載せた。Mia PR #70を参考にした。
+- **`server capacity`。** 稼働中のheadの起動ログと `/metrics` を読み、KV poolをそのまま表示する。stockの `GPU KV cache size` 行をblock数、最大長の要求1本あたりのblock数、group別のblock幅に分解し、stockの数字が `max_concurrency × max_model_len` であることを明記する。cacheした会話の推定は、LPA worker extensionを載せたprofile（そのRPCがgroupのspec種別を名指しする）でだけ表示し、モデル化していないgroup種別があれば出さない。画像入力の文書の「KV容量235,016 token」という書き方はこの読み違いで、訂正した。Mia PR #94を参考にした。runtime patchはない。
+- **`api.dev_endpoints`**（任意、既定はfalse）。分散profileで、vLLMのdev経路（`/reset_prefix_cache`、`/collective_rpc`、`/sleep`、…）をloopbackのAPIに載せ、ベンチとwarmupの後始末が再起動なしでprefix cacheをリセットできるようにする。起動契約に既に書いてあるとおり、これらの経路は無認証である。Mia PR #37を参考にした。
+- **P23を台帳に起票**：NVFP4 checkpointがBF16のまま残す射影のFP8 weight-only化（両rank合計で `self_attn*` 11.29 GiB、`shared_experts*` 1.97 GiB、`lm_head` 1.18 GiB。safetensorsのheaderから読んだ値）。候補のみで、品質の門を通すことが前提、未着手。adaptive verification lengthは見送りのまま。P06の再開条件に、spec acceptanceが1.00に張り付いていないかの検査（vllm#53030）を加えた。
+
+### Changed
+
+- 新しいprofileキーはすべて任意で、既存の `state/server.toml` と稼働中の対はそのまま有効で、復旧もできる。`supervise` はrankを受け取るようになった。長い段はフルprefillを払うため、SSHの転送はwarmupの呼び出しにreadinessのタイムアウトまでの時間を許す。
+
+## 1.1.1 — 2026-09-15
+
+- README（両言語）：ソースを配る場合には、ライセンスのページと第三者通知に既に書いてあるとおり、取り込んだ第三者コード（MITとApache）の著作権表示・許諾文も伴う。「Apache-2.0のみ」と言っていた文は、その次の文と矛盾していた。
+- Dockerのbuild contextに `examples/server.example.toml` を含めた。`.dockerignore` が1.1.0より前の名前を許可リストに残したままだったため、参照imageがbuildできない状態だった。
+- 運用手順：`server preflight` は検査を表示するだけで、`records/` に書くのは `server start` だけである。1.1.0の文はpreflightが記録すると言っていた。source archiveで配置する場合のruntime stateのリンクを `ln -sT` で張る方法と、正しいリンクと入れ子の `state/state` を見分ける `readlink -f` の出力を記載した。
+
+## 1.1.0 — 2026-09-15
+
+### Changed
+
+- **ランチャーを一つに。** `service` コマンドと、その `state/site.json`／`state/kernel-validation.json` の受領証の門を撤去した。これは当初の固定設定のランチャーだった。`service start` はネイティブGB10経路が塞がっているlockのbase imageを選んだままで、どのワークフローも生成しない適格性の受領証を要求していたため、フルモデルを一度も起動しなかった。すべての測定、メモリの監視、両rankの切替・復旧はもう一方の経路にあり、今はそれが唯一の経路である。profileが実験的か通常運用として受け入れ済みかは、コマンド名ではなく記録された状態（READMEの状態表、ハーネスの受け入れ試験一覧）で示す。`examples/site.example.json` は削除した。同じ値はserver TOMLの `[nodes]` にある。共通のホスト補助関数（サイトの検証、serve引数、fabricの検査、snapshotの解決、subprocessの実行）は `glm53_setup/host.py` に移した。
+- **`startup` は `server` になった。** サブコマンドは `python -m glm53_setup server {plan,freeze,assets,preflight,start,stop,status,ask}`、profileは `state/server.toml`（テンプレートは `examples/server.example.toml`）、moduleは `server.py`／`server_config.py`、文書は `docs/server-configuration.md`（両言語）。「startup start」はprofileと動作を同じ語で呼んでいた。旧い綴りの別名は残さない。**運用者は各ホストで `state/startup.toml` を `state/server.toml` にコピーし**（内容は変わらないので、profileのfingerprintも変わらない）、次の切替の前に両方のcheckoutを更新する。最初の1.1.0の対がreadyと確認できるまで、旧いファイルは残しておく。稼働中の対は起動したprofileのパスを記録しており、切替の復旧はそのパスから旧いprofileを起動し直すためである（[起動の安全](docs/launch-safety.ja.md#全レール検査と両rankの切替)）。
+- **`--experimental` を廃止した**（`server start` と `cluster switch` から）。このflagは、通常の `service` ランチャーではない経路の印として存在していた。ランチャーが一つになれば、何の情報も持たない。
+- 安定したruntimeの識別子は、BIZへの改名の時と同じく変えていない：containerのlabel `glm53.experiment.startup`、container名 `glm53-startup-r<rank>-<run>`、rankごとの記録 `state/startup-rank<N>.json` と `state/startup-request.lock`。そのため、1.0.xで起動した対も `server status`・`server stop`・切替から引き続き認識される。
+- 文書：運用手順は「ランチャーは一つ」の節と、`server preflight` が何を検査し何を保証しないかを述べる「フルモデルの起動検査」の節を一つずつ持つようになった。SETUPの手順6は、生成できなかった受領証の代わりに、通常運用の受け入れで未了の項目を挙げる。README、文書一覧、構成表、起動の安全、検証、投機デコード、ハーネス、LPAの各頁から、ランチャー二本立ての枠組みを外した。この変更で受け入れ済みになったものはない。
+
+## 1.0.1 — 2026-09-15
+
+- LPAの文書（両言語）に明示的な「起動profileでLPAを有効にする」節を加えた：設定するTOMLキー、preflightが要求するimageのmarker、projectorのchecksum検査、テキストのみの条件、preflightから切替への順序、要求単位のopt-out。文書一覧と運用手順の表がこの節を指す。`lpa-train` の再現例を、cut 40のpilotから、配布projectorの設定である `--cut 32` に変えた。
+- 実測したcut32の補助projector（Release `lpa-cut32-v1`）を、Apache-2.0の独立したGitHub Release assetとして配布する。固定したmanifest、学習データの帰属表示、教師モデルのモデルカード・notice、SHA-256 checksumを添える。元のtensorのbyteを保ち、重みはGitの外に置く。
+- README、運用手順のパッケージ配置、構成、LPAの取得・モデルカード、ライセンス、起動の前提条件、文書一覧を両言語で更新した。runtimeの既定値と適格性の状態は変わらず、LPAはテキストのみのbatchのopt-inのまま。
+- CLIのsmoke testを、退役したbetaのリテラルではなく `pyproject.toml` と版を比べ、正常終了も要求するように直した。
+
+## 1.0.0 — 2026-09-15
+
+### Changed
+
+- 1.0.0をリリースし、betaの表示を退役した：版は `pyproject.toml` が持ち、公開監査はbetaの開示ではなく素のsemantic versionを要求するようになり、「beta」と書いていたREADME・手順書・文書の見出しはすべて、同じ事実をbetaなしで述べる。`service` launcherはkernel検証の証跡を待って門を閉じたまま。検収については何も変わっていない。
+- 共通のハーネスcase H-01〜H-11を初めて一巡した記録（`20260915-harness-h-sandbox`）：11件すべてをnpmの `zcode-app-cli` 3.11.2-24のTUIでfixtureのリポジトリに対して一度ずつ走らせ、5件PASS・6件PARTIAL（caseごとに未検証の部分を名指し）。公式のZCode DesktopとClaude CodeはNOT RUNのまま。READMEの状態の行と受け入れ試験一覧がcaseごとの結果を載せる。
+- テンプレートの `generation.max_tokens` を512から4096に上げた。この値が形を決めるのは `startup ask` の要求だけだが、固定のGLMテンプレートは必ず先に思考し、vLLMはそのblockを `max_tokens` に数える：`reasoning_effort=low` で一行の答えが約600 tokenを使い、既定の512では見える内容のないまま `finish_reason: length` が返っていた。既存の `state/startup.toml` は変更しない。編集するとprofileのfingerprintが変わるので、稼働中の対は `settings_changed` を報告し、次の切替まで `startup ask` はそれを拒む。
+
+- 正典を一つにし鮮度を保つための文書の整理（英日とも）：測定文書にあった古い既定値の記述（APC、fused unpack、`index_checks`、8 GiBのreserve）を、起動設定を指す日付つきの経緯に書き直した。`startup`／`service` launcherの区別を、運用手順の正典の節一つと文書一覧の行として足した。構成表を、実在するruntime・cluster・validation・tools・hookのmoduleまで広げた。READMEのprefix cachingの状態行を分けた。起動既定値の表で取り残されていた `Lifetime` 行、言語切替が自分自身を指していた日本語の4ページ、英語版をリンクしていた日本語ページ、benchmarksの散文で数字の前に落ちていた空白を直した。このファイルで重複していた `Changed` 節を一つにした。日本語文書にbenchmarkとNCCLのコマンドblockを埋め込み、各言語が単独で読めるようにした。測定値と実行条件は一つも変えず、既存の見出しも改名していない。
+
+- statusと結果のJSON（`prepare-status.json`、`checksum-status.json`、`preflight.json`、`command.json`、fixtureとbenchmarkの `result.json`）をすべて共通のatomic writerで書くようにし、書き込みの途中で落ちても、途中で切れたファイルではなく前のファイルが残る。各ファイルは末尾に改行が付く。imageのcapabilityのpreflight表、hostの要求lock、rank 0の探索は、検証コマンドごとの写しではなく `startup.py` の単一のhelperになった。imageの `Env` が無いとき、参照attentionの検査は例外を投げずに失敗として閉じる。
+
+- 配布する起動既定を200Kの画像入力に切り替えた：`runtime.vision = true`、`max_model_len` 204,800、rankあたりKV 2.5 GiB、`mm_processor_cache_gb` 0.1、`reserve_gib` 2.5で、動画は引き続き拒む。256Kのテキスト専用profileは代替として文書に残す。それに対する2.5 GiBのreserveは検証していない。設定・選んだ経緯（量子化の除外、動画のprofiling、head専用のprocess、JIT cacheの事故、reserve）・測定を載せた `docs/vision.md`（英日）を足し、README・セットアップ手順書・起動設定・ハーネス・benchmarks・最適化・文書一覧の参照を更新した。起動既定値の表は、LPAが無効で出荷されることも述べる。既存の `state/startup.toml` は変更しない。
+- ハーネスの文書を、接続設計・受け入れ試験一覧・caseごとの状態の単一の正典として書き直した：状態の列を足し（API-01〜03 PASS、API-04 PARTIAL、公式ZCode DesktopはNOT RUN／同梱CLIはTUI packageの欠落でBLOCKED、npm配布のsmokeは補助証拠、Claude Codeと共通のH caseはNOT RUN）、ZCodeの配布形態を分け、ぼかしていたtelemetryの記述をbundleの静的な読みによる配布形態ごとの表に置き換え（npm CLIはOTLP endpointを設定したときだけtraceを送る。Desktopはtraceとeventのendpointを直書きし、継承したスイッチを剥がす）、例のportを起動テンプレートに揃え、ハーネスが自身のconfigディレクトリへ書くのを拒む規則を足した。READMEと検証は状態を書き写さず一覧を指す。npm配布について日付つきのTCP標本（headlessのprompt一回の間に観測したのはloopbackのtunnelだけ）を、H-09の補助証拠として記録した。
+- 配布物の名前を「GLM-5.3-Flash on 2× DGX Spark Enterprise Setup」から **GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ** に改めた。BIZは保守者と業務利用の意図を示す。「enterprise」という語はサポートや認証を含意すると読まれたので、散文では「business use」と書く。安定した識別子は変えない：参照imageのtag `glm53-enterprise:reference`（既存の記録に焼き込まれている）と台帳のID E01〜E03。Pythonの配布名は `glm53-flash-biz-setup` になる。
+- 配布する起動既定を、直列の最適化profileに揃えた：256K context、rankあたりKV 3 GiB、MTP3、LPA cut32/tail512/B128、dense checkpoint retentionつきのAPC、fused unpack、非同期のindex検査。寿命の期限は既定で無効にし（`run_seconds=0`）、hostメモリのreserveによるメモリ監視は残す（reserveは下にある後の項で3 GiBに下げた）。テンプレートがdense retentionを明示的に選んでいても、省略した／数値のretention設定は保つ。image ID、projector／hash、nodeの詳細はインストールごとの仮値のまま。既存の運用者のTOMLには明示的な移行が、稼働中のsupervisorには再起動が要る。
+- 分散起動のcontainerのTriton・TileLang・TorchInductorのcacheを、mountした `state/tp2-runtime-cache` に向けた（`TRITON_CACHE_DIR`、`TILELANG_CACHE_DIR`、`TORCHINDUCTOR_CACHE_DIR`）。既定の場所（`/root/.triton`、`/root/.tilelang`、`/tmp/torchinductor_root`）はcontainerのlayerにあったので、起動のたびに約2,000件をcompileし直し、その一部は配信中に走っていた。headでのそうしたcompileの集中の一つは、200Kの画像profileでのmemory-reserveによる停止と重なった。
+- `resources.reserve_gib` に小数を受け付け（テンプレートは `3.0` と書く。整数も引き続き有効）、「測り直す」という注記を、2秒周期のsupervisorが捕まえられることに置き換えた：閾値割れからcontainer終了まで約9秒、実測した0.15 GiB/sの下降、16 GiBのswapではOOM killの記録なし、そして下限の目印にならないdriverの `NV_ERR_NO_MEMORY` メッセージ。後の項が、画像profileとともにテンプレートの値を2.5にする。
+- 施策ごとの機能の受け入れ、性能面の採用、既定値を分けた。最終的な組み合わせの検収は、候補が選ばれるまで先送りする。
+- 実験的なnon-eager起動が、compileしないprefillと1系列のdecode Graphを明示的に選ぶようにし、imageの検査と、先送りした組み合わせのguardを付けた。フルモデルの検収は保留のまま。
+
+- module、worker class、RPC、mountのパス、テスト、文書を通してLPAを正式名にした。旧来のinterfaceなしで現行のimage契約を要求する。
+- 起動profileを読み込み／コマンドの境界で検証し、serve引数の組み立て中に繰り返していたschema全体の検証をなくした。
+
+- `resources.run_seconds = 0` で実行期限を無効にでき、低メモリの保護は残る。自動再起動や本番の可用性の検収を足すものではない。
+
+- 生成したvLLMのpatch出力に、実行される構文木を変えずに、目立つ改変通知を足した。
+- 運用者向けのコマンド、検証の道具、runtimeの適応、設定、Dockerの資材を責務ごとにまとめた。
+- モデルIDとrevisionを `config/runtime.lock.json` に集約した。
+- downloadをprocess lockとatomicなstatus更新で直列化した。一時停止したdownloadは検証の待機を終わらせる。
+- 公開の入口から、手元の実験へのリンクとhost固有のimage識別子を外した。
+
+### Added
+
+- 画像profileで、ZCodeのterminal sessionの中での画像読み取りを一件記録した：モデルがshellコマンドでscreenshotを保存し、ファイル読み取りのツールで読み、画像の中にしかない文字を説明した。ハーネスのpromptへの画像の直接添付とClaude Codeは未確認のまま（`docs/vision.ja.md`、README）。
+
+- 新規・更新したhostのkernelの指針（`docs/operations.md`、英日）：現在のDGX OSの更新は `7.0.0-1019-nvidia` を入れ、既定で有効なKexec HandOverによって、2台のRoCEの登録が `ibv_reg_mr_iova2 ... Cannot allocate memory` で失敗することがある。NVIDIAのadvisory、未解決のNV-Kernelsの分析、二つの選択肢（`6.17.0-1032-nvidia` に留める、または `kho=off` で起動してそれを確かめる）、同じエラーのfirmware関連の別の報告を記録した。セットアップ手順書は `/proc/cmdline` を記録し、2台の手順の前にkernelを選ぶようにした。READMEの前提条件はそこを指す。`7.0.0-1019-nvidia` は本リポジトリでは検証していない。
+
+- 任意の起動キー `runtime.vision`（未指定はfalse、テンプレートでは明示）。`true` は両rankから `--language-model-only` を外してvision towerを読み込み、`--limit-mm-per-prompt '{"video": 0}'` を足す：**動画入力は無効のまま**。そうしないと起動時のprofilingが30,000 tokenの動画をencodeするため。`--mm-processor-cache-gb` も、headで二重に持たれるvLLMの4 GiBではなく、任意の `cache.mm_processor_cache_gb`（未指定は0.1）から設定する。後の項がこれを配布既定にする。
+
+- 既存の組み合わせimageで、実入力による256Kの容量と3か所参照の検査（rankあたりKV 3 GiB、既存の4 GiBのメモリreserve）。以前の200Kの速度・tool-eval・FreedomBenchの測定は、元のprofileの下に残す。
+
+- Desktop同梱のruntimeを静的に読んで得たZCodeの権限modeの事実（modeのenumと正規化、未実装の `auto`、ツールごとの危険度の記述子、判定の順序、PreToolUse hookの統合）と、`yolo` で動かしつつ、既存ファイル・clientの設定ディレクトリの変更や破壊的なshellコマンドの前には確認を求める既存ファイルguard hook（`examples/zcode-hooks/`）。WriteとBashのcaseをheadlessで検証した記録を残し、同梱CLIがheadless modeで手元のモデルに届くことを書いた。`limit.context`／`limit.output` がcontext window、`max_tokens`、自動compactionの予算（実効window − min(output, 21000)、閾値 − 13000）にどう効くか、そこから来るvLLMの下での `limit.output` の上限、長いprefillを打ち切るstreamのidle timeoutを文書にした。`/effort max` は実用上の上限なく思考し、日常の設定は `high` 以下という運用者向けの注記を足した。任意の起動キー `api.prompt_tokens_details`（`--enable-prompt-tokens-details`）を足し、LPA優先のprofileでハーネスのcache表示がゼロになる理由を、ZCodeで設定した要求ごとの `glm53_lpa_mode = "off"` によるopt-outとともに文書にした。実測したblock単位の再利用（4,608 tokenのblock。16,859 tokenのpromptを繰り返して9,216がcache）を記録した。256K profileでsupervisorによるメモリ停止が2回あった後、配布の `resources.reserve_gib` を4から3に下げた。テンプレートは `lpa.enabled = false` で出荷し、LPAを共有prefixの再利用を手放すbatch向けのopt-inとして文書にし、256Kを配布既定に保った。長いpromptを2回送り、「サーバーがcached tokenを一度も報告しない」と「要求が近似された」を切り分ける `tools/check_prefix_cache.py` と、ZCodeのguard hookの導入手順を足した。
+
+- 英日の性能・容量のQ&A：256KのKVの収まり、1Mを見込んだメモリ予算、固定のMTP重み、長いprefillの待ち時間、同時配信／EP／PPの得失。実測の証拠にリンクし、例示としての1Mで40分という外挿を実測と区別した。
+
+- 正準順imageでのrelease candidateの測定：有効なsparkDashのstream 12本、tool-evalの全69 scenario（90/100、TC-43はSafety Gateに不合格）、FreedomBenchの英語原版60問すべて正解、200Kの容量／3か所参照の検査の完了。無効だった通信の試行は別に残し、業務・ハーネスの検収の限界も保つ。
+
+- 文書の役割・言語の有無・事実ごとの単一の正典を持つ英日の文書一覧（`docs/README.md`）と、各施策がどこに効くか・直列の組み合わせの結果・用途別のprofileを示す英日の推論最適化の全体像（`docs/optimization-overview.md`）。READMEにprefix caching／retentionの状態行と外部のEuryale研究プロジェクトの説明が加わり、施策台帳の文書役割の表は文書一覧へのポインタに置き換えた。運用・構成・検証・部品検証・性能調査・indexer再利用・contributingに日本語版を、APC優先LPAの設計に英語版を足し、利用者向けの文書はすべて英日の対になった。
+
+- GLMのsparse-MLAが共有するruntimeの境界での、論理的な候補の正準順。新しくbuildした参照imageで有効。選択とpaddingを保ち、物理cacheへの対応付けの前に正規化する。source固定の自動導入、比較のための明示的な上書き、GB10での通常／投機の回帰の限られた証拠を文書にした。
+
+- model originのBearer client、未設定／空を保つ固定化したallocatorの上書き、構造化した全railのRoCE検査、実験的な2 rankの停止前の資材確認／切替／復旧の経路。CPUでの契約と実hostでの検収は、起動安全のガイドに別々に記録した。
+
+- APC優先で、cacheされていない後半だけに効くLPA：境界はschedulerが持ち、共有cacheはexactのみ、exactの明示的なpriming、source固定のclient検証、GPUのcache隔離のfixture、損益分岐の測定の道具。
+
+- NVIDIAのcheckpoint、GB10互換のhardware、MSI EdgeXpertでの測定を区別する導入の入口と、正規のcache・MTP view・LPA projectorの置き場所の指針。
+
+- 検査つき非同期indexの単独の結果と、起動時のauto／sync／asyncの明示的な選択。検査は必須のままで、組み合わせmodeの受け入れは別に扱う。
+
+- フルモデルのTP/PPの時間と復元の結果。PPのprefillは速く、生成は遅く、メモリの余裕は限られ、profilerの再起動失敗の後のprofiler／容量の結果は未完であることを、そのまま残す。
+
+- フルモデルのEP off/on/offの結果：配置を確認し、品質・取消・容量を範囲を限って確かめ、測った処理量の用途についてはEPを採らないと判断した。内部abortのtelemetryは通常の完了counterと区別する。
+
+- 実験的なTP2/PP2の明示的な選択と、設定可能なstage境界。hybridの配置と組み合わせのguardつき。
+- 同期と非同期の検査つきindexをGraph captureと独立に比べる、排他の診断RPC。範囲検査は一つも無効にしない。
+
+- hybrid cacheで有効なPPのstage境界のための、byte検証済みの8層fixtureのoption。attention／KDAの状態のhashと、実際のexpert配置の観測も加えた。
+
+- 実験的なdeferred-mHCのpipeline bufferと、source固定の共通cache配置の選択。PPの起動に失敗した証拠を残し、GPUでの検収は保留。
+- 条件を揃えたtask順の測定と、試した用途についてはtask専用のgroup分けを採らないという、範囲を限った判断。
+
+- prefill chunkの単独の掃引（処理量と最大ITLの得失）と、別の16K x 2要求の容量の証拠。
+- FP32のNoPE融合と、範囲を限ったtile／query chunkの診断。launchと中間値が減っても速度は負だった結果を、そのまま残す。
+
+- 明示的で既定offのExpert Parallelの実装と、単独の検証計画。EPの採用を、検収済みの2系列batchや、配布構成だけの起動の受け入れと分ける。
+
+- batchの単独のA/B/A測定と、別の16K × 2要求の容量検査。KV固定／RAMの条件を明示。
+- paddingしたnative attentionの部品probe。配信を何も変える前に、数値の不合格と非対応の形状の証拠を残した。
+
+- 英日のenterpriseの目標と、性能・品質の施策台帳。比較用の安定したID、証拠へのリンク、先送り候補の基準、次のGLMの評価欄を持つ。政治的偏りの評価は、普遍的な中立の主張とは区別する。
+
+- 単独で試験したCUDAのunpack融合とCSA2の研究部品：範囲を限ったindexerのcapture、要求内での候補の再利用、候補の選択／tailの展開、nativeで支えた共有poolの採点。部品のbenchmarkは、数値の正しさと実際の速度の向上を区別する。
+- 明示的な部品検証の起動profileと、フルのtargetでのCUDA A/B/A／indexer重ね合わせのdriver。LPA／MTPの統合とは別。
+
+- FreedomBenchの収集と、英語原版／長文文脈での予備的な観察。政治的な拒否、実行／形式のエラー、出典への忠実さを、まだ検収していない全構成の一覧と人手の査読から分けた。
+
+- 明示的な実験用TP=2 launcherと直列のchat clientが共有する、分類したTOML設定。不変の成果物の検査、範囲を限った監視、MTPを考慮したLPAのopt-inつき。
+
+- opt-inの後段prefillのattention入力近似、teacher replayの検査、範囲を限ったLLM-jp corpusの標本抽出、対角／低ランクのprojectorのfit。実験の範囲についての英日の指針つき。
+
+- MTP k=3の例と、条件を揃えたk=1との比較。位置ごとの採択と、用途によって変わるlatency／処理量の結果を含む。
+- opt-inのMTP k=1のmetadata viewの準備、BF16のdraft設定、CPUでの拒否の検査、英日の実測比較／ロールバックの指針。
+- 最初のフルモデルTP=2の直列参照benchmarkの結果と、benchmarkのCLIが0で終わっても未完の実行を拒む独立のchecker。
+- 商用利用・改変・再配布の英日のガイド。上流モデルのMIT通知を含む。
+- 公式ZCodeと実験的なClaude Codeの接続計画。それぞれに必須のend-to-endの受け入れcase（未実施）。
+- 再現可能な2 rankのPyTorch／NCCL診断。transportの読み方と英日の手順つき。
+- WindowsからのSSH接続、永続的なprofile、routingの確認、復旧を扱う英日のQSFP／NetworkManager実践ガイド。
+- betaの配布物に名前を付けた：**GLM-5.3-Flash on 2× DGX Spark Enterprise Setup**。
+- Apache-2.0ライセンス、保持したthird-partyの通知、英日の入口の文書。
+- 準備・起動の点検・検証のための統一CLI `python -m glm53_setup`。
+- digestで固定した参照imageのbuildコマンドと、移植可能なcheckoutのパス。
+- CPUのCIと、clean checkoutでのCLIの動作と公開の境界の検査。
+- 前提条件、順序つきの関門、受け入れのチェックリスト、AIへの引き継ぎ指示を持つ英日のセットアップ手順書。
+
+### Validation status
+
+- MTP k=3は測定要求21件と基本APIの検査11件すべてに合格し、短・中の入力のdecodeをk=1より改善し、報告されるモデルのメモリは変わらなかった。以後の実験ではこちらを優先する。k=2／k≥4と実際のハーネスは未試験のまま。
+- フルモデルTP=2のMTP k=1は、同じ測定要求21件と基本APIの検査11件を完走した。速いdecodeはrankあたり約7 GiBを要し、すべての用途を改善するわけではない。実際のハーネスと分散の復旧は未検収のまま。
+- 文書にした直列の参照profileで、45層全部のTP=2での読み込み、最終回答／ツールのAPI smoke、benchmarkの測定要求21件が完了した。ハーネスと通常運用の導入は未検収のまま。
+- 固定のGLMテンプレートではthinking-offを使わない。最終回答／ツールの受け入れは、推論文の完全一致やbatchを跨いだ数値の診断とは別物で、生の不一致はそのまま残す。
+- 2台のRoCEのcollectiveのpatternは合格。最後の256 MiB AllReduceの測定はMTU 1500で1.18〜1.21 GB/sで、別のdisk checksumのjobが動いていた。これはフルモデルのTP=2を検収するものではない。
+- GB10 1台の4層fixtureは、Marlin W4A16と候補を保持するNoPE参照経路で、試した生成／状態の整合のcaseに合格した。
+- 整理したDocker imageを作り直し、GPUの部品検査と長い入力のfixture検査を、packageしたCLIで繰り返して成功した。
+- CUTLASS W4A4は生成を完了したが、試した実行の形状の間で結果が違った。
+- 固定しているSM120のsparse-MLA backendではbatch不変性が使えない。
+- **文書にした実験的なprofileの範囲を超えるモデルの品質、本番の信頼性、性能は未検証のまま。**

@@ -1,6 +1,18 @@
 # Changelog
 
-[日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
+[日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
+
+## Unreleased
+
+### Removed
+
+- The retired `runtime.mla_decode_cpb`: its source-pinned patch (`glm53_setup/runtime/patch_mla_decode_cpb.py`), its helper (`glm53_setup/runtime/mla_decode_cpb.py`), the Dockerfile's `RUN` of the patch and `ENV GLM53_MLA_DECODE_CPB_API=1`, and the key's acceptance. A profile that still carries the key, `true` or `false`, is refused before launch ("runtime.mla_decode_cpb was retired in 1.16.0 and removed in 1.18.0; delete the key from the profile"). Images built from 1.14.0 through 1.17.0 still carry the marker and the unreachable patch, which are harmless; rebuild the reference image to drop them ([server configuration](docs/server-configuration.md#repeatability-switches)).
+
+### Documentation
+
+- The Japanese changelog now covers every release: 1.0.0 to 1.5.0, which had existed in English only, are translated, and the document map no longer calls the changelog a pair only from 1.6.0.
+- Third-party notices list the published option's weights (NVFP4 BIZ AXL on Hugging Face, MIT, a weight-only repack of the NVIDIA weights).
+- Server configuration: the Japanese KV capacity section follows the English order, and the `profiling` row says what the category does in both languages. Component validation says what its early full-target run did not establish and points at the repeatability that came later.
 
 ## 1.17.0 — 2026-09-26
 
