@@ -69,6 +69,86 @@ def engine_kwargs(args, compilation_mode):
     }
 
 
+def configure_kwargs(mode, args, length):
+    """What the worker's lpa_configure receives for one replay mode."""
+    return {
+        "mode": "oracle" if mode == "oracle_full_mlp" else mode,
+        "cut": args.cut,
+        "prompt_length": length,
+        "tail": 1,
+        "profile": mode == "off",
+        "verify_state": True,
+        "skip_mlp": mode != "oracle_full_mlp",
+        "skip_mla_queries": args.skip_mla_queries,
+        "allow_mtp": bool(args.mtp),
+    }
+
+
+def assess_case(modes):
+    """One length's verdict: the oracle replays reproduce the exact run's tokens
+    and captured state, and every logprob and state error is finite."""
+    reference = modes["off"]
+    baseline = modes["capture"]
+    oracle = modes["oracle"]
+    restored = modes["restored"]
+    exact = modes["oracle_full_mlp"]
+    verdict = {
+        "baseline_token_equal": (
+            reference["token_ids"] == baseline["token_ids"] == restored["token_ids"]
+        ),
+        "oracle_token_equal": reference["token_ids"] == oracle["token_ids"],
+        "max_shared_logprob_error": max(
+            (
+                abs(row[token] - oracle["logprobs"][i][token])
+                for i, row in enumerate(reference["logprobs"])
+                for token in row
+                if token in oracle["logprobs"][i]
+            ),
+            default=None,
+        ),
+        "oracle_full_mlp_equal": reference["token_ids"] == exact["token_ids"],
+        "oracle_full_mlp_logprob_error": max(
+            abs(row[token] - exact["logprobs"][i][token])
+            for i, row in enumerate(reference["logprobs"])
+            for token in row
+            if token in exact["logprobs"][i]
+        ),
+        "finite": all(
+            math.isfinite(v)
+            for mode in modes.values()
+            for row in mode["logprobs"]
+            for v in row.values()
+        ),
+        "state_finite": all(
+            error["finite"]
+            for mode in modes.values()
+            for worker in mode["workers"]
+            for error in worker["state_errors"]
+        ),
+        "oracle_active_state_equal": all(
+            error["max_abs"] == 0
+            for mode in ("oracle_full_mlp", "oracle")
+            for worker in modes[mode]["workers"]
+            for error in worker["state_errors"]
+        ),
+        "state_comparisons": sum(
+            len(worker["state_errors"])
+            for mode in ("oracle_full_mlp", "oracle")
+            for worker in modes[mode]["workers"]
+        ),
+    }
+    verdict["passed"] = (
+        verdict["baseline_token_equal"]
+        and verdict["oracle_token_equal"]
+        and verdict["finite"]
+        and verdict["oracle_full_mlp_equal"]
+        and verdict["state_finite"]
+        and verdict["oracle_active_state_equal"]
+        and verdict["state_comparisons"] > 0
+    )
+    return verdict
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
     read_fixture(args.fixture)
@@ -112,18 +192,7 @@ def main(argv=None):
         for mode in ("capture", "off", "oracle_full_mlp", "oracle", "off"):
             key = mode if mode not in case["modes"] else "restored"
             llm.collective_rpc(
-                "lpa_configure",
-                kwargs={
-                    "mode": "oracle" if mode == "oracle_full_mlp" else mode,
-                    "cut": args.cut,
-                    "prompt_length": length,
-                    "tail": 1,
-                    "profile": mode == "off",
-                    "verify_state": True,
-                    "skip_mlp": mode != "oracle_full_mlp",
-                    "skip_mla_queries": args.skip_mla_queries,
-                    "allow_mtp": bool(args.mtp),
-                },
+                "lpa_configure", kwargs=configure_kwargs(mode, args, length)
             )
             start = time.monotonic()
             result = llm.generate([{"prompt_token_ids": ids}], params, use_tqdm=False)[
@@ -134,61 +203,7 @@ def main(argv=None):
             row["workers"] = llm.collective_rpc("lpa_report")
             case["modes"][key] = row
             save()
-        reference = case["modes"]["off"]
-        baseline = case["modes"]["capture"]
-        oracle = case["modes"]["oracle"]
-        restored = case["modes"]["restored"]
-        case["baseline_token_equal"] = (
-            reference["token_ids"] == baseline["token_ids"] == restored["token_ids"]
-        )
-        case["oracle_token_equal"] = reference["token_ids"] == oracle["token_ids"]
-        differences = [
-            abs(row[token] - oracle["logprobs"][i][token])
-            for i, row in enumerate(reference["logprobs"])
-            for token in row
-            if token in oracle["logprobs"][i]
-        ]
-        case["max_shared_logprob_error"] = max(differences, default=None)
-        exact = case["modes"]["oracle_full_mlp"]
-        case["oracle_full_mlp_equal"] = reference["token_ids"] == exact["token_ids"]
-        case["oracle_full_mlp_logprob_error"] = max(
-            abs(row[token] - exact["logprobs"][i][token])
-            for i, row in enumerate(reference["logprobs"])
-            for token in row
-            if token in exact["logprobs"][i]
-        )
-        case["finite"] = all(
-            math.isfinite(v)
-            for mode in case["modes"].values()
-            for row in mode["logprobs"]
-            for v in row.values()
-        )
-        case["state_finite"] = all(
-            error["finite"]
-            for mode in case["modes"].values()
-            for worker in mode["workers"]
-            for error in worker["state_errors"]
-        )
-        case["oracle_active_state_equal"] = all(
-            error["max_abs"] == 0
-            for mode in ("oracle_full_mlp", "oracle")
-            for worker in case["modes"][mode]["workers"]
-            for error in worker["state_errors"]
-        )
-        case["state_comparisons"] = sum(
-            len(worker["state_errors"])
-            for mode in ("oracle_full_mlp", "oracle")
-            for worker in case["modes"][mode]["workers"]
-        )
-        case["passed"] = (
-            case["baseline_token_equal"]
-            and case["oracle_token_equal"]
-            and case["finite"]
-            and case["oracle_full_mlp_equal"]
-            and case["state_finite"]
-            and case["oracle_active_state_equal"]
-            and case["state_comparisons"] > 0
-        )
+        case.update(assess_case(case["modes"]))
         save()
     report["passed"] = all(case["passed"] for case in report["cases"])
     report["status"] = "complete"
