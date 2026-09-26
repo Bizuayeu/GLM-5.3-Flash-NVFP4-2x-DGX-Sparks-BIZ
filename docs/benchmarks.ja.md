@@ -969,4 +969,4 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 - どの状態でも、promptごとのcompletionと受理長（3.698 / 2.146 / 3.097 / 3.303）は同じだった。配置が変えたのは速度で、計算ではない。
 - **どちらか一方のrankが高効率コアにいるだけで、decodeは約3分の1になる。** 二つのrankは歩調を合わせて進むので、遅い方が速度を決める。CPU setはrank 0だけでなく両rankに要る。差は#1の約2.1倍（両種のコアとも2.4 GHz上限）より大きい。周波数とコアの種類は切り分けていない。
 - 固定なしでも、この計測の間はrank 0の主workerスレッドが3秒ごとの標本すべてで、rank 1のものも取った標本（約15秒ごと）すべてで高性能コアにいたので、高性能コアへの固定は固定なしを上回らなかった。#1では、固定なしのworkerが待機後に高効率コアへ落ちた。CPU setが買うのはその抽選を無くすことである。
-- 1.15.0のlauncherの経路（preflightの `cpu_set_available`、`docker run` 後の読み戻し）は、まだ参照対で走らせていない。コンテナは `0-19` へ戻した。稼働中のコンテナのCPU setはDockerでは消せないので、`HostConfig.CpusetCpus` は次の切替まで `0-19` を示す。
+- launcherの経路は、1.18.0への切替で参照対を通った（2026-09-26、`records/20260926-deploy-1180/`）。両rankに `cpuset_cpus = "5-9,15-19"` を置くと、`server preflight` は両ホストで `cpu_set_available` を返し、各コンテナはそのCPU setで作られて `5-9,15-19` と読み戻され、一番忙しいworkerスレッドはcore 6と5で動いた。decode checkは以前と同じcompletionと受理長で45.74 / 28.18 / 38.16 tok/s、sparkDash DecodeBenchはstructured／prose／code／jsonで48.39 / 31.26 / 41.19 / 34.82 tok/sと、[1.10.4](#1104での測定)と同じ水準だった。参照対はそれ以来このCPU setで配信している。
