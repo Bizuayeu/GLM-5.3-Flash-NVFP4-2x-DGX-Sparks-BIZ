@@ -231,41 +231,173 @@ def chat_turn(profile, rpc, body, expected, mode):
     return row
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--corpus-sha256", required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument(
+def validation_text(raw, sha256):
+    """The pinned corpus's validation split; any other corpus is refused."""
+    if hashlib.sha256(raw).hexdigest() != sha256:
+        raise ValueError("Corpus hash differs")
+    return "\n\n".join(
+        d["text"]
+        for d in map(json.loads, raw.decode("utf-8").splitlines())
+        if d["split"] == "validation"
+    )
+
+
+def check_cache_layout(layout, retention, block_tokens):
+    """Every rank holds the selected retention and the supplied joint block."""
+    if any(row["retention_interval"] != retention for row in layout):
+        raise ValueError(
+            "Actual cache retention differs from the selected pinned baseline/candidate"
+        )
+    if {
+        math.lcm(*(group["block_size"] for group in row["groups"])) for row in layout
+    } != {block_tokens}:
+        raise ValueError(
+            "Supplied scheduler block does not match the pinned worker group's joint alignment"
+        )
+
+
+def select_timing_cases(cases, case_ids):
+    """The named cases in the order given; unknown or repeated IDs are refused."""
+    by_id = {case["id"]: case for case in cases}
+    if len(set(case_ids)) != len(case_ids) or any(key not in by_id for key in case_ids):
+        raise ValueError("Unknown or duplicate timing case IDs")
+    return [by_id[key] for key in case_ids]
+
+
+def one_output_complete(response, length):
+    """One finite output token counted against the whole encoded prompt."""
+    return (
+        response["usage"]["completion_tokens"] == 1
+        and response["usage"]["prompt_tokens"] == length
+        and len(response["choices"][0]["token_ids"]) == 1
+        and all(
+            math.isfinite(value)
+            for value in response["choices"][0]["logprobs"]["token_logprobs"]
+        )
+    )
+
+
+def prefill_turn(profile, rpc, body):
+    """One exact one-output prefill, timed between two metric reads."""
+    encoded = encode_prompt(profile, server_config.request_body(profile, body))
+    before = read_metrics(profile)
+    began = time.perf_counter()
+    response = server.post(
+        profile,
+        "/v1/completions",
+        {
+            "model": profile["api"]["served_model_name"],
+            "prompt": encoded,
+            "temperature": 0,
+            "seed": profile["runtime"]["seed"],
+            "max_tokens": 1,
+            "ignore_eos": True,
+            "return_token_ids": True,
+            "logprobs": 1,
+            "vllm_xargs": {MODE_KEY: "off"},
+        },
+    )
+    elapsed = time.perf_counter() - began
+    hit, workers = policy_hits(profile, rpc, len(encoded), "off")
+    if not one_output_complete(response, len(encoded)):
+        raise ValueError("Incomplete one-output prefill sample")
+    return {
+        "seconds": elapsed,
+        "prompt_token_ids": encoded,
+        "cached_tokens": hit,
+        "workers": workers,
+        "response": response,
+        "metrics_before": before,
+        "metrics_after": read_metrics(profile),
+    }
+
+
+def checked_common_prefix(prime, row, message):
+    """Tokens the two prompts share; a cache hit beyond them reused a changed token."""
+    shared = common_prefix(prime["prompt_token_ids"], row["prompt_token_ids"])
+    if row["cached_tokens"] > shared:
+        raise ValueError(message)
+    return shared
+
+
+def boundary_lengths(block_tokens):
+    """Prompt lengths around one and two scheduler blocks, plus three tiny ones."""
+    return sorted(
+        {
+            3,
+            4,
+            5,
+            block_tokens - 1,
+            block_tokens,
+            block_tokens + 1,
+            2 * block_tokens - 1,
+            2 * block_tokens,
+            2 * block_tokens + 1,
+        }
+    )
+
+
+def boundary_contaminated(rows):
+    """An approximated first request left blocks the next exact request reused."""
+    return (
+        rows[0]["workers"][0]["policy"]["policy"]["shared_cache_limit"] == 0
+        and rows[1]["cached_tokens"] != 0
+    )
+
+
+def quality_passed(report):
+    """Every functional answer, pressure run and the revisit after it was right."""
+    return (
+        all(
+            a["prime"]["passed"] and a["result"]["passed"]
+            for c in report["cases"]
+            for a in c["arms"]
+        )
+        and all(r["result"]["passed"] for r in report["revisits"])
+        and all(r["passed"] for r in report["pressure"])
+        and report["pressure_revisit"]["after"]["passed"]
+    )
+
+
+def parser():
+    """The runner's argument interface."""
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--config", type=Path, required=True)
+    cli.add_argument("--corpus", type=Path, required=True)
+    cli.add_argument("--corpus-sha256", required=True)
+    cli.add_argument("--output", type=Path, required=True)
+    cli.add_argument(
         "--block-tokens",
         type=int,
         required=True,
         help="Actual scheduler block from this server's launch record",
     )
-    parser.add_argument("--corpus-tokens", type=int, default=16000)
-    parser.add_argument(
+    cli.add_argument("--corpus-tokens", type=int, default=16000)
+    cli.add_argument(
         "--repeats",
         type=int,
         default=1,
         help="Functional cycles; no speed adoption from a single cycle",
     )
-    parser.add_argument("--pressure-histories", type=int, default=12)
-    parser.add_argument(
+    cli.add_argument("--pressure-histories", type=int, default=12)
+    cli.add_argument(
         "--timing-only",
         action="store_true",
         help="Selected exact-only one-output prefill comparisons; not the functional matrix",
     )
-    parser.add_argument(
-        "--case-ids", nargs="+", help="Explicit subset for --timing-only"
-    )
-    args = parser.parse_args(argv)
+    cli.add_argument("--case-ids", nargs="+", help="Explicit subset for --timing-only")
+    return cli
+
+
+def main(argv=None):
+    cli = parser()
+    args = cli.parse_args(argv)
     if args.timing_only and (not args.case_ids or args.repeats < 5):
-        parser.error(
+        cli.error(
             "Timing-only requires explicit --case-ids and at least five measured repeats"
         )
     if args.case_ids and not args.timing_only:
-        parser.error("The functional matrix cannot silently omit cases")
+        cli.error("The functional matrix cannot silently omit cases")
     profile = server_config.load(args.config)
     if (
         not server_config.apc_lpa_enabled(profile)
@@ -273,17 +405,10 @@ def main(argv=None):
         or min(args.block_tokens, args.repeats, args.pressure_histories) < 1
         or args.corpus_tokens < 2 * args.block_tokens
     ):
-        parser.error(
+        cli.error(
             "Requires a dedicated serial APC/LPA server, profiler off and positive validated budgets"
         )
-    raw = args.corpus.read_bytes()
-    if hashlib.sha256(raw).hexdigest() != args.corpus_sha256:
-        raise ValueError("Corpus hash differs")
-    text = "\n\n".join(
-        d["text"]
-        for d in map(json.loads, raw.decode("utf-8").splitlines())
-        if d["split"] == "validation"
-    )
+    text = validation_text(args.corpus.read_bytes(), args.corpus_sha256)
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "starting",
@@ -309,11 +434,10 @@ def main(argv=None):
 
     post = partial(server.post, profile)
     rpc = partial(server.collective_rpc, profile)
-    metrics = partial(read_metrics, profile)
     reset = partial(server.reset_prefix_cache, profile)
-    encode = partial(encode_prompt, profile)
     check_policy = partial(policy_hits, profile, rpc)
     chat = partial(chat_turn, profile, rpc)
+    prefill = partial(prefill_turn, profile, rpc)
 
     save()
     try:
@@ -327,21 +451,11 @@ def main(argv=None):
                 cache_layout=rpc("apc_cache_layout"),
                 status="running",
             )
-            expected_retention = server_config.retention_interval(profile)
-            if any(
-                row["retention_interval"] != expected_retention
-                for row in report["cache_layout"]
-            ):
-                raise ValueError(
-                    "Actual cache retention differs from the selected pinned baseline/candidate"
-                )
-            if {
-                math.lcm(*(group["block_size"] for group in row["groups"]))
-                for row in report["cache_layout"]
-            } != {args.block_tokens}:
-                raise ValueError(
-                    "Supplied scheduler block does not match the pinned worker group's joint alignment"
-                )
+            check_cache_layout(
+                report["cache_layout"],
+                server_config.retention_interval(profile),
+                args.block_tokens,
+            )
             ids = post(
                 "/tokenize",
                 {
@@ -362,70 +476,19 @@ def main(argv=None):
             ]
             cases, archive_a, answer_a, archive_b, answer_b = history_cases(chunks)
             if args.timing_only:
-                by_id = {case["id"]: case for case in cases}
-                if len(set(args.case_ids)) != len(args.case_ids) or any(
-                    key not in by_id for key in args.case_ids
-                ):
-                    raise ValueError("Unknown or duplicate timing case IDs")
+                timing = select_timing_cases(cases, args.case_ids)
                 report["timing_cases"] = []
-
-                def prefill(body):
-                    encoded = encode(server_config.request_body(profile, body))
-                    before = metrics()
-                    began = time.perf_counter()
-                    response = post(
-                        "/v1/completions",
-                        {
-                            "model": profile["api"]["served_model_name"],
-                            "prompt": encoded,
-                            "temperature": 0,
-                            "seed": profile["runtime"]["seed"],
-                            "max_tokens": 1,
-                            "ignore_eos": True,
-                            "return_token_ids": True,
-                            "logprobs": 1,
-                            "vllm_xargs": {MODE_KEY: "off"},
-                        },
-                    )
-                    elapsed = time.perf_counter() - began
-                    hit, workers = check_policy(len(encoded), "off")
-                    if (
-                        response["usage"]["completion_tokens"] != 1
-                        or response["usage"]["prompt_tokens"] != len(encoded)
-                        or len(response["choices"][0]["token_ids"]) != 1
-                        or not all(
-                            math.isfinite(value)
-                            for value in response["choices"][0]["logprobs"][
-                                "token_logprobs"
-                            ]
-                        )
-                    ):
-                        raise ValueError("Incomplete one-output prefill sample")
-                    return {
-                        "seconds": elapsed,
-                        "prompt_token_ids": encoded,
-                        "cached_tokens": hit,
-                        "workers": workers,
-                        "response": response,
-                        "metrics_before": before,
-                        "metrics_after": metrics(),
-                    }
-
-                for key in args.case_ids:
-                    case = by_id[key]
+                for case in timing:
+                    key = case["id"]
                     result = {"id": key, "samples": []}
                     report["timing_cases"].append(result)
                     for repeat in range(args.repeats + 1):
                         reset()
                         prime = prefill(case["prime"])
                         row = prefill(case["request"])
-                        shared = common_prefix(
-                            prime["prompt_token_ids"], row["prompt_token_ids"]
+                        shared = checked_common_prefix(
+                            prime, row, "Timing sample reused beyond its changed token"
                         )
-                        if row["cached_tokens"] > shared:
-                            raise ValueError(
-                                "Timing sample reused beyond its changed token"
-                            )
                         result["samples"].append(
                             {
                                 "warmup": repeat == 0,
@@ -459,13 +522,9 @@ def main(argv=None):
                         reset()
                         prime = chat(case["prime"], case["prime_expected"], "off")
                         row = chat(case["request"], case["expected"], mode)
-                        common = common_prefix(
-                            prime["prompt_token_ids"], row["prompt_token_ids"]
+                        common = checked_common_prefix(
+                            prime, row, "Cache restored beyond the common token prefix"
                         )
-                        if row["cached_tokens"] > common:
-                            raise ValueError(
-                                "Cache restored beyond the common token prefix"
-                            )
                         output["arms"].append(
                             {
                                 "repeat": repeat,
@@ -514,19 +573,7 @@ def main(argv=None):
                 "eviction_observed": after["cached_tokens"] < before["cached_tokens"],
             }
             save()
-            for length in sorted(
-                {
-                    3,
-                    4,
-                    5,
-                    args.block_tokens - 1,
-                    args.block_tokens,
-                    args.block_tokens + 1,
-                    2 * args.block_tokens - 1,
-                    2 * args.block_tokens,
-                    2 * args.block_tokens + 1,
-                }
-            ):
+            for length in boundary_lengths(args.block_tokens):
                 prompt = ids[:length]
                 if len(prompt) != length:
                     raise ValueError("Boundary probe exceeds corpus")
@@ -559,25 +606,13 @@ def main(argv=None):
                             "response": result,
                         }
                     )
-                if (
-                    rows[0]["workers"][0]["policy"]["policy"]["shared_cache_limit"] == 0
-                    and rows[1]["cached_tokens"] != 0
-                ):
+                if boundary_contaminated(rows):
                     raise ValueError(
                         "Approximate boundary request entered shared cache"
                     )
                 report["boundaries"].append({"prompt_tokens": length, "rows": rows})
                 save()
-            report["quality_passed"] = (
-                all(
-                    a["prime"]["passed"] and a["result"]["passed"]
-                    for c in report["cases"]
-                    for a in c["arms"]
-                )
-                and all(r["result"]["passed"] for r in report["revisits"])
-                and all(r["passed"] for r in report["pressure"])
-                and after["passed"]
-            )
+            report["quality_passed"] = quality_passed(report)
             report["status"] = "complete"
             save()
     except BaseException as error:
