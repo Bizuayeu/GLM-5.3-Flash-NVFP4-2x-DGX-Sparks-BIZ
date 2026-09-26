@@ -47,6 +47,20 @@ def replay_modes(args):
     return ("capture", "off", "split-self", "split", "off")
 
 
+def check_split_cut(layer_types, cut):
+    """Split must reach both layer kinds: some KDA and some MLA layer after the cut.
+
+    The cut layer itself keeps its input, so a cut that leaves only one kind
+    behind it checks nothing about the other (the default cut 2 of the 4-layer
+    fixture leaves only its MLA layer).
+    """
+    late = set(layer_types[cut + 1 :])
+    if not {"linear_attention", "deepseek_sparse_attention"} <= late:
+        raise ValueError(
+            f"--split with --cut {cut} leaves {sorted(late)} behind the cut"
+        )
+
+
 def engine_kwargs(args, compilation_mode):
     """What LLM() is constructed with; these settings define the measurement.
 
@@ -216,6 +230,7 @@ def assess_split_case(modes):
     verdict["passed"] = (
         verdict["baseline_token_equal"]
         and verdict["split_self_token_equal"]
+        and verdict["split_self_logprob_error"] == 0
         and verdict["split_self_state_equal"]
         and verdict["split_self_state_comparisons"] > 0
         and verdict["finite"]
@@ -228,6 +243,9 @@ def main(argv=None):
     args = parser().parse_args(argv)
     sequence = replay_modes(args)
     configuration = read_fixture(args.fixture)[0]
+    if args.split:
+        text = configuration["text_config"]
+        check_split_cut(text["layer_types"][: text["num_hidden_layers"]], args.cut)
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "loading",

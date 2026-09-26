@@ -167,6 +167,23 @@ class SplitCaseTests(unittest.TestCase):
         empty = split_modes(**{"split-self": mode(errors=())})
         self.assertFalse(run_lpa.assess_split_case(empty)["passed"])
 
+    def test_a_split_self_logprob_that_moves_fails_the_split_case(self):
+        moved = mode(logprobs=[{"1": -0.5}, {"2": -0.25 + 2**-20}])
+        verdict = run_lpa.assess_split_case(split_modes(**{"split-self": moved}))
+        self.assertTrue(verdict["split_self_token_equal"])
+        self.assertGreater(verdict["split_self_logprob_error"], 0)
+        self.assertFalse(verdict["passed"])
+
+    def test_the_cut_must_put_both_layer_kinds_behind_it(self):
+        four = ["linear_attention"] * 3 + ["deepseek_sparse_attention"]
+        run_lpa.check_split_cut(four, 0)
+        run_lpa.check_split_cut(four, 1)
+        # The runner's default cut 2 leaves only the MLA layer: KDA never splits.
+        for cut in (2, 3):
+            with self.subTest(cut=cut), self.assertRaises(ValueError):
+                run_lpa.check_split_cut(four, cut)
+        run_lpa.check_split_cut(four * 2, 5)
+
     def test_the_split_sequence_and_its_worker_settings(self):
         args = run_lpa.parser().parse_args(
             ["--fixture", "/f", "--output", "/o", "--cut", "0", "--split"]
