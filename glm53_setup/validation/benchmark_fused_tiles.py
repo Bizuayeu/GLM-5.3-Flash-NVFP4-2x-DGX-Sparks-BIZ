@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from glm53_setup.io import write_json
+from glm53_setup.validation.parity import bf16_bound
 
 
 def main(argv=None):
@@ -49,11 +50,7 @@ def main(argv=None):
                     diagnostics=diagnostics,
                 )
                 error = (actual.float() - expected.float()).abs().max().item()
-                tolerance = (
-                    2
-                    * torch.finfo(torch.bfloat16).eps
-                    * max(1, expected.abs().max().item())
-                )
+                tolerance = bf16_bound(expected.abs().max().item())
                 if not bool(torch.isfinite(actual).all()) or error > tolerance:
                     raise ValueError("Tuned kernel parity failed")
 

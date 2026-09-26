@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from glm53_setup.io import write_json
+from glm53_setup.validation.parity import bf16_bound, judge
 
 
 def main(argv=None):
@@ -76,11 +77,7 @@ def main(argv=None):
 
                 actual = call()
                 error = (actual.float() - expected.float()).abs().max().item()
-                tolerance = (
-                    2
-                    * torch.finfo(torch.bfloat16).eps
-                    * max(1, expected.abs().max().item())
-                )
+                tolerance = bf16_bound(expected.abs().max().item())
                 row = {
                     "max_abs_error": error,
                     "tolerance": tolerance,
@@ -98,11 +95,7 @@ def main(argv=None):
                     if args.tf32x3_attention and not diagnostics["tf32_mma"]:
                         raise ValueError("TF32 MMA instructions were not emitted")
                 write_json(args.output / "result.json", report)
-                if (
-                    not row["finite"]
-                    or row["empty_row_zero"] is False
-                    or error > tolerance
-                ):
+                if not judge(row)["passed"]:
                     raise ValueError("Query chunk numerical check failed")
                 for _ in range(3):
                     call()

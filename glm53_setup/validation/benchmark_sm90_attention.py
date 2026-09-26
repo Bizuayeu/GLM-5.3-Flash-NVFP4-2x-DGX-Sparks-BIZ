@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from glm53_setup.io import write_json
+from glm53_setup.validation.parity import bf16_bound, judge, judge_tail
 
 WIDTHS = (0, 17, 63, 64, 65, 2048, 2051, 2176)
 TAIL_SLOT = 2050
@@ -64,26 +65,6 @@ def compact(rows):
         indices.extend(row)
         indptr.append(len(indices))
     return indptr, indices, [len(row) for row in rows]
-
-
-def judge(case):
-    reasons = []
-    if not case["finite"]:
-        reasons.append("non-finite")
-    if case["max_abs_error"] > case["tolerance"]:
-        reasons.append("error-above-bound")
-    if case.get("empty_row_zero") is False:
-        reasons.append("empty-row-nonzero")
-    return {"passed": not reasons, "reasons": reasons}
-
-
-def judge_tail(tail):
-    reasons = []
-    if tail["native_error"] > tail["tolerance"]:
-        reasons.append("error-above-bound")
-    if not tail["omission_difference"] > 1:
-        reasons.append("tail-insensitive")
-    return {"passed": not reasons, "reasons": reasons}
 
 
 def main(argv=None):
@@ -197,9 +178,7 @@ def main(argv=None):
         empty = [i for i, row in enumerate(rows) if not row]
         result = {
             "finite": bool(torch.isfinite(actual).all()),
-            "tolerance": 2
-            * torch.finfo(torch.bfloat16).eps
-            * max(1.0, expected.abs().max().item()),
+            "tolerance": bf16_bound(expected.abs().max().item()),
             "max_abs_error": (actual[filled] - expected[filled]).abs().max().item()
             if filled
             else 0.0,
@@ -283,9 +262,7 @@ def main(argv=None):
         report["tail"] = {
             "native_error": (actual - expected).abs().max().item(),
             "omission_difference": (expected - dropped).abs().max().item(),
-            "tolerance": 2
-            * torch.finfo(torch.bfloat16).eps
-            * max(1.0, expected.abs().max().item()),
+            "tolerance": bf16_bound(expected.abs().max().item()),
         }
         report["tail"].update(judge_tail(report["tail"]))
         save()

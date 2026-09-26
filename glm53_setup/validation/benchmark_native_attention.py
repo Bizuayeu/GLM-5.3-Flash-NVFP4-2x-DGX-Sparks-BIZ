@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from glm53_setup.io import write_json
+from glm53_setup.validation.parity import bf16_bound, judge, judge_tail
 
 REVISIT_WIDTH = 2048  # The widest SM120 v32/GLM decode shape in FlashInfer 0.6.18.
 KPOOL = 4  # Tokens per indexer pool; 512 pools fill the 2048-token top-k.
@@ -168,11 +169,7 @@ def main(argv=None):
                 expected = sparse_nope_reference(query, packed, indices, scale).float()
                 actual = native_call(query, indices)().float()
                 torch.cuda.synchronize()
-                tolerance = (
-                    2
-                    * torch.finfo(torch.bfloat16).eps
-                    * max(1.0, expected.abs().max().item())
-                )
+                tolerance = bf16_bound(expected.abs().max().item())
                 error = (actual - expected).abs().max().item()
                 case = {
                     "heads": heads,
@@ -184,9 +181,7 @@ def main(argv=None):
                     "finite": bool(torch.isfinite(actual).all()),
                     "empty_row_zero": bool((actual[2:] == 0).all()),
                 }
-                case["passed"] = (
-                    case["finite"] and error <= tolerance and case["empty_row_zero"]
-                )
+                case["passed"] = judge(case)["passed"]
                 report["cases"].append(case)
                 save()
                 print(json.dumps(case), flush=True)
@@ -202,18 +197,16 @@ def main(argv=None):
         expected = sparse_nope_reference(query, packed, indices, scale).float()
         actual = native_call(query, indices)().float()
         dropped = sparse_nope_reference(query, packed, indices[:, :2048], scale).float()
-        tolerance = (
-            2 * torch.finfo(torch.bfloat16).eps * max(1.0, expected.abs().max().item())
-        )
+        tolerance = bf16_bound(expected.abs().max().item())
         report["tail"] = {
             "native_error": (actual - expected).abs().max().item(),
             "omission_difference": (expected - dropped).abs().max().item(),
             "tolerance": tolerance,
         }
         save()
-        if not all(c["passed"] for c in report["cases"]) or not (
-            report["tail"]["native_error"] <= tolerance
-            and report["tail"]["omission_difference"] > 1
+        if (
+            not all(c["passed"] for c in report["cases"])
+            or not judge_tail(report["tail"])["passed"]
         ):
             raise ValueError(
                 "Native candidate failed numerical or candidate-preservation checks"
@@ -233,11 +226,7 @@ def main(argv=None):
 
             expected = reference().float()
             actual = native().float()
-            tolerance = (
-                2
-                * torch.finfo(torch.bfloat16).eps
-                * max(1.0, expected.abs().max().item())
-            )
+            tolerance = bf16_bound(expected.abs().max().item())
             if (
                 not bool(torch.isfinite(actual).all())
                 or (actual - expected).abs().max().item() > tolerance
@@ -329,11 +318,6 @@ def revisit(args):
     def save():
         write_json(args.output / "result.json", report)
 
-    def bound(expected):
-        return (
-            2 * torch.finfo(torch.bfloat16).eps * max(1.0, expected.abs().max().item())
-        )
-
     save()
     try:
         for heads in (32, 64):
@@ -367,7 +351,7 @@ def revisit(args):
                         errors = (actual - expected).abs().amax(dim=(1, 2)).tolist()
                         case.update(
                             finite=bool(torch.isfinite(actual).all()),
-                            tolerance=bound(expected),
+                            tolerance=bf16_bound(expected.abs().max().item()),
                             max_abs_error_by_kind=row_kind_errors(
                                 errors, row_kinds(rows)
                             ),
@@ -445,11 +429,11 @@ def revisit(args):
                 row.update(
                     finite=bool(torch.isfinite(actual).all()),
                     max_abs_error=(actual - expected).abs().max().item(),
-                    tolerance=bound(expected),
+                    tolerance=bf16_bound(expected.abs().max().item()),
                     paths={},
                 )
                 paths = (("reference", reference), ("native", native))
-                if not row["finite"] or row["max_abs_error"] > row["tolerance"]:
+                if not judge(row)["passed"]:
                     row["timing_skipped"] = "parity failed"
                     paths = ()
                 for label, call in paths:

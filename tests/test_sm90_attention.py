@@ -38,24 +38,6 @@ class SM90AttentionContractTests(unittest.TestCase):
         self.assertEqual(indices, [4, 5, 6, 9])
         self.assertEqual(lengths, [3, 0, 1])
 
-    def test_judge_names_every_failure(self):
-        good = {"finite": True, "max_abs_error": 0.01, "tolerance": 0.02}
-        self.assertEqual(sm90.judge(good), {"passed": True, "reasons": []})
-        self.assertEqual(sm90.judge({**good, "empty_row_zero": True})["passed"], True)
-        bad = {
-            "finite": False,
-            "max_abs_error": 0.03,
-            "tolerance": 0.02,
-            "empty_row_zero": False,
-        }
-        self.assertEqual(
-            sm90.judge(bad)["reasons"],
-            ["non-finite", "error-above-bound", "empty-row-nonzero"],
-        )
-        tail = {"native_error": 0.01, "tolerance": 0.02, "omission_difference": 0.5}
-        self.assertEqual(sm90.judge_tail(tail)["reasons"], ["tail-insensitive"])
-        self.assertTrue(sm90.judge_tail({**tail, "omission_difference": 2})["passed"])
-
 
 if __name__ == "__main__":
     unittest.main()

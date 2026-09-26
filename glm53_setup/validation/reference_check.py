@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ..runtime.reference_attention import sparse_nope_reference, unpack_latent
+from .parity import bf16_bound
 
 
 def case_row(width, error, tolerance, empty_row_zero):
@@ -89,9 +90,7 @@ def main(argv=None):
             expected[row] = (logits.softmax(-1) @ k).bfloat16().float()
         error = float((actual - expected).abs().max())
         # Two BF16 ulps at the largest reference magnitude, fixed before run.
-        tolerance = (
-            2 * torch.finfo(torch.bfloat16).eps * max(1.0, float(expected.abs().max()))
-        )
+        tolerance = bf16_bound(float(expected.abs().max()))
         cases.append(case_row(width, error, tolerance, bool((actual[2] == 0).all())))
     # Sensitivity check: an omitted tail must be detectable, not washed out by tolerance.
     latent.zero_()
