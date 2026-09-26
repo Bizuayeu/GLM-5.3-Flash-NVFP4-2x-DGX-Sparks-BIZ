@@ -342,6 +342,51 @@ class ServerSenderTests(unittest.TestCase):
         self.assertFalse(configured["kwargs"]["skip_mla_queries"])
         self.assertEqual(posts[2][1]["kwargs"]["mode"], "off")
 
+    def test_off_and_split_self_are_configured_as_named(self):
+        from glm53_setup import server
+
+        for mode in ("off", "split-self"):
+            posts = []
+
+            def sender(profile, path, body):
+                posts.append((path, body))
+                if path == "/v1/completions":
+                    return {"usage": {"prompt_tokens": len(body["prompt"])}}
+                return {}
+
+            _, complete = server.agreement_senders(
+                self.native_profile(), sender, lpa_mode=mode
+            )
+            complete(list(range(600)), 5)
+            with self.subTest(mode=mode):
+                self.assertEqual(posts[0][1]["kwargs"]["mode"], mode)
+
+    def test_ask_configures_the_named_lpa_mode(self):
+        from glm53_setup import server
+
+        posts = []
+
+        def sender(profile, path, body):
+            posts.append((path, body))
+            if path == "/tokenize":
+                return {"tokens": list(range(700))}
+            if path == "/v1/chat/completions":
+                return {"usage": {"prompt_tokens": 700}}
+            return {}
+
+        profile = self.native_profile()
+        profile["generation"].update(
+            temperature=0, max_tokens=16, reasoning_effort="low", clear_thinking=True
+        )
+        profile["context"] = {"max_model_len": 4096}
+        request = {"messages": [{"role": "user", "content": "x"}]}
+        server.ask(profile, request, sender, lpa_mode="split")
+        configured = [b for p, b in posts if p == "/collective_rpc"]
+        self.assertEqual([b["kwargs"]["mode"] for b in configured], ["split", "off"])
+        profile["lpa"]["enabled"] = False
+        with self.assertRaises(ValueError):
+            server.ask(profile, request, lambda *a: {}, lpa_mode="split")
+
     def test_native_mode_scores_under_the_profiles_lpa_request(self):
         from glm53_setup import server
 
