@@ -13,6 +13,7 @@ the function proves nothing on a machine that has them installed.
 """
 
 import contextlib
+import functools
 import io
 import json
 import os
@@ -75,21 +76,43 @@ def argv(**overrides):
     return args
 
 
+@functools.cache
+def default_settings(module):
+    """One runner's settings for the default command line, built once per run."""
+    return json.dumps(kwargs_without_gpu(module, argv(), ENGINE_RUNNERS[module]))
+
+
 class EveryEngineRunnerTests(unittest.TestCase):
     """What must hold for all of them, whatever else each one measures."""
 
+    # The settings one fixture measurement is compared with the next under:
+    # one GPU, the language model alone, chunked prefill, the serving block
+    # and KV dtype, the same memory share and seed.
+    SHARED = {
+        "tensor_parallel_size": 1,
+        "language_model_only": True,
+        "enable_chunked_prefill": True,
+        "block_size": 256,
+        "kv_cache_dtype": "fp8",
+        "gpu_memory_utilization": 0.2,
+        "seed": 42,
+    }
+
     def settings(self, module):
-        return kwargs_without_gpu(module, argv(), ENGINE_RUNNERS[module])
+        return json.loads(default_settings(module))
 
     def test_none_of_them_needs_a_gpu_stack_to_state_its_settings(self):
         for module in ENGINE_RUNNERS:
             with self.subTest(runner=module):
                 self.assertIn("model", self.settings(module))
 
-    def test_the_seed_is_fixed_so_a_repeated_run_is_comparable(self):
+    def test_all_of_them_measure_under_the_same_settings(self):
         for module in ENGINE_RUNNERS:
             with self.subTest(runner=module):
-                self.assertEqual(self.settings(module)["seed"], 42)
+                settings = self.settings(module)
+                self.assertEqual(
+                    {key: settings[key] for key in self.SHARED}, self.SHARED
+                )
 
     def test_warmup_and_autotune_stay_off_so_timings_mean_something(self):
         for module in ENGINE_RUNNERS:
@@ -110,11 +133,6 @@ class EveryEngineRunnerTests(unittest.TestCase):
                 self.assertIsInstance(
                     self.settings(module)["kv_cache_memory_bytes"], int
                 )
-
-    def test_a_fixture_runner_never_asks_for_more_than_one_gpu(self):
-        for module in ENGINE_RUNNERS:
-            with self.subTest(runner=module):
-                self.assertEqual(self.settings(module)["tensor_parallel_size"], 1)
 
 
 class SpeculativeConfigTests(unittest.TestCase):
