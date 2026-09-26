@@ -2,7 +2,7 @@
 
 **Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.18.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
-**BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
+**BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. What it does not mean is in the [disclaimer](#disclaimer).
 
 [日本語](README.ja.md) · [Setup runbook](SETUP.md) · [Operations](docs/operations.md) · [Validation](docs/validation.md) · [Architecture](docs/architecture.md) · [Document map](docs/README.md)
 
@@ -162,7 +162,7 @@ This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems
 
 For decode acceleration, we selected **the checkpoint's standard MTP with three speculative tokens (k=3)**, without adding an external draft model, and one depth for both checkpoints; the reasoning is in [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21).
 
-Business-use readiness is an acceptance outcome, not implied by the BIZ suffix. Completed measurements and remaining gates are identified above and in the linked validation documents.
+Completed measurements and remaining gates are identified above and in the linked validation documents; what BIZ does not imply is in the [disclaimer](#disclaimer).
 
 ## Related research outside this repository
 
@@ -181,6 +181,24 @@ Several public recipes serve the same model on the same class of hardware with d
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | No code. Its zero-RoPE shim and reduced `index_topk` as a comparison for the attention probes |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Measurements and field reports: GB10 memory behaviour, power loss during checksums, mean acceptance length, concurrency results. Its 2026-09-20 note on quantizing the attention and MLP projections reached the same tensor set as P23 independently, at TP=4 and with quality unmeasured ([catalog](docs/optimization-catalog.md)) |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark) and the [EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT (repository code), MIT (model card for the separate weights) | No code or weights adopted. Reference for the mosaic quality panel, cold/warm measurements and verification that an overlay was actually loaded. The single-Spark mcg MTP recipe and the mul1 mosaic use different artifacts and runtimes; their speed, quality and MTP results must not be combined |
+
+## Disclaimer
+
+- **BIZ is an intent, not a promise.** It is not a product tier, a support commitment, a warranty or a certification. Business-use readiness is an acceptance outcome for the declared scope ([status by scope](#status-by-scope)), not implied by the suffix.
+- **The kpool tail ring fix is partial.** The port of [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) (`patch_kpool_ring`) is a partial fix by upstream's own account, and follow-up changes are expected ([operations](docs/operations.md#full-model-launch-checks)).
+- **The tail ring depends on the MTP depth.** Its block is 4 slots without MTP, 8 for depths 1 to 4 and 16 for depth 5, so the KV-capacity breakdown and the figures recorded from a boot change with the depth ([KV capacity](docs/server-configuration.md#kv-capacity-and-ram-requirements)).
+- **Repeatability references past 2,048 decoded tokens are re-baselined in 1.19.0.** The ring fix can change the indexer's compressed keys on such decodes with MTP, so reference hashes recorded on earlier images are not a baseline for them.
+- **`runtime.stable_indexer_topk = false` exposes [vLLM #58785](https://github.com/vllm-project/vllm/issues/58785)**, open upstream: the persistent top-k can lose candidates on overflow. Keep the key on (both templates set it).
+
+## Next Action
+
+Each item is a trigger and what this repository then does.
+
+- [vLLM #56868](https://github.com/vllm-project/vllm/issues/56868) / [#56605](https://github.com/vllm-project/vllm/issues/56605) follow-ups to #58454 merge → port them as source-pinned patches.
+- [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161) (kpool compress rework) merges → re-read `patch_kpool_seed` and `patch_kpool_ring` against it.
+- A fix equivalent to #58785 reaches the pinned vLLM → only then allow `runtime.stable_indexer_topk = false`; when [vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) merges, consider replacing the local stable sort with its kernel.
+- A vLLM release contains #58454 and its successors → move the pin to it as a minor release of its own and drop the kpool patches; the move also brings [#55736](https://github.com/vllm-project/vllm/pull/55736) (decode improvements), [#55353](https://github.com/vllm-project/vllm/pull/55353) (retention as a CLI flag) and [#53007](https://github.com/vllm-project/vllm/pull/53007) (KV LCM change), each to be re-measured.
+- [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) merges and reaches the pin → drop the slot-mapping guard (`patch_slot_mapping`).
 
 ## Local data and contribution
 

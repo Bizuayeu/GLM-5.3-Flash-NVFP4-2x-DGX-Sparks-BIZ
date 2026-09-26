@@ -2,7 +2,7 @@
 
 **略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.18.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
-**BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味で、製品ティア・サポート・保証・認定を意味しません。
+**BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
 [English](README.md) · [セットアップ手順書](SETUP.ja.md) · [運用手順](docs/operations.ja.md) · [検証範囲](docs/validation.ja.md) · [構成](docs/architecture.ja.md) · [文書一覧](docs/README.ja.md)
 
@@ -162,7 +162,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**し、両方のcheckpointに共通の深さとしました。理由は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)にあります。
 
-業務利用に適するかは検収によって判断します。BIZの語を認定済みの意味にはせず、確認済みの範囲と残る条件を上記と各検証文書に示します。
+確認済みの範囲と残る条件は上記と各検証文書に示します。BIZの語が意味しないことは[免責事項](#免責事項)にあります。
 
 ## 本リポジトリ外の関連研究
 
@@ -181,6 +181,24 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
+
+## 免責事項
+
+- **BIZは意図であり、約束ではありません。** 製品ティア・サポート・保証・認定を意味しません。業務利用に適するかは、宣言した範囲についての検収の結果であり（[範囲ごとの状態](#範囲ごとの状態)）、接尾辞からは導かれません。
+- **kpool tail ringの修正は部分的です。** [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) の移植（`patch_kpool_ring`）は上流自身が部分的な修正としており、続く変更が予定されています（[運用手順](docs/operations.ja.md#フルモデルの起動検査)）。
+- **tail ringはMTPの深さで変わります。** blockはMTPなしで4 slot、深さ1〜4で8、深さ5で16です。そのため、KV容量の分解と起動から記録する値は深さによって変わります（[KV容量](docs/server-configuration.ja.md#kv容量とramの条件)）。
+- **decodeが2,048 tokenを超える場合の再現性の基準値は、1.19.0で取り直します。** ringの修正はMTPありのそうしたdecodeでindexerの圧縮keyを変え得るため、以前のimageで記録した基準hashはその基準になりません。
+- **`runtime.stable_indexer_topk = false` にすると [vLLM #58785](https://github.com/vllm-project/vllm/issues/58785) の影響を受けます。** 上流で未解決で、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（両テンプレートとも有効）。
+
+## Next Action
+
+各項目は、きっかけと、そのとき本リポジトリが行うことです。
+
+- #58454に続く [vLLM #56868](https://github.com/vllm-project/vllm/issues/56868)／[#56605](https://github.com/vllm-project/vllm/issues/56605) の修正がmergeされる → source固定patchとして移植する。
+- [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161)（kpool compressの作り直し）がmergeされる → `patch_kpool_seed` と `patch_kpool_ring` を読み直す。
+- #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
+- #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。
+- [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
 
 ## ローカルデータと開発
 
