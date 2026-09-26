@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.16.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.17.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. It is not a product tier, a support commitment, a warranty or a certification.
 

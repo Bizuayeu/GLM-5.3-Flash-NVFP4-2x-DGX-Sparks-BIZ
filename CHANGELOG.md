@@ -2,7 +2,7 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased
+## 1.17.0 — 2026-09-26
 
 ### Changed
 
