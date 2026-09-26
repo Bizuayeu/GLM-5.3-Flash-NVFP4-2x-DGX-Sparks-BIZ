@@ -4,6 +4,35 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。この日本語版は1.6.0から始めており、それ以前の版は英語版を参照してください。項目は英語版と同じ順に並べています。
 
+## Unreleased
+
+### Changed
+
+- MTPと組むLPAは深さ1・2・3を受ける。LPAとAPC/LPAのworker、`lpa-fixture` と `apc-lpa-fixture` の `--mtp` が深さ2を許し、profileの検査はMTPの深さ4か5と組むLPAを起動前に拒む（"LPA with MTP accepts depth 1, 2 or 3"）。これまではそのprofileが起動でき、native LPAの要求がすべて失敗していた。深さ2はLPAと組んで測っていない。`glm53_setup/runtime/lpa.py` と `apc_worker.py` はimageに焼き込まれるので、深さ2にはこの版から作ったimageが要る。古いimageは要求のたびに拒む（[起動設定](docs/server-configuration.ja.md#lpaとmtp制約)）。
+- `runtime.fa2_attention` が `true` のとき、`server preflight` はimageのmarker `GLM53_FA2_ATTENTION_API=1` を要求する（行 `fa2_attention_support`、復旧先も含む）。1.6.0以降の参照imageはすべてこれを持つ。FA2のファイルは今もimageの上にmountする（[image契約](docs/server-configuration.ja.md#現行イメージの契約)）。
+- fixture runnerが一つの門を共有するようになった。`run_graph_fixture`・`run_indexer_fixture`・`lpa-fixture`・`agreement-fixture`・`run_repeat_trace` は、`fixture-run` と `apc-lpa-fixture` と同じく、fixtureのdownload statusが `complete` で、`all_tensor_bytes_verified` が真らしい値でなく `true` そのものであることを要求する。5本とも、これまではstatusを見ず、旗が `true` そのものであることも要求していなかった。拒むときはどのrunnerも一文 "Only a complete, byte-verified test fixture with 4 layers is allowed" を返し（`agreement-fixture` は4か8層、`run_repeat_trace` は層数を問わない）、`fixture-run` と `apc-lpa-fixture` の "Only a byte-verified four-layer test fixture is allowed" を含む以前の文に代わる。
+- `lpa-fixture`・`run_repeat_trace`・`freedombench` が失敗を記録するようになった。例外が抜けると、`result.json` は `"loading"` や `"running"` のまま残らず、`"status": "failed"` と `error`（例外のrepr）を持つ。keyは足すだけで、成功時の記録と終了コードは変わらない。
+- attention部品の検査は、数でない誤差をBF16の許容幅の外と読む。SM90の各caseとtail、query chunkの検査、nativeのrevisitの計時の検査は、出力そのものが有限ならそれを通していた。参照にNaNが出たときだけ効き、成功時の記録は変わらない。
+- サーバーが受け付けなかったprefix cacheのリセットは、`apc-history` と `apc-lpa-benchmark` を "Prefix cache reset was not acknowledged" で失敗させる（以前は "Dedicated server cache reset failed" と "Cache reset did not complete; do not compare these conditions"）。測る前に失敗するのは変わらない。
+- `fixture-build` は `fixture-status.json` を、`quant-error --write-status` が既にそうしていたように、atomicに書く（一時ファイル、fsync、置き換え）。中断したbuildが途中で切れた門のファイルを残すことはない。どちらのファイルも末尾に改行が付き、JSONはそれ以外同じ。
+- `tools/prepare_mtp_view.py` はlockをpackage経由で読み、revisionかimageが固定されていないlockを拒む。
+- `server agreement` はnative LPAのprofileを、rank 0の状態を読む前に拒む（"agreement requires LPA off or APC-first; native LPA rewrites prefill"）。headが動いていなくてもこの理由を返す。
+- CIは `requirements/dev.lock.txt` からnumpyを入れ、これまで常にskipしていたCPUテスト7本（NVFP4の逆量子化、agreementのKL）を走らせる。
+- 内部の整理。起動引数・環境変数・fingerprint・成功時の記録は変わらない：`server_config` がvLLM引数の雛形を `host` から、imageのcapability検査とfreeze／thawを `server` から引き取り、`host` をimportしなくなった。サイト設定の検査とNCCLの環境は `fabric` へ、`resume` は `switch` へ移した。rankの状態のパス、container名、headのorigin、prefix cacheのリセット、metricsの読み出し、projectorのパス、任意キーの既定値、MTPのdraft設定、LPAのmode keyは、それぞれ持ち主を一つにした。退役した試作5本（`fused_nope`・`fused_nope_dot`・`indexer_candidates`・`indexer_reindex`・`indexer_shared_pool`）は `runtime/` から `validation/` へ移した。`apc-history` の合否の規則、`lpa-fixture` のcaseの判定、Graph起動の数え方、BF16の一致の許容幅はテスト付きのmodule関数になった。`release_notes --match-project` は版をpackage経由で読む。参照Dockerfileのmarkerとpatch、MTPのテンプレート、overlayのhash、切替の語彙は、テストがそれぞれの持ち主に結び付ける。
+
+### Removed
+
+- `lpa-fixture --graphs` と、`glm53_setup/runtime/patch_graph_prefill.py`（decode Graphの下でのLPAのprefill）。これは実行できなかった：profileの検査はdecode Graphと組むLPAを拒み、参照imageはどれもこのpatchを当てず、`--graphs` はどのimageも持たないpatchの記録を確かめるので、読み込みの前に失敗していた。`lpa-fixture` はこのoptionを拒むようになった。engine設定は変わらず、結果は常に `false` の `decode_graphs` を持ち続ける。
+- memory probeの `zero_moe_scratch` RPC。呼ぶものは無く、配信workerで呼ぶとprocessが終わるまでMarlin MoEの呼び出しを置き換えていた。repeat traceのfixtureは自前のゼロ埋めの診断を持ち続ける。`validation.memory_probe` はcheckoutのprobeをimageの上にmountするので、次の起動からは古いimageでもこのRPCは無い。
+- 内部：`glm53_setup/runtime/patch_pipeline_layout.py` と `pipeline_state.common_layout_names`（参照imageは一度も当てていない）、`glm53_setup/validation/benchmark_attention_graph.py`（呼び手なし）。
+
+### ドキュメント
+
+- 構成：memory probeに全methodを挙げた独立の行を置き、`examples/` の行は二つのprofileを挙げ、層の表に `switch.resume`・capability検査・base imageの判定を足して `server_config` が副作用moduleをimportしないことを書いた。新しい節で、worker拡張の置き場所（配信の起動が読み込むものは `runtime/`、fixture専用のworkerは `validation/`、`expert_worker` が例外である理由）と、`python -m glm53_setup.validation.<module>` としてだけ走るrunnerを述べた。
+- launcherの文言：`server --help` は "a serial TP=2 reference experiment" ではなく配信のlauncherを説明し、監視のbannerは止まる理由にengine stallを挙げ、`tools/check_prefix_cache.py` の使い方の行は再び一つのコマンドになった。
+- exampleのコメント（英語と日本語の行を対で）：新規起動には `GLM53_MOE_ORDER_API=2`（1は起動済みの対の復旧だけ）、`decode_graphs` は不採用（P06）と明記、memory probeで読めるもの、component workerの範囲、torch 2.13だけでなく2.12.1でも起きるDynamoの状態復元、FA2以前の数値の代わりにbenchmarksを指すprefillの時間。どちらのファイルもTOMLとしては前と同じに読める。
+- 1.6.0〜1.16.0が追い越していたコードのコメント：参照attentionとそのpatchは検証専用の予備ではなく配信での役割を述べ、memory probeのdocstringは全methodを挙げ（mountするファイルではコメントだけ）、`server_config` はMTPの深さ2・4・5を未実測と呼ばず、不採用のPPとEPの先送りの注記を持たない。
+
 ## 1.16.0 — 2026-09-26
 
 ### Removed

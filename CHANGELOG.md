@@ -2,6 +2,35 @@
 
 [日本語](CHANGELOG.ja.md) (from 1.6.0; this English file is canonical and the GitHub Release is made from it)
 
+## Unreleased
+
+### Changed
+
+- LPA with MTP accepts depth 1, 2 or 3. The LPA and APC/LPA workers and the `--mtp` option of `lpa-fixture` and `apc-lpa-fixture` now allow depth 2, and profile validation refuses LPA with MTP depth 4 or 5 before launch ("LPA with MTP accepts depth 1, 2 or 3"); until now such a profile launched and every native-LPA request then failed. Depth 2 has not been measured with LPA. `glm53_setup/runtime/lpa.py` and `apc_worker.py` are baked into the image, so depth 2 needs an image built from this version; an older image refuses it on every request ([server configuration](docs/server-configuration.md#feature-combinations-and-limits)).
+- `server preflight` requires the image marker `GLM53_FA2_ATTENTION_API=1` when `runtime.fa2_attention` is `true` (row `fa2_attention_support`, recovery targets included). Every reference image since 1.6.0 carries it; the FA2 files are still mounted over the image ([image contract](docs/server-configuration.md#current-image-contract)).
+- The fixture runners share one gate. `run_graph_fixture`, `run_indexer_fixture`, `lpa-fixture`, `agreement-fixture` and `run_repeat_trace` now require, as `fixture-run` and `apc-lpa-fixture` did, that the fixture's download status is `complete` and `all_tensor_bytes_verified` is `true` itself; none of the five checked the status before, nor required the flag to be `true` rather than truthy. Every runner refuses with one sentence, "Only a complete, byte-verified test fixture with 4 layers is allowed" (4 or 8 layers for `agreement-fixture`, no layer count for `run_repeat_trace`), which replaces the earlier sentences, including "Only a byte-verified four-layer test fixture is allowed" of `fixture-run` and `apc-lpa-fixture`.
+- `lpa-fixture`, `run_repeat_trace` and `freedombench` record their failure: when an exception escapes, `result.json` gets `"status": "failed"` and `error` (the exception's repr) instead of staying at `"loading"` or `"running"`. Keys are only added; successful records and exit codes are unchanged.
+- The attention component checks read an error that is not a number as above the BF16 bound: the SM90 cases and tail, the query-chunk check and the native revisit timing check let it through when the output itself was finite. It takes a NaN in the reference; successful records are unchanged.
+- A prefix-cache reset the server does not acknowledge fails `apc-history` and `apc-lpa-benchmark` with "Prefix cache reset was not acknowledged" (was "Dedicated server cache reset failed" and "Cache reset did not complete; do not compare these conditions"), still before the case is measured.
+- `fixture-build` writes `fixture-status.json` atomically (temporary file, fsync, replace), as `quant-error --write-status` already wrote its status, so an interrupted build cannot leave a truncated gate file; both files now end with a newline, and the JSON is otherwise the same.
+- `tools/prepare_mtp_view.py` reads the lock through the package and refuses one whose revision or image is not pinned.
+- `server agreement` refuses a native-LPA profile ("agreement requires LPA off or APC-first; native LPA rewrites prefill") before it reads rank 0's state, so it gives that reason even when no head is running.
+- CI installs numpy from `requirements/dev.lock.txt` and runs the seven CPU tests it always skipped (the NVFP4 dequantisation and the agreement KL).
+- Internal, with launch arguments, environment, fingerprints and successful records unchanged: `server_config` takes the vLLM argument template from `host` and the image capability checks and freeze/thaw from `server`, and no longer imports `host`; site validation and the NCCL environment move to `fabric` and `resume` to `switch`; the rank state path, container name, head origin, prefix-cache reset, metrics read, projector path, optional defaults, MTP draft config and LPA mode key each have one owner; the five retired prototypes (`fused_nope`, `fused_nope_dot`, `indexer_candidates`, `indexer_reindex`, `indexer_shared_pool`) move from `runtime/` to `validation/`; `apc-history`'s pass/fail rules, `lpa-fixture`'s case verdict, the graph-launch count and the BF16 parity bound become module functions with tests; `release_notes --match-project` reads the version through the package; and tests tie the reference Dockerfile's markers and patches, the MTP templates, the overlays' hashes and the switch vocabulary to their owners.
+
+### Removed
+
+- `lpa-fixture --graphs`, with `glm53_setup/runtime/patch_graph_prefill.py` (the LPA prefill under decode Graphs). It could not run: profile validation refuses LPA with decode Graphs, no reference image applies the patch, and `--graphs` checked the patch's record, which no image carries, so it failed before loading. `lpa-fixture` now refuses the option; its engine settings are unchanged and its result keeps `decode_graphs`, always `false`.
+- The memory probe's `zero_moe_scratch` RPC. Nothing called it, and on a serving worker it replaced the Marlin MoE call for the life of the process; the repeat-trace fixture keeps its own zeroing diagnostic. `validation.memory_probe` mounts the checkout's probe over the image, so from the next launch the RPC is gone on older images too.
+- Internal: `glm53_setup/runtime/patch_pipeline_layout.py` with `pipeline_state.common_layout_names` (the reference image never applied it) and `glm53_setup/validation/benchmark_attention_graph.py` (no caller).
+
+### Documentation
+
+- Architecture: the memory probe has its own row naming every method, `examples/` names both profiles, the layer table adds `switch.resume`, the capability checks and the base-image verdict and says `server_config` imports no side-effect module, and a new section states where a worker extension belongs (`runtime/` for what a serving launch loads, `validation/` for fixture-only workers, and why `expert_worker` is the exception) and which runners run only as `python -m glm53_setup.validation.<module>`.
+- Launcher text: `server --help` describes the serving launcher instead of "a serial TP=2 reference experiment", the supervision banner names the engine stall among the stops, and the usage line of `tools/check_prefix_cache.py` is one command again.
+- Example comments, English and Japanese lines in step: `GLM53_MOE_ORDER_API=2` for new launches (1 only to recover a launched pair), `decode_graphs` marked not adopted (P06), the memory probe's readings, the component worker's scope, the Dynamo reset on torch 2.12.1 as well as 2.13, and prefill times pointed at the benchmarks instead of pre-FA2 figures. Both files parse to the same TOML.
+- Code comments that 1.6.0 to 1.16.0 had overtaken: the reference attention and its patch describe serving instead of a validation-only fallback, the memory probe's docstring names all its methods (comments only in the mounted files), and `server_config` no longer calls MTP depths 2, 4 and 5 unmeasured nor keeps deferral notes for PP and EP, which were not adopted.
+
 ## 1.16.0 — 2026-09-26
 
 ### Removed
