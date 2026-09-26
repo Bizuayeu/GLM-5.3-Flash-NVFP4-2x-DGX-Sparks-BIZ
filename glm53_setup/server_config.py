@@ -17,6 +17,9 @@ from .runtime.apc_runtime import RuntimeSettings
 
 # Where server.command mounts the LPA projector inside the container.
 LPA_PROJECTOR = "/lpa/projector.pt"
+# The profile's lpa/ directory, mounted read-only: candidate projectors a split
+# request may name (docs/plans: the projector is being refitted).
+LPA_CANDIDATES = "/lpa/candidates"
 
 
 def load(path):
@@ -1021,25 +1024,43 @@ def request_body(profile, request):
     return body
 
 
-def lpa_request(profile, length, mode=None):
+def candidate_projector(name):
+    """A projector under the mounted lpa/ directory, named by a relative path."""
+    if not isinstance(name, str) or not name or name.startswith("/"):
+        raise ValueError(f"A candidate projector is a path under lpa/: {name!r}")
+    parts = PurePosixPath(name).parts
+    if ".." in parts:
+        raise ValueError(f"A candidate projector is a path under lpa/: {name!r}")
+    return f"{LPA_CANDIDATES}/{'/'.join(parts)}"
+
+
+def lpa_request(profile, length, mode=None, projector=None, cut=None):
     """The worker's lpa_configure for one request of ``length`` tokens.
 
     Without ``mode`` it is the profile's own request (predict past the
     break-even, else off); ``off`` is that request computed normally;
-    ``split``/``split-self`` cover every token.
+    ``split``/``split-self`` cover every token, and only they may name a
+    candidate ``projector`` (a path under the profile's lpa/ directory) and a
+    ``cut`` other than the profile's.
     """
     lpa = profile["lpa"]
     if mode not in (None, "off", "split", "split-self"):
         raise ValueError(f"Unsupported LPA request mode: {mode}")
+    if mode not in ("split", "split-self") and (projector, cut) != (None, None):
+        raise ValueError("Only split requests name a projector or cut")
+    if cut is not None and (type(cut) is not int or cut < 0):
+        raise ValueError(f"Invalid cut: {cut!r}")
     if mode in ("split", "split-self"):
         # Split writes every late-layer state from the projection: no tail, no
         # query skipping, no drafts (the worker refuses them too).
         return {
             "mode": mode,
-            "cut": lpa["cut"],
+            "cut": lpa["cut"] if cut is None else cut,
             "prompt_length": length,
             "tail": 1,
-            "predictor_path": LPA_PROJECTOR,
+            "predictor_path": (
+                LPA_PROJECTOR if projector is None else candidate_projector(projector)
+            ),
             "skip_mla_queries": False,
             "allow_mtp": False,
         }

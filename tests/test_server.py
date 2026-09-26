@@ -1150,6 +1150,19 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["lpa"]["enabled"] = True
         self.assertIn(mount, server.command(self.profile, path, 0, "c", hf))
 
+    def test_an_lpa_launch_mounts_the_candidate_projectors_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "server.toml"
+            hf = ROOT / "state/test-hf"
+            self.profile["lpa"]["enabled"] = True
+            mount = f"{(Path(tmp) / 'lpa').resolve()}:/lpa/candidates:ro"
+            # No directory, no mount: docker would create it as root.
+            self.assertNotIn(mount, server.command(self.profile, path, 0, "c", hf))
+            (Path(tmp) / "lpa").mkdir()
+            self.assertIn(mount, server.command(self.profile, path, 0, "c", hf))
+            self.profile["lpa"]["enabled"] = False
+            self.assertNotIn(mount, server.command(self.profile, path, 0, "c", hf))
+
     def derived(self, root, real=False):
         overlay = root / "kda-quant.py"
         overlay.write_text("x = 1  # kda-quant-overlay\n", encoding="utf-8")
@@ -1472,6 +1485,28 @@ class ServerConfigTests(unittest.TestCase):
                 self.assertFalse(spec["skip_mla_queries"])
                 self.assertFalse(spec["allow_mtp"])
                 self.assertEqual(spec["predictor_path"], "/lpa/projector.pt")
+
+    def test_a_split_request_can_name_a_candidate_projector_and_cut(self):
+        self.profile["lpa"]["enabled"] = True
+        spec = config.lpa_request(
+            self.profile, 100, mode="split", projector="cut36-r256/projector.pt", cut=36
+        )
+        self.assertEqual(
+            (spec["predictor_path"], spec["cut"]),
+            ("/lpa/candidates/cut36-r256/projector.pt", 36),
+        )
+        spec = config.lpa_request(self.profile, 100, mode="split-self", cut=40)
+        self.assertEqual(
+            (spec["predictor_path"], spec["cut"]), ("/lpa/projector.pt", 40)
+        )
+        for projector in ("../escape.pt", "/abs/projector.pt", "a/../../b.pt", ""):
+            with self.subTest(projector=projector), self.assertRaises(ValueError):
+                config.lpa_request(self.profile, 100, mode="split", projector=projector)
+        for mode in (None, "off"):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                config.lpa_request(self.profile, 100, mode=mode, cut=36)
+        with self.assertRaises(ValueError):
+            config.lpa_request(self.profile, 100, mode="split", cut=True)
 
     def test_off_request_is_the_profiles_request_computed_normally(self):
         self.profile["lpa"]["enabled"] = True

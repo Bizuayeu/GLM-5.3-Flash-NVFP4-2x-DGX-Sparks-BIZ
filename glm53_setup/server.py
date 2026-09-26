@@ -119,6 +119,9 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["lpa"]["enabled"]:
         target = settings.LPA_PROJECTOR
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
+        candidates = (config_path.parent / "lpa").resolve()
+        if candidates.is_dir():  # a missing source would be created as root
+            args += ["-v", f"{candidates}:{settings.LPA_CANDIDATES}:ro"]
         # The image bakes the worker it was built with; the split modes are
         # newer than that, so the launched worker is the checkout's copy.
         source = ROOT / "glm53_setup/runtime/lpa.py"
@@ -512,17 +515,21 @@ def mojibake_running(profile):
 LPA_MODES = ("off", "native", "split", "split-self")
 
 
-def lpa_mode_request(profile, length, lpa_mode):
+def lpa_mode_request(profile, length, lpa_mode, projector=None, cut=None):
     """lpa_configure kwargs for a named mode on a native-LPA profile."""
     native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
     if lpa_mode not in LPA_MODES or not native:
         raise ValueError(f"--lpa-mode takes {LPA_MODES} on a native-LPA profile")
     return settings.lpa_request(
-        profile, length, mode=None if lpa_mode == "native" else lpa_mode
+        profile,
+        length,
+        mode=None if lpa_mode == "native" else lpa_mode,
+        projector=projector,
+        cut=cut,
     )
 
 
-def agreement_senders(profile, sender=post, lpa_mode=None):
+def agreement_senders(profile, sender=post, lpa_mode=None, projector=None, cut=None):
     """Tokenize and completions senders for the running rank 0.
 
     The text is tokenized once, then sent back as token ids, so the scored
@@ -542,7 +549,9 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
             "agreement requires LPA off or APC-first; native LPA rewrites prefill"
         )
     if lpa_mode is not None:
-        lpa_mode_request(profile, 1, lpa_mode)
+        lpa_mode_request(profile, 1, lpa_mode, projector, cut)
+    elif (projector, cut) != (None, None):
+        raise ValueError("--lpa-projector and --lpa-cut need --lpa-mode")
     model = profile["api"]["served_model_name"]
 
     def tokenize(text):
@@ -569,7 +578,7 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
         length = len(token_ids)
         rpc = {
             "method": "lpa_configure",
-            "kwargs": lpa_mode_request(profile, length, lpa_mode),
+            "kwargs": lpa_mode_request(profile, length, lpa_mode, projector, cut),
             "timeout": profile["generation"]["timeout_seconds"],
         }
         try:
@@ -585,15 +594,19 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
     return tokenize, complete
 
 
-def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
+def agreement_running(
+    profile, reference=None, lpa_mode=None, texts=None, projector=None, cut=None
+):
     """Teacher-forced reading on the running rank 0; compared with a saved run."""
     # A profile the reading cannot be taken under is refused before the head is read.
-    tokenize, complete = agreement_senders(profile, lpa_mode=lpa_mode)
+    tokenize, complete = agreement_senders(profile, post, lpa_mode, projector, cut)
 
     def run(state):
         result = agreement.run(tokenize, complete, *([texts] if texts else []))
         if lpa_mode is not None:
             result["lpa_mode"] = lpa_mode
+        if (projector, cut) != (None, None):
+            result["lpa_projector"], result["lpa_cut"] = projector, cut
         if reference is not None:
             result["reference"] = str(reference)
             result["comparison"] = agreement.compare_records(
@@ -604,10 +617,12 @@ def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
     return recorded_on_head(profile, "agreement", run)
 
 
-def ask(profile, request, sender=post, lpa_mode=None):
+def ask(profile, request, sender=post, lpa_mode=None, projector=None, cut=None):
     body = settings.request_body(profile, request)
     if lpa_mode is not None:
-        lpa_mode_request(profile, 1, lpa_mode)
+        lpa_mode_request(profile, 1, lpa_mode, projector, cut)
+    elif (projector, cut) != (None, None):
+        raise ValueError("--lpa-projector and --lpa-cut need --lpa-mode")
     elif not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
@@ -650,7 +665,7 @@ def ask(profile, request, sender=post, lpa_mode=None):
         "kwargs": (
             settings.lpa_request(profile, length)
             if lpa_mode is None
-            else lpa_mode_request(profile, length, lpa_mode)
+            else lpa_mode_request(profile, length, lpa_mode, projector, cut)
         ),
         "timeout": profile["generation"]["timeout_seconds"],
     }
@@ -758,7 +773,9 @@ def act_ask(cli, args, profile):
             if args.request
             else {"messages": [{"role": "user", "content": args.prompt}]}
         )
-        result = ask(profile, body, lpa_mode=args.lpa_mode)
+        result = ask(
+            profile, body, post, args.lpa_mode, args.lpa_projector, args.lpa_cut
+        )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -788,7 +805,9 @@ def act_mojibake(cli, args, profile):
 def act_agreement(cli, args, profile):
     """Score the running head against a saved reading."""
     texts = read_json(args.texts) if args.texts else None
-    result = agreement_running(profile, args.reference, args.lpa_mode, texts)
+    result = agreement_running(
+        profile, args.reference, args.lpa_mode, texts, args.lpa_projector, args.lpa_cut
+    )
     # Per-position rows stay in the record; the terminal gets the rates.
     for row in result["texts"]:
         for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
@@ -914,6 +933,13 @@ def parser():
     )
     cli.add_argument(
         "--texts", type=Path, help="agreement: JSON object of name -> text to score"
+    )
+    cli.add_argument(
+        "--lpa-projector",
+        help="split/split-self: a candidate projector, a path under the profile's lpa/",
+    )
+    cli.add_argument(
+        "--lpa-cut", type=int, help="split/split-self: the cut the projector was fit at"
     )
     cli.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     cli.add_argument("--rank", type=int, choices=[0, 1], default=0)

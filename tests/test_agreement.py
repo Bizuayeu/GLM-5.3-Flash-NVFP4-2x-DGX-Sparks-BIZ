@@ -387,6 +387,35 @@ class ServerSenderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.ask(profile, request, lambda *a: {}, lpa_mode="split")
 
+    def test_a_candidate_projector_and_cut_reach_the_configured_request(self):
+        from glm53_setup import server
+
+        posts = []
+
+        def sender(profile, path, body):
+            posts.append((path, body))
+            if path == "/v1/completions":
+                return {"usage": {"prompt_tokens": len(body["prompt"])}}
+            return {}
+
+        _, complete = server.agreement_senders(
+            self.native_profile(),
+            sender,
+            lpa_mode="split",
+            projector="cut40/projector.pt",
+            cut=40,
+        )
+        complete([1, 2, 3], 5)
+        kwargs = posts[0][1]["kwargs"]
+        self.assertEqual(
+            (kwargs["predictor_path"], kwargs["cut"]),
+            ("/lpa/candidates/cut40/projector.pt", 40),
+        )
+        with self.assertRaises(ValueError):
+            server.agreement_senders(
+                self.native_profile(), sender, lpa_mode="native", cut=40
+            )
+
     def test_native_mode_scores_under_the_profiles_lpa_request(self):
         from glm53_setup import server
 
