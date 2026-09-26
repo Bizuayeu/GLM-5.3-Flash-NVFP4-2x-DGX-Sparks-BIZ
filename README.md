@@ -187,8 +187,8 @@ Several public recipes serve the same model on the same class of hardware with d
 - **BIZ is an intent, not a promise.** It is not a product tier, a support commitment, a warranty or a certification. Business-use readiness is an acceptance outcome for the declared scope ([status by scope](#status-by-scope)), not implied by the suffix.
 - **The kpool tail ring fix is partial.** The port of [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) (`patch_kpool_ring`) is a partial fix by upstream's own account, and follow-up changes are expected ([operations](docs/operations.md#full-model-launch-checks)).
 - **The tail ring depends on the MTP depth.** Its block is 4 slots without MTP, 8 for depths 1 to 4 and 16 for depth 5, so the KV-capacity breakdown and the figures recorded from a boot change with the depth ([KV capacity](docs/server-configuration.md#kv-capacity-and-ram-requirements)).
-- **Repeatability references past 2,048 decoded tokens are re-baselined in 1.19.0.** The ring fix can change the indexer's compressed keys on such decodes with MTP, so reference hashes recorded on earlier images are not a baseline for them.
-- **`runtime.stable_indexer_topk = false` exposes [vLLM #58785](https://github.com/vllm-project/vllm/issues/58785)**, open upstream: the persistent top-k can lose candidates on overflow. Keep the key on (both templates set it).
+- **Repeatability references for decodes whose context passes 2,048 tokens are re-baselined in 1.19.0.** Past the indexer's `index_topk` (2,048), the ring fix can change the compressed keys of pools built during decode with MTP, whether the length comes from the prompt or the output, so reference hashes recorded on earlier images are not a baseline for them.
+- **`runtime.stable_indexer_topk = false` exposes the defect that [vLLM #58785](https://github.com/vllm-project/vllm/pull/58785) fixes**, a pull request still open upstream: the persistent top-k can lose candidates on overflow. Keep the key on (both templates set it).
 
 ## Next Action
 

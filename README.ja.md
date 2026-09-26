@@ -187,8 +187,8 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - **BIZは意図であり、約束ではありません。** 製品ティア・サポート・保証・認定を意味しません。業務利用に適するかは、宣言した範囲についての検収の結果であり（[範囲ごとの状態](#範囲ごとの状態)）、接尾辞からは導かれません。
 - **kpool tail ringの修正は部分的です。** [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) の移植（`patch_kpool_ring`）は上流自身が部分的な修正としており、続く変更が予定されています（[運用手順](docs/operations.ja.md#フルモデルの起動検査)）。
 - **tail ringはMTPの深さで変わります。** blockはMTPなしで4 slot、深さ1〜4で8、深さ5で16です。そのため、KV容量の分解と起動から記録する値は深さによって変わります（[KV容量](docs/server-configuration.ja.md#kv容量とramの条件)）。
-- **decodeが2,048 tokenを超える場合の再現性の基準値は、1.19.0で取り直します。** ringの修正はMTPありのそうしたdecodeでindexerの圧縮keyを変え得るため、以前のimageで記録した基準hashはその基準になりません。
-- **`runtime.stable_indexer_topk = false` にすると [vLLM #58785](https://github.com/vllm-project/vllm/issues/58785) の影響を受けます。** 上流で未解決で、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（両テンプレートとも有効）。
+- **文脈が2,048 tokenを超えるdecodeの再現性の基準値は、1.19.0で取り直します。** indexerの `index_topk`（2,048）を超えると、ringの修正はMTPありのdecode中に作られるpoolの圧縮keyを変え得ます。長さがpromptから来てもoutputから来ても同じです。以前のimageで記録した基準hashは、その基準になりません。
+- **`runtime.stable_indexer_topk = false` にすると、[vLLM #58785](https://github.com/vllm-project/vllm/pull/58785) が直す不具合の影響を受けます。** このpull requestは上流でまだopenで、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（両テンプレートとも有効）。
 
 ## Next Action
 

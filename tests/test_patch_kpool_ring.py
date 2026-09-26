@@ -259,7 +259,8 @@ class PrepareTests(unittest.TestCase):
             (patch_kpool_ring.KERNELS, kernels),
         ):
             (package / name).parent.mkdir(parents=True, exist_ok=True)
-            (package / name).write_text(text, encoding="utf-8")
+            # Bytes, not write_text: on Windows that writes CRLF and the anchors miss.
+            (package / name).write_bytes(text.encode("utf-8"))
         return package
 
     def test_both_files_are_checked_before_either_is_patched(self):
