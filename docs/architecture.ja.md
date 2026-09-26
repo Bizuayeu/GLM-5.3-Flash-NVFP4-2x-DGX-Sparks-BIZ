@@ -37,6 +37,7 @@
 | `glm53_setup/runtime/patch_slot_mapping.py` | source固定patch：slot対応付けのkernelがblock tableを行の中だけで読む |
 | `glm53_setup/runtime/patch_kpool_seed.py` | source固定patch：kpoolのprefill seedがtailのblockをtailのstrideで番地付けする（vLLM #57477） |
 | `glm53_setup/runtime/patch_kpool_ring.py` | source固定patch：kpoolの生tailのringが投機draftの分まで広がり、大きさはMTPの深さで決まる（vLLM #58454）。`patch_kpool_seed` の後に当てる |
+| `glm53_setup/runtime/patch_load_clone.py` | source固定patch：safetensorsのtensorを、loaderがGPUへ送る前にcheckpointのfile mappingから匿名メモリへcloneする |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |

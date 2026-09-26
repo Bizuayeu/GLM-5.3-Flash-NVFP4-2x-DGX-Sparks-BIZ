@@ -108,10 +108,6 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 `runtime.index_checks` は `auto`／`sync`／`async`（配布既定） を選びます。autoはeagerで同期検査、Graphで非同期検査を使い、従来の動作を維持します。asyncを明示すると、独立評価したeagerの非同期検査を選べます（`GLM53_ASYNC_INDEX_CHECK_API=1` が必要）。範囲検査は常に実施します。asyncで不正indexを検出するとCUDA contextが使えなくなる場合があるため、両rankを再起動します。Graphではsyncを拒否します。
 
-### 重みの読み込み
-
-`runtime.safetensors_load_strategy`（未指定では何も渡さずvLLMに任せる。テンプレートには書かない）は、`eager`・`lazy`・`prefetch` のいずれかを両rankのvLLMへ `--safetensors-load-strategy` として渡します。それ以外の値は拒否します。基準の2台では1.18.0で（2026-09-26、4 KiB page、kernel 6.17.0-1032-nvidia）`Loading weights took` がrank 0で532秒、rank 1で192秒、約0.17 GB/sでした。GB10では、CUDA contextの下でのhostからdeviceへのcopyは、fileを割り当てたmappingからだと0.1 GB/s前後、匿名メモリからだと約3.5倍速く走ります。vLLMの既定はshardをfileのmapping越しに読み、`eager` は各shardを `f.read()` で丸ごと匿名メモリへ読んでからtensorをcopyします。代わりにメモリを使います。shardを読む間、少なくともそのshard（18個のうち最大は11.15 GiB）が匿名メモリに載り、unified memoryではそれが重みやKVと同じpoolなので、ほかの割当と同じく `reserve_gib` に効きます。`eager` でこの2台の読み込みが縮むか、実行中に `MemAvailable` がどこまで下がるかは、まだ測っていません。両方を記録してから採用してください。`prefetch` は、mapping越しに読む前にpage cacheを温めるだけです。このkeyを持つprofileは新しいfingerprintになり、持たないprofileは元のままです。
-
 ### 並列化と通信
 
 `runtime.nccl_channels`（未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。MTU 1500で8本にすると、実モデルの最小空きメモリがheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（[チャネル数の測定](nccl-validation.ja.md#チャネル数)）。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択をそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。
@@ -242,6 +238,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup`（`prefix_dedup_support`） | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
 | `GLM53_KPOOL_RING=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 未リリース（1.19.0のbranch） |
+| `GLM53_LOAD_CLONE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 未リリース（1.19.0のbranch） |
 
 1.14.0から1.17.0までに作ったimageは、取り除いた `runtime.mla_decode_cpb` の `GLM53_MLA_DECODE_CPB_API=1` と、届かないpatchも持ちます。どの検査もそれを読まず、害はありません。
 

@@ -372,34 +372,6 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
-    def test_safetensors_load_strategy_is_optional_and_passed_on_both_ranks(self):
-        # Absent (the template): nothing is passed and the fingerprint is unchanged.
-        distributed = config.load(ROOT / "examples/server.example.toml")
-        self.assertNotIn("safetensors_load_strategy", distributed["runtime"])
-        before = config.fingerprint(self.profile)
-        for rank in (0, 1):
-            self.assertNotIn(
-                "--safetensors-load-strategy",
-                config.serve_args(self.profile, rank, "/hf/model"),
-            )
-        for value in ("eager", "lazy", "prefetch"):
-            with self.subTest(value=value):
-                profile = copy.deepcopy(self.profile)
-                profile["runtime"]["safetensors_load_strategy"] = value
-                config.validate(profile)
-                self.assertNotEqual(config.fingerprint(profile), before)
-                for rank in (0, 1):
-                    args = config.serve_args(profile, rank, "/hf/model")
-                    index = args.index("--safetensors-load-strategy")
-                    self.assertEqual(args[index + 1], value)
-                    self.assertEqual(args.count("--safetensors-load-strategy"), 1)
-        for bad in ("torchao", "EAGER", "", True, 1, None):
-            with self.subTest(bad=bad):
-                profile = copy.deepcopy(self.profile)
-                profile["runtime"]["safetensors_load_strategy"] = bad
-                with self.assertRaises(ValueError):
-                    config.validate(profile)
-
     def test_canonical_moe_order_is_on_in_the_template_and_optional(self):
         distributed = config.load(ROOT / "examples/server.example.toml")
         self.assertIs(distributed["runtime"]["canonical_moe_order"], True)
@@ -1484,6 +1456,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
     UNCHECKED_MARKERS = {
         "GLM53_KPOOL_SEED_STRIDE=1": "build-patch record, no reader (CHANGELOG 1.13.0)",
         "GLM53_KPOOL_RING=1": "build-patch record, no reader (vLLM #58454)",
+        "GLM53_LOAD_CLONE=1": "build-patch record, no reader (weight loading off the file mapping)",
         "GLM53_SLOT_MAPPING_GUARD=1": "build-patch record, no reader (CHANGELOG 1.7.0)",
         "GLM53_CANONICAL_CANDIDATES=1": "switch default read by candidate_order",
         "GLM53_CANONICAL_MOE_ORDER=1": "switch default read by moe_token_order",

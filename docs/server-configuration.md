@@ -97,10 +97,6 @@ These switches cover a request alone. With `max_num_seqs` of 2 or more a request
 
 `runtime.index_checks` accepts `auto`, `sync` or `async` (the distribution default). Auto preserves synchronous checks in eager execution and selects asynchronous checks for Graphs. Explicit async enables the independently measured eager path; it requires `GLM53_ASYNC_INDEX_CHECK_API=1`. Checks are always performed. Invalid indices in async mode can invalidate the CUDA context, requiring both ranks to restart. Graphs reject explicit sync.
 
-### Weight loading
-
-`runtime.safetensors_load_strategy` (absent = nothing is passed and vLLM decides; not in the templates) passes `--safetensors-load-strategy` with `eager`, `lazy` or `prefetch` to vLLM on both ranks; other values are refused. On the reference pair with 1.18.0 (2026-09-26, 4 KiB pages, kernel 6.17.0-1032-nvidia) `Loading weights took` 532 s on rank 0 and 192 s on rank 1, about 0.17 GB/s. On GB10 a host-to-device copy under a CUDA context runs near 0.1 GB/s from a file-backed mapping and about 3.5 times faster from anonymous memory; vLLM's default reads the shards through a file mapping, while `eager` reads each shard whole with `f.read()` into anonymous memory before its tensors are copied. The cost is memory: while a shard is loaded, at least that shard (the largest of the 18 is 11.15 GiB) sits in anonymous memory, and on unified memory that is the same pool the weights and KV come from, so it counts against `reserve_gib` like any other allocation. Whether `eager` shortens loading on this pair, and how far `MemAvailable` falls while it runs, is not measured yet; adopt it only after both are recorded. `prefetch` only warms the page cache before the mapped read. A profile with the key has a new fingerprint; one without it keeps its own.
-
 ### Parallelism and transport
 
 `runtime.nccl_channels` (absent = NCCL chooses; template 8) sets `NCCL_MIN_NCHANNELS` and `NCCL_MAX_NCHANNELS` to the same positive integer on both ranks. On the reference pair NCCL 2.30.7 chooses 64 channels by itself; at 8 channels and MTU 1500 the full model's lowest free memory rose by 2.8 GiB on the head and 3.0 GiB on the peer, while prefill did not slow ([channel-count measurements](nccl-validation.md#channel-count)). A profile written before 1.3.1 has no key and keeps NCCL's choice; add the key to adopt the template value. Informed by Mia PR #200.
@@ -231,6 +227,7 @@ Build the reference image from the checkout you launch (`python -m glm53_setup b
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup` (`prefix_dedup_support`) | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.13.0 |
 | `GLM53_KPOOL_RING=1` | Never ([operations](operations.md#full-model-launch-checks)) | Unreleased (1.19.0 branch) |
+| `GLM53_LOAD_CLONE=1` | Never ([operations](operations.md#full-model-launch-checks)) | Unreleased (1.19.0 branch) |
 
 Images built from 1.14.0 through 1.17.0 also carry `GLM53_MLA_DECODE_CPB_API=1` and the unreachable patch of the removed `runtime.mla_decode_cpb`; no check reads them, and they are harmless.
 

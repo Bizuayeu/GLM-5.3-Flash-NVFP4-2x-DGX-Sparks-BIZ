@@ -36,11 +36,6 @@ prefix_page_dedup = true # A page whose hash is already cached is not registered
 # 再パックしたcheckpointはこの節の末尾の [runtime.derived_checkpoint] 表。
 # Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
 # cuda_allocator_conf = "expandable_segments:True"
-# Optional --safetensors-load-strategy on both ranks: eager, lazy or prefetch; omitted = vLLM decides.
-# eager reads each shard into anonymous memory first (up to about 11 GiB at once, from the same unified
-# pool as the weights); not measured yet (docs/server-configuration.md#weight-loading).
-# 重みshardの読み方。eagerは1 shard（最大約11 GiB）を匿名メモリに読んでから載せる。未計測。未指定はvLLM任せ。
-# safetensors_load_strategy = "eager"
 nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses (64 on the reference pair)
 # 8 returned about 3 GiB per rank against 64 with no prefill loss (docs/nccl-validation.md#channel-count).
 # 両rankのNCCLチャネル数（MIN=MAX）。未指定はNCCL任せ（参照機では64）。8で各rank約3 GiB戻り、prefillは落ちない。
