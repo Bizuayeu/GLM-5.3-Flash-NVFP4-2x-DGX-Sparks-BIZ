@@ -28,11 +28,11 @@ def main(argv=None):
     fused = args.fused_attention or args.tf32x3_attention
     candidate_name = "tf32x3" if args.tf32x3_attention else "fused"
     if args.tf32x3_attention:
-        from glm53_setup.runtime.fused_nope_dot import (
+        from glm53_setup.validation.fused_nope_dot import (
             dot_nope_tf32x3 as fused_nope_attention,
         )
     elif args.fused_attention:
-        from glm53_setup.runtime.fused_nope import fused_nope_attention
+        from glm53_setup.validation.fused_nope import fused_nope_attention
     torch.backends.cuda.matmul.allow_tf32 = False
     packed = torch.zeros((4096, 656), dtype=torch.uint8, device="cuda")
     packed[:, :512] = (

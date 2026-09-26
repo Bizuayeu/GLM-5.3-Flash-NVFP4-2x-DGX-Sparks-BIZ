@@ -13,8 +13,8 @@ def main(argv=None):
     import torch
     from vllm.utils.deep_gemm import fp8_fp4_mqa_logits
 
-    from glm53_setup.runtime.indexer_reindex import candidate_scores_cuda
-    from glm53_setup.runtime.indexer_shared_pool import shared_pool_scores
+    from glm53_setup.validation.indexer_reindex import candidate_scores_cuda
+    from glm53_setup.validation.indexer_shared_pool import shared_pool_scores
 
     args.output.mkdir(parents=True, exist_ok=False)
     torch.manual_seed(73)

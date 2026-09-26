@@ -19,9 +19,9 @@ class FusedNopeTests(unittest.TestCase):
         if not torch.cuda.is_available():
             self.skipTest("CUDA required")
         if implementation == "simt":
-            from glm53_setup.runtime.fused_nope import fused_nope_attention
+            from glm53_setup.validation.fused_nope import fused_nope_attention
         else:
-            from glm53_setup.runtime.fused_nope_dot import (
+            from glm53_setup.validation.fused_nope_dot import (
                 dot_nope_tf32x3 as fused_nope_attention,
             )
         from glm53_setup.runtime.reference_attention import unpack_latent

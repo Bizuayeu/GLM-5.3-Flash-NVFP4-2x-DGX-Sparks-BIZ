@@ -130,7 +130,7 @@ kernelに収めるためにpoolを1つ落とす場合（2,051→2,047候補）�
 
 ### head共有Tensor Core候補 — 不採用
 
-`runtime.fused_nope_dot.dot_nope_tf32x3` は別の追試です。各programが復号したK/Vを16 query head間で共有し、明示的な `tf32x3` の行列積と、FP32のsoftmax／累積、BF16出力を使います。IEEEと同値の算術ではなく、精度の選択は[Tritonのdot API](https://triton-lang.org/main/python-api/generated/triton.language.dot.html)が定義します。ベンチはPTXのhashを記録し、TF32 MMA命令が生成されたことを確認します。与えられた候補はすべて保持し、既存のshape／device／範囲の検査を共有しています。
+`validation.fused_nope_dot.dot_nope_tf32x3` は別の追試です。各programが復号したK/Vを16 query head間で共有し、明示的な `tf32x3` の行列積と、FP32のsoftmax／累積、BF16出力を使います。IEEEと同値の算術ではなく、精度の選択は[Tritonのdot API](https://triton-lang.org/main/python-api/generated/triton.language.dot.html)が定義します。ベンチはPTXのhashを記録し、TF32 MMA命令が生成されたことを確認します。与えられた候補はすべて保持し、既存のshape／device／範囲の検査を共有しています。
 
 GPUのFP64、空行、末尾候補のみの試験は `dot-component-v33-results` で通過しました。同じimage `7cb5f93…` でモデル重みなしの単体部品を実行し、時間測定した出力はすべて有限で、事前に宣言した許容範囲に収まりました。PTXにはTF32 MMA命令が含まれます。ただし、16／32 headでコンパイル時のregister spillが1,522／1,530と報告され、kernelは大幅に遅くなりました。512 query行では、参照実装に対するTF32x3が16 headで約63.75→962.42 ms、32 headで68.95→1,945.97 msでした。この実装は **不採用** で、全モデルへの統合も高速化の主張もありません。register spillの記録は、将来の再設計のために残します。
 

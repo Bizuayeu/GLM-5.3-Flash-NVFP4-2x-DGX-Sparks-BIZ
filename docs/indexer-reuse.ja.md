@@ -16,9 +16,9 @@
 ## 保持した部品
 
 - `runtime/indexer_capture.py`（`runtime/indexer_worker.py` がLPA／MTPと独立に取り付ける）：束ねたkpoolモジュールで、範囲を限定したCUDA eventの計時と論理候補のcaptureを行い、バイト数・event数に上限があります。4層fixtureの2K／8Kの実行ではlayer 3の候補を採取し、native／capture／復帰後の出力tokenは一致しました。
-- `runtime/indexer_candidates.py`：要求内の選択snapshot、層対の検証、候補だけを対象とするFP32のscore参照実装、完全なpoolと未完tailの展開。同点は小さいpool IDを採ります。
-- `runtime/indexer_reindex.py`：固定版のFP8・32 head／128特徴の契約で、与えたpoolを採点する単体のTriton実装。候補1／17／128件で独立なFP64の密oracleと照合しました（`rtol=2e-5`、`atol=2e-4`）。
-- `runtime/indexer_shared_pool.py`：共有候補poolを、target自身のK／scaleで固定版のnative Tensor Core採点器により採点します。
+- `validation/indexer_candidates.py`：要求内の選択snapshot、層対の検証、候補だけを対象とするFP32のscore参照実装、完全なpoolと未完tailの展開。同点は小さいpool IDを採ります。
+- `validation/indexer_reindex.py`：固定版のFP8・32 head／128特徴の契約で、与えたpoolを採点する単体のTriton実装。候補1／17／128件で独立なFP64の密oracleと照合しました（`rtol=2e-5`、`atol=2e-4`）。
+- `validation/indexer_shared_pool.py`：共有候補poolを、target自身のK／scaleで固定版のnative Tensor Core採点器により採点します。
 
 query 512件・選択pool 1,024個では、共有pool経路は約0.129 msで、nativeによる8,192 pool（kpool=4で約32K token）の採点0.234 msより速い一方、2,048 pool（約8K）の0.068 msに対しては悪化でした。`benchmark_reindex` がこれらを記録し、選択されたscoreをnativeと照合します。queryごとに採点する最初のTriton試作は正しかったものの、nativeより大幅に遅いものでした。CPUの `indexer-overlap` コマンドは、揃えた `source`／`target` 行（`request_id`・`query_position`・`coordinate_space="logical_tokens"`・`indices`、source側の任意の `candidate_pool`）を比較し、整列していない入力、因果的でない入力、物理slotの入力は拒否します。
 

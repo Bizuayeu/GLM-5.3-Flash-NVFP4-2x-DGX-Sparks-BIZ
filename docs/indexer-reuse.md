@@ -16,9 +16,9 @@
 ## Retained components
 
 - `runtime/indexer_capture.py`, attached by `runtime/indexer_worker.py` independently of LPA/MTP: scoped CUDA-event timing and logical-candidate capture on bound kpool modules, with byte/event bounds. On the four-layer fixture 2K/8K runs captured layer-3 candidates with equal native/capture/restored output tokens.
-- `runtime/indexer_candidates.py`: request-local selection snapshots, layer-pair validation, a candidate-only FP32 score reference and expansion of complete pools plus the unfinished tail; ties go to the lower pool ID.
-- `runtime/indexer_reindex.py`: standalone Triton scoring of supplied pools under the pinned FP8 32-head/128-feature contract, matched against an independent FP64 dense oracle at 1/17/128 candidates (`rtol=2e-5`, `atol=2e-4`).
-- `runtime/indexer_shared_pool.py`: shared candidate pools scored by the pinned native Tensor Core scorer on each target's own K/scales.
+- `validation/indexer_candidates.py`: request-local selection snapshots, layer-pair validation, a candidate-only FP32 score reference and expansion of complete pools plus the unfinished tail; ties go to the lower pool ID.
+- `validation/indexer_reindex.py`: standalone Triton scoring of supplied pools under the pinned FP8 32-head/128-feature contract, matched against an independent FP64 dense oracle at 1/17/128 candidates (`rtol=2e-5`, `atol=2e-4`).
+- `validation/indexer_shared_pool.py`: shared candidate pools scored by the pinned native Tensor Core scorer on each target's own K/scales.
 
 With 512 queries and 1,024 selected pools, the shared-pool path took about 0.129 ms against 0.234 ms for native scoring of 8,192 pools (about 32K tokens at kpool=4), but against 0.068 ms at 2,048 pools (about 8K), a slowdown; `benchmark_reindex` records these and checks the selected scores against native. The first per-query Triton prototype was correct but much slower than native. The CPU `indexer-overlap` command compares aligned `source`/`target` rows (`request_id`, `query_position`, `coordinate_space="logical_tokens"`, `indices`, an optional source `candidate_pool`) and rejects unaligned, non-causal or physical-slot input.
 

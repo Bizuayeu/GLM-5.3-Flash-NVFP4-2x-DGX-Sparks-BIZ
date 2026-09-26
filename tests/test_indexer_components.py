@@ -1,7 +1,7 @@
 import importlib.util
 import unittest
 
-from glm53_setup.runtime.indexer_candidates import CandidateReuse
+from glm53_setup.validation.indexer_candidates import CandidateReuse
 
 
 class ReuseTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class IndexerTensorTests(unittest.TestCase):
     def test_unique_pool_selection_and_incomplete_tail_boundaries(self):
         import torch
 
-        from glm53_setup.runtime.indexer_candidates import (
+        from glm53_setup.validation.indexer_candidates import (
             expand_pools_reference,
             select_candidate_pools,
         )
@@ -104,7 +104,7 @@ class IndexerTensorTests(unittest.TestCase):
     def test_reindex_subset_matches_dense_with_causality_and_padding(self):
         import torch
 
-        from glm53_setup.runtime.indexer_candidates import candidate_scores_reference
+        from glm53_setup.validation.indexer_candidates import candidate_scores_reference
 
         q = torch.tensor([[[1.0, -2.0], [2.0, 1.0]], [[1.0, 1.0], [-1.0, 2.0]]])
         k = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 3.0], [-2.0, 4.0]])

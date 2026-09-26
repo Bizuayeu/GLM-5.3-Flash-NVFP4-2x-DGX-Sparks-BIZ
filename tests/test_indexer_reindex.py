@@ -15,7 +15,7 @@ class ReindexGpuTests(unittest.TestCase):
             self.skipTest("CUDA required")
         from vllm.utils.deep_gemm import fp8_fp4_mqa_logits
 
-        from glm53_setup.runtime.indexer_shared_pool import shared_pool_scores
+        from glm53_setup.validation.indexer_shared_pool import shared_pool_scores
 
         torch.manual_seed(19)
         q = torch.randn((32, 32, 128), device="cuda").to(torch.float8_e4m3fn)
@@ -44,7 +44,7 @@ class ReindexGpuTests(unittest.TestCase):
 
         if not torch.cuda.is_available():
             self.skipTest("CUDA required")
-        from glm53_setup.runtime.indexer_reindex import candidate_scores_cuda
+        from glm53_setup.validation.indexer_reindex import candidate_scores_cuda
 
         torch.manual_seed(73)
         for count in (1, 17, 128):

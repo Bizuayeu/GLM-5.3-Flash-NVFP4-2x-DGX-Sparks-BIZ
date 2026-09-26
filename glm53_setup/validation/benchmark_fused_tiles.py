@@ -17,8 +17,8 @@ def main(argv=None):
     os.environ.update(GLM53_FUSED_UNPACK="0", GLM53_ASYNC_INDEX_CHECKS="0")
     import torch
 
-    from glm53_setup.runtime.fused_nope import fused_nope_attention
     from glm53_setup.runtime.reference_attention import sparse_nope_reference
+    from glm53_setup.validation.fused_nope import fused_nope_attention
 
     torch.manual_seed(42)
     torch.backends.cuda.matmul.allow_tf32 = False
