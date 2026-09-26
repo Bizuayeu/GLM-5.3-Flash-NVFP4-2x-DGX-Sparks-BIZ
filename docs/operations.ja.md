@@ -19,7 +19,7 @@ checkoutの起動経路は `python -m glm53_setup server …` の一本です。
 | LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
-| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheをruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#監視停滞検知warmup)が記録する |
+| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#監視停滞検知warmup)が記録する |
 
 LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[projector lock](../config/lpa-projector.lock.json)の写しです。ソースcheckoutのアーカイブに、このディレクトリは含まれません。
 

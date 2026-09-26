@@ -206,6 +206,8 @@ class ServerConfigTests(unittest.TestCase):
             self.assertEqual(
                 env["TORCHINDUCTOR_CACHE_DIR"], "/root/.cache/torchinductor"
             )
+            # The CUDA driver's JIT cache, otherwise ~/.nv/ComputeCache.
+            self.assertEqual(env["CUDA_CACHE_PATH"], "/root/.cache/nv")
 
     def test_autotuned_kernel_choices_are_kept_with_the_triton_cache(self):
         # Without this every launch tunes again, and one KDA kernel's pick decides
@@ -369,6 +371,34 @@ class ServerConfigTests(unittest.TestCase):
             profile["runtime"]["nccl_channels"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
+
+    def test_safetensors_load_strategy_is_optional_and_passed_on_both_ranks(self):
+        # Absent (the template): nothing is passed and the fingerprint is unchanged.
+        distributed = config.load(ROOT / "examples/server.example.toml")
+        self.assertNotIn("safetensors_load_strategy", distributed["runtime"])
+        before = config.fingerprint(self.profile)
+        for rank in (0, 1):
+            self.assertNotIn(
+                "--safetensors-load-strategy",
+                config.serve_args(self.profile, rank, "/hf/model"),
+            )
+        for value in ("eager", "lazy", "prefetch"):
+            with self.subTest(value=value):
+                profile = copy.deepcopy(self.profile)
+                profile["runtime"]["safetensors_load_strategy"] = value
+                config.validate(profile)
+                self.assertNotEqual(config.fingerprint(profile), before)
+                for rank in (0, 1):
+                    args = config.serve_args(profile, rank, "/hf/model")
+                    index = args.index("--safetensors-load-strategy")
+                    self.assertEqual(args[index + 1], value)
+                    self.assertEqual(args.count("--safetensors-load-strategy"), 1)
+        for bad in ("torchao", "EAGER", "", True, 1, None):
+            with self.subTest(bad=bad):
+                profile = copy.deepcopy(self.profile)
+                profile["runtime"]["safetensors_load_strategy"] = bad
+                with self.assertRaises(ValueError):
+                    config.validate(profile)
 
     def test_canonical_moe_order_is_on_in_the_template_and_optional(self):
         distributed = config.load(ROOT / "examples/server.example.toml")

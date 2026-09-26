@@ -70,6 +70,7 @@ OPTIONAL_KEYS = {
             "fa2_attention",
             "prefix_page_dedup",
             "inductor_deterministic",
+            "safetensors_load_strategy",
         }
     ),
     "server.cache": frozenset(
@@ -83,8 +84,9 @@ OPTIONAL_KEYS = {
 }
 
 
-# What an absent optional key means, where it means a value. canonical_moe_order and
-# stable_indexer_topk have none: absent, the launcher sets nothing and the image decides.
+# What an absent optional key means, where it means a value. canonical_moe_order,
+# stable_indexer_topk and safetensors_load_strategy have none: absent, the launcher
+# passes nothing and the image or vLLM decides.
 OPTIONAL_DEFAULTS = {
     "runtime": {
         "vision": False,
@@ -153,6 +155,11 @@ def check_schema(profile):
     check(profile, schema, "server")
 
 
+# vLLM's --safetensors-load-strategy values this launcher passes; torchao is for
+# torchao checkpoints, which this model is not.
+LOAD_STRATEGIES = ("eager", "lazy", "prefetch")
+
+
 def check_optional_shapes(profile):
     """Type-check the keys a profile may omit, and the pairs they exclude."""
     if "prefix_cache_retention_interval" in profile["cache"]:
@@ -186,6 +193,13 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(optional(profile, "runtime", "prefix_page_dedup")) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
+    if "safetensors_load_strategy" in profile["runtime"] and (
+        profile["runtime"]["safetensors_load_strategy"] not in LOAD_STRATEGIES
+    ):
+        raise ValueError(
+            "runtime.safetensors_load_strategy must be one of "
+            + ", ".join(LOAD_STRATEGIES)
+        )
     if optional(profile, "runtime", "fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -554,6 +568,9 @@ def environment(profile, rank):
         TRITON_CACHE_DIR="/root/.cache/triton",
         TILELANG_CACHE_DIR="/root/.cache/tilelang",
         TORCHINDUCTOR_CACHE_DIR="/root/.cache/torchinductor",
+        # The CUDA driver's JIT cache (PTX compiled for this GPU) defaults to
+        # ~/.nv/ComputeCache, also outside the mount, so it was rebuilt per container.
+        CUDA_CACHE_PATH="/root/.cache/nv",
         # Triton keeps compiled kernels there but tunes again on every launch; on
         # the four-layer fixture the KDA inverse kernel's pick (num_warps 2 or 4)
         # decided which of two numerical states a launch computed in. Kept, the
@@ -815,6 +832,15 @@ def apply_cache(args, profile):
         ]
 
 
+def apply_loading(args, profile):
+    """How vLLM reads the checkpoint shards; absent, vLLM's own choice."""
+    if "safetensors_load_strategy" in profile["runtime"]:
+        args += [
+            "--safetensors-load-strategy",
+            profile["runtime"]["safetensors_load_strategy"],
+        ]
+
+
 def apply_determinism(args, profile):
     """The seed and the kernel choices an identical request repeats under."""
     args += [
@@ -977,6 +1003,7 @@ SERVE_STEPS = (
     apply_boolean_flags,
     apply_vision,
     apply_cache,
+    apply_loading,
     apply_determinism,
     apply_speculation,
     apply_decode_graphs,

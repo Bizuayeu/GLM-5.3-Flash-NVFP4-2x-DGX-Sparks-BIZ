@@ -106,6 +106,12 @@ class CheckMessageTests(unittest.TestCase):
         ("check_schema", ("runtime", "mla_decode_cpb"), False, "removed in 1.18.0"),
         ("check_optional_shapes", ("runtime", "vision"), "x", "runtime.vision"),
         ("check_optional_shapes", ("runtime", "nccl_channels"), 0, "nccl_channels"),
+        (
+            "check_optional_shapes",
+            ("runtime", "safetensors_load_strategy"),
+            "torchao",
+            "safetensors_load_strategy",
+        ),
         ("check_pinned_identity", ("schema_version",), 2, "schema_version"),
         ("check_magnitudes", ("resources", "run_seconds"), -1, "run_seconds"),
         ("check_generation", ("generation", "temperature"), -1, "temperature"),
