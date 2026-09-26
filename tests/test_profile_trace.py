@@ -1,6 +1,13 @@
+import importlib.metadata
 import unittest
+from unittest.mock import patch
 
-from glm53_setup.validation.profile_trace import decode_delta, summarize_trace
+from glm53_setup.validation.profile_trace import (
+    decode_delta,
+    graph_launches,
+    package_versions,
+    summarize_trace,
+)
 
 
 class KernelTraceTests(unittest.TestCase):
@@ -61,3 +68,31 @@ class KernelTraceTests(unittest.TestCase):
         self.assertEqual(result["memcpy_known_bytes"], 4096)
         self.assertEqual(result["memcpy_events_without_byte_count"], 1)
         self.assertEqual(result["memcpy_names"], {"Memcpy HtoD": 1, "Memcpy DtoD": 1})
+
+
+class GraphLaunchTests(unittest.TestCase):
+    def test_only_completed_cuda_graph_launch_calls_count(self):
+        events = [
+            {"ph": "X", "cat": "cuda_runtime", "name": "cudaGraphLaunch"},
+            {"ph": "X", "cat": "cuda_driver", "name": "cuGraphLaunch_v2"},
+            {"ph": "X", "cat": "cuda_runtime", "name": "cudaLaunchKernel"},
+            {"ph": "B", "cat": "cuda_runtime", "name": "cudaGraphLaunch"},
+            {"ph": "X", "cat": "kernel", "name": "GraphLaunch"},
+            {"ph": "X", "cat": "cuda_runtime"},
+        ]
+        self.assertEqual(graph_launches({"traceEvents": events}), 2)
+        self.assertEqual(graph_launches({}), 0)
+
+
+class PackageVersionTests(unittest.TestCase):
+    def test_a_missing_package_is_recorded_as_none(self):
+        def version(name):
+            if name == "torch":
+                return "2.9.0"
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        with patch.object(importlib.metadata, "version", side_effect=version):
+            self.assertEqual(
+                package_versions(("torch", "flashinfer-python")),
+                {"torch": "2.9.0", "flashinfer-python": None},
+            )

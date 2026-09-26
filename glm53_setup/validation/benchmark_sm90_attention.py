@@ -12,7 +12,6 @@ fused unpack, APC, LPA and candidate order, which assume the packed SM120 cache.
 
 import argparse
 import hashlib
-import importlib.metadata
 import os
 import statistics
 import time
@@ -87,16 +86,6 @@ def judge_tail(tail):
     return {"passed": not reasons, "reasons": reasons}
 
 
-def package_versions(names):
-    versions = {}
-    for name in names:
-        try:
-            versions[name] = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            versions[name] = None
-    return versions
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -112,7 +101,11 @@ def main(argv=None):
         sparse_nope_reference,
         unpack_latent,
     )
-    from glm53_setup.validation.profile_trace import read_trace, summarize_trace
+    from glm53_setup.validation.profile_trace import (
+        package_versions,
+        read_trace,
+        summarize_trace,
+    )
 
     torch.manual_seed(42)
     torch.backends.cuda.matmul.allow_tf32 = False

@@ -9,7 +9,6 @@ timing. The revisit gathers evidence only; it never qualifies 2047 candidates.
 
 import argparse
 import hashlib
-import importlib.metadata
 import json
 import math
 import os
@@ -94,16 +93,6 @@ def native_attention(query, indices, packed, scale, *, zero_output):
         ).squeeze(1)
 
     return call
-
-
-def package_versions(names):
-    versions = {}
-    for name in names:
-        try:
-            versions[name] = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            versions[name] = None
-    return versions
 
 
 def main(argv=None):
@@ -303,7 +292,11 @@ def revisit(args):
         sparse_nope_reference,
         unpack_latent,
     )
-    from glm53_setup.validation.profile_trace import read_trace, summarize_trace
+    from glm53_setup.validation.profile_trace import (
+        package_versions,
+        read_trace,
+        summarize_trace,
+    )
 
     torch.manual_seed(42)
     torch.backends.cuda.matmul.allow_tf32 = False

@@ -100,7 +100,7 @@ def main(argv=None):
     from vllm.config.compilation import CompilationMode
 
     from glm53_setup.runtime import reference_attention
-    from glm53_setup.validation.profile_trace import read_trace
+    from glm53_setup.validation.profile_trace import graph_launches, read_trace
     from glm53_setup.validation.run_fixture import encode_output
 
     deployed = Path(glm53_reference.__file__).read_bytes()
@@ -190,12 +190,7 @@ def main(argv=None):
         if not traces:
             raise ValueError("No profile evidence")
         report["graph_launches_observed"] = sum(
-            1
-            for path in traces
-            for event in read_trace(path).get("traceEvents", [])
-            if event.get("ph") == "X"
-            and event.get("cat") in {"cuda_runtime", "cuda_driver"}
-            and "graphlaunch" in event.get("name", "").lower()
+            graph_launches(read_trace(path)) for path in traces
         )
         if args.graphs and not report["graph_launches_observed"]:
             raise ValueError("Graph replay was not observed")

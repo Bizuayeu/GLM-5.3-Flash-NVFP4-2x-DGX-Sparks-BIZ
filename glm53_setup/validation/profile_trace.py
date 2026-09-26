@@ -2,6 +2,7 @@
 
 import argparse
 import gzip
+import importlib.metadata
 import json
 from collections import Counter
 from pathlib import Path
@@ -56,6 +57,28 @@ def summarize_trace(payload):
         "memcpy_events_without_byte_count": len(copies) - len(known_bytes),
         "duration_semantics": "summed events may overlap; not wall-clock latency",
     }
+
+
+def graph_launches(payload):
+    """CUDA Graph replays: completed runtime/driver graph-launch API calls."""
+    return sum(
+        1
+        for event in payload.get("traceEvents", [])
+        if event.get("ph") == "X"
+        and event.get("cat") in {"cuda_runtime", "cuda_driver"}
+        and "graphlaunch" in event.get("name", "").lower()
+    )
+
+
+def package_versions(names):
+    """Installed distribution versions, None for one that is not installed."""
+    versions = {}
+    for name in names:
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
 
 
 def decode_delta(measured, control, output_tokens, control_tokens):
