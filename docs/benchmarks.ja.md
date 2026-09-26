@@ -950,6 +950,8 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 
 相方がいると変わるとtraceが示したのは、attentionの経路だった。参照attentionはquery行が6を超える呼び出しをFA2へ送る（`runtime.fa2_attention`）：深さ3の検証stepは単独で4行（eagerのFP32）、相方ありで8行（BF16 KVのFA2）。GB10一台の合成入力のkernel単体で、eagerはある系列の行を、呼び出しが4行でも5〜8行でも12行でも、系列の位置、paddingのある相方、cache pageの交互配置に依らずbit一致で計算した。FA2は相方の行数と長さで全行を1 BF16 ulp動かし（中身・順序・pageには依らない）、反復はbit一致だった。この切り替わりは2系列の差の主因ではない：稼働中の対でattentionの呼び出しを全部eagerにしても（memory probeの `fa2_stage("off")` を約8分、その後に戻して確認）、2系列のcompletion 8本のうち7本が単独のものと違ったままで（1本は一致、5本は最初に違うtokenが動き、2本は同じ位置）、どの組も反復した。容疑者の先頭は、呼び出しの中の他の要求の行で行が変わるMoE（上記）。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でも反復する。
 
+同じ日の後刻、配信中の対を、decode規模の呼び出しでMarlin MoEの分け方を固定し、shared expertとrouterのGEMMを系列ごとに計算し、FA2を切って動かした。スイッチは効いたが、2系列のcompletionは8本中8本が単独のものと違ったままで、どれも採らなかった（[施策台帳](optimization-catalog.ja.md)のP26）。
+
 ## 1.15.0での測定
 
 ### 参照対でのCPU配置（2026-09-26）

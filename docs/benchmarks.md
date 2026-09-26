@@ -950,6 +950,8 @@ Reported upstream: [flashinfer-ai/flashinfer#5553](https://github.com/flashinfer
 
 What the trace did show changing with a partner is the attention's path. The reference attention sends calls of more than six query rows to FA2 (`runtime.fa2_attention`): a verification step at depth 3 was four rows alone, computed eagerly in FP32, and eight with a partner, through FA2 over BF16 KV. In kernel runs on one GB10 with synthetic inputs, the eager result for a sequence's rows was bit-identical whether the call had 4, 5 to 8 or 12 rows, wherever the sequence sat, beside a padded partner and over interleaved cache pages; FA2 moved every row by one BF16 ulp with the partner's row count and lengths (not its content, order or pages) and repeated bit for bit. That switch is not the main cause of two-sequence differences: with every attention call forced onto the eager path on the running pair (the memory probe's `fa2_stage("off")` for about eight minutes, then restored and checked), 7 of the 8 two-sequence completions still differed from their lone ones (one no longer did, five first differed at another token, two at the same one), and every pair still repeated. The MoE, whose rows change with another request's rows in the call (above), is the lead suspect. The operating rule stands: `max_num_seqs = 1` repeats under any load.
 
+Later the same day the serving pair ran with the Marlin MoE split pinned for decode-sized calls, the shared-expert and router GEMMs computed per sequence and FA2 off; the switches engaged, and eight of eight two-sequence completions still differed from their lone ones, so none was adopted ([optimization catalog](optimization-catalog.md), P26).
+
 ## Measurements on 1.15.0
 
 ### CPU placement on the reference pair (2026-09-26)

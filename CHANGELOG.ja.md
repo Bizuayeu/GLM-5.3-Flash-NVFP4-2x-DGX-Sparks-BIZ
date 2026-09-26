@@ -28,6 +28,7 @@
 
 ### ドキュメント
 
+- 2系列のbatch不変性の調査を閉じた。2026-09-26に配信中の対で、decode規模の呼び出しでMarlin MoEの分け方を固定し、shared expertとrouterのGEMMを系列ごとに計算し、FA2を切って試した：スイッチは効いたが、2系列のcompletion 8本すべてが単独のものと違ったままだった。不採用。反復性は `max_num_seqs = 1`（配布既定）のまま、公開した任意設定は2系列を保つ。施策台帳（P26）とbenchmarksの到達性の節にそう書いた。
 - 構成：memory probeに全methodを挙げた独立の行を置き、`examples/` の行は二つのprofileを挙げ、層の表に `switch.resume`・capability検査・base imageの判定を足して `server_config` が副作用moduleをimportしないことを書いた。新しい節で、worker拡張の置き場所（配信の起動が読み込むものは `runtime/`、fixture専用のworkerは `validation/`、`expert_worker` が例外である理由）と、`python -m glm53_setup.validation.<module>` としてだけ走るrunnerを述べた。
 - launcherの文言：`server --help` は "a serial TP=2 reference experiment" ではなく配信のlauncherを説明し、監視のbannerは止まる理由にengine stallを挙げ、`tools/check_prefix_cache.py` の使い方の行は再び一つのコマンドになった。
 - exampleのコメント（英語と日本語の行を対で）：新規起動には `GLM53_MOE_ORDER_API=2`（1は起動済みの対の復旧だけ）、`decode_graphs` は不採用（P06）と明記、memory probeで読めるもの、component workerの範囲、torch 2.13だけでなく2.12.1でも起きるDynamoの状態復元、FA2以前の数値の代わりにbenchmarksを指すprefillの時間。どちらのファイルもTOMLとしては前と同じに読める。
