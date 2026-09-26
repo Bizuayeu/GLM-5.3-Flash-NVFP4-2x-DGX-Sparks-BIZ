@@ -226,8 +226,8 @@ Build the reference image from the checkout you launch (`python -m glm53_setup b
 | `GLM53_SLOT_MAPPING_GUARD=1` | Never; without it requests above about 250K tokens fault on the published option ([operations](operations.md#full-model-launch-checks)) | 1.7.0 |
 | `GLM53_PREFIX_DEDUP_API=1` | `runtime.prefix_page_dedup` (`prefix_dedup_support`) | 1.9.0 |
 | `GLM53_KPOOL_SEED_STRIDE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.13.0 |
-| `GLM53_KPOOL_RING=1` | Never ([operations](operations.md#full-model-launch-checks)) | Unreleased (1.19.0 branch) |
-| `GLM53_LOAD_CLONE=1` | Never ([operations](operations.md#full-model-launch-checks)) | Unreleased (1.19.0 branch) |
+| `GLM53_KPOOL_RING=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
+| `GLM53_LOAD_CLONE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
 
 Images built from 1.14.0 through 1.17.0 also carry `GLM53_MLA_DECODE_CPB_API=1` and the unreachable patch of the removed `runtime.mla_decode_cpb`; no check reads them, and they are harmless.
 

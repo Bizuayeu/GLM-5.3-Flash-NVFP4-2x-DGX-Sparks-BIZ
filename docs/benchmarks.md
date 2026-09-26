@@ -18,6 +18,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.10.4](#measurements-on-1104) | 2026-09-23 | sparkDash and tool-eval-bench on the two-sequence profile |
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
+| [1.19.0](#measurements-on-1190) | 2026-09-26 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -970,3 +971,23 @@ For 1.15.0's `nodes[].cpuset_cpus` ([#1](https://github.com/Bizuayeu/GLM-5.3-Fla
 - **Either rank on efficiency cores cuts decode to about a third.** The two ranks advance in step, so the slower one sets the pace; the CPU set is needed on both ranks, not only on rank 0. The gap is wider than #1's 2.1 times at a 2.4 GHz cap on both core types; frequency and core type were not separated.
 - Unpinned, rank 0's main worker thread stayed on performance cores in every three-second sample of this run and rank 1's in every sample taken (about every 15 seconds), so pinning to performance cores did not beat the unpinned state here. #1 saw the unpinned worker land on an efficiency core after an idle period; what the CPU set buys is the removal of that draw.
 - The launcher path ran on the pair at the switch to 1.18.0 (2026-09-26, `records/20260926-deploy-1180/`): with `cpuset_cpus = "5-9,15-19"` on both ranks, `server preflight` reported `cpu_set_available` on both hosts, each container was created with that CPU set and read back as `5-9,15-19`, and the busiest worker threads ran on cores 6 and 5. The decode check gave the same completions and acceptance lengths as before at 45.74 / 28.18 / 38.16 tok/s, and sparkDash DecodeBench gave 48.39 / 31.26 / 41.19 / 34.82 tok/s on structured / prose / code / json, level with [1.10.4](#measurements-on-1104). The reference pair has served with this CPU set since.
+
+## Measurements on 1.19.0
+
+The reference pair switched from 1.18.0 to the 1.19.0 image (`sha256:99e6cf7a…`, source `05192ca`) with the serving profile otherwise unchanged: the published option, two sequences, MTP k=3, both ranks on CPUs 5–9 and 15–19 (2026-09-26, `records/20260926-release-1190/`).
+
+| | 1.18.0 | 1.19.0 |
+|---|---|---|
+| `Loading weights took`, rank 0 / rank 1 | 532.0 s / 192.1 s | 100.7 s / 118.1 s |
+| `Model loading took`, rank 0 | 600.6 s | 253.5 s |
+| Health 000 during the switch | 686 s | 353 s |
+| Lowest MemAvailable during the start, rank 0 / rank 1 | 7.37 / 9.54 GiB | 6.60 / 8.99 GiB |
+| Kpool tail group in `kv cache group sizes` | 4 | 8 |
+| Decode check, counting / prose / code (tok/s, median of 3) | 45.74 / 28.18 / 38.16 | 45.71 / 29.85 / 37.36 |
+| Decode check completions | `c92154ce` / `0d48bf14` / `388fd473` | `0ef555f7` / `d5247cf9` / `403411d6` |
+| sparkDash DecodeBench, structured / prose / code / json (tok/s, median of 3) | 48.39 / 31.26 / 41.19 / 34.82 | 48.56 / 31.42 / 41.07 / 34.90 |
+
+- **Loading.** The weight digest was the same on both ranks (2,382 tensors). The lowest MemAvailable is reached after the KV pool is allocated, not while weights load; `patch_load_clone` holds one tensor at a time.
+- **Completions.** The decode check's prompts are about 2,100 tokens, so every pool built during decode lies past `index_topk` and the ring fix can change it. All three completions changed; each still repeated bit for bit over three runs. The counting prompt, whose drafts are almost all accepted, changed as well.
+- The mojibake check passed, and `server capacity` reports two full-length requests fitting the pool.
+- **The eager attempt.** The first attempt at this switch used vLLM's `--safetensors-load-strategy eager` instead of the clone. It holds each shard twice (22.81 GiB for an 11.15 GiB shard, measured on one GB10), rank 1 ran out of memory and its host stopped answering for about 15 minutes; the pair was restored to 1.18.0 and the strategy was dropped ([operations](operations.md#full-model-launch-checks)).

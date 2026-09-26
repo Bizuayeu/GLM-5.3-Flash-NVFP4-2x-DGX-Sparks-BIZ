@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.18.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.19.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -95,16 +95,17 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
 
-### 主要な測定値（1.15.0）
+### 主要な測定値（1.19.0）
 
 GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)を2026-09-23に測ったもの（[1.10.4での測定](docs/benchmarks.ja.md#1104での測定)。NLLは2026-09-25、[1.13.0での測定](docs/benchmarks.ja.md#1130での測定)）で、その夜に測り直していない行は最後に測った夜の値を日付つきで残しています。配布既定の列は2026-09-22の夜です。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ。注記がなければ2026-09-22） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile。注記がなければ2026-09-23） |
 |---|---|---|---|
 | prefill | prefill（38,962 tokenのprompt） | 1,232.8 tok/s（1.7.1の夜は1,277.0） | **1,294.8 tok/s**（2026-09-22） |
-| decode | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.04／28.16／37.67 tok/s**（もう一方が走っている間は数え上げ32.09／散文21.81） |
+| decode | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.71／29.85／37.36 tok/s**（2026-09-26。もう一方が走っている間は数え上げ32.09／散文21.81、2026-09-23） |
 | decode | decode（固定の短いpromptの後の512 token） | 26.87〜27.31 tok/s | **41.8 tok/s**（2026-09-22） |
-| decode | sparkDash DecodeBench（128 token）：structured／prose／code／json | 36.24／26.68／31.67／26.25 tok/s（1.5.0） | **48.23／31.38／41.28／34.88 tok/s** |
+| decode | sparkDash DecodeBench（128 token）：structured／prose／code／json | 36.24／26.68／31.67／26.25 tok/s（1.5.0） | **48.56／31.42／41.07／34.90 tok/s**（2026-09-26） |
+| 起動 | 重みの読み込み、rank 0（`Loading weights took`） | 1.19.0では未計測 | **100.7 s**（1.18.0では532.0 s。2026-09-26） |
 | 長文入力 | 約200K token入力、中央の合言葉1個 | 173.5 sと173.6 s、正答（199,652 token） | **165.7 s、正答**（199,649 token）。同種の2本を同時に：330.2 s、両方正答、preemptionなし |
 | 長文入力 | 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答（2026-09-22） |
 | 長文入力 | 261,573 tokenの3か所参照、背景を囲んだprompt（1.13.0からの正典） | 234.2 s、3回とも正答（2026-09-25） | **230.7 s、3回とも正答**（2026-09-25） |
@@ -199,6 +200,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
 - #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
+- warmupの後でも、最初の利用者の要求でコンパイルされるサンプリングのkernel（1.18.0では `_gumbel_sample_kernel`、1.19.0では `_topp_sb_*` の3つ）の原因が分かる → それを通す段を足す。1.19.0で同時要求の段を試したが、新しくコンパイルされたものはなく、採らなかった。
 
 ## ローカルデータと開発
 

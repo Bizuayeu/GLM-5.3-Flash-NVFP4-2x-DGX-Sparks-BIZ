@@ -18,6 +18,7 @@
 | [1.10.4](#1104での測定) | 2026-09-23 | 同時2系列profileでのsparkDashとtool-eval-bench |
 | [1.13.0](#1130での測定) | 2026-09-25 | 両profileでのkpool seedの修正、同時2系列のcompletion |
 | [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方（servingでは届かない）、`max_num_seqs = 1` での再現性、cacheした長いprompt |
+| [1.19.0](#1190での測定) | 2026-09-26 | kpool tailのring（vLLM #58454）とcloneを通す重みの読み込み（公開した任意設定・同時2系列） |
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
@@ -970,3 +971,23 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 - **どちらか一方のrankが高効率コアにいるだけで、decodeは約3分の1になる。** 二つのrankは歩調を合わせて進むので、遅い方が速度を決める。CPU setはrank 0だけでなく両rankに要る。差は#1の約2.1倍（両種のコアとも2.4 GHz上限）より大きい。周波数とコアの種類は切り分けていない。
 - 固定なしでも、この計測の間はrank 0の主workerスレッドが3秒ごとの標本すべてで、rank 1のものも取った標本（約15秒ごと）すべてで高性能コアにいたので、高性能コアへの固定は固定なしを上回らなかった。#1では、固定なしのworkerが待機後に高効率コアへ落ちた。CPU setが買うのはその抽選を無くすことである。
 - launcherの経路は、1.18.0への切替で参照対を通った（2026-09-26、`records/20260926-deploy-1180/`）。両rankに `cpuset_cpus = "5-9,15-19"` を置くと、`server preflight` は両ホストで `cpu_set_available` を返し、各コンテナはそのCPU setで作られて `5-9,15-19` と読み戻され、一番忙しいworkerスレッドはcore 6と5で動いた。decode checkは以前と同じcompletionと受理長で45.74 / 28.18 / 38.16 tok/s、sparkDash DecodeBenchはstructured／prose／code／jsonで48.39 / 31.26 / 41.19 / 34.82 tok/sと、[1.10.4](#1104での測定)と同じ水準だった。参照対はそれ以来このCPU setで配信している。
+
+## 1.19.0での測定
+
+基準の2台を、配信profileはそのままで1.18.0から1.19.0のimage（`sha256:99e6cf7a…`、source `05192ca`）へ切り替えました。公開した任意設定、同時2系列、MTP k=3、両rankともCPU 5–9・15–19です（2026-09-26、`records/20260926-release-1190/`）。
+
+| | 1.18.0 | 1.19.0 |
+|---|---|---|
+| `Loading weights took`、rank 0／rank 1 | 532.0 s／192.1 s | 100.7 s／118.1 s |
+| `Model loading took`、rank 0 | 600.6 s | 253.5 s |
+| 切替中にhealthが000だった時間 | 686 s | 353 s |
+| 起動中のMemAvailableの最小、rank 0／rank 1 | 7.37／9.54 GiB | 6.60／8.99 GiB |
+| `kv cache group sizes` のkpool tailのgroup | 4 | 8 |
+| decode検査、数え上げ／散文／コード（tok/s、3回の中央値） | 45.74／28.18／38.16 | 45.71／29.85／37.36 |
+| decode検査のcompletion | `c92154ce`／`0d48bf14`／`388fd473` | `0ef555f7`／`d5247cf9`／`403411d6` |
+| sparkDash DecodeBench、structured／prose／code／json（tok/s、3回の中央値） | 48.39／31.26／41.19／34.82 | 48.56／31.42／41.07／34.90 |
+
+- **読み込み**：weight digestは両rankとも同じでした（2,382 tensor）。MemAvailableの最小は、重みの読み込み中ではなくKV poolを確保した後に来ます。`patch_load_clone` が持つのは一度にtensor 1個分です。
+- **completion**：decode検査のpromptは約2,100 tokenなので、decode中に作るpoolはすべて `index_topk` を超えた後にあり、ringの修正で変わり得ます。3種ともcompletionが変わり、それぞれ3回ともbit単位で反復しました。draftがほぼすべて受理される数え上げのpromptも変わりました。
+- 化け検査は合格し、`server capacity` は最大長の要求が2本poolに入ると報告しました。
+- **eagerの試行**：この切替の1回目は、cloneの代わりにvLLMの `--safetensors-load-strategy eager` を使いました。shardを二重に持つため（11.15 GiBのshardで22.81 GiB、GB10 1台で実測）、rank 1がメモリを使い切り、hostが約15分応答しなくなりました。2台を1.18.0に戻し、この読み方は採らないことにしました（[運用手順](operations.ja.md#フルモデルの起動検査)）。

@@ -2,6 +2,24 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.19.0 — 2026-09-26
+
+### Fixed
+
+- Reference images carry vLLM pull request #58454 on the pinned source (`glm53_setup/runtime/patch_kpool_ring.py`, marker `GLM53_KPOOL_RING=1`, applied after `patch_kpool_seed`): the kpool indexer's raw-tail ring now holds `kpool * next_power_of_2(ceil((kpool + k) / kpool))` slots for MTP depth k instead of one pool, so a rejected draft that completes a pool is no longer redone from keys the drafts behind it overwrote. It affects pools built during decode once the context passes `index_topk` (2,048 tokens) with k of 2 or more; the serving profiles run k=3. The tail group is now 8 slots at depths 1 to 4 and 16 at depth 5, so the KV-capacity breakdown changes with the depth. On one GB10 the kernel repro (`glm53_setup/validation/kpool_ring_repro.py`) showed the one-pool ring differing after a rejected draft and the eight-slot ring matching, and upstream's kernel tests passed (33, one skipped). On the reference pair all three decode checks changed their completions and still repeat bit for bit. Upstream calls it a partial fix.
+
+### Changed
+
+- Weight loading clones each safetensors tensor off the checkpoint's file mapping before the loader copies it to the GPU (`glm53_setup/runtime/patch_load_clone.py`, marker `GLM53_LOAD_CLONE=1`). On GB10 with a CUDA context a copy from the file mapping ran at about 0.13–0.20 GiB/s, with or without the pages cached, and a cloned copy at about 1.2–1.6 GiB/s; the clone holds one tensor at a time. Rank 0 of the reference pair now loads its weights in 100.7 s instead of 532.0 s, and the switch's outage fell from 686 s to 353 s.
+- The CUDA driver's JIT cache is kept in the mounted runtime cache (`CUDA_CACHE_PATH=/root/.cache/nv`); it was rebuilt in every container.
+
+### Documentation
+
+- README has two new sections: **Disclaimer**, which now holds the statements that BIZ is not a tier, support commitment, warranty or certification, and what the ring fix and `stable_indexer_topk = false` expose; and **Next Action**, each item a trigger and what the repository then does (follow-ups to #58454, #57161, a fix like #58785, a vLLM pin move, #54296, and the sampling kernels that still compile on the first user requests).
+- Setup and operations say not to use vLLM's `--safetensors-load-strategy eager` or `enable_multithread_load` on this hardware: they hold whole shards in memory (22.81 GiB for an 11.15 GiB shard). Tried for this release on the reference pair, eager ran rank 1 out of memory and its host stopped answering for about 15 minutes; the pair was restored to 1.18.0 and the load-strategy key that had carried it was removed before release.
+- The benchmarks have a section for 1.19.0, and the README headline rows measured again on 1.19.0 are dated.
+- A warmup rung of concurrent requests (Mia #254's idea) was tried on the two-sequence profile and compiled nothing the other rungs had not, so it is not in this release.
+
 ## 1.18.0 — 2026-09-26
 
 ### Removed

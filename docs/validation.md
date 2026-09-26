@@ -86,7 +86,7 @@ The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; 
 python3 -m glm53_setup.validation.kpool_ring_repro --output /tmp/kpool-ring.json
 ~~~
 
-Not run yet: it needs the rebuilt image and a GPU. It checks the kernel only, not model output.
+Run on 2026-09-26 on one GB10 with the 1.19.0 candidate image (seed 1): the one-pool ring differed after the rejected draft, the eight-slot ring matched, and the control matched on both. Upstream's kernel tests from the same pull request passed there (33, one skipped). It checks the kernel only, not model output.
 
 ## Remaining qualification
 

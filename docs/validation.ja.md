@@ -86,7 +86,7 @@ CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供しま�
 python3 -m glm53_setup.validation.kpool_ring_repro --output /tmp/kpool-ring.json
 ~~~
 
-未実行です。作り直したimageとGPUが要ります。確かめるのはkernelだけで、モデルの出力ではありません。
+2026-09-26に1.19.0候補のimageとGB10 1台で実行しました（seed 1）。1 pool分のringは棄却されたdraftの後で一致せず、8 slotのringは一致し、対照はどちらでも一致しました。同じpull requestの上流のkernelテストも通りました（33件、skip 1件）。確かめるのはkernelだけで、モデルの出力ではありません。
 
 ## 残る検収項目
 

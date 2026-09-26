@@ -4,6 +4,24 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.19.0 — 2026-09-26
+
+### Fixed
+
+- 参照imageが、vLLMのpull request #58454を固定sourceに当てて持つようになりました（`glm53_setup/runtime/patch_kpool_ring.py`、marker `GLM53_KPOOL_RING=1`、`patch_kpool_seed` の後に当てる）。kpool indexerの生tailのringは、1 pool分ではなく、MTPの深さkに対して `kpool * next_power_of_2(ceil((kpool + k) / kpool))` slotを持ちます。poolを完成させるdraftが棄却されたとき、その後ろのdraftが上書きした後のkeyからやり直すことがなくなりました。影響するのは、kが2以上で、文脈が `index_topk`（2,048 token）を超えた後にdecode中に作られるpoolです。配信profileはk=3です。tailのgroupは深さ1〜4で8 slot、深さ5で16 slotになり、KV容量の内訳は深さで変わります。GB10 1台でのkernelの再現（`glm53_setup/validation/kpool_ring_repro.py`）では、1 pool分のringは棄却されたdraftの後で食い違い、8 slotのringは一致し、上流のkernelテストも通りました（33件、skip 1件）。基準の2台では、decode検査3種のcompletionがすべて変わり、反復はbit単位で一致したままです。上流はこれを部分的な修正としています。
+
+### Changed
+
+- 重みの読み込みで、loaderがGPUへ送る前に、safetensorsの各tensorをcheckpointのfile mappingからcloneするようになりました（`glm53_setup/runtime/patch_load_clone.py`、marker `GLM53_LOAD_CLONE=1`）。GB10でCUDA contextがある状態では、file mappingからの転送はページがcacheに載っていてもいなくても約0.13〜0.20 GiB/s、cloneしてからの転送は約1.2〜1.6 GiB/sでした。cloneが持つのは一度にtensor 1個分です。基準の2台のrank 0は、重みの読み込みが532.0秒から100.7秒になり、切替の停止時間は686秒から353秒になりました。
+- CUDA driverのJIT cacheを、mountしたruntime cacheに置くようになりました（`CUDA_CACHE_PATH=/root/.cache/nv`）。これまでcontainerごとに作り直していました。
+
+### Documentation
+
+- READMEに二つの節を足しました。**免責事項**は、BIZが製品の等級・サポートの約束・保証・認証ではないことと、ringの修正と `stable_indexer_topk = false` が招くことをまとめます。**Next Action**は、各項目がきっかけと、そのときこのリポジトリがすることです（#58454の後続、#57161、#58785相当の修正、vLLMの固定の更新、#54296、最初の利用者の要求でまだコンパイルされるサンプリングのkernel）。
+- セットアップと運用手順に、この機材ではvLLMの `--safetensors-load-strategy eager` や `enable_multithread_load` を使わないことを書きました。shardを丸ごとメモリに持ちます（11.15 GiBのshardで22.81 GiB）。この版のために基準の2台で試したところ、eagerでrank 1がメモリを使い切り、hostが約15分応答しなくなりました。2台を1.18.0に戻し、eagerを載せていた読み込み方のkeyはリリース前に取り除きました。
+- 実測に1.19.0の節を足し、1.19.0で測り直したREADMEの主要な測定値の行には日付を付けました。
+- 同時要求のwarmupの段（Mia #254の考え方）を同時2系列のprofileで試しましたが、他の段がコンパイルしなかったものは何もコンパイルせず、この版には入れていません。
+
 ## 1.18.0 — 2026-09-26
 
 ### Removed

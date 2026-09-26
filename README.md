@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.18.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.19.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. What it does not mean is in the [disclaimer](#disclaimer).
 
@@ -95,16 +95,17 @@ The TP=2 reference profile is **measured and accepted for routine use (2026-09-2
 
 **Distributed defaults select the serial optimized profile with image input at 256K (262,144 tokens), KV 3 GiB per rank, reserve 3 GiB and no lifetime deadline; video input is rejected.** The checks behind these defaults are [image input](docs/vision.md) and [measurements on 1.6.0](docs/benchmarks.md#measurements-on-160); [256K capacity checks](docs/benchmarks.md#real-input-checks-at-256k) cover the text-only alternative, and [release candidate measurements](docs/benchmarks.md#release-candidate-measurements) keep the earlier speed/tool-eval results, including the unmet Safety Gate.
 
-### Headline measurements (1.15.0)
+### Headline measurements (1.19.0)
 
 Two GB10 systems, TP=2, FA2 prefill, one token order inside each expert, indexer top-k ties settled, MTP k=3. Two profiles: the **distributed defaults** (the pinned NVIDIA weights, exactly what the template serves) and the **published option** (the attention projections and `lm_head` repacked to W4A16 NVFP4, served through `runtime.derived_checkpoint` with the KDA input projection declared split; weights at [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)). The option's column is the profile the reference pair serves, the [two-sequence AXL profile](examples/server.axl.example.toml), as measured on 2026-09-23 ([measurements on 1.10.4](docs/benchmarks.md#measurements-on-1104)), its NLL on 2026-09-25 ([measurements on 1.13.0](docs/benchmarks.md#measurements-on-1130)); a row that night did not re-measure keeps the value of the last night that did, dated. The defaults' column is the 2026-09-22 night. Medians of three or nine runs; ranges, conditions and every earlier version are in [benchmarks](docs/benchmarks.md). Task types are always listed counting / prose / code.
 
 | Category | Measure | Distributed defaults (NVFP4 BIZ on the pinned weights; 2026-09-22 unless dated) | Published option (NVFP4 BIZ AXL, the served two-sequence profile; 2026-09-23 unless dated) |
 |---|---|---|---|
 | Prefill | Prefill, 38,962-token prompt | 1,232.8 tok/s (1,277.0 on the 1.7.1 night) | **1,294.8 tok/s** (2026-09-22) |
-| Decode | Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.04 / 28.16 / 37.67 tok/s** (32.09 / 21.81 for counting and prose while the other runs) |
+| Decode | Decode after a 2,048-token prompt: counting / prose / code | 32.01 / 20.67 / 26.68 tok/s | **45.71 / 29.85 / 37.36 tok/s** (2026-09-26; 32.09 / 21.81 for counting and prose while the other runs, 2026-09-23) |
 | Decode | Decode, 512 tokens after a fixed short prompt | 26.87–27.31 tok/s | **41.8 tok/s** (2026-09-22) |
-| Decode | sparkDash DecodeBench, 128 tokens: structured / prose / code / json | 36.24 / 26.68 / 31.67 / 26.25 tok/s (1.5.0) | **48.23 / 31.38 / 41.28 / 34.88 tok/s** |
+| Decode | sparkDash DecodeBench, 128 tokens: structured / prose / code / json | 36.24 / 26.68 / 31.67 / 26.25 tok/s (1.5.0) | **48.56 / 31.42 / 41.07 / 34.90 tok/s** (2026-09-26) |
+| Startup | Weight loading, rank 0 (`Loading weights took`) | not measured on 1.19.0 | **100.7 s** (532.0 s on 1.18.0; 2026-09-26) |
 | Long input | ~200K-token input, one passphrase at the midpoint | 173.5 and 173.6 s, correct (199,652 tokens) | **165.7 s, correct** (199,649 tokens); two such requests together: 330.2 s, both correct, no preemption |
 | Long input | 255,950-token input, one passphrase at the midpoint | 217.3 s, correct | 220.9 s, correct (2026-09-22) |
 | Long input | 261,573-token three-position reference, fenced prompt (the canonical form from 1.13.0) | 234.2 s, correct 3 of 3 (2026-09-25) | **230.7 s, correct 3 of 3** (2026-09-25) |
@@ -199,6 +200,7 @@ Each item is a trigger and what this repository then does.
 - A fix equivalent to #58785 reaches the pinned vLLM → only then allow `runtime.stable_indexer_topk = false`; when [vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) merges, consider replacing the local stable sort with its kernel.
 - A vLLM release contains #58454 and its successors → move the pin to it as a minor release of its own and drop the kpool patches; the move also brings [#55736](https://github.com/vllm-project/vllm/pull/55736) (decode improvements), [#55353](https://github.com/vllm-project/vllm/pull/55353) (retention as a CLI flag) and [#53007](https://github.com/vllm-project/vllm/pull/53007) (KV LCM change), each to be re-measured.
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) merges and reaches the pin → drop the slot-mapping guard (`patch_slot_mapping`).
+- The cause of the sampling kernels that still compile on the first user requests after the warmup ladder (`_gumbel_sample_kernel` on 1.18.0, three `_topp_sb_*` kernels on 1.19.0) is found → add a rung that reaches them. A rung of concurrent requests was tried for 1.19.0 and compiled nothing new, so it was not kept.
 
 ## Local data and contribution
 
