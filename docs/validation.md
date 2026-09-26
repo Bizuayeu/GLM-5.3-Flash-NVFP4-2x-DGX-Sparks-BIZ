@@ -78,6 +78,16 @@ CPU checks cover CLI dispatch without GPU imports, checkout-relative assets, rev
 
 The CLI also exposes `inspect-runtime`, `probe-attention` and `test-reference`; use their `--help` inside the reference image. These component checks cannot substitute for TP=2 qualification.
 
+### Kpool tail ring repro
+
+`glm53_setup/validation/kpool_ring_repro.py` runs the kpool decode kernel of the reference image on one GPU, without weights: a draft that completes a pool is rejected after the drafts behind it were stashed, and the pool the redo writes is compared byte for byte with the prefill writer's result on the true keys (the no-speculation reference). It is adapted from the regression test of vLLM pull request #58454. On an image that carries `patch_kpool_ring` the expected result is that the one-pool ring (4 slots, the unpatched layout) differs and the MTP-3 ring (8 slots) matches, with a control run matching on both; the command exits nonzero otherwise.
+
+~~~sh
+python3 -m glm53_setup.validation.kpool_ring_repro --output /tmp/kpool-ring.json
+~~~
+
+Not run yet: it needs the rebuilt image and a GPU. It checks the kernel only, not model output.
+
 ## Remaining qualification
 
 [FreedomBench and political-context evaluation](freedombench.md) is closed for the serving profile (2026-09-22: the pinned English suite 60 of 60 on the first attempt with no refusal, the long-prefix pilot 6 of 6). The four-profile matrix and the LPA case retired with the single served profile; the Japanese translation of the suite, opposed framings and long-range evidence placement were not run. The linked document owns the result and its scope.

@@ -1453,6 +1453,7 @@ class ReferenceImageMarkerTests(unittest.TestCase):
     # The reference build's ENV lines no capability check requires, and why.
     UNCHECKED_MARKERS = {
         "GLM53_KPOOL_SEED_STRIDE=1": "build-patch record, no reader (CHANGELOG 1.13.0)",
+        "GLM53_KPOOL_RING=1": "build-patch record, no reader (vLLM #58454)",
         "GLM53_SLOT_MAPPING_GUARD=1": "build-patch record, no reader (CHANGELOG 1.7.0)",
         "GLM53_CANONICAL_CANDIDATES=1": "switch default read by candidate_order",
         "GLM53_CANONICAL_MOE_ORDER=1": "switch default read by moe_token_order",

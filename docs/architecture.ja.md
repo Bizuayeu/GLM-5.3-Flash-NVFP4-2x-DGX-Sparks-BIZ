@@ -36,6 +36,7 @@
 | `glm53_setup/runtime/prefix_dedup.py`、`patch_prefix_dedup.py` | 同じ内容のprefix pageをcacheに一つだけ持つ（`runtime.prefix_page_dedup`）と、そのsource固定patch |
 | `glm53_setup/runtime/patch_slot_mapping.py` | source固定patch：slot対応付けのkernelがblock tableを行の中だけで読む |
 | `glm53_setup/runtime/patch_kpool_seed.py` | source固定patch：kpoolのprefill seedがtailのblockをtailのstrideで番地付けする（vLLM #57477） |
+| `glm53_setup/runtime/patch_kpool_ring.py` | source固定patch：kpoolの生tailのringが投機draftの分まで広がり、大きさはMTPの深さで決まる（vLLM #58454）。`patch_kpool_seed` の後に当てる |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
@@ -48,6 +49,7 @@
 | `glm53_setup/validation/run_components.py`、`run_graph_fixture.py`、`run_indexer_fixture.py`、`run_apc_lpa_fixture.py`、`indexer_overlap.py`、`expert_worker.py`、`pipeline_worker.py`、`apc_fixture_worker.py` | 部品A/B/A、Graph、indexer、APC/LPA、EP、PPの各fixtureと、fixture専用のworker（[部品検証](component-validation.ja.md)） |
 | `glm53_setup/validation/run_lpa.py`、`lpa_corpus.py`、`train_lpa.py` | LPA fixtureの検査、コーパスの準備、projectorの学習 |
 | `glm53_setup/validation/freedombench.py`、`freedom_scoring.py`、`apc_history.py`、`profile_trace.py`、`benchmark_*.py` | FreedomBenchの実行と採点、APC履歴の回帰試験、traceのevent集計、部品ベンチ |
+| `glm53_setup/validation/kpool_ring_repro.py` | 参照imageでのkpool tail ringのGPU再現：pool完成のdraftが棄却されたときの結果をprefill側の書き込みと比べる。1 pool分のringとMTP 3のring（[検証](validation.ja.md#kpool-tail-ringの再現)） |
 | `glm53_setup/validation/fused_nope.py`、`fused_nope_dot.py`、`indexer_candidates.py`、`indexer_reindex.py`、`indexer_shared_pool.py` | 再現のために残す退役した試作。呼ぶのはそれぞれのベンチとテストだけ：融合NoPE attention（[部品検証](component-validation.ja.md)）とindexer候補の再利用（[Indexer再利用](indexer-reuse.ja.md)） |
 | `config/` | モデル・imageの固定値と`lpa-projector.lock.json`（Release URL、checksum、教師・学習来歴）。認証情報や実測したサイト設定は持たない |
 | `examples/` | 二つの起動設定 `server.example.toml`（配布既定）と `server.axl.example.toml`（公開した任意設定）、MTP投機設定のテンプレート。値はすべて例示 |

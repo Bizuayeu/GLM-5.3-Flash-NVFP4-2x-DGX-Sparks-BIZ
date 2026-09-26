@@ -78,6 +78,16 @@ CPU側の検査は、GPU importなしのCLI振り分け、checkout基準の資�
 
 CLIは `inspect-runtime`・`probe-attention`・`test-reference` も提供します。reference imageの中で、それぞれの `--help` を参照してください。これらの部品検査は、TP=2の検収の代わりにはなりません。
 
+### kpool tail ringの再現
+
+`glm53_setup/validation/kpool_ring_repro.py` は、参照imageのkpool decode kernelをGPU 1台で重みなしに動かします。poolを完成させるdraftを、その後ろのdraftがstashされた後で棄却し、やり直しが書くpoolを、正しいkeyに対するprefill側の書き込み結果（投機なしの基準）とbyte単位で比べます。vLLMのpull request #58454の回帰テストを元にしています。`patch_kpool_ring` を持つimageでの期待は、1 pool分のring（4 slot、patch前の配置）が一致せず、MTP 3のring（8 slot）が一致し、対照runはどちらでも一致することです。そうでなければ0以外で終了します。
+
+~~~sh
+python3 -m glm53_setup.validation.kpool_ring_repro --output /tmp/kpool-ring.json
+~~~
+
+未実行です。作り直したimageとGPUが要ります。確かめるのはkernelだけで、モデルの出力ではありません。
+
 ## 残る検収項目
 
 [FreedomBench・政治的文脈の評価](freedombench.ja.md)は配信profileで完了しています（2026-09-22：固定の英語原版60問が初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。4構成の一覧とLPAの項目は配信profileが一つになったことで退役し、日本語訳の本体・対立的な言い回し・長距離の証拠配置は未実施です。結果と範囲はリンク先の文書が正典です。
