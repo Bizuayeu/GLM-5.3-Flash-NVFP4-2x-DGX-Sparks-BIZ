@@ -1,6 +1,13 @@
 import importlib.util
+import json
+import sys
+import tempfile
+import types
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from glm53_setup.validation import run_repeat_trace
 from glm53_setup.validation.run_repeat_trace import HOOKED, summarize
 
 
@@ -118,6 +125,43 @@ class AlignWrapperTests(unittest.TestCase):
         self.assertEqual(log[0]["as_a_set_per_expert"], log[1]["as_a_set_per_expert"])
         self.assertEqual(log[1]["num_tokens_post_padded"], 12)
         self.assertTrue(torch.equal(result[1], self.align()[1]))
+
+
+class EngineRefused(Exception):
+    pass
+
+
+def refusing_vllm():
+    """vLLM stand-ins whose engine constructor raises, as a failed load does."""
+
+    def refuse(**kwargs):
+        raise EngineRefused("engine could not load")
+
+    vllm = types.ModuleType("vllm")
+    vllm.LLM, vllm.SamplingParams = refuse, object
+    config = types.ModuleType("vllm.config")
+    compilation = types.ModuleType("vllm.config.compilation")
+    compilation.CompilationMode = types.SimpleNamespace(NONE=0)
+    return {"vllm": vllm, "vllm.config": config, "vllm.config.compilation": compilation}
+
+
+class FailureRecordTests(unittest.TestCase):
+    def test_an_engine_that_fails_to_load_leaves_a_failed_record(self):
+        config = {"text_config": {"num_hidden_layers": 4}}
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "out"
+            with (
+                patch.object(
+                    run_repeat_trace, "read_fixture", return_value=(config, {})
+                ),
+                patch.dict(sys.modules, refusing_vllm()),
+                self.assertRaises(EngineRefused),
+            ):
+                run_repeat_trace.main(["--fixture", tmp, "--output", str(output)])
+            record = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["error"], "EngineRefused('engine could not load')")
+        self.assertEqual(record["layers"], 4)
 
 
 if __name__ == "__main__":

@@ -136,40 +136,49 @@ def main(argv=None):
 
     with server.request_lock():
         save()
-        for question in selected:
-            row = {"id": question["id"], "attempts": []}
-            report["results"].append(row)
-            for _ in range(args.max_attempts):
-                began = time.monotonic()
-                try:
-                    response = server.ask(
-                        profile,
-                        {
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT},
-                                {"role": "user", "content": question["prompt"]},
-                            ],
-                            "max_tokens": args.max_tokens,
-                        },
-                    )
-                except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
-                    response = {"error": type(error).__name__}
-                    if getattr(error, "code", None) in (401, 403):
-                        response.update(
-                            error="authentication failed", http_status=error.code
+        try:
+            for question in selected:
+                row = {"id": question["id"], "attempts": []}
+                report["results"].append(row)
+                for _ in range(args.max_attempts):
+                    began = time.monotonic()
+                    try:
+                        response = server.ask(
+                            profile,
+                            {
+                                "messages": [
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": question["prompt"]},
+                                ],
+                                "max_tokens": args.max_tokens,
+                            },
                         )
-                response["elapsed_seconds"] = time.monotonic() - began
-                row["attempts"].append(response)
+                    except (
+                        urllib.error.URLError,
+                        TimeoutError,
+                        ConnectionError,
+                    ) as error:
+                        response = {"error": type(error).__name__}
+                        if getattr(error, "code", None) in (401, 403):
+                            response.update(
+                                error="authentication failed", http_status=error.code
+                            )
+                    response["elapsed_seconds"] = time.monotonic() - began
+                    row["attempts"].append(response)
+                    save()
+                    if (
+                        response.get("error")
+                        or classify_attempt(response)["choice"] is not None
+                    ):
+                        break
                 save()
-                if (
-                    response.get("error")
-                    or classify_attempt(response)["choice"] is not None
-                ):
-                    break
+                print(question["id"], classify_attempt(row["attempts"][-1]), flush=True)
+            report["status"] = "complete"
+        except BaseException as error:
+            report.update(status="failed", error=repr(error))
+            raise
+        finally:
             save()
-            print(question["id"], classify_attempt(row["attempts"][-1]), flush=True)
-        report["status"] = "complete"
-        save()
     if not report["summary"]["valid_complete_run"]:
         raise SystemExit(2)
 

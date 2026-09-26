@@ -290,104 +290,123 @@ def main(argv=None):
         "layers": config["text_config"]["num_hidden_layers"],
         "cases": [],
     }
-    write_json(args.output / "result.json", report)
-    from vllm import LLM, SamplingParams
 
-    from ..agreement import TEXTS
-    from .run_agreement_fixture import cycle_tokens
+    def save():
+        write_json(args.output / "result.json", report)
 
-    llm = LLM(**engine_kwargs(args))
-    if args.zero_moe_buffers:
-        report["zero_moe_buffers"] = llm.collective_rpc("repeat_trace_zero_moe_buffers")
-    if args.timing:
-        import statistics
-        import time
+    save()
+    try:
+        from vllm import LLM, SamplingParams
 
-        if args.canonical_align:
-            report["patch"] = llm.collective_rpc("repeat_trace_canonical_only")
-        tokenizer = llm.get_tokenizer()
-        base = tokenizer.encode(next(iter(TEXTS.values())), add_special_tokens=False)
-        cases = {
-            "prefill_2048": ((base * 20)[:2048], 1),
-            "decode_128": (base[:64], 128),
-        }
-        report["timing"] = {}
-        for name, (token_ids, new_tokens) in cases.items():
-            params = SamplingParams(
-                temperature=0, max_tokens=new_tokens, ignore_eos=True, seed=42
+        from ..agreement import TEXTS
+        from .run_agreement_fixture import cycle_tokens
+
+        llm = LLM(**engine_kwargs(args))
+        if args.zero_moe_buffers:
+            report["zero_moe_buffers"] = llm.collective_rpc(
+                "repeat_trace_zero_moe_buffers"
             )
-            seconds = []
-            for _ in range(7):
-                began = time.perf_counter()
-                llm.generate([{"prompt_token_ids": token_ids}], params, use_tqdm=False)
-                seconds.append(time.perf_counter() - began)
-            report["timing"][name] = {
-                "seconds": [round(v, 4) for v in seconds],
-                "median_after_two_warmups": round(statistics.median(seconds[2:]), 4),
-            }
-        report.update(status="complete", canonical_align=args.canonical_align)
-        write_json(args.output / "result.json", report)
-        return
-    if args.watch_align or args.canonical_align:
-        args.watch_align = True
-        report["watch_align"] = llm.collective_rpc(
-            "repeat_trace_watch_align", kwargs={"canonicalize": args.canonical_align}
-        )
-    tokenizer = llm.get_tokenizer()
-    sampling = SamplingParams(
-        temperature=0, max_tokens=1, ignore_eos=True, seed=42, detokenize=False
-    )
-    prompts = {
-        name: tokenizer.encode(text, add_special_tokens=False)
-        for name, text in TEXTS.items()
-    }
-    prompts["long-cycle"] = cycle_tokens(list(prompts.values()), args.long_tokens)
-    for name, token_ids in prompts.items():
-        llm.collective_rpc("repeat_trace_forget")
-        case = {"name": name, "prompt_tokens": len(token_ids), "repeats": []}
-        for repeat in range(args.repeats):
-            llm.collective_rpc("repeat_trace_start", kwargs={"compare": repeat > 0})
-            try:
-                llm.generate(
-                    [{"prompt_token_ids": token_ids}], sampling, use_tqdm=False
-                )
-            finally:
-                traced = llm.collective_rpc("repeat_trace_finish")[0]
-            if args.verify_canonical and not repeat and "patch" not in report:
+        if args.timing:
+            import statistics
+            import time
+
+            if args.canonical_align:
                 report["patch"] = llm.collective_rpc("repeat_trace_canonical_only")
-            if repeat:
-                case["repeats"].append(summarize(traced["rows"]))
-                case["repeats"][-1]["last_module"] = traced["rows"][-1]
-            else:
-                case["calls_recorded"] = traced["calls"]
-            if args.watch_align:
-                calls = llm.collective_rpc("repeat_trace_align_log")[0]["calls"]
-                if not repeat:
-                    first_pass = calls
+            tokenizer = llm.get_tokenizer()
+            base = tokenizer.encode(
+                next(iter(TEXTS.values())), add_special_tokens=False
+            )
+            cases = {
+                "prefill_2048": ((base * 20)[:2048], 1),
+                "decode_128": (base[:64], 128),
+            }
+            report["timing"] = {}
+            for name, (token_ids, new_tokens) in cases.items():
+                params = SamplingParams(
+                    temperature=0, max_tokens=new_tokens, ignore_eos=True, seed=42
+                )
+                seconds = []
+                for _ in range(7):
+                    began = time.perf_counter()
+                    llm.generate(
+                        [{"prompt_token_ids": token_ids}], params, use_tqdm=False
+                    )
+                    seconds.append(time.perf_counter() - began)
+                report["timing"][name] = {
+                    "seconds": [round(v, 4) for v in seconds],
+                    "median_after_two_warmups": round(
+                        statistics.median(seconds[2:]), 4
+                    ),
+                }
+            report.update(status="complete", canonical_align=args.canonical_align)
+            return
+        if args.watch_align or args.canonical_align:
+            args.watch_align = True
+            report["watch_align"] = llm.collective_rpc(
+                "repeat_trace_watch_align",
+                kwargs={"canonicalize": args.canonical_align},
+            )
+        tokenizer = llm.get_tokenizer()
+        sampling = SamplingParams(
+            temperature=0, max_tokens=1, ignore_eos=True, seed=42, detokenize=False
+        )
+        prompts = {
+            name: tokenizer.encode(text, add_special_tokens=False)
+            for name, text in TEXTS.items()
+        }
+        prompts["long-cycle"] = cycle_tokens(list(prompts.values()), args.long_tokens)
+        for name, token_ids in prompts.items():
+            llm.collective_rpc("repeat_trace_forget")
+            case = {"name": name, "prompt_tokens": len(token_ids), "repeats": []}
+            for repeat in range(args.repeats):
+                llm.collective_rpc("repeat_trace_start", kwargs={"compare": repeat > 0})
+                try:
+                    llm.generate(
+                        [{"prompt_token_ids": token_ids}], sampling, use_tqdm=False
+                    )
+                finally:
+                    traced = llm.collective_rpc("repeat_trace_finish")[0]
+                if args.verify_canonical and not repeat and "patch" not in report:
+                    report["patch"] = llm.collective_rpc("repeat_trace_canonical_only")
+                if repeat:
+                    case["repeats"].append(summarize(traced["rows"]))
+                    case["repeats"][-1]["last_module"] = traced["rows"][-1]
                 else:
-                    case["repeats"][-1]["align"] = {
-                        "calls": len(calls),
-                        "ordering_differs": sum(
-                            a["sorted_token_ids"] != b["sorted_token_ids"]
-                            for a, b in zip(first_pass, calls)
-                        ),
-                        "unwritten_tail_differs": sum(
-                            a["unwritten_tail"] != b["unwritten_tail"]
-                            for a, b in zip(first_pass, calls)
-                        ),
-                        "membership_differs": sum(
-                            a["as_a_set_per_expert"] != b["as_a_set_per_expert"]
-                            or a["expert_ids"] != b["expert_ids"]
-                            for a, b in zip(first_pass, calls)
-                        ),
-                    }
-        report["cases"].append(case)
-        write_json(args.output / "result.json", report)
-    llm.collective_rpc("repeat_trace_forget")
-    if args.zero_moe_buffers:
-        report["zeroed_counts"] = llm.collective_rpc("repeat_trace_zeroed_counts")
-    report.update(status="complete", finished_at=datetime.now(timezone.utc).isoformat())
-    write_json(args.output / "result.json", report)
+                    case["calls_recorded"] = traced["calls"]
+                if args.watch_align:
+                    calls = llm.collective_rpc("repeat_trace_align_log")[0]["calls"]
+                    if not repeat:
+                        first_pass = calls
+                    else:
+                        case["repeats"][-1]["align"] = {
+                            "calls": len(calls),
+                            "ordering_differs": sum(
+                                a["sorted_token_ids"] != b["sorted_token_ids"]
+                                for a, b in zip(first_pass, calls)
+                            ),
+                            "unwritten_tail_differs": sum(
+                                a["unwritten_tail"] != b["unwritten_tail"]
+                                for a, b in zip(first_pass, calls)
+                            ),
+                            "membership_differs": sum(
+                                a["as_a_set_per_expert"] != b["as_a_set_per_expert"]
+                                or a["expert_ids"] != b["expert_ids"]
+                                for a, b in zip(first_pass, calls)
+                            ),
+                        }
+            report["cases"].append(case)
+            save()
+        llm.collective_rpc("repeat_trace_forget")
+        if args.zero_moe_buffers:
+            report["zeroed_counts"] = llm.collective_rpc("repeat_trace_zeroed_counts")
+        report.update(
+            status="complete", finished_at=datetime.now(timezone.utc).isoformat()
+        )
+    except BaseException as error:
+        report.update(status="failed", error=repr(error))
+        raise
+    finally:
+        save()
 
 
 if __name__ == "__main__":

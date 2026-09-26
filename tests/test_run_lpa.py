@@ -1,5 +1,11 @@
+import json
 import math
+import sys
+import tempfile
+import types
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from glm53_setup.validation import run_lpa
 
@@ -118,6 +124,40 @@ class ConfigureKwargsTests(unittest.TestCase):
         )
         self.assertTrue(kwargs["skip_mla_queries"])
         self.assertIs(kwargs["allow_mtp"], True)
+
+
+class EngineRefused(Exception):
+    pass
+
+
+def refusing_vllm():
+    """vLLM stand-ins whose engine constructor raises, as a failed load does."""
+
+    def refuse(**kwargs):
+        raise EngineRefused("engine could not load")
+
+    vllm = types.ModuleType("vllm")
+    vllm.LLM, vllm.SamplingParams = refuse, object
+    config = types.ModuleType("vllm.config")
+    compilation = types.ModuleType("vllm.config.compilation")
+    compilation.CompilationMode = types.SimpleNamespace(NONE=0)
+    return {"vllm": vllm, "vllm.config": config, "vllm.config.compilation": compilation}
+
+
+class FailureRecordTests(unittest.TestCase):
+    def test_an_engine_that_fails_to_load_leaves_a_failed_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "out"
+            with (
+                patch.object(run_lpa, "read_fixture"),
+                patch.dict(sys.modules, refusing_vllm()),
+                self.assertRaises(EngineRefused),
+            ):
+                run_lpa.main(["--fixture", tmp, "--output", str(output)])
+            record = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["error"], "EngineRefused('engine could not load')")
+        self.assertEqual(record["cases"], [])
 
 
 if __name__ == "__main__":

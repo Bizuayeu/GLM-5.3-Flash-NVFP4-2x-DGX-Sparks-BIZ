@@ -165,49 +165,54 @@ def main(argv=None):
         write_json(args.output / "result.json", report)
 
     save()
-    from vllm import LLM, SamplingParams
-    from vllm.config.compilation import CompilationMode
+    try:
+        from vllm import LLM, SamplingParams
+        from vllm.config.compilation import CompilationMode
 
-    from .run_fixture import encode_output
+        from .run_fixture import encode_output
 
-    llm = LLM(**engine_kwargs(args, CompilationMode.NONE))
-    base = llm.get_tokenizer().encode(
-        "Tokyo is the capital of Japan. The sequence is 2, 4, 6, 8. ",
-        add_special_tokens=False,
-    )
-    params = SamplingParams(
-        temperature=0,
-        max_tokens=16,
-        ignore_eos=True,
-        logprobs=10,
-        seed=42,
-        detokenize=False,
-    )
-    report["status"] = "running"
-    save()
-    for length in args.lengths:
-        ids = (base * (length // len(base) + 1))[:length]
-        case = {"length": length, "modes": {}}
-        report["cases"].append(case)
-        for mode in ("capture", "off", "oracle_full_mlp", "oracle", "off"):
-            key = mode if mode not in case["modes"] else "restored"
-            llm.collective_rpc(
-                "lpa_configure", kwargs=configure_kwargs(mode, args, length)
-            )
-            start = time.monotonic()
-            result = llm.generate([{"prompt_token_ids": ids}], params, use_tqdm=False)[
-                0
-            ]
-            row = encode_output(result)
-            row["seconds"] = time.monotonic() - start
-            row["workers"] = llm.collective_rpc("lpa_report")
-            case["modes"][key] = row
-            save()
-        case.update(assess_case(case["modes"]))
+        llm = LLM(**engine_kwargs(args, CompilationMode.NONE))
+        base = llm.get_tokenizer().encode(
+            "Tokyo is the capital of Japan. The sequence is 2, 4, 6, 8. ",
+            add_special_tokens=False,
+        )
+        params = SamplingParams(
+            temperature=0,
+            max_tokens=16,
+            ignore_eos=True,
+            logprobs=10,
+            seed=42,
+            detokenize=False,
+        )
+        report["status"] = "running"
         save()
-    report["passed"] = all(case["passed"] for case in report["cases"])
-    report["status"] = "complete"
-    save()
+        for length in args.lengths:
+            ids = (base * (length // len(base) + 1))[:length]
+            case = {"length": length, "modes": {}}
+            report["cases"].append(case)
+            for mode in ("capture", "off", "oracle_full_mlp", "oracle", "off"):
+                key = mode if mode not in case["modes"] else "restored"
+                llm.collective_rpc(
+                    "lpa_configure", kwargs=configure_kwargs(mode, args, length)
+                )
+                start = time.monotonic()
+                result = llm.generate(
+                    [{"prompt_token_ids": ids}], params, use_tqdm=False
+                )[0]
+                row = encode_output(result)
+                row["seconds"] = time.monotonic() - start
+                row["workers"] = llm.collective_rpc("lpa_report")
+                case["modes"][key] = row
+                save()
+            case.update(assess_case(case["modes"]))
+            save()
+        report["passed"] = all(case["passed"] for case in report["cases"])
+        report["status"] = "complete"
+    except BaseException as error:
+        report.update(status="failed", error=repr(error))
+        raise
+    finally:
+        save()
     if not report["passed"]:
         raise SystemExit(2)
 

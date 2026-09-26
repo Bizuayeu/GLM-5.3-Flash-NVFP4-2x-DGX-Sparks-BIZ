@@ -1,5 +1,12 @@
+import contextlib
+import json
+import tempfile
+import types
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from glm53_setup.validation import freedombench
 from glm53_setup.validation.freedom_scoring import (
     classify_attempt,
     extract_choice,
@@ -43,3 +50,39 @@ class FreedomScoringTests(unittest.TestCase):
         self.assertFalse(summarize(questions, rows)["valid_complete_run"])
         with self.assertRaises(ValueError):
             summarize(questions, [rows[0], rows[0]])
+
+
+class RunnerFailureTests(unittest.TestCase):
+    def test_a_request_that_raises_leaves_a_failed_record(self):
+        questions = [{"id": "one", "prompt": "?", "answer": "A"}]
+
+        def ask(profile, body):
+            raise RuntimeError("server went away")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "out"
+            server = freedombench.server
+            with (
+                patch.object(freedombench, "os", types.SimpleNamespace(name="posix")),
+                patch.object(freedombench.server_config, "load", return_value={}),
+                patch.object(
+                    freedombench, "load_questions", return_value=({}, questions)
+                ),
+                patch.object(freedombench, "load_lock", return_value={}),
+                patch.object(
+                    server,
+                    "running_head",
+                    return_value=({}, {"State": {"Running": True}, "Image": "i"}),
+                ),
+                patch.object(server, "request_lock", contextlib.nullcontext),
+                patch.object(server, "ask", side_effect=ask),
+                self.assertRaises(RuntimeError),
+            ):
+                freedombench.main(
+                    ["--benchmark-dir", tmp, "--config", "c", "--output", str(output)]
+                )
+            record = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["error"], "RuntimeError('server went away')")
+        self.assertEqual(record["summary"]["received"], 1)
+        self.assertFalse(record["full_suite_complete"])
