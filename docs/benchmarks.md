@@ -18,6 +18,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.10.4](#measurements-on-1104) | 2026-09-23 | sparkDash and tool-eval-bench on the two-sequence profile |
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
+| [1.15.0](#measurements-on-1150) | 2026-09-26 | CPU placement on the reference pair |
 | [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
@@ -921,7 +922,7 @@ Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b
 
 Partial results included unnecessary calculator use, missing comparison information and omitted search/action steps. Preserve the overall score and Safety Gate as separate outcomes. Mock-tool results do not qualify full harnesses or business workflows.
 
-See the [same candidate's FreedomBench retest](freedombench.md#release-candidate-retest) for its result and the short-input LPA bypass scope.
+See the [same candidate's FreedomBench retest](freedombench.md#earlier-runs) for its result and the short-input LPA bypass scope.
 
 #### Real-input checks at 200K
 

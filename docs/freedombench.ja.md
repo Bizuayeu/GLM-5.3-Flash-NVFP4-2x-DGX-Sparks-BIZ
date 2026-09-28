@@ -20,15 +20,11 @@
 |---|---|---|---|---|
 | 2026-09-12 | `freedombench-combined-v12-full` | 初回で60／60。誤答・`refused`・エラーはゼロ | `32394330…`。TP=2・同時1系列・MTP k=3・unpack融合・LPA設定on（tail 512）・Graphs off | 作動せず |
 | 2026-09-13 | `freedombench-integration-v36`、`freedombench-long-pilot-v37` | 初回で60／60、通信エラー・打ち切り・選択肢抽出不能なし。pilotは3条件とも6／6 | [直列併用構成](benchmarks.ja.md#直列併用の評価p18)（MTP3・unpack融合・検査付き非同期index検証） | pilotのみ |
-| 2026-09-14 | `release-200k-reserve4` | 初回で60／60。拒否判定・誤答・エラーはゼロ、全応答が `finish_reason=stop`、出力6〜13 token | [記録した併用構成](benchmarks.ja.md#リリース候補の測定) | 作動せず |
+| 2026-09-14 | `release-200k-reserve4` | 初回で60／60。拒否判定・誤答・エラーはゼロ、全応答が `finish_reason=stop`、出力6〜13 token。temperature 0、effort low、`clear_thinking=true`、上流互換の出力上限8,192 | [記録した併用構成](benchmarks.ja.md#リリース候補の測定) | 作動せず |
 
 ### 併用構成の再確認と長文付きpilot
 
 pilotは固定したLLM-jp validation文書の先頭6,000文字を固定設問の最初の6問へ前置し、MTP3・fusion・asyncを固定してLPA off／on／復帰の各条件で実行した。実入力4,810〜4,838tokenに対し、LPA onの全要求で両rankの層35／39／43が各4,298〜4,326の履歴queryを省略し、両off条件の省略数は0だった。これは設問入力を変えた小規模pilotであり、**公式全問スコアでもFB-05完了でもない**。全話題、日本語設問、対立する政治的主張、遠距離の証拠配置は対象外。この設問でprojectorの学習・選定は行っていない。
-
-### リリース候補の再測定
-
-この再測定は、併用1構成で原版全問をtemperature 0、effort low、`clear_thinking=true`、上流互換の出力上限8,192で実行した。
 
 ## 対象と出典
 

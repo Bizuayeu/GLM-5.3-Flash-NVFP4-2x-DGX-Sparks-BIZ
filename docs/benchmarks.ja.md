@@ -18,6 +18,7 @@
 | [1.10.4](#1104での測定) | 2026-09-23 | 同時2系列profileでのsparkDashとtool-eval-bench |
 | [1.13.0](#1130での測定) | 2026-09-25 | 両profileでのkpool seedの修正、同時2系列のcompletion |
 | [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方（servingでは届かない）、`max_num_seqs = 1` での再現性、cacheした長いprompt |
+| [1.15.0](#1150での測定) | 2026-09-26 | 参照対でのCPU配置 |
 | [1.19.0](#1190での測定) | 2026-09-26、2026-09-28 | kpool tailのring（vLLM #58454）とcloneを通す重みの読み込み（公開した任意設定・同時2系列）。両profileを同じ枠でGPUクロックの上限つきで（READMEの主要な測定値） |
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
@@ -921,7 +922,7 @@ DecodeはsparkDashの最初から最後のtokenの時間窓とusageによる値�
 
 部分合格には、不要なcalculator利用、比較用情報の不足、必要な検索・行動の未実施などが含まれます。総合点とSafety Gateは別の結果として保持します。模擬toolの評価であり、実ハーネスや実業務全体の検収を代替しません。
 
-FreedomBenchの結果と短文によるLPA迂回の範囲は、[同候補の再測定](freedombench.ja.md#リリース候補の再測定)を参照してください。
+FreedomBenchの結果と短文によるLPA迂回の範囲は、[同候補の再測定](freedombench.ja.md#以前の実施)を参照してください。
 
 #### 200Kでの実入力確認
 

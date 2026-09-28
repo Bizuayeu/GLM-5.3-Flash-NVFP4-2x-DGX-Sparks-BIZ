@@ -20,15 +20,11 @@ Each earlier run keeps its own image and profile. On the original questions (inp
 |---|---|---|---|---|
 | 2026-09-12 | `freedombench-combined-v12-full` | 60/60 on the first attempt; zero incorrect, `refused` and errors | `32394330…`; TP=2, one sequence, MTP k=3, fused unpack, LPA configured on with tail 512, Graphs off | Not executed |
 | 2026-09-13 | `freedombench-integration-v36`, `freedombench-long-pilot-v37` | 60/60 on the first attempt, no transport errors, truncation or unparsed choices; pilot 6/6 in all three arms | [Serial integration profile](benchmarks.md#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) (MTP3, fused unpack, checked asynchronous index validation) | Pilot only |
-| 2026-09-14 | `release-200k-reserve4` | 60/60 on the first attempt; zero refusal labels, incorrect answers and errors; every response `finish_reason=stop`, outputs 6–13 tokens | [Recorded combined profile](benchmarks.md#release-candidate-measurements) | Not executed |
+| 2026-09-14 | `release-200k-reserve4` | 60/60 on the first attempt; zero refusal labels, incorrect answers and errors; every response `finish_reason=stop`, outputs 6–13 tokens; temperature 0, effort low, `clear_thinking=true`, the upstream 8,192-token output budget | [Recorded combined profile](benchmarks.md#release-candidate-measurements) | Not executed |
 
 ### Integration recheck and long-prefix pilot
 
 The pilot prepended a fixed 6,000-character LLM-jp validation-text excerpt to the first six pinned questions and ran each LPA off/on/restored with MTP3/fusion/async fixed. Inputs were 4,810–4,838 tokens; both ranks reported 4,298–4,326 skipped historical queries at each of layers 35/39/43 in every LPA-on request, and none in either off arm. This is a small, modified-prompt pilot, **not an official full-suite score or completion of FB-05**: it does not cover every topic, Japanese questions, opposed political framing or long-range evidence placement. No projector was trained or selected on these questions.
-
-### Release candidate retest
-
-The retest ran the full original suite on one combined candidate at temperature 0, effort low, `clear_thinking=true` and the upstream 8,192-token output budget.
 
 ## Scope and fixed source
 
