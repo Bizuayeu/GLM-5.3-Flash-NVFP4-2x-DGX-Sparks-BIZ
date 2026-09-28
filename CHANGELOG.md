@@ -2,6 +2,31 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.3 — 2026-09-28
+
+### Fixed
+
+- The warmup canary's MTP check no longer loses its reading to one malformed `/metrics` line; the ladder and the stall detector now share one Prometheus parser.
+
+### Changed
+
+- The publication audit checks every `#anchor` of a relative Markdown link against the target's headings.
+- `runtime/graph_policy.py` is folded into `runtime/lpa.py`, so the bind-mounted LPA worker imports one image module fewer; the launcher builds its bind mounts from one table (`server.runtime_mounts`), and a test holds each mounted file to the package imports older images carry.
+- `patch_kpool_ring` uses the shared hash gate and command of `pinned_patch`; its image record and output line are unchanged.
+- One owner each for the LPA MTP depths, the container runtime cache, the API bind address, the `/tokenize` body, rail check keys, HLE's answer budget and three cluster failure reasons; HLE's run decisions are plain functions.
+- Contract tests bind the marker and template tables, quoted harness statuses and the canary's numbers in both languages to their owners; the suite no longer prints, and asserts the lines operators read.
+
+### Documentation
+
+- Wording follows 1.18.0 to 1.20.2: harness case H-06 is quoted as PASS, SETUP step 7 runs `server warmup` after `server start`, the catalog and overview describe `runtime.mla_decode_cpb` as removed and refused and the driver JIT cache as kept, `lpa.py` as mounted and only `apc_worker.py` as baked, the warmup rungs from one owner, pre-FA2 prefill times as such, and ZCode 3.14.1's `contextWindow` beside `limit.context`.
+- One owner per fact where two pages said the same thing: SETUP step 2 and step 4 link to operations for the `state/`/`records/` symlinks and the clone-loading figures, the operations page opens with a pointer to SETUP step 6 instead of restating the accepted scope, server configuration links to image input for why video is off and why the preprocessing cache is 0.1 GiB, and the README's repeatability and harness rows and the paragraph before the headline table keep the status and link to validation, the harness matrix and SETUP step 6.
+- Validation's FreedomBench summary named only the 2026-09-22 closure; it now points at the FreedomBench page with both that date and the 1.19.0 rerun of 2026-09-28. The benchmarks release table gains 1.15.0.
+- Operations: the supervision section is split into subsections (memory reserve and stall detection, what each sample records, swap, host daemons, a lost peer, warmup ladder) under its unchanged heading, the LPA package tree follows the sentence that introduces it, and the plan/preflight notes move into the launch checks. Links that meant one of those topics point at its subsection.
+- The optimization catalog's three dated "additional initiative" tables join the main table; FreedomBench's one-sentence release-candidate subsection folds into its row of earlier runs.
+- P23's measurements that only the catalog held (route g's first reading, off/on/off, the shared-experts variant, the fixture error, the first kernel reading of the fused KDA projection) move to benchmarks under 1.6.0 and 1.7.1; the catalog row keeps the decision and the sources. The README's TP=3 estimate becomes catalog candidate P28, and the Next Action keeps its trigger.
+- More ranks: the concurrency scope recommended TP=4 and not TP=3. The target is TP=3, three hosts ringed over their QSFP ports without a switch as NVIDIA documents, recommended once its geometry runs (P28); validation, the README status row, the catalog and the overview say so.
+- The README's comparison of the published option with the defaults gave route l's decode-step saving over route g at depth 4 (12–13 ms, as the 1.7.0 entry recorded) beside a depth-3 step time; it now gives the decode ratio to the defaults. Benchmarks 1.7.0 records the saving at both depths: 10 ms at the served depth 3, 12–13 ms at depth 4, growing with the depth because the `lm_head` is read once per draft depth.
+
 ## 1.20.2 — 2026-09-28
 
 ### Documentation

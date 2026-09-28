@@ -4,6 +4,31 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.20.3 — 2026-09-28
+
+### Fixed
+
+- warmup の canary の MTP 判定が、`/metrics` の不正な1行で読み取りごと失われなくなりました。ladder と停滞検知は一つの Prometheus パーサを共有します。
+
+### Changed
+
+- 公開監査が、相対 Markdown リンクの `#アンカー` を参照先の見出しと照合します。
+- `runtime/graph_policy.py` を `runtime/lpa.py` に吸収し、bind-mount される LPA worker が image 側から import する module が一つ減りました。起動器は bind mount を一つの表（`server.runtime_mounts`）から組み立て、mount される各ファイルの package import が古い image にもある名前に限られることをテストで固定しました。
+- `patch_kpool_ring` は `pinned_patch` の共通の hash 検査とコマンドを使います。image の record と出力行は変わりません。
+- LPA の MTP 深さ、container の runtime cache、API の bind 先、`/tokenize` の本文、rail の検査キー、HLE の回答予算、cluster の失敗理由 3 語に、それぞれ持ち主を一つ置きました。HLE の実行時の判断は純粋関数になりました。
+- marker 表・テンプレート表・引用された harness の状態・canary の数値（英日とも）を持ち主へ束ねる契約テストを足しました。テストは実行中に何も印字せず、運用者が読む行は assert します。
+
+### Documentation
+
+- 文言を 1.18.0〜1.20.2 に合わせました。harness の H-06 は PASS と引用し、SETUP 手順7は `server start` の後に `server warmup` を実行し、施策台帳と概要は `runtime.mla_decode_cpb` を撤去済み・拒否、driver の JIT cache を保持と書き、`lpa.py` は mount、焼き込みは `apc_worker.py` だけとし、warmup の段は持ち主一つから引き、FA2 以前の prefill 時間はそう明記し、ZCode 3.14.1 の `contextWindow` を `limit.context` と並べました。
+- 二つの文書が同じことを書いていた箇所を持ち主一つにしました。SETUP 手順2・4は `state/`／`records/` の symlink と clone 読み込みの数値を運用手順へのリンクに、運用手順の冒頭は受け入れ範囲の再掲をやめて SETUP 手順6への参照に、起動設定は動画を切る理由と前処理キャッシュを0.1 GiBにする理由を画像入力へのリンクにしました。README の反復性とハーネスの行、主要な測定値の前の段落は状態だけを残し、検証・ハーネス一覧・SETUP 手順6へリンクします。
+- 検証文書の FreedomBench の要約が 2026-09-22 の完了しか挙げていなかったのを、その日付と 2026-09-28 の 1.19.0 での再実行の両方を示して FreedomBench の文書を指す形にしました。ベンチマークの版表に 1.15.0 を加えました。
+- 運用手順：監視の節を見出しはそのままに小見出しで分けました（メモリの保護余裕と停滞検知、標本に記録するもの、swap、ホストのデーモン、peer の喪失、warmup ladder）。LPA の展開図はそれを紹介する文の直後へ、plan／preflight の説明は起動検査へ移しました。それらの話題を指していたリンクは小見出しを指します。
+- 施策台帳の日付つき「追加施策」の表3枚を本表へ統合し、FreedomBench の一文だけのリリース候補の節は以前の実施の表の行に畳みました。
+- 施策台帳にしか無かった P23 の実測（route g の最初の読み、off／on／off、shared experts の変種、fixture の誤差、融合した KDA projection の最初の kernel の読み）をベンチマークの 1.6.0 と 1.7.1 の下へ移し、台帳の行は決定と出典だけにしました。README の TP=3 の見積もりは施策台帳の候補 P28 になり、Next Action は契機だけを残します。
+- rank を増やす方針：同時実行の範囲は TP=4 を推奨し TP=3 を推奨しないとしていました。目標は、NVIDIA が手順を示すとおり QSFP ポートでスイッチなしのリングを組める3台の TP=3 で、その幾何が動いたら推奨します（P28）。検証・README の状態表・施策台帳・概要を揃えました。
+- README の公開した任意設定と既定の比較が、route g に対する route l の decode step の短縮（深さ4での12〜13 ms、1.7.0 の節の記録どおり）を深さ3の step 時間と並べていたのを、既定に対する decode の倍率に改めました。ベンチマーク 1.7.0 に両方の深さでの短縮を記録しました：配信の深さ3で10 ms、深さ4で12〜13 ms。`lm_head` は draft の段ごとに読まれるので、深さとともに伸びます。
+
 ## 1.20.2 — 2026-09-28
 
 ### Documentation
