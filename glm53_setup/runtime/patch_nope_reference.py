@@ -97,10 +97,8 @@ def prepare(package):
         "        output = q.new_empty(\n",
     )
     backend = add_candidate_order(backend)
-    # cc-defer: the header keeps the name before the 2026-09 rename (no "2x");
-    # rename it with the next image rebuild, since it moves the patched hash.
     changed = (
-        "# Modified by GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ contributors.\n"
+        "# Modified by GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ contributors.\n"
         "# Changes: GLM NoPE zero-padding, canonical logical candidates and reference attention.\n"
         "# Original vLLM notices below remain applicable; see distribution NOTICE.\n"
     )
