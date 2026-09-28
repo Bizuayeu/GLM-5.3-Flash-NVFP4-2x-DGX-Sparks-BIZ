@@ -4,6 +4,14 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.20.2 — 2026-09-28
+
+### Documentation
+
+- README の関連研究の Euryale の段落は、2026-09-14 のまま、全モデルの教師採取・補助器の学習・同条件比較は未着手だと書いていました。実際には済んでいます。軽い補助器は全モデルの教師データで 3 方式を学習し、測ったすべての条件で MTP k=3 より遅く、採用しませんでした。プロジェクトは DFlash 型の draft へ移っています。段落をそのとおりに直しました。本リポジトリは何も変わりません。
+- README の Next Action に、2026-09-28 の上流確認から二つのきっかけを加えました。vllm-project/vllm#58979 か同等の修正が固定に入ったら、`runtime.inductor_deterministic` を無効にして起動状態を確かめてからテンプレートの key を外すこと。固定の移行では GB10 での KDA prefill の kernel が Triton から FlashKDA に変わるので、vllm-project/vllm#58846（2026-09-26 merge、v0.30.0 には入っていない）か `additional_config.kda_prefill_backend = "triton"` が要ること。
+- README の Next Action に、次の minor の作業として GB10 3 台での TP=3 を加えました。1,048,576 token の要求を 6 本同時に保持することを目標とし、3 台目が空ける KV の見積もりと、本数を決める測定を添えています。
+
 ## 1.20.1 — 2026-09-28
 
 ### Documentation

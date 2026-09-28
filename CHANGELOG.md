@@ -2,6 +2,14 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.2 — 2026-09-28
+
+### Documentation
+
+- The README's Related research paragraph on Euryale still said, as on 2026-09-14, that full-model teacher capture, proposer training and the same-condition comparison had not started. They had: the light auxiliary proposer was trained in three variants on full-model teacher data and was slower than MTP k=3 in every measured condition, so it was not adopted, and the project has moved to a DFlash-style draft. The paragraph now says so; nothing in this repository changes.
+- The README's Next Action adds two triggers from the upstream review of 2026-09-28: vllm-project/vllm#58979 or an equivalent fix reaching the pin, after which the launch states are checked with `runtime.inductor_deterministic` off before the templates drop the key; and, on the pin move, the KDA prefill kernel changing from Triton to FlashKDA on GB10, which needs vllm-project/vllm#58846 (merged 2026-09-26, not in v0.30.0) or `additional_config.kda_prefill_backend = "triton"`.
+- The README's Next Action adds TP=3 on three GB10 hosts for the next minor, aiming at six 1,048,576-token requests held at once, with the estimate of the KV that the third host frees and the measurement that decides it.
+
 ## 1.20.1 — 2026-09-28
 
 ### Documentation

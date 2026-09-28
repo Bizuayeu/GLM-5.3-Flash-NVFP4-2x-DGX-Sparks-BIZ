@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.2」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -167,7 +167,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ## 本リポジトリ外の関連研究
 
-**Euryale**は、凍結したモデルの中間表現から軽い補助器で複数のdraft tokenを提案する独立した非公開の研究プロジェクトで、GLM-5.3-Flash／GB10 2台を最初の対象としています。本配布物には含まれず、この研究から生まれた[候補順序の正規化](docs/candidate-order.ja.md)を除いて本リポジトリのcheckpoint・runtime・既定値を変更しません。checkpoint同梱の標準MTPに対する速度・品質・メモリの優位は未実証で、4層fixtureで実効投機幅5〜12を限定検収した段階です。全モデルの教師採取・補助器学習・同条件比較は未着手です。既定の投機経路をMTP k=3からEuryaleへ切り替えるのは、同条件比較で品質・性能・メモリ・復旧のゲートを通し、[施策台帳の区別](docs/optimization-catalog.ja.md#機能受入と既定設定)（機能受入・性能採用・既定値・併用検収）で判定した場合に限ります。それまではMTP k=3が実測済みの候補です。
+**Euryale**は、凍結したモデルの中間表現から複数のdraft tokenを提案する独立した非公開の研究プロジェクトで、GLM-5.3-Flash／GB10 2台を最初の対象としています。本配布物には含まれず、この研究から生まれた[候補順序の正規化](docs/candidate-order.ja.md)を除いて本リポジトリのcheckpoint・runtime・既定値を変更しません。最初の設計である軽い補助器は、全モデルから採取した教師データで3方式を学習し、checkpoint同梱の標準MTPと同じ条件で比べました。どの候補も測ったすべての条件でMTP k=3より遅く、採用していません。現在は、targetの特徴をkey・valueとして読む自前の層を持つDFlash型のdraftへ移っており、保存した特徴からのpilot学習までの段階です。既定の投機経路をMTP k=3からEuryaleのdraftへ切り替えるのは、同条件比較で品質・性能・メモリ・復旧のゲートを通し、[施策台帳の区別](docs/optimization-catalog.ja.md#機能受入と既定設定)（機能受入・性能採用・既定値・併用検収）で判定した場合に限ります。それまではMTP k=3が実測済みの候補です。
 
 ### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
@@ -198,10 +198,12 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - #58454に続く [vLLM #56868](https://github.com/vllm-project/vllm/issues/56868)／[#56605](https://github.com/vllm-project/vllm/issues/56605) の修正がmergeされる → source固定patchとして移植する。
 - [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161)（kpool compressの作り直し）がmergeされる → `patch_kpool_seed` と `patch_kpool_ring` を読み直す。
 - #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
-- #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。
+- [vLLM #58979](https://github.com/vllm-project/vllm/pull/58979)（indexerのkeyの正規化をrankごとのcompile済みkernelから外す、[#58636](https://github.com/vllm-project/vllm/issues/58636)向け）か同等の修正が固定しているvLLMに入る → 両profileで `runtime.inductor_deterministic` を無効にして起動状態を確かめ、rank間が一致しcompletionが反復したときだけテンプレートからこのkeyを外す。このdraftは2026-09-28にその確認を通過しています（[再現性](docs/validation.ja.md#再現性)）。
+- #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。KDAのprefillのkernelも変わります。固定のvLLMは常にTritonのkernelを使いますが、新しいvLLMはGB10を含むSM 9.x・10.x・12.xでFlashKDAを選び、このcheckpointのKDA層（head次元128、下限つきのgate）はその条件を満たします。releaseが [#58846](https://github.com/vllm-project/vllm/pull/58846)（FlashKDAが再帰状態をfp32で保つ修正。v0.30.0には入っていない）を含むことを確かめるか、`additional_config.kda_prefill_backend = "triton"` でTritonのkernelを保ち、どちらの場合もdecodeのhashを取り直す。
 - [vLLM #57128](https://github.com/vllm-project/vllm/pull/57128)（Mambaのprefix cacheの一致が投機の余白を無視する、[#53912](https://github.com/vllm-project/vllm/issues/53912)）がmergeされる → source固定patchとして移植する。配信profileは報告の条件（prefix caching、MTP k=3、Mamba cache mode `align`）に当たります。別の構成での現場報告に、ある要求の内容が別の要求の応答に現れたというものがありますが、ここでは観測していません。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
 - warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。1.19.0で利用者の最初の要求がコンパイルした `_topp_sb_*` の3つは、temperature 0 で送るladderの段では通りませんでした。temperatureを送らない要求はcheckpointの1.0・top_p 0.95になり、これらをコンパイルするので、その設定の段を足しました。1.18.0で見た `_gumbel_sample_kernel` は、どの設定で通るかまだ突き止めていません。
+- 次のminor → GB10 3台でのTP=3を評価し、1要求あたり1,048,576 token（checkpointの `max_position_embeddings`）を6本同時に保持することを目標とする。attentionとKDAのhead（64）とrouted expertの幅（2,048）は3で割り切れません。MiaAI-LabのレシピはTP=3を、headを66へ埋める・expert parallelで各rankに288 expertのうち96を持たせる・vision towerをデータ並列にする、の三点で起動しています（コードは採用しない）。KVのpoolはrankごとに持つので、3台目が増やす余地は各rankの重み（TP=2で約91 GiB）が3分の1減る分だけで、rankあたりのKVは推定35〜40 GiBです。対で測った率（1 GiBあたり4,608 tokenのblockが28個、1要求にceil(L / 4,608) + 16 block）では、全長の要求6本にrankあたり約52 GiBが要ります。rankあたりのKDA headが減る（32から22）とこの率は下がります。何本入るかはこの見積もりではなく、起動時の容量表示と全長6本の試験で決めます。
 
 ## ローカルデータと開発
 
