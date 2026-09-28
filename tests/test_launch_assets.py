@@ -25,6 +25,18 @@ class LaunchAssetTests(unittest.TestCase):
                     launch_assets.inspect({}, Path("profile.toml"), 0)
                 run.assert_not_called()
 
+    def test_a_refused_gid_names_where_the_entry_is_now(self):
+        hint = {"rail": 0, "configured_gid_index": 3, "roce_v2_gid_indices": [4]}
+        failed = {
+            "passed": False,
+            "checks": {"rail_0_roce_v2_gid": False},
+            "foreign_gpu_containers": [],
+            "gid_hints": [hint],
+        }
+        with patch.object(launch_assets.server, "preflight", return_value=failed):
+            with self.assertRaisesRegex(ValueError, '"roce_v2_gid_indices": \\[4\\]'):
+                launch_assets.inspect({}, Path("profile.toml"), 1)
+
     def test_what_a_recovery_target_was_allowed_reaches_the_switch_record(self):
         profile = server_config.load(ROOT / "examples/server.example.toml")
         warning = "moe_order_marker_1_accepted_for_recovery"

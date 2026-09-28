@@ -21,6 +21,8 @@ def inspect(profile, config_path, rank, *, recovery=False):
     )
     if not checks["passed"]:
         detail = {key: checks[key] for key in ("checks", "foreign_gpu_containers")}
+        if checks.get("gid_hints"):
+            detail["gid_hints"] = checks["gid_hints"]
         raise ValueError("Static launch checks failed: " + json.dumps(detail))
     model = server.model_path(profile, server.hf_cache())
     if not all(
