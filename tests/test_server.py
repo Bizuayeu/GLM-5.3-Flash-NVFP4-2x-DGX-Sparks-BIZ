@@ -959,6 +959,28 @@ class ServerConfigTests(unittest.TestCase):
         self.assertEqual(result["foreign_gpu_containers"], [])
         self.assertEqual(result["gid_hints"], [])
 
+        # A refused rail's GID hint reaches the result with the checks it came from.
+        refused = {"rail_0_roce_v2_gid": False}
+        hint = [{"rail": 0, "configured_gid_index": 3, "roce_v2_gid_indices": [4]}]
+        with (
+            patch.object(server, "read_json") as read_json,
+            patch.object(server.host, "snapshot_from_state", return_value=model),
+            patch.object(server.host, "fabric_checks", return_value=refused),
+            patch.object(server.host, "run", side_effect=run),
+            patch.object(server.host, "running_containers", return_value=[owned]),
+            patch.object(server.host, "fabric_gid_hints", return_value=hint) as hints,
+        ):
+            read_json.return_value = {
+                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
+            }
+            result = server.preflight(
+                profile, ROOT / "state/server.toml", 0, check_memory=False
+            )
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["gid_hints"], hint)
+        self.assertEqual(hints.call_args.args[0], config.site(profile, 0))
+        self.assertFalse(hints.call_args.args[1]["rail_0_roce_v2_gid"])
+
         for check_memory in (True, False):
             with self.subTest(check_memory=check_memory):
                 with (
