@@ -9,10 +9,12 @@
 ### Changed
 
 - warmup ladder の最後に出力の正しさの関門を置きました。MiaAI-Lab のレシピ #268 に倣ったものです（コードは採用していません）。temperature 0・effort low で 1 から 80 まで数えさせます。答えがちょうどその数列でない起動、またはその段で64 token 以上の draft に対して MTP の受理が0だった起動を異常と判定します。異常なら `cluster switch` は失敗して旧い対を復旧し、`cluster resume` は対を止めます。ladder は profile 本文の書き込みより前に走るようになり、それ以外の ladder の失敗では従来どおり対を動かし続けます（[運用](docs/operations.ja.md#監視停滞検知warmup)）。
+- warmup ladder に、checkpoint のサンプリング（temperature 1.0・top_p 0.95）で送る短文の段を足しました。temperature を送らない要求はこの設定になり、2026-09-28 にはその最初の 1 本が、temperature 0 の段では通らなかった `_topp_sb_*` の3つの kernel をコンパイルしました。
 - レールの RoCE v2 GID の検査に落ちたとき、起動前検査と切替の静的検査のエラーが、そのレールの項目がいまある index を `gid_hints` に並べるようにしました。検査は止めたままです（MiaAI-Lab のレシピ #277。2026-09-27 には head の電源断の後、相手の rail 0 が index 3 から 4 に動いた）（[起動の安全](docs/launch-safety.ja.md)）。
 
 ### Documentation
 
+- README と[検証](docs/validation.ja.md)の受け入れの範囲から、2026-09-23 の展示会についての括弧書きを外しました。経緯は[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)に残しています。
 - [起動の安全](docs/launch-safety.ja.md#切替の後のdecode検査)に、この対では image を載せた後の最初の起動の decode が後の起動の 0.965〜1.019 倍だったこと、そのため MiaAI-Lab issue #284 が勧める作り直し後の再起動を手順に入れないこと、遅かった場合の手順を書きました。[運用](docs/operations.ja.md)の「`cluster resume` は ladder を流さない」という記述を外しました。resume が切替の最後の手順を受け取るようになってから、ladder は走っていました。
 
 ## 1.19.2 — 2026-09-28

@@ -27,11 +27,15 @@ class WarmupTests(unittest.TestCase):
 
     def test_ladder_follows_profile_features(self):
         names = [name for name, _ in warmup.rungs(self.profile)]
-        self.assertEqual(names, ["text", "tool", "image", "canary"])
+        self.assertEqual(names, ["text", "sampled", "tool", "image", "canary"])
         self.profile["runtime"]["vision"] = False
         self.profile["generation"]["warmup_long_tokens"] = 65536
         names = [name for name, _ in warmup.rungs(self.profile)]
-        self.assertEqual(names, ["text", "tool", "long", "canary"])
+        self.assertEqual(names, ["text", "sampled", "tool", "long", "canary"])
+        # A client that sends no temperature gets the checkpoint's sampling,
+        # whose top-p kernels a temperature-0 ladder never reached (2026-09-28).
+        sampled = dict(warmup.rungs(self.profile))["sampled"]
+        self.assertEqual((sampled["temperature"], sampled["top_p"]), (1.0, 0.95))
         for name, request in warmup.rungs(self.profile):
             if request is not None and name != "canary":
                 self.assertEqual(request["max_tokens"], warmup.ANSWER_TOKENS)
@@ -95,7 +99,7 @@ class WarmupTests(unittest.TestCase):
             sent.append(request)
             if request.get("tools"):
                 raise RuntimeError("tool parser down")
-            if len(sent) == 3:
+            if len(sent) == 4:
                 logs.append(LOG_LINE.format(name="mhc_pre_big_fuse_with_norm_tilelang"))
             return {
                 "usage": {"prompt_tokens": fake_count(str(request["messages"]))},
@@ -113,13 +117,14 @@ class WarmupTests(unittest.TestCase):
             reset=lambda: resets.append(True),
         )
         self.assertEqual(
-            [r["rung"] for r in record["rungs"]], ["text", "tool", "long", "canary"]
+            [r["rung"] for r in record["rungs"]],
+            ["text", "sampled", "tool", "long", "canary"],
         )
         self.assertEqual(
-            [r["status"] for r in record["rungs"]], ["ok", "failed", "ok", "ok"]
+            [r["status"] for r in record["rungs"]], ["ok", "ok", "failed", "ok", "ok"]
         )
-        self.assertEqual(record["rungs"][1]["error"], "RuntimeError")
-        self.assertGreaterEqual(record["rungs"][2]["built_prompt_tokens"], 295)
+        self.assertEqual(record["rungs"][2]["error"], "RuntimeError")
+        self.assertGreaterEqual(record["rungs"][3]["built_prompt_tokens"], 295)
         self.assertEqual(
             record["compiled_during_warmup"], ["mhc_pre_big_fuse_with_norm_tilelang"]
         )

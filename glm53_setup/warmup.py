@@ -120,6 +120,19 @@ def rungs(profile):
             },
         ),
         (
+            # A client that sends no temperature (ZCode) gets the checkpoint's
+            # generation_config, temperature 1.0 and top_p 0.95; its first such
+            # request compiled three _topp_sb_* kernels, which the other rungs,
+            # sent at the profile's temperature 0, never reach (2026-09-28).
+            "sampled",
+            {
+                "messages": [{"role": "user", "content": "Reply with the word ready."}],
+                "temperature": 1.0,
+                "top_p": 0.95,
+                "max_tokens": ANSWER_TOKENS,
+            },
+        ),
+        (
             "tool",
             {
                 "messages": [
