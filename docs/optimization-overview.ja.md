@@ -143,6 +143,7 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 ## 次の候補
 
 - P24 要求単位のprefix cache無登録：必要性は実測済み、未着手（[台帳](optimization-catalog.ja.md#性能施策一覧)）
+- P28 GB10 3台でのTP=3（全長の要求を6本同時に）：次のminorの候補で、今は見積もりのみ（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）
 - Euryale：本リポジトリ外の投機draft研究（[README](../README.ja.md#本リポジトリ外の関連研究)）
 - P09 FP8／BF16 KVのA/B、P20 indexer workspace、256Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA
 - 固定版vLLM：source-pinnedのpatch（[構成](architecture.ja.md)）は、上流の修正を含む新しい固定版へ移る時に外す。その移行は上の施策すべての再検収を伴う
