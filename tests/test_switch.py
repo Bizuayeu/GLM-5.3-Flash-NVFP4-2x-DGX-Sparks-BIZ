@@ -6,6 +6,7 @@ from glm53_setup.switch import (
     READINESS_UNCONFIRMED,
     OperationFailure,
     resume,
+    stop_owned,
     switch,
 )
 
@@ -61,6 +62,41 @@ def startable(backend):
         ("start", rank, identity["name"])
     )
     return backend
+
+
+class StopOwnedTests(unittest.TestCase):
+    def test_every_row_is_stopped_in_the_given_order_and_failures_are_kept(self):
+        backend = Backend()
+        stop = backend.stop
+
+        def flaky(rank, identity):
+            stop(rank, identity)
+            if rank == 1:
+                raise OperationFailure("stop", 1, "transport-timeout")
+
+        backend.stop = flaky
+        rows = [{"rank": r, "identity": {"name": f"new-{r}"}} for r in (1, 0)]
+        report = {}
+        self.assertFalse(stop_owned(backend, rows, report))
+        self.assertEqual(backend.calls, [("stop", 1, "new-1"), ("stop", 0, "new-0")])
+        self.assertEqual(
+            report["cleanup_errors"],
+            [
+                {
+                    "rank": 1,
+                    "error": "OperationFailure",
+                    "failure": {
+                        "action": "stop",
+                        "rank": 1,
+                        "reason": "transport-timeout",
+                        "exit_code": None,
+                    },
+                }
+            ],
+        )
+        clean = {}
+        self.assertTrue(stop_owned(Backend(), rows, clean))
+        self.assertEqual(clean, {})
 
 
 class SwitchTests(unittest.TestCase):

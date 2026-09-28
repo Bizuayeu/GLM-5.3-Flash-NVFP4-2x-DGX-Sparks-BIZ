@@ -44,6 +44,23 @@ def failure_details(error):
     }
 
 
+def stop_owned(backend, rows, report):
+    """Stop each owned row in the caller's order; return whether all stopped.
+
+    A failed stop is kept in report["cleanup_errors"] and the rest still run.
+    """
+    stopped = True
+    for row in rows:
+        try:
+            backend.stop(row["rank"], row["identity"])
+        except Exception as stop_error:  # noqa: BLE001 - retain each cleanup failure
+            stopped = False
+            report.setdefault("cleanup_errors", []).append(
+                {"rank": row["rank"], **failure_details(stop_error)}
+            )
+    return stopped
+
+
 def gate(backend, report):
     """Run the request ladder; only its canary's degenerate verdict fails the pair.
 
@@ -158,15 +175,8 @@ def switch(backend, launch, *, save, config=None):
                 raise RuntimeError(
                     "Readiness observation lost; resume this recorded attempt without replaying start"
                 ) from None
-        cleanup_failed = "stop_pending" in report
-        for row in reversed(report["new"]):
-            try:
-                backend.stop(row["rank"], row["identity"])
-            except Exception as stop_error:  # noqa: BLE001 - retain each cleanup failure
-                cleanup_failed = True
-                report.setdefault("cleanup_errors", []).append(
-                    {"rank": row["rank"], **failure_details(stop_error)}
-                )
+        stopped = stop_owned(backend, reversed(report["new"]), report)
+        cleanup_failed = "stop_pending" in report or not stopped
         # Never compete with an unconfirmed new process for the same GPU/RAM.
         if not cleanup_failed:
             for rank in (1, 0):
@@ -197,13 +207,7 @@ def switch(backend, launch, *, save, config=None):
                         ) from None
                     report["recovery_errors"] = [failure_details(recovery_error)]
             if report.get("recovery_errors"):
-                for row in report["recovery"]:
-                    try:
-                        backend.stop(row["rank"], row["identity"])
-                    except Exception as stop_error:  # noqa: BLE001 - retain remaining owned cleanup failures
-                        report.setdefault("cleanup_errors", []).append(
-                            {"rank": row["rank"], **failure_details(stop_error)}
-                        )
+                stop_owned(backend, report["recovery"], report)
         save(report)
         raise RuntimeError(
             "Switch failed; inspect the saved cleanup and recovery result"
@@ -251,13 +255,7 @@ def resume(backend, report, *, config=None, save=lambda report: None):
             report["status"] = "failed"
             report["error"] = type(error).__name__
             report["failure"] = error.evidence
-            for row in sorted(rows, key=lambda row: row["rank"]):
-                try:
-                    backend.stop(row["rank"], row["identity"])
-                except Exception as stop_error:  # noqa: BLE001 - retain each cleanup failure
-                    report.setdefault("cleanup_errors", []).append(
-                        {"rank": row["rank"], **failure_details(stop_error)}
-                    )
+            stop_owned(backend, sorted(rows, key=lambda row: row["rank"]), report)
             save(report)
             raise RuntimeError(
                 "Resumed pair is degenerate; it was stopped, see the saved record"
