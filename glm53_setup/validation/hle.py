@@ -17,11 +17,11 @@ from pathlib import Path
 from .. import server, server_config
 from ..config import DEFAULT_PROFILE, load_lock
 from ..io import read_json, write_json
+from .freedombench import REASONING_BUDGET
 from .hle_scoring import SYSTEM_PROMPT, extract, final_content
 
-MAX_TOKENS = (
-    8192  # FreedomBench's upstream reasoning budget; fits the 600 s client timeout
-)
+# FreedomBench's upstream reasoning budget; fits the 600 s client timeout.
+MAX_TOKENS = REASONING_BUDGET
 REQUIRED = {"id", "question", "image", "category"}
 
 

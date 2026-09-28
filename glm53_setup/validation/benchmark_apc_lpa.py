@@ -129,19 +129,14 @@ def main(argv=None):
     save()
     try:
         with server.request_lock():
-            state, info = server.running_head(profile)
-            if not info["State"]["Running"]:
-                raise ValueError("The dedicated calibration server is not running")
+            state, info = server.running_head(
+                profile, require="The dedicated calibration server is not running"
+            )
             report.update(
                 status="running", container=state["name"], image=info["Image"]
             )
             ids = post(
-                "/tokenize",
-                {
-                    "model": profile["api"]["served_model_name"],
-                    "prompt": text,
-                    "add_special_tokens": False,
-                },
+                "/tokenize", server.tokenize_request(profile, text, special=False)
             )["tokens"]
             tail = profile["lpa"]["tail"]
             for hit in (0,) if args.cold_only else (0, args.cached_prefix_tokens):

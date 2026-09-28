@@ -18,6 +18,10 @@ from .runtime.lpa import LPA_MTP_DEPTHS
 
 # Where server.command mounts the LPA projector inside the container.
 LPA_PROJECTOR = "/lpa/projector.pt"
+# Where server.command mounts the host's runtime cache; every compile cache points in.
+RUNTIME_CACHE = "/root/.cache"
+# The API listens on the loopback only; server.api_origin calls the same address.
+API_HOST = "127.0.0.1"
 
 
 def load(path):
@@ -552,12 +556,12 @@ def environment(profile, rank):
         DO_NOT_TRACK="1",
         # Their defaults sit outside the mounted /root/.cache, so every container
         # recompiled its kernels while serving and the host RAM spike stopped rank0.
-        TRITON_CACHE_DIR="/root/.cache/triton",
-        TILELANG_CACHE_DIR="/root/.cache/tilelang",
-        TORCHINDUCTOR_CACHE_DIR="/root/.cache/torchinductor",
+        TRITON_CACHE_DIR=f"{RUNTIME_CACHE}/triton",
+        TILELANG_CACHE_DIR=f"{RUNTIME_CACHE}/tilelang",
+        TORCHINDUCTOR_CACHE_DIR=f"{RUNTIME_CACHE}/torchinductor",
         # The CUDA driver's JIT cache (PTX compiled for this GPU) defaults to
         # ~/.nv/ComputeCache, also outside the mount, so it was rebuilt per container.
-        CUDA_CACHE_PATH="/root/.cache/nv",
+        CUDA_CACHE_PATH=f"{RUNTIME_CACHE}/nv",
         # Triton keeps compiled kernels there but tunes again on every launch; on
         # the four-layer fixture the KDA inverse kernel's pick (num_warps 2 or 4)
         # decided which of two numerical states a launch computed in. Kept, the
@@ -584,7 +588,9 @@ def environment(profile, rank):
         # timed candidates (and, from the 09-15 seeding, the old /tmp paths), so
         # the switch alone changed nothing on 2026-09-24. The mode compiles into
         # a cache of its own; the other one stays as it was.
-        result["TORCHINDUCTOR_CACHE_DIR"] = "/root/.cache/torchinductor-deterministic"
+        result["TORCHINDUCTOR_CACHE_DIR"] = (
+            f"{RUNTIME_CACHE}/torchinductor-deterministic"
+        )
     if "canonical_moe_order" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(
@@ -946,7 +952,7 @@ def serve_template(site, model_path):
         "--master-port",
         str(site["master_port"]),
         "--host",
-        "127.0.0.1",
+        API_HOST,
         "--port",
         str(site["api_port"]),
         "--language-model-only",

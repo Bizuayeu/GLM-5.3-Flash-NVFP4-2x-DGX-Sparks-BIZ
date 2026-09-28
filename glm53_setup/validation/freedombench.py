@@ -14,6 +14,9 @@ from ..config import DEFAULT_PROFILE, ROOT, load_lock
 from ..io import read_json, write_json
 from .freedom_scoring import classify_attempt, summarize
 
+# The upstream reasoning budget per answer; hle.py uses the same.
+REASONING_BUDGET = 8192
+
 # Adapted from the pinned Apache-2.0 upstream runner; see NOTICE.
 SYSTEM_PROMPT = (
     "You are taking a multiple-choice quiz of basic factual questions. "
@@ -86,7 +89,7 @@ def main(argv=None):
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=8192,
+        default=REASONING_BUDGET,
         help="Upstream reasoning budget; must fit context",
     )
     parser.add_argument(

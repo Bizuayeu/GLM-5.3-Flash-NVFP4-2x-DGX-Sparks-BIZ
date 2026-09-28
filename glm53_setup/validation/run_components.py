@@ -154,12 +154,7 @@ def main(argv=None):
                 d["text"] for d in documents if d["split"] == "validation"
             )
             ids = post(
-                "/tokenize",
-                {
-                    "model": profile["api"]["served_model_name"],
-                    "prompt": text,
-                    "add_special_tokens": False,
-                },
+                "/tokenize", server.tokenize_request(profile, text, special=False)
             )["tokens"][:8192]
             if len(ids) != 8192:
                 raise ValueError("Insufficient validation corpus")

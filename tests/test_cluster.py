@@ -620,7 +620,7 @@ class SwitchVocabularyTests(unittest.TestCase):
 
     def test_only_a_lost_poll_is_a_lost_observation(self):
         failed = self.lost(return_value=subprocess.CompletedProcess([], 1, "", ""))
-        self.assertEqual(failed.evidence["reason"], "remote-operation-failed")
+        self.assertEqual(failed.evidence["reason"], switch.REMOTE_OPERATION_FAILED)
         for error in (
             failed,
             switch.OperationFailure("stop", 0, switch.TRANSPORT_TIMEOUT),

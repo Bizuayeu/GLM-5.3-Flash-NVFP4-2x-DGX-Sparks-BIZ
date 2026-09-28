@@ -140,7 +140,16 @@ class FabricTests(unittest.TestCase):
                 for name, value in entries.items():
                     (port / name).parent.mkdir(parents=True, exist_ok=True)
                     (port / name).write_text(value)
-            checks = {"rail_0_roce_v2_gid": False, "rail_1_roce_v2_gid": True}
+            gid = fabric.rail_check(0, "roce_v2_gid")
+            checks = {gid: False, fabric.rail_check(1, "roce_v2_gid"): True}
+            # The reader takes the writer's keys: checks() feeds gid_hints() as is.
+            measured = fabric.checks(
+                self.site, lambda *a: "[]", sys_root=sys_root, dev_root=sys_root
+            )
+            self.assertFalse(measured[gid])
+            self.assertEqual(
+                fabric.gid_hints(self.site, measured, sys_root=sys_root)[0]["rail"], 0
+            )
             self.assertEqual(
                 fabric.gid_hints(self.site, checks, sys_root=sys_root),
                 [
@@ -155,9 +164,7 @@ class FabricTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(
-                fabric.gid_hints(
-                    self.site, {"rail_0_roce_v2_gid": True}, sys_root=sys_root
-                ),
+                fabric.gid_hints(self.site, {gid: True}, sys_root=sys_root),
                 [],
             )
             missing = copy.deepcopy(self.site)
@@ -168,6 +175,16 @@ class FabricTests(unittest.TestCase):
                 ],
                 [],
             )
+
+    def test_fabric_addresses_exclude_loopback_unspecified_and_multicast(self):
+        for value, ok in (
+            ("10.53.0.1", True),
+            ("127.0.0.1", False),
+            ("0.0.0.0", False),
+            ("224.0.0.1", False),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(fabric.is_fabric_ipv4(value), ok)
 
     def test_optional_toml_rails_preserve_single_input(self):
         profile = server_config.load(

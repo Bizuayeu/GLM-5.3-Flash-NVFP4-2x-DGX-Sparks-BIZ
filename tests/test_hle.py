@@ -55,6 +55,13 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(extract("Exact Answer: 1\nConfidence: 150%"), ("1", None))
 
 
+class BudgetTests(unittest.TestCase):
+    def test_the_answer_budget_is_freedombenchs(self):
+        from glm53_setup.validation import freedombench
+
+        self.assertEqual(hle.MAX_TOKENS, freedombench.REASONING_BUDGET)
+
+
 class MessageTests(unittest.TestCase):
     def test_text_and_image_questions(self):
         self.assertEqual(hle.messages(ROWS[0])[1]["content"], "Q1?")

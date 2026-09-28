@@ -442,9 +442,9 @@ def main(argv=None):
     save()
     try:
         with server.request_lock():
-            state, info = server.running_head(profile)
-            if not info["State"]["Running"]:
-                raise ValueError("The configured dedicated server is not running")
+            state, info = server.running_head(
+                profile, require="The configured dedicated server is not running"
+            )
             report.update(
                 image=info["Image"],
                 container=state["name"],
@@ -457,12 +457,7 @@ def main(argv=None):
                 args.block_tokens,
             )
             ids = post(
-                "/tokenize",
-                {
-                    "model": profile["api"]["served_model_name"],
-                    "prompt": text,
-                    "add_special_tokens": False,
-                },
+                "/tokenize", server.tokenize_request(profile, text, special=False)
             )["tokens"][: args.corpus_tokens]
             if len(ids) != args.corpus_tokens:
                 raise ValueError("Insufficient validation corpus")

@@ -6,6 +6,24 @@ import json
 import re
 from pathlib import Path
 
+# A device or interface name taken from the host's inventory.
+DEVICE_NAME = r"[A-Za-z0-9_.-]+"
+
+
+def is_fabric_ipv4(value):
+    """Whether an IPv4 address can carry fabric traffic (not loopback, 0.0.0.0 or multicast)."""
+    address = ipaddress.IPv4Address(value)
+    return not (address.is_loopback or address.is_unspecified or address.is_multicast)
+
+
+def is_wifi(interface):
+    return interface.startswith("wl")
+
+
+def rail_check(index, name):
+    """The key of one rail's check in checks(); gid_hints reads the same key."""
+    return f"rail_{index}_{name}"
+
 
 def rails(site):
     primary = {key: site[key] for key in ("hca", "interface", "local_ip", "gid_index")}
@@ -22,10 +40,10 @@ def rails(site):
             )
         for key in ("hca", "interface"):
             if not isinstance(rail[key], str) or not re.fullmatch(
-                r"[A-Za-z0-9_.-]+", rail[key]
+                DEVICE_NAME, rail[key]
             ):
                 raise ValueError(f"Invalid rail {key}; use structured additional_rails")
-        if rail["interface"].startswith("wl"):
+        if is_wifi(rail["interface"]):
             raise ValueError("RoCE rails cannot use Wi-Fi")
         if type(rail["port"]) is not int or rail["port"] < 1:
             raise ValueError("Rail port must be a positive integer")
@@ -34,9 +52,9 @@ def rails(site):
             or rail["gid_index"] != primary["gid_index"]
         ):
             raise ValueError("All rails must use the rank's common GID index")
-        address = ipaddress.IPv4Address(rail["local_ip"])
-        if address.is_loopback or address.is_unspecified or address.is_multicast:
+        if not is_fabric_ipv4(rail["local_ip"]):
             raise ValueError("Rail address must be a fabric IPv4 address")
+        address = ipaddress.IPv4Address(rail["local_ip"])
         identity = (rail["hca"], rail["port"])
         if identity in ports or rail["interface"] in interfaces or address in addresses:
             raise ValueError("Duplicate rail port, interface or address")
@@ -50,15 +68,14 @@ def validate_site(site):
     if type(site.get("rank")) is not int or site["rank"] not in (0, 1):
         raise ValueError("rank must be 0 or 1")
     for key in ("head_ip", "local_ip"):
-        address = ipaddress.IPv4Address(site[key])
-        if address.is_loopback or address.is_unspecified or address.is_multicast:
+        if not is_fabric_ipv4(site[key]):
             raise ValueError(f"{key} must be a fabric IPv4 address")
     if (site["rank"] == 0) != (site["head_ip"] == site["local_ip"]):
         raise ValueError("Head must own head_ip; worker must have a different address")
     for key in ("interface", "hca"):
-        if not re.fullmatch(r"[a-zA-Z0-9_.-]+", site.get(key, "")):
+        if not re.fullmatch(DEVICE_NAME, site.get(key, "")):
             raise ValueError(f"Set a concrete {key} from the local device inventory")
-    if site["interface"].startswith("wl"):
+    if is_wifi(site["interface"]):
         raise ValueError("The real-model profile requires RoCE, not Wi-Fi")
     if type(site.get("gid_index")) is not int or site["gid_index"] < 0:
         raise ValueError("gid_index must be nonnegative")
@@ -122,7 +139,7 @@ def gid_hints(site, checks, *, sys_root=Path("/sys")):
     """
     hints = []
     for number, rail in enumerate(rails(site)):
-        if checks.get(f"rail_{number}_roce_v2_gid", True):
+        if checks.get(rail_check(number, "roce_v2_gid"), True):
             continue
         port = port_path(sys_root, rail)
         try:
@@ -160,15 +177,16 @@ def checks(site, run, *, sys_root=Path("/sys"), dev_root=Path("/dev")):
             )
         except (OSError, ValueError):
             addresses = []
-        prefix = f"rail_{index}_"
         result.update(
             {
-                prefix + "link_up": read(net / "operstate") == "up",
-                prefix + "port_active": read(port / "state").startswith("4:")
+                rail_check(index, "link_up"): read(net / "operstate") == "up",
+                rail_check(index, "port_active"): read(port / "state").startswith("4:")
                 and read(port / "phys_state").startswith("5:")
                 and read(port / "link_layer") == "Ethernet",
-                prefix + "roce_v2_gid": roce_v2_gid(port, rail["gid_index"], rail),
-                prefix + "address_assigned": any(
+                rail_check(index, "roce_v2_gid"): roce_v2_gid(
+                    port, rail["gid_index"], rail
+                ),
+                rail_check(index, "address_assigned"): any(
                     a.get("local") == rail["local_ip"]
                     for n in addresses
                     for a in n.get("addr_info", [])

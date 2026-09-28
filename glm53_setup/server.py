@@ -29,6 +29,7 @@ from .download import STATUS_FILE
 from .host import available_gib
 from .io import read_json, write_json
 from .runtime.patch_nope_reference import REFERENCE_FILE
+from .warmup import parse_metrics
 
 LABEL = "glm53.experiment.startup"
 # The image's site directory; site runs the import lines of .pth files found here.
@@ -40,6 +41,11 @@ VLLM_MODEL_DIR = f"{SITE_PACKAGES}/vllm/models/glm5next/nvidia"
 IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
 # The backend patch imports the reference attention from this copy.
 IMAGE_REFERENCE = f"{SITE_PACKAGES}/{REFERENCE_FILE}"
+
+
+def runtime_cache_dir():
+    """The host side of the runtime cache mount (settings.RUNTIME_CACHE inside)."""
+    return STATE / "tp2-runtime-cache"
 
 
 def hf_cache():
@@ -106,7 +112,7 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{cache.resolve()}:/hf:ro",
         "-v",
-        f"{STATE / 'tp2-runtime-cache'}:/root/.cache",
+        f"{runtime_cache_dir()}:{settings.RUNTIME_CACHE}",
     ]
     if profile["nodes"][rank].get("cpuset_cpus") is not None:
         args += ["--cpuset-cpus", profile["nodes"][rank]["cpuset_cpus"]]
@@ -306,25 +312,9 @@ PROGRESS_SIGNALS = (
 )
 
 
-def parse_metrics(text, names):
-    """Sum each named Prometheus sample over its label sets; absent names are omitted."""
-    totals = {}
-    for line in text.splitlines():
-        if not line or line.startswith("#"):
-            continue
-        head, _, value = line.rpartition(" ")
-        name = head.split("{", 1)[0]
-        if name in names:
-            try:
-                totals[name] = totals.get(name, 0.0) + float(value)
-            except ValueError:
-                continue
-    return totals
-
-
 def api_origin(profile):
     """The running head's API as a client on the same host reaches it."""
-    return f"http://127.0.0.1:{profile['api']['port']}"
+    return f"http://{settings.API_HOST}:{profile['api']['port']}"
 
 
 def metrics_text(profile, timeout=2, errors="replace"):
@@ -407,10 +397,16 @@ def request_lock():
         yield
 
 
-def running_head(profile):
-    """Return rank 0's recorded state and container info owned by this profile."""
+def running_head(profile, require=None):
+    """Return rank 0's recorded state and container info owned by this profile.
+
+    With ``require``, a head that is not running raises ValueError(require).
+    """
     state = read_json(state_path(0))
-    return state, inspect_owned(state["name"], settings.fingerprint(profile))
+    info = inspect_owned(state["name"], settings.fingerprint(profile))
+    if require is not None and not info["State"]["Running"]:
+        raise ValueError(require)
+    return state, info
 
 
 def post(profile, path, body):
@@ -420,6 +416,14 @@ def post(profile, path, body):
         body,
         timeout=profile["generation"]["timeout_seconds"],
     )
+
+
+def tokenize_request(profile, text, special=True):
+    """The /tokenize body for a plain prompt; ``special=False`` counts the text alone."""
+    body = {"model": profile["api"]["served_model_name"], "prompt": text}
+    if not special:
+        body["add_special_tokens"] = False
+    return body
 
 
 def collective_rpc(profile, method, **kwargs):
@@ -456,11 +460,7 @@ def warmup_report(profile, name):
     """Run the request ladder against the running head."""
 
     def count_tokens(text):
-        return post(
-            profile,
-            "/tokenize",
-            {"model": profile["api"]["served_model_name"], "prompt": text},
-        )["count"]
+        return post(profile, "/tokenize", tokenize_request(profile, text))["count"]
 
     return warmup.run(
         profile,
@@ -481,9 +481,7 @@ def recorded_on_head(profile, action, run):
     ``run(state)`` gets rank 0's recorded state and returns the result, which
     is written to a new ``<stamp>-<action>-r0`` record and names it.
     """
-    state, info = running_head(profile)
-    if not info["State"]["Running"]:
-        raise ValueError(f"{action} requires the running rank 0")
+    state, info = running_head(profile, require=f"{action} requires the running rank 0")
     with request_lock():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         record = RECORDS / (stamp + f"-{action}-r0")
@@ -525,7 +523,7 @@ def agreement_senders(profile, sender=post):
     model = profile["api"]["served_model_name"]
 
     def tokenize(text):
-        return sender(profile, "/tokenize", {"model": model, "prompt": text})["tokens"]
+        return sender(profile, "/tokenize", tokenize_request(profile, text))["tokens"]
 
     def complete(token_ids, top_k):
         return sender(
@@ -781,7 +779,7 @@ def start_rank(cli, args, profile, result):
     name = container_name(args.rank, args.run_id or stamp.lower())
     record = RECORDS / (stamp + f"-server-r{args.rank}")
     record.mkdir(parents=True)
-    (STATE / "tp2-runtime-cache").mkdir(parents=True, exist_ok=True)
+    runtime_cache_dir().mkdir(parents=True, exist_ok=True)
     if profile["profiling"]["enabled"]:
         (RECORDS / "profiles" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)

@@ -16,6 +16,9 @@ from . import host, launch_assets, model_http, server, server_config
 from .config import RECORDS, ROOT
 from .io import read_json, write_json
 from .switch import (
+    RANK_TERMINATED,
+    READINESS_DEADLINE,
+    REMOTE_OPERATION_FAILED,
     SSH_UNAVAILABLE,
     TRANSPORT_TIMEOUT,
     OperationFailure,
@@ -309,7 +312,7 @@ class SSHBackend:
                         rank,
                         SSH_UNAVAILABLE
                         if response.returncode == 255
-                        else "remote-operation-failed",
+                        else REMOTE_OPERATION_FAILED,
                         response.returncode,
                     )
             time.sleep(1)
@@ -346,11 +349,11 @@ class SSHBackend:
                 index = next(
                     i for i, status in enumerate(statuses) if status.get("failed")
                 )
-                raise OperationFailure("ready", rows[index]["rank"], "rank-terminated")
+                raise OperationFailure("ready", rows[index]["rank"], RANK_TERMINATED)
             if all(s.get("ready") for s in statuses):
                 return
             time.sleep(5)
-        raise OperationFailure("ready", None, "readiness-deadline")
+        raise OperationFailure("ready", None, READINESS_DEADLINE)
 
 
 def ssh_backend(args):

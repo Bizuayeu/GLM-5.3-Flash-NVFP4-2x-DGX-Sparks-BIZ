@@ -297,3 +297,24 @@ class SpecCounterTests(unittest.TestCase):
             warmup.spec_counters(metrics),
             {"num_draft_tokens": 42.0, "num_accepted_tokens": 23.0},
         )
+
+    def test_a_malformed_sample_is_skipped_not_fatal(self):
+        # One bad line used to raise, and read_counters turned the whole reading
+        # into None: the canary's MTP check then could not judge at all.
+        metrics = "\n".join(
+            [
+                'vllm:spec_decode_num_draft_tokens_total{engine="0"} 70.0',
+                'vllm:spec_decode_num_draft_tokens_total{engine="1"} not-a-number',
+                "vllm:spec_decode_num_accepted_tokens_total 0.0",
+                "",
+            ]
+        )
+        self.assertEqual(
+            warmup.spec_counters(metrics),
+            {"num_draft_tokens": 70.0, "num_accepted_tokens": 0.0},
+        )
+
+    def test_the_server_reads_metrics_with_the_same_parser(self):
+        from glm53_setup import server
+
+        self.assertIs(server.parse_metrics, warmup.parse_metrics)

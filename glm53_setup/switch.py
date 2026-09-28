@@ -7,6 +7,10 @@ SSH_UNAVAILABLE = "ssh-unavailable"
 READINESS_UNCONFIRMED = "readiness-unconfirmed"
 RECOVERY_READINESS_UNCONFIRMED = "recovery-readiness-unconfirmed"
 DEGENERATE_ENGINE = "degenerate-engine"
+# The other reasons a transport or the readiness wait gives an OperationFailure.
+REMOTE_OPERATION_FAILED = "remote-operation-failed"
+RANK_TERMINATED = "rank-terminated"
+READINESS_DEADLINE = "readiness-deadline"
 
 
 class OperationFailure(RuntimeError):

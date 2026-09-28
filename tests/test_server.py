@@ -172,6 +172,8 @@ class ServerConfigTests(unittest.TestCase):
                     server.start_rank(None, args, self.profile, {"passed": True})
             self.assertEqual(run.call_args_list[-1].args[:2], ("docker", "stop"))
             self.assertFalse((temporary_root / "rank.json").exists())
+            # The runtime cache follows STATE, so a test never writes the checkout's.
+            self.assertTrue((temporary_root / "state/tp2-runtime-cache").is_dir())
 
     def test_the_supervision_banner_names_every_stop(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -208,6 +210,37 @@ class ServerConfigTests(unittest.TestCase):
             )
             # The CUDA driver's JIT cache, otherwise ~/.nv/ComputeCache.
             self.assertEqual(env["CUDA_CACHE_PATH"], "/root/.cache/nv")
+
+    def test_tokenize_request_names_the_served_model(self):
+        model = self.profile["api"]["served_model_name"]
+        self.assertEqual(
+            list(server.tokenize_request(self.profile, "hi").items()),
+            [("model", model), ("prompt", "hi")],
+        )
+        # Measurements count a text alone, without the template's BOS.
+        self.assertEqual(
+            list(server.tokenize_request(self.profile, "hi", special=False).items()),
+            [("model", model), ("prompt", "hi"), ("add_special_tokens", False)],
+        )
+
+    def test_every_cache_path_lies_in_the_mounted_runtime_cache(self):
+        # A cache path outside the mount is rebuilt in every container; kernels
+        # then compile while serving (the incident behind these variables).
+        self.profile["runtime"]["inductor_deterministic"] = True
+        args = server.command(
+            self.profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
+        )
+        mount = f"{server.runtime_cache_dir()}:{config.RUNTIME_CACHE}"
+        self.assertIn(mount, args)
+        env = config.environment(self.profile, 0)
+        for key in (
+            "TRITON_CACHE_DIR",
+            "TILELANG_CACHE_DIR",
+            "TORCHINDUCTOR_CACHE_DIR",
+            "CUDA_CACHE_PATH",
+        ):
+            with self.subTest(key=key):
+                self.assertTrue(env[key].startswith(config.RUNTIME_CACHE + "/"))
 
     def test_autotuned_kernel_choices_are_kept_with_the_triton_cache(self):
         # Without this every launch tunes again, and one KDA kernel's pick decides
@@ -1588,6 +1621,13 @@ class HeadClientTests(unittest.TestCase):
     def test_the_head_is_reached_on_the_loopback_at_the_profile_port(self):
         self.assertEqual(server.api_origin(self.PROFILE), "http://127.0.0.1:8123")
 
+    def test_clients_call_the_address_the_server_binds(self):
+        profile = config.load(ROOT / "examples/server.example.toml")
+        args = config.serve_args(profile, 0, "/model")
+        host = args[args.index("--host") + 1]
+        self.assertEqual(host, config.API_HOST)
+        self.assertTrue(server.api_origin(profile).startswith(f"http://{host}:"))
+
     def test_a_reset_that_is_not_acknowledged_fails(self):
         with patch.object(server, "post", return_value={"success": True}) as post:
             server.reset_prefix_cache(self.PROFILE)
@@ -1639,8 +1679,28 @@ class RecordedHeadRunTests(unittest.TestCase):
         self.enterContext(patch.object(server, "request_lock", lock))
 
     def head(self, running=True):
+        # Below running_head, so its own running check is the one exercised.
         info = {"State": {"Running": running}}
-        return patch.object(server, "running_head", return_value=({"name": "c"}, info))
+        real = server.read_json
+
+        def read(path):
+            return {"name": "c"} if path == server.state_path(0) else real(path)
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.object(server, "read_json", side_effect=read))
+        stack.enter_context(patch.object(server, "inspect_owned", return_value=info))
+        return stack
+
+    def test_running_head_refuses_a_stopped_head_only_when_asked(self):
+        with self.head(running=False):
+            state, info = server.running_head(self.profile)
+            self.assertEqual((state, info["State"]["Running"]), ({"name": "c"}, False))
+            with self.assertRaisesRegex(ValueError, "^needs the head$"):
+                server.running_head(self.profile, require="needs the head")
+        with self.head():
+            self.assertTrue(
+                server.running_head(self.profile, require="x")[1]["State"]["Running"]
+            )
 
     def job(self, action):
         """Replace what the action runs; the replacement records the lock state."""

@@ -37,15 +37,25 @@ SPEC_METRICS = {
 }
 
 
+def parse_metrics(text, names):
+    """Sum each named Prometheus sample over its label sets; absent names are omitted."""
+    totals = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        head, _, value = line.rpartition(" ")
+        name = head.split("{", 1)[0]
+        if name in names:
+            try:
+                totals[name] = totals.get(name, 0.0) + float(value)
+            except ValueError:
+                continue
+    return totals
+
+
 def spec_counters(metrics):
     """The draft and accepted totals from a Prometheus /metrics text."""
-    totals = {}
-    for line in metrics.splitlines():
-        name = line.split("{", 1)[0].split(" ", 1)[0]
-        if name in SPEC_METRICS:
-            key = SPEC_METRICS[name]
-            totals[key] = totals.get(key, 0.0) + float(line.rsplit(" ", 1)[1])
-    return totals
+    return {SPEC_METRICS[k]: v for k, v in parse_metrics(metrics, SPEC_METRICS).items()}
 
 
 def compiled_kernels(logs):
