@@ -8,6 +8,7 @@
 
 - The warmup ladder ends with a correctness canary, after MiaAI-Lab recipe #268 (no code adopted): counting from 1 to 80 at temperature 0 and effort low. A launch whose answer is not exactly that count, or whose MTP accepted none of at least 64 tokens drafted during that rung, is degenerate: `cluster switch` fails and restores the old pair, and `cluster resume` stops the pair. The ladder now runs before the profile text is written, and any other ladder failure still leaves the pair serving ([operations](docs/operations.md#supervision-stall-detection-and-warmup)).
 - The warmup ladder adds a short turn at the checkpoint's sampling (temperature 1.0, top_p 0.95). A request that sends no temperature gets those settings, and on 2026-09-28 its first one compiled three `_topp_sb_*` kernels that the ladder's temperature-0 rungs never reached.
+- The example ZCode guard ([examples/zcode-hooks](examples/zcode-hooks/README.md)) asks for a `Bash` command that names the `.zcode` directory. In the harness run of 2026-09-28 an inline `python -c` wrote a file there without a prompt after a `Write` of the same file had been refused; only `Write`/`Edit` checked the path.
 - When a rail's RoCE v2 GID check fails, preflight and the switch's static-check error list under `gid_hints` the indices where that rail's entry is now; the check still refuses (MiaAI-Lab recipe #277; on 2026-09-27 the peer's rail 0 moved from index 3 to 4 after the head lost power) ([launch safety](docs/launch-safety.md)).
 
 ### Documentation
