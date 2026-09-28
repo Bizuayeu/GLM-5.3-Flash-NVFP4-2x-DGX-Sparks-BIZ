@@ -4,6 +4,13 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.20.4 — 2026-09-29
+
+### Documentation
+
+- リポジトリ名を `Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ`（「2x」なし）に改めました。配布物を2台に閉じないためです。旧名はGitHubが転送します。README の題名、NOTICE、パッケージの docstring、LPA projector の lock の Release と取得の URL、Release と issue #1 へのリンクを新しい名前に揃えました。NoPE の参照 patch が image に書き込む見出しの行は、変えると patch 後の hash が動くため、次に image を作り直すまで旧名のままです。
+- README の要約・機体の行・業務利用の目的、pyproject の説明、SETUP の手順書は、本プロジェクトを2台用とは書かなくなりました。本リリースが配信するのは2台の TP=2 で、スイッチなしのリングで結ぶ3台の TP=3 が次の目標（施策台帳 P28）であり、まだ対応していません。実測の条件を示す行の2台はそのままです。
+
 ## 1.20.3 — 2026-09-28
 
 ### Fixed

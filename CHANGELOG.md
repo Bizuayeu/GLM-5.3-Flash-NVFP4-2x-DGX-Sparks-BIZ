@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.4 — 2026-09-29
+
+### Documentation
+
+- The repository is now `Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ`, without "2x", because the distribution is no longer meant to stay at two hosts; GitHub redirects the old name. The README titles, NOTICE, the package docstring, the LPA projector lock's release and download URLs and the links to the Release and issue #1 follow. The header that the NoPE reference patch writes into the image keeps the old name until the next image rebuild, because changing it moves the patched hash.
+- The README summary, hardware row and business objective, the pyproject description and the SETUP runbook no longer describe the project as a two-host one: this release serves two hosts at TP=2, and TP=3 on three hosts cabled as a ring without a switch is the next target (catalog P28), not yet supported. Lines that give the conditions of a measurement keep their two hosts.
+
 ## 1.20.3 — 2026-09-28
 
 ### Fixed
