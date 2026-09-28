@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from ..io import write_json
+from ..runtime.lpa import LPA_MTP_DEPTHS
 from ..server_config import speculative_config
 from .run_fixture import read_fixture
 
@@ -24,7 +25,7 @@ def parser():
     cli.add_argument("--cut", type=int, default=2)
     cli.add_argument("--skip-mla-queries", action="store_true")
     cli.add_argument(
-        "--mtp", type=int, choices=[1, 2, 3], help="Opt-in MTP coexistence check"
+        "--mtp", type=int, choices=LPA_MTP_DEPTHS, help="Opt-in MTP coexistence check"
     )
     return cli
 

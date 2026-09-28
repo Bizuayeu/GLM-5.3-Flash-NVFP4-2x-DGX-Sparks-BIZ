@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from . import fabric
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .runtime.apc_runtime import RuntimeSettings
+from .runtime.lpa import LPA_MTP_DEPTHS
 
 # Where server.command mounts the LPA projector inside the container.
 LPA_PROJECTOR = "/lpa/projector.pt"
@@ -396,7 +397,7 @@ def check_lpa(profile):
     if (
         lpa["enabled"]
         and profile["mtp"]["enabled"]
-        and profile["mtp"]["num_speculative_tokens"] not in (1, 2, 3)
+        and profile["mtp"]["num_speculative_tokens"] not in LPA_MTP_DEPTHS
     ):
         # The LPA and APC/LPA workers refuse the others on every request.
         raise ValueError("LPA with MTP accepts depth 1, 2 or 3")

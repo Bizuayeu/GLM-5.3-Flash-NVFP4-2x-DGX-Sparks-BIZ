@@ -93,8 +93,8 @@ class LaunchTests(unittest.TestCase):
             profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
         )
         for target in (
-            ":/opt/glm53/glm53_setup/runtime/inductor_pin.py:ro",
-            ":/usr/local/lib/python3.12/dist-packages/glm53-inductor-pin.pth:ro",
+            f":{server.IMAGE_PACKAGE_DIR}/runtime/inductor_pin.py:ro",
+            f":{server.SITE_PACKAGES}/glm53-inductor-pin.pth:ro",
         ):
             self.assertTrue(any(v.endswith(target) for v in command), target)
 

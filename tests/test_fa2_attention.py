@@ -69,11 +69,11 @@ class Fa2SwitchTests(unittest.TestCase):
             profile, ROOT / "state/server.toml", 0, "c", ROOT / "state/test-hf"
         )
         for target in (
-            ":/opt/glm53/glm53_setup/runtime/fa2_attention.py:ro",
-            ":/opt/glm53/glm53_setup/runtime/reference_attention.py:ro",
+            f":{server.IMAGE_PACKAGE_DIR}/runtime/fa2_attention.py:ro",
+            f":{server.IMAGE_PACKAGE_DIR}/runtime/reference_attention.py:ro",
             # The image's copy compiles one kernel per size; FA2 needs the fixed one.
-            ":/opt/glm53/glm53_setup/runtime/fused_unpack.py:ro",
-            ":/usr/local/lib/python3.12/dist-packages/glm53_reference.py:ro",
+            f":{server.IMAGE_PACKAGE_DIR}/runtime/fused_unpack.py:ro",
+            f":{server.SITE_PACKAGES}/glm53_reference.py:ro",
         ):
             self.assertTrue(any(v.endswith(target) for v in command), target)
         # The image must carry the path (1.6.0) whatever the mounts deliver, a

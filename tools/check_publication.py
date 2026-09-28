@@ -3,9 +3,11 @@
 import argparse
 import fnmatch
 import json
+import posixpath
 import re
 import subprocess
 import tomllib
+import unicodedata
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -201,6 +203,42 @@ def plan_link_problems(root):
     return problems
 
 
+def heading_anchors(text):
+    """The anchors GitHub gives the headings of a Markdown text."""
+    anchors = set()
+    seen = {}
+    for heading in re.findall(r"(?m)^#{1,6}[ \t]+(.+?)[ \t#]*$", prose(text)):
+        heading = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading.replace("`", ""))
+        slug = "".join(
+            "-" if ch == " " else ch
+            for ch in heading.strip().lower()
+            if ch in " -_" or unicodedata.category(ch)[0] in "LNM"
+        )
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+    return anchors
+
+
+def anchor_problems(documents):
+    """Each #anchor of a relative Markdown link names a heading of its target."""
+    anchors = {name: heading_anchors(text) for name, text in documents.items()}
+    problems = []
+    for name in sorted(documents):
+        for target in re.findall(r"\[[^\]]*\]\(([^)\s]+)", prose(documents[name])):
+            url = urlsplit(target.strip("<>"))
+            if url.scheme or not url.fragment:
+                continue
+            path = name
+            if url.path:
+                path = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(name), unquote(url.path))
+                )
+            if path in anchors and unquote(url.fragment) not in anchors[path]:
+                problems.append(f"broken Markdown anchor: {name} -> {target}")
+    return problems
+
+
 def public_files(root, export_tree=False):
     if export_tree:
         return {
@@ -295,6 +333,9 @@ def main():
     files = public_files(root, args.export_tree)
     problems = audit(root, files)
     documents = {name for name in files if name.endswith(".md")}
+    problems += anchor_problems(
+        {name: (root / name).read_text(encoding="utf-8") for name in documents}
+    )
     for map_name in MAPS:
         if map_name in files:
             problems += map_problems(

@@ -241,7 +241,7 @@ class MemoryProbeTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                v.endswith(":/opt/glm53/glm53_setup/runtime/memory_probe.py:ro")
+                v.endswith(f":{server.IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro")
                 for v in command
             ),
             command,

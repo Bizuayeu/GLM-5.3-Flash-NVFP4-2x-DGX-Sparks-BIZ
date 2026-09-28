@@ -10,7 +10,7 @@ from pathlib import Path
 from ..config import REVISION, TEACHER_PRECISION
 from ..io import write_json
 from ..runtime.apc_runtime import MODE_KEY
-from ..runtime.lpa import PROJECTOR_FORMAT
+from ..runtime.lpa import LPA_MTP_DEPTHS, PROJECTOR_FORMAT
 from ..server_config import speculative_config
 from .run_fixture import read_fixture
 
@@ -27,7 +27,7 @@ def parser():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--fixture", type=Path, required=True)
     cli.add_argument("--output", type=Path, required=True)
-    cli.add_argument("--mtp", type=int, choices=(1, 2, 3))
+    cli.add_argument("--mtp", type=int, choices=LPA_MTP_DEPTHS)
     cli.add_argument("--fused-unpack", action="store_true")
     cli.add_argument("--async-index-checks", action="store_true")
     cli.add_argument("--async-scheduling", action="store_true")

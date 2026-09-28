@@ -3,9 +3,11 @@ import unittest
 from pathlib import Path
 
 from tools.check_publication import (
+    anchor_problems,
     architecture_problems,
     audit,
     citation_problems,
+    heading_anchors,
     headline_problems,
     map_problems,
     plan_link_problems,
@@ -198,3 +200,56 @@ class PlanLinkTests(unittest.TestCase):
                     "broken plan link: docs/plans/A_PLAN.md -> ../../records/run/REPORT.md"
                 ],
             )
+
+
+class AnchorTests(unittest.TestCase):
+    def test_heading_anchors_follow_github_slugs(self):
+        text = (
+            "# Launch contracts\n"
+            "## 6. Qualify the full model\n"
+            "## `server preflight` and [links](x.md)\n"
+            "## 切替後の decode 検査\n"
+            "## Notes\n"
+            "## Notes\n"
+            "```\n# not a heading\n```\n"
+        )
+        self.assertEqual(
+            heading_anchors(text),
+            {
+                "launch-contracts",
+                "6-qualify-the-full-model",
+                "server-preflight-and-links",
+                "切替後の-decode-検査",
+                "notes",
+                "notes-1",
+            },
+        )
+
+    def test_links_to_existing_anchors_pass(self):
+        documents = {
+            "SETUP.md": "## Run it\nSee [ops](docs/operations.md#storage-paths).\n",
+            "docs/operations.md": "## Storage paths\n"
+            "Back to [run](../SETUP.md#run-it) and [here](#storage-paths).\n",
+        }
+        self.assertEqual(anchor_problems(documents), [])
+
+    def test_missing_anchor_is_reported_per_link(self):
+        documents = {
+            "a.md": "[x](b.md#gone) [y](#nowhere) [web](https://example.org/#frag)\n",
+            "b.md": "## Here\n",
+        }
+        self.assertEqual(
+            anchor_problems(documents),
+            [
+                "broken Markdown anchor: a.md -> b.md#gone",
+                "broken Markdown anchor: a.md -> #nowhere",
+            ],
+        )
+
+    def test_encoded_fenced_and_non_markdown_targets(self):
+        documents = {
+            "a.md": "[j](b.ja.md#%E6%A4%9C%E6%9F%BB) [code](tool.py#L3)\n"
+            "```\n[not](b.ja.md#missing)\n```\n",
+            "b.ja.md": "## 検査\n",
+        }
+        self.assertEqual(anchor_problems(documents), [])

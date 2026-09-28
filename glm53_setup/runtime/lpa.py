@@ -12,6 +12,9 @@ from ..config import REVISION, TEACHER_PRECISION
 
 # The projector artifact this loader reads; train_lpa and the APC/LPA fixture write it.
 PROJECTOR_FORMAT = 2
+# The MTP depths LPA runs with; the settings and the fixture CLIs read this, and
+# the baked apc_worker keeps the same literal (tests/test_contracts.py).
+LPA_MTP_DEPTHS = (1, 2, 3)
 
 
 @dataclass(frozen=True)
@@ -532,7 +535,7 @@ class LPAWorkerExtension:
         if speculative and (
             not allow_mtp
             or speculative.method != "mtp"
-            or speculative.num_speculative_tokens not in (1, 2, 3)
+            or speculative.num_speculative_tokens not in LPA_MTP_DEPTHS
         ):
             raise ValueError("Only explicitly enabled MTP k=1/k=2/k=3 is supported")
         if config.cache_config.enable_prefix_caching:
