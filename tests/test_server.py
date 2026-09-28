@@ -167,6 +167,7 @@ class ServerConfigTests(unittest.TestCase):
                 patch.object(
                     server.host, "run", side_effect=["created", "stopped"]
                 ) as run,
+                contextlib.redirect_stdout(io.StringIO()),
             ):
                 with self.assertRaisesRegex(OSError, "inspect failed"):
                     server.start_rank(None, args, self.profile, {"passed": True})
@@ -1512,8 +1513,10 @@ class ServerConfigTests(unittest.TestCase):
                 server.settings, "load", side_effect=ValueError("bad TOML")
             ) as load,
             patch.object(server.host, "run", return_value="stopped") as run,
+            contextlib.redirect_stdout(io.StringIO()) as printed,
         ):
             server.main(["stop", "--rank", "0"])
+            self.assertEqual(printed.getvalue(), "stopped\n")
             load.assert_not_called()
             run.assert_called_once_with("docker", "stop", "owned")
 

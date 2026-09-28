@@ -1,4 +1,5 @@
 import contextlib
+import io
 import json
 import tempfile
 import types
@@ -204,6 +205,7 @@ class RunnerTests(unittest.TestCase):
             ),
             patch.object(server, "request_lock", contextlib.nullcontext),
             patch.object(server, "ask", side_effect=ask),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
             hle.main(
                 [

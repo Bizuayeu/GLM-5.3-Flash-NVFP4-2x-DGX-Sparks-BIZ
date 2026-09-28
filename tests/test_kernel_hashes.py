@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -523,8 +525,10 @@ class ToolTests(unittest.TestCase):
                 patch.object(
                     kernel_hashes.server_config, "fingerprint", return_value="fp"
                 ),
+                contextlib.redirect_stdout(io.StringIO()) as printed,
             ):
                 code = kernel_hashes.main(args)
+            self.printed = printed.getvalue()
             # The served launchers are read before kernel_hashes runs anything.
             self.assertEqual(
                 [c.args[1] for c in rpc.call_args_list],
@@ -540,6 +544,11 @@ class ToolTests(unittest.TestCase):
         ]
         code, record = self.run_tool(ranks)
         self.assertEqual(code, 0)
+        # A rank whose Inductor settings drifted from its environment is named.
+        self.assertIn(
+            "rank 1: TORCHINDUCTOR_* environment and Inductor's config disagree",
+            self.printed,
+        )
         self.assertEqual([r["rank"] for r in record["ranks"]], [0, 1])
         self.assertTrue(record["across_ranks"]["agree"])
         # The container rank 0's state names, not the state itself.

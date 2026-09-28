@@ -1,5 +1,7 @@
 import contextlib
 import copy
+import io
+import json
 import subprocess
 import tempfile
 import unittest
@@ -435,6 +437,7 @@ class SwitchCommandTests(unittest.TestCase):
             patch.object(
                 cluster, "switch", return_value={"status": "complete"}
             ) as switch,
+            contextlib.redirect_stdout(io.StringIO()) as printed,
         ):
             cluster.main(
                 [
@@ -453,6 +456,8 @@ class SwitchCommandTests(unittest.TestCase):
                     *extra,
                 ]
             )
+            # The printed status is what an operator and a driver read.
+            self.assertEqual(json.loads(printed.getvalue())["status"], "complete")
             return switch.call_args
 
     def test_switch_sends_the_profile_text_by_default(self):

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -200,8 +202,10 @@ class ToolTests(unittest.TestCase):
                 patch.object(
                     weight_digest.server_config, "fingerprint", return_value="fp"
                 ),
+                contextlib.redirect_stdout(io.StringIO()) as printed,
             ):
                 code = weight_digest.main(args)
+            self.printed = printed.getvalue()
             rpc.assert_called_once()
             self.assertEqual(rpc.call_args.args[1], "weight_digest")
             self.assertTrue(rpc.call_args.kwargs["tensors"])
@@ -214,6 +218,9 @@ class ToolTests(unittest.TestCase):
         ]
         code, record = self.run_tool([], ranks)
         self.assertEqual(code, 0)
+        # The operator reads each rank's overall digest from the printed lines.
+        overall = record["ranks"][0]["summary"]["overall"]
+        self.assertIn(f"rank 0: 4 tensors, overall {overall}", self.printed)
         self.assertEqual(record["fingerprint"], "fp")
         self.assertEqual(record["image"], "sha256:img")
         self.assertEqual([r["rank"] for r in record["ranks"]], [0, 1])
