@@ -6,6 +6,7 @@ TRANSPORT_TIMEOUT = "transport-timeout"
 SSH_UNAVAILABLE = "ssh-unavailable"
 READINESS_UNCONFIRMED = "readiness-unconfirmed"
 RECOVERY_READINESS_UNCONFIRMED = "recovery-readiness-unconfirmed"
+DEGENERATE_ENGINE = "degenerate-engine"
 
 
 class OperationFailure(RuntimeError):
@@ -39,6 +40,22 @@ def failure_details(error):
     }
 
 
+def gate(backend, report):
+    """Run the request ladder; only its canary's degenerate verdict fails the pair.
+
+    A ladder that cannot run (transport, SSH) is recorded as evidence and never
+    triggers recovery; a pair that answers /health but decodes garbage does
+    (upstream MiaAI-Lab recipe #268).
+    """
+    try:
+        report["warmup"] = backend.warmup(report["new"])
+    except Exception as error:  # noqa: BLE001 - keep the pair and record why
+        report["warmup"] = {"failed": True, **failure_details(error)}
+        return
+    if report["warmup"].get("degenerate") is True:
+        raise OperationFailure("warmup", 0, DEGENERATE_ENGINE)
+
+
 def finish(backend, report, *, save, config=None):
     """What a complete new pair gets, from a switch or from a resumed one."""
     # Only a complete pair gets its profile file: after a recovery the old file
@@ -56,13 +73,6 @@ def finish(backend, report, *, save, config=None):
         except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
             report["config"] = {"failed": True, **failure_details(error)}
         save(report)
-    # The pair is complete before the ladder runs: warmup is evidence for the
-    # operator, not a readiness gate, so its failure never triggers recovery.
-    try:
-        report["warmup"] = backend.warmup(report["new"])
-    except Exception as error:  # noqa: BLE001 - keep the completed pair and record why
-        report["warmup"] = {"failed": True, **failure_details(error)}
-    save(report)
     return report
 
 
@@ -127,6 +137,7 @@ def switch(backend, launch, *, save, config=None):
             save(report)
             backend.start(rank, new)
         backend.ready(report["new"])
+        gate(backend, report)
         report["status"] = "complete"
         save(report)
     except Exception as error:  # noqa: BLE001 - every transport failure requires owned cleanup
@@ -228,6 +239,25 @@ def resume(backend, report, *, config=None, save=lambda report: None):
     else:
         report["prior_observation_failure"] = report.pop("failure")
         report.pop("error")
+        try:
+            gate(backend, report)
+        except OperationFailure as error:
+            # The old launches are not in the record, so nothing is recovered:
+            # stop the degenerate pair and leave the choice to the operator.
+            report["status"] = "failed"
+            report["error"] = type(error).__name__
+            report["failure"] = error.evidence
+            for row in sorted(rows, key=lambda row: row["rank"]):
+                try:
+                    backend.stop(row["rank"], row["identity"])
+                except Exception as stop_error:  # noqa: BLE001 - retain each cleanup failure
+                    report.setdefault("cleanup_errors", []).append(
+                        {"rank": row["rank"], **failure_details(stop_error)}
+                    )
+            save(report)
+            raise RuntimeError(
+                "Resumed pair is degenerate; it was stopped, see the saved record"
+            ) from None
         report["status"] = "complete"
         save(report)
         # The switch that lost its observation never reached its last steps.

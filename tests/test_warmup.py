@@ -27,14 +27,18 @@ class WarmupTests(unittest.TestCase):
 
     def test_ladder_follows_profile_features(self):
         names = [name for name, _ in warmup.rungs(self.profile)]
-        self.assertEqual(names, ["text", "tool", "image"])
+        self.assertEqual(names, ["text", "tool", "image", "canary"])
         self.profile["runtime"]["vision"] = False
         self.profile["generation"]["warmup_long_tokens"] = 65536
         names = [name for name, _ in warmup.rungs(self.profile)]
-        self.assertEqual(names, ["text", "tool", "long"])
-        for _, request in warmup.rungs(self.profile):
-            if request is not None:
+        self.assertEqual(names, ["text", "tool", "long", "canary"])
+        for name, request in warmup.rungs(self.profile):
+            if request is not None and name != "canary":
                 self.assertEqual(request["max_tokens"], warmup.ANSWER_TOKENS)
+        canary = dict(warmup.rungs(self.profile))["canary"]
+        self.assertEqual(canary["temperature"], 0)
+        self.assertEqual(canary["reasoning_effort"], "low")
+        self.assertEqual(canary["max_tokens"], warmup.CANARY_TOKENS)
 
     def test_png_is_a_valid_data_url(self):
         url = warmup.png_data_url(width=8, height=8)
@@ -95,7 +99,7 @@ class WarmupTests(unittest.TestCase):
                 logs.append(LOG_LINE.format(name="mhc_pre_big_fuse_with_norm_tilelang"))
             return {
                 "usage": {"prompt_tokens": fake_count(str(request["messages"]))},
-                "choices": [{"finish_reason": "stop"}],
+                "choices": [{"finish_reason": "stop", "message": {"content": "ready"}}],
             }
 
         clock = iter(range(0, 100, 1))
@@ -108,8 +112,12 @@ class WarmupTests(unittest.TestCase):
             clock=lambda: next(clock),
             reset=lambda: resets.append(True),
         )
-        self.assertEqual([r["rung"] for r in record["rungs"]], ["text", "tool", "long"])
-        self.assertEqual([r["status"] for r in record["rungs"]], ["ok", "failed", "ok"])
+        self.assertEqual(
+            [r["rung"] for r in record["rungs"]], ["text", "tool", "long", "canary"]
+        )
+        self.assertEqual(
+            [r["status"] for r in record["rungs"]], ["ok", "failed", "ok", "ok"]
+        )
         self.assertEqual(record["rungs"][1]["error"], "RuntimeError")
         self.assertGreaterEqual(record["rungs"][2]["built_prompt_tokens"], 295)
         self.assertEqual(
@@ -132,3 +140,126 @@ class WarmupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def answering(content, finish="stop"):
+    def ask(request):
+        return {
+            "usage": {"prompt_tokens": 18},
+            "choices": [{"finish_reason": finish, "message": {"content": content}}],
+        }
+
+    return ask
+
+
+class CanaryTests(unittest.TestCase):
+    """Mia #268: a boot that answers /health but serves garbage must not pass."""
+
+    def setUp(self):
+        self.profile = config.load(ROOT / "examples/server.example.toml")
+        self.profile["generation"]["max_tokens"] = 4096
+        self.profile["runtime"]["vision"] = False
+        self.profile["mtp"]["enabled"] = True
+
+    def run_ladder(self, ask, counters=None):
+        readings = iter(counters or [])
+        return warmup.run(
+            self.profile,
+            ask=ask,
+            count_tokens=fake_count,
+            logs=lambda: "",
+            clock=lambda: 0,
+            spec_counters=(lambda: next(readings)) if counters else None,
+        )
+
+    def counters(self, drafted, accepted):
+        return [
+            {"num_draft_tokens": 100.0, "num_accepted_tokens": 70.0},
+            {
+                "num_draft_tokens": 100.0 + drafted,
+                "num_accepted_tokens": 70.0 + accepted,
+            },
+        ]
+
+    def test_a_healthy_answer_with_accepted_drafts_passes(self):
+        for content in ("ready", " Ready.\n", "READY!"):
+            with self.subTest(content=content):
+                record = self.run_ladder(answering(content), self.counters(120, 80))
+                self.assertIs(record["canary"]["answer_ok"], True)
+                self.assertIs(record["canary"]["acceptance_ok"], True)
+                self.assertIs(record["degenerate"], False)
+                self.assertTrue(record["passed"])
+
+    def test_garbage_or_a_truncated_answer_is_degenerate(self):
+        for content, finish in (
+            ("readyreadyready", "stop"),
+            ("", "length"),
+            ("是的", "stop"),
+        ):
+            with self.subTest(content=content):
+                record = self.run_ladder(
+                    answering(content, finish), self.counters(120, 80)
+                )
+                self.assertIs(record["canary"]["answer_ok"], False)
+                self.assertIs(record["degenerate"], True)
+                self.assertFalse(record["passed"])
+
+    def test_zero_acceptance_over_enough_drafts_is_degenerate(self):
+        record = self.run_ladder(
+            answering("ready"), self.counters(warmup.MIN_DRAFTS, 0)
+        )
+        self.assertIs(record["canary"]["acceptance_ok"], False)
+        self.assertIs(record["degenerate"], True)
+
+    def test_what_cannot_be_judged_never_trips(self):
+        few = self.run_ladder(
+            answering("ready"), self.counters(warmup.MIN_DRAFTS - 1, 0)
+        )
+        self.assertIsNone(few["canary"]["acceptance_ok"])
+        self.assertIs(few["degenerate"], False)
+        unread = self.run_ladder(answering("ready"))
+        self.assertIsNone(unread["canary"]["acceptance_ok"])
+        self.profile["mtp"]["enabled"] = False
+        off = self.run_ladder(answering("ready"), self.counters(120, 0))
+        self.assertIsNone(off["canary"]["acceptance_ok"])
+        self.assertIs(off["degenerate"], False)
+
+        def broken(request):
+            raise RuntimeError("transport")
+
+        failed = self.run_ladder(broken, self.counters(0, 0))
+        self.assertIsNone(failed["canary"]["answer_ok"])
+        self.assertIs(failed["degenerate"], False)
+        self.assertFalse(failed["passed"])
+
+        def unreadable():
+            raise OSError("metrics down")
+
+        record = warmup.run(
+            self.profile,
+            ask=answering("ready"),
+            count_tokens=fake_count,
+            logs=lambda: "",
+            clock=lambda: 0,
+            spec_counters=unreadable,
+        )
+        self.assertIsNone(record["canary"]["acceptance_ok"])
+        self.assertIs(record["degenerate"], False)
+
+
+class SpecCounterTests(unittest.TestCase):
+    def test_totals_sum_labelled_series_and_ignore_other_metrics(self):
+        metrics = "\n".join(
+            [
+                "# HELP vllm:spec_decode_num_draft_tokens_total drafted",
+                'vllm:spec_decode_num_draft_tokens_total{engine="0",model_name="m"} 30.0',
+                'vllm:spec_decode_num_draft_tokens_total{engine="1",model_name="m"} 12.0',
+                'vllm:spec_decode_num_accepted_tokens_total{engine="0",model_name="m"} 23.0',
+                'vllm:spec_decode_num_accepted_tokens_per_pos_total{position="0"} 9.0',
+                "vllm:num_requests_running 0.0",
+            ]
+        )
+        self.assertEqual(
+            warmup.spec_counters(metrics),
+            {"num_draft_tokens": 42.0, "num_accepted_tokens": 23.0},
+        )

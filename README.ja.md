@@ -177,7 +177,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 |---|---|---|
 | [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster)（kingjones30のレシピを保持） | Apache-2.0／MIT | **コードを改変して採用：** NoPEゼロ埋めpatchの構造とレシピ |
 | [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
-| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、現場の手順記録 |
+| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder とその出力の関門（#268）、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、RoCE GID のずれ（#277）、現場の手順記録 |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |

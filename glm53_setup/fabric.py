@@ -138,7 +138,9 @@ def gid_hints(site, checks, *, sys_root=Path("/sys")):
                 "port": rail["port"],
                 "local_ip": rail["local_ip"],
                 "configured_gid_index": rail["gid_index"],
-                "roce_v2_gid_indices": [i for i in indices if roce_v2_gid(port, i, rail)],
+                "roce_v2_gid_indices": [
+                    i for i in indices if roce_v2_gid(port, i, rail)
+                ],
             }
         )
     return hints

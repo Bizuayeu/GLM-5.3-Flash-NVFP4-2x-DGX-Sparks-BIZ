@@ -1,7 +1,13 @@
 import copy
 import unittest
 
-from glm53_setup.switch import OperationFailure, switch
+from glm53_setup.switch import (
+    DEGENERATE_ENGINE,
+    READINESS_UNCONFIRMED,
+    OperationFailure,
+    resume,
+    switch,
+)
 
 
 class Backend:
@@ -72,8 +78,10 @@ class SwitchTests(unittest.TestCase):
             [c for c in backend.calls if c[0] == "install"],
             [("install", 0, "new-0", "text"), ("install", 1, "new-1", "text")],
         )
-        self.assertLess(names.index("ready"), names.index("install"))
-        self.assertLess(names.index("install"), names.index("warmup"))
+        # The ladder gates the pair (Mia #268), so it runs before the profile
+        # text is written: a degenerate candidate never gets its file.
+        self.assertLess(names.index("ready"), names.index("warmup"))
+        self.assertLess(names.index("warmup"), names.index("install"))
         self.assertEqual(
             result["config"],
             [{"rank": 0, "written": True}, {"rank": 1, "written": True}],
@@ -127,8 +135,8 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(backend.calls[-1], ("warmup", "raised"))
         self.assertNotIn("recovery_errors", result)
         self.assertEqual(result["recovery"], [])
-        # The saved journal already said complete before the ladder ran.
-        self.assertIn("complete", [r["status"] for r in reports[:-1]])
+        # A ladder that could not run is evidence, not a verdict.
+        self.assertIn("complete", [r["status"] for r in reports])
 
     def test_lost_recovery_observation_does_not_destroy_the_recovering_pair(self):
         backend = Backend()
@@ -236,3 +244,94 @@ class SwitchTests(unittest.TestCase):
             switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
         self.assertFalse(reports[-1]["recovery"])
         self.assertEqual(len(reports[-1]["cleanup_errors"]), 2)
+
+
+def degenerate(backend):
+    def warmup(rows):
+        backend.calls.append(("warmup", tuple(r["identity"]["name"] for r in rows)))
+        return {"degenerate": True, "canary": {"answer_ok": False}}
+
+    backend.warmup = warmup
+    return backend
+
+
+class CanaryGateTests(unittest.TestCase):
+    """Mia #268: only a degenerate verdict fails the pair; the old one returns."""
+
+    def test_a_degenerate_candidate_is_stopped_and_the_old_pair_recovered(self):
+        backend = degenerate(startable(Backend()))
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(
+                backend,
+                "new",
+                save=lambda r: reports.append(copy.deepcopy(r)),
+                config="text",
+            )
+        report = reports[-1]
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["failure"]["reason"], DEGENERATE_ENGINE)
+        self.assertTrue(report["warmup"]["degenerate"])
+        self.assertTrue(report["recovered"])
+        self.assertNotIn("install", [call[0] for call in backend.calls])
+        self.assertNotIn("complete", [r["status"] for r in reports])
+        self.assertEqual(
+            backend.calls[-6:],
+            [
+                ("warmup", ("new-1", "new-0")),
+                ("stop", 0, "new-0"),
+                ("stop", 1, "new-1"),
+                ("start", 1, "old-1"),
+                ("start", 0, "old-0"),
+                ("ready", ("old-1", "old-0")),
+            ],
+        )
+
+    def test_a_degenerate_first_launch_is_stopped_without_recovery(self):
+        backend = degenerate(startable(Backend()))
+        backend.current = lambda rank: None
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        self.assertEqual(reports[-1]["status"], "failed")
+        self.assertEqual(reports[-1]["recovery"], [])
+        self.assertEqual(
+            backend.calls[-2:], [("stop", 0, "new-0"), ("stop", 1, "new-1")]
+        )
+
+    def test_a_resumed_degenerate_pair_is_stopped_and_reported(self):
+        backend = degenerate(Backend())
+        rows = [
+            {
+                "rank": 1,
+                "identity": {"launch": "new", "name": "new-1", "fingerprint": "f"},
+            },
+            {
+                "rank": 0,
+                "identity": {"launch": "new", "name": "new-0", "fingerprint": "f"},
+            },
+        ]
+        backend.current = lambda rank: {"name": f"new-{rank}", "fingerprint": "f"}
+        report = {
+            "status": READINESS_UNCONFIRMED,
+            "new": rows,
+            "assets": {0: backend.prepare(0, "new"), 1: backend.prepare(1, "new")},
+            "failure": {"action": "poll"},
+            "error": "OperationFailure",
+            "recovery": [],
+        }
+        backend.prepare = lambda rank, launch, **kw: report["assets"][rank]
+        saved = []
+        with self.assertRaisesRegex(RuntimeError, "degenerate"):
+            resume(
+                backend,
+                report,
+                config="text",
+                save=lambda r: saved.append(copy.deepcopy(r)),
+            )
+        self.assertEqual(saved[-1]["status"], "failed")
+        self.assertEqual(saved[-1]["failure"]["reason"], DEGENERATE_ENGINE)
+        self.assertEqual(
+            backend.calls[-2:], [("stop", 0, "new-0"), ("stop", 1, "new-1")]
+        )
+        self.assertNotIn("install", [call[0] for call in backend.calls])

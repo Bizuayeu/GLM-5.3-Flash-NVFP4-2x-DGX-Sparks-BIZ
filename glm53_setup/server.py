@@ -472,6 +472,7 @@ def warmup_report(profile, name):
         reset=(lambda: reset_prefix_cache(profile))
         if settings.dev_mode(profile)
         else None,
+        spec_counters=lambda: warmup.spec_counters(metrics_text(profile)),
     )
 
 

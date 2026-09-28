@@ -4,6 +4,17 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## Unreleased
+
+### Changed
+
+- warmup ladder の最後に出力の正しさの関門を置きました。MiaAI-Lab のレシピ #268 に倣ったものです（コードは採用していません）。temperature 0・effort low で「Reply with the word ready.」を送ります。答えが `ready` でない起動、または ladder 全体で64 token 以上の draft に対して MTP の受理が0だった起動を異常と判定します。異常なら `cluster switch` は失敗して旧い対を復旧し、`cluster resume` は対を止めます。ladder は profile 本文の書き込みより前に走るようになり、それ以外の ladder の失敗では従来どおり対を動かし続けます（[運用](docs/operations.ja.md#監視停滞検知warmup)）。
+- レールの RoCE v2 GID の検査に落ちたとき、起動前検査と切替の静的検査のエラーが、そのレールの項目がいまある index を `gid_hints` に並べるようにしました。検査は止めたままです（MiaAI-Lab のレシピ #277。2026-09-27 には head の電源断の後、相手の rail 0 が index 3 から 4 に動いた）（[起動の安全](docs/launch-safety.ja.md)）。
+
+### Documentation
+
+- [起動の安全](docs/launch-safety.ja.md#切替の後のdecode検査)に、この対では image を載せた後の最初の起動の decode が後の起動の 0.965〜1.019 倍だったこと、そのため MiaAI-Lab issue #284 が勧める作り直し後の再起動を手順に入れないこと、遅かった場合の手順を書きました。[運用](docs/operations.ja.md)の「`cluster resume` は ladder を流さない」という記述を外しました。resume が切替の最後の手順を受け取るようになってから、ladder は走っていました。
+
 ## 1.19.2 — 2026-09-28
 
 ### Fixed
