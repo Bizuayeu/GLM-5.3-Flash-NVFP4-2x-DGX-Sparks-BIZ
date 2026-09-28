@@ -1137,9 +1137,9 @@ class ServerConfigTests(unittest.TestCase):
         self.assertNotIn("--privileged", args)
 
     def test_an_lpa_launch_runs_the_checkouts_worker_not_the_images(self):
-        # The image bakes the LPA worker it was built with; a mode added after
-        # it (split, split-self) was refused as unsupported by a full-model
-        # launch on 2026-09-26. The launched worker must be this checkout's.
+        # The image bakes the LPA worker it was built with; a full-model launch
+        # on 2026-09-26 ran that copy and refused a worker change made after
+        # the build. The launched worker must be this checkout's.
         mount = (
             f"{server.ROOT / 'glm53_setup/runtime/lpa.py'}"
             f":{server.IMAGE_PACKAGE_DIR}/runtime/lpa.py:ro"
@@ -1352,6 +1352,28 @@ class ServerConfigTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["kwargs"]["mode"], "predict")
         self.assertEqual(calls[-1][1]["kwargs"]["mode"], "off")
 
+    def test_request_does_not_rewrite_the_configure_it_sent(self):
+        # A sender that keeps the bodies it was given (a log, a test double)
+        # must still see the configure request as sent, not as reset.
+        self.profile["lpa"]["enabled"] = True
+        calls = []
+
+        def sender(profile, path, body):
+            calls.append((path, body))
+            if path == "/tokenize":
+                return {"tokens": list(range(2048))}
+            if path == "/v1/chat/completions":
+                return {"usage": {"prompt_tokens": 2048}}
+            return {"results": []}
+
+        server.ask(
+            self.profile, {"messages": [{"role": "user", "content": "hello"}]}, sender
+        )
+        configures = [body for path, body in calls if path == "/collective_rpc"]
+        self.assertEqual(
+            [body["kwargs"]["mode"] for body in configures], ["predict", "off"]
+        )
+
     def test_request_discards_tokenization_mismatch(self):
         self.profile["lpa"]["enabled"] = True
         responses = [{"tokens": [1, 2]}, {}, {"usage": {"prompt_tokens": 3}}, {}]
@@ -1461,26 +1483,6 @@ class ServerConfigTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             config.request_body(self.profile, {"messages": [], "stream": True})
-
-    def test_split_request_covers_every_token_whatever_the_length(self):
-        self.profile["lpa"]["enabled"] = True
-        for mode in ("split", "split-self"):
-            for length in (1, 100, 2048):
-                spec = config.lpa_request(self.profile, length, mode=mode)
-                self.assertEqual(spec["mode"], mode)
-                self.assertEqual((spec["prompt_length"], spec["tail"]), (length, 1))
-                self.assertFalse(spec["skip_mla_queries"])
-                self.assertFalse(spec["allow_mtp"])
-                self.assertEqual(spec["predictor_path"], "/lpa/projector.pt")
-
-    def test_off_request_is_the_profiles_request_computed_normally(self):
-        self.profile["lpa"]["enabled"] = True
-        native = config.lpa_request(self.profile, 2048)
-        off = config.lpa_request(self.profile, 2048, mode="off")
-        self.assertEqual(native["mode"], "predict")
-        self.assertEqual(off, dict(native, mode="off"))
-        with self.assertRaises(ValueError):
-            config.lpa_request(self.profile, 2048, mode="predict")
 
 
 class ReferenceImageMarkerTests(unittest.TestCase):

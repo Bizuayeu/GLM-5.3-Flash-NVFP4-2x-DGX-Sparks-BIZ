@@ -119,8 +119,8 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["lpa"]["enabled"]:
         target = settings.LPA_PROJECTOR
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
-        # The image bakes the worker it was built with; the split modes are
-        # newer than that, so the launched worker is the checkout's copy.
+        # The image bakes the worker it was built with; the launched worker is
+        # the checkout's copy, so a worker change reaches the server.
         source = ROOT / "glm53_setup/runtime/lpa.py"
         args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/lpa.py:ro"]
     if settings.optional(profile, "validation", "memory_probe"):
@@ -508,47 +508,24 @@ def mojibake_running(profile):
     )
 
 
-# native is the profile's own request; the others name the worker mode.
-LPA_MODES = ("off", "native", "split", "split-self")
-
-
-def lpa_mode_request(profile, length, lpa_mode):
-    """lpa_configure kwargs for a named mode on a native-LPA profile."""
-    native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
-    if lpa_mode not in LPA_MODES or not native:
-        raise ValueError(f"--lpa-mode takes {LPA_MODES} on a native-LPA profile")
-    return settings.lpa_request(
-        profile, length, mode=None if lpa_mode == "native" else lpa_mode
-    )
-
-
-def agreement_senders(profile, sender=post, lpa_mode=None):
+def agreement_senders(profile, sender=post):
     """Tokenize and completions senders for the running rank 0.
 
     The text is tokenized once, then sent back as token ids, so the scored
     positions are exactly the tokens the server saw. LPA's native mode
-    rewrites prefill outside the shared cache, so by default the reading is
-    only taken with LPA off or in its APC-first form (the same guard as
-    ``ask``). On a native-LPA profile, ``lpa_mode`` configures the worker for
-    each scored request as ``ask`` does: ``split`` writes every late-layer
-    state from the projection and still scores every position (``split-self``
-    is its control, ``off`` the normal computation); ``native`` is the
-    profile's own request, whose approximated positions are not the model's
-    reading (only its exact tail is).
+    rewrites prefill outside the shared cache, so the reading is only taken
+    with LPA off or in its APC-first form (the same guard as ``ask``).
     """
-    native = profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile)
-    if lpa_mode is None and native:
+    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
         raise ValueError(
             "agreement requires LPA off or APC-first; native LPA rewrites prefill"
         )
-    if lpa_mode is not None:
-        lpa_mode_request(profile, 1, lpa_mode)
     model = profile["api"]["served_model_name"]
 
     def tokenize(text):
         return sender(profile, "/tokenize", {"model": model, "prompt": text})["tokens"]
 
-    def score(token_ids, top_k):
+    def complete(token_ids, top_k):
         return sender(
             profile,
             "/v1/completions",
@@ -562,38 +539,16 @@ def agreement_senders(profile, sender=post, lpa_mode=None):
             },
         )
 
-    if lpa_mode is None:
-        return tokenize, score
-
-    def complete(token_ids, top_k):
-        length = len(token_ids)
-        rpc = {
-            "method": "lpa_configure",
-            "kwargs": lpa_mode_request(profile, length, lpa_mode),
-            "timeout": profile["generation"]["timeout_seconds"],
-        }
-        try:
-            sender(profile, "/collective_rpc", rpc)
-            result = score(token_ids, top_k)
-            if result["usage"]["prompt_tokens"] != length:
-                raise ValueError("Scored length differs from the configured one")
-            return result
-        finally:
-            reset = dict(rpc["kwargs"], mode="off")
-            sender(profile, "/collective_rpc", dict(rpc, kwargs=reset))
-
     return tokenize, complete
 
 
-def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
+def agreement_running(profile, reference=None):
     """Teacher-forced reading on the running rank 0; compared with a saved run."""
     # A profile the reading cannot be taken under is refused before the head is read.
-    tokenize, complete = agreement_senders(profile, lpa_mode=lpa_mode)
+    tokenize, complete = agreement_senders(profile)
 
     def run(state):
-        result = agreement.run(tokenize, complete, *([texts] if texts else []))
-        if lpa_mode is not None:
-            result["lpa_mode"] = lpa_mode
+        result = agreement.run(tokenize, complete)
         if reference is not None:
             result["reference"] = str(reference)
             result["comparison"] = agreement.compare_records(
@@ -604,11 +559,9 @@ def agreement_running(profile, reference=None, lpa_mode=None, texts=None):
     return recorded_on_head(profile, "agreement", run)
 
 
-def ask(profile, request, sender=post, lpa_mode=None):
+def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
-    if lpa_mode is not None:
-        lpa_mode_request(profile, 1, lpa_mode)
-    elif not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
+    if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
     allowed = {
@@ -647,11 +600,7 @@ def ask(profile, request, sender=post, lpa_mode=None):
         raise ValueError("Prompt plus max_tokens exceeds configured context")
     rpc = {
         "method": "lpa_configure",
-        "kwargs": (
-            settings.lpa_request(profile, length)
-            if lpa_mode is None
-            else lpa_mode_request(profile, length, lpa_mode)
-        ),
+        "kwargs": settings.lpa_request(profile, length),
         "timeout": profile["generation"]["timeout_seconds"],
     }
     try:
@@ -758,8 +707,7 @@ def act_ask(cli, args, profile):
             if args.request
             else {"messages": [{"role": "user", "content": args.prompt}]}
         )
-        result = ask(profile, body, lpa_mode=args.lpa_mode)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(ask(profile, body), ensure_ascii=False, indent=2))
 
 
 def act_capacity(cli, args, profile):
@@ -787,8 +735,7 @@ def act_mojibake(cli, args, profile):
 
 def act_agreement(cli, args, profile):
     """Score the running head against a saved reading."""
-    texts = read_json(args.texts) if args.texts else None
-    result = agreement_running(profile, args.reference, args.lpa_mode, texts)
+    result = agreement_running(profile, args.reference)
     # Per-position rows stay in the record; the terminal gets the rates.
     for row in result["texts"]:
         for key in ("rows", "ranks", "logprobs", "prompt_token_ids"):
@@ -906,14 +853,6 @@ def parser():
         "--reference",
         type=Path,
         help="Saved agreement result.json to compare this run against",
-    )
-    cli.add_argument(
-        "--lpa-mode",
-        choices=LPA_MODES,
-        help="ask/agreement on a native-LPA profile: configure each request",
-    )
-    cli.add_argument(
-        "--texts", type=Path, help="agreement: JSON object of name -> text to score"
     )
     cli.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     cli.add_argument("--rank", type=int, choices=[0, 1], default=0)
