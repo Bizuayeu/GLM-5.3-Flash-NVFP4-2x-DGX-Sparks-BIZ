@@ -2,6 +2,10 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
+## Rerun on both 1.19.0 profiles (2026-09-28)
+
+On 1.19.0 (image `99e6cf7a…`) the same runner ran the 60 pinned original-English questions and the long-prefix pilot on both the distribution defaults and the served published option at two sequences, under the 2,200 MHz GPU clock cap ([benchmarks](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)). **Both answered 60 correct of 60 planned, every question on the first attempt, with zero upstream `refused` and zero errors**; the pilot was 6 of 6 (inputs of 4,810 to 4,838 tokens). The output limit was 8,192. The three items the closure below left open (the Japanese translation, opposed political framings and evidence placement beyond the prefix position) remain not run.
+
 ## Closure on the serving profile (2026-09-22)
 
 **Closed on 2026-09-22 on the profile the reference pair serves** (as recorded that day: the published option's route l weights with the split KDA projection, one active sequence, 3 GiB of KV per rank, MTP k=3, FA2 prefill, `runtime.prefix_page_dedup`, image `76a1172b…`, fingerprint `945965bf…`). Between 23:58 and 23:59 Asia/Tokyo the repository runner ran all 60 pinned original-English questions: **60 correct of 60 planned, every question on the first attempt, zero upstream `refused`, zero errors**, with the upstream 8,192-token output budget and the pinned classifier (record `records/20260922-freedombench/serving-full`). The long-prefix pilot then prepended the same 6,000-character Japanese validation-text excerpt as on 2026-09-13 to the first six questions (inputs 4,810–4,838 tokens, so the whole prefix sits before the question) and answered **6 of 6** through the ordinary chat endpoint (record `long-pilot-serving`).

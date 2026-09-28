@@ -18,7 +18,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.10.4](#measurements-on-1104) | 2026-09-23 | sparkDash and tool-eval-bench on the two-sequence profile |
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
-| [1.19.0](#measurements-on-1190) | 2026-09-26 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences |
+| [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -165,20 +165,6 @@ Latency for 2K inputs and two concurrent clients:
 **Result:** 128 shortened the longest pause but worsened prefill and throughput (rejected). 1024 raised 2K aggregate throughput over both 512 controls by about 4.6% with one client and 5.7% with two, and single-client TTFT from about 6.1 to 5.6 seconds, but lengthened the longest two-client pause from about 1.56 to 2.79 seconds; the default stayed 512 at the time (2048 from 1.4.0, below). Better p95 does not imply fewer noticeable interruptions, and these small samples establish no SLA. Decision: [optimization catalog](optimization-catalog.md) (P11).
 
 A separate 1024 capacity run, `capacity-v17-chunk1024-16kx2`, completed two requests each using 16,320 input plus 64 output tokens. Maximum active requests was two, peak KV utilization about 58.1%, additional preemptions zero, post-run KV utilization zero, and a follow-up request completed. KV remained fixed at 1 GiB per rank. Long-document quality and combinations with LPA/MTP/fusion/Graphs/APC remain separate gates.
-
-### Chunk budget on the 200K image profile (2026-09-17)
-
-The 1.3.1 distributed profile (200K, image input, KV 2.5 GiB per rank, MTP k=3, APC, fused unpack, one sequence, 8 NCCL channels, MTU 1500) ran on source `adf8ca9` and image `f6fc154c…` with only `max_num_batched_tokens` changed between starts; the head's monitoring dashboard was stopped. Prefill is a fresh prompt of about 39K tokens after a prefix-cache reset, decode a fixed prompt with 512 generated tokens, three runs each. Minimum free memory comes from each rank's two-second supervisor samples. Informed by Mia's 300K record, where 1024 to 2048 gave +1.4% on a different runtime (AGPL-3.0, no code adopted).
-
-| Chunk | Prefill tok/s (median, range) | Decode tok/s (median, range) | Head lowest free, startup / measurement (GiB) | Peer lowest free (GiB) | Long warmup rung, 65,566 tokens |
-|---:|---|---|---|---|---:|
-| 512 | 476.9 (469.2–478.6) | 31.4 (22.4–33.9) | 7.09 / 7.30 | 9.45 / 9.54 | 139.3 s |
-| 1024 | 545.2 (545.0–546.9) | 27.4 (23.7–28.7) | 6.71 / 6.73 | 9.39 / 9.43 | 121.6 s |
-| 2048 | 563.0 (561.9–563.7) | 28.0 (21.5–28.4) | 6.63 / 6.71 | 8.70 / 8.77 | 123.4 s |
-
-At 2048 the 199,652-token passphrase request of [200K real input on 1.3.1](#200k-real-input-on-131) took 361.3 s against 410.8 s at 512, answered correctly and stopped normally. The lowest free memory during that request was 6.88 GiB on the head and 9.16 GiB on the peer, against 7.12 and 9.44 at 512. Decode differences stay within run-to-run variation. No kernel compiled while serving at any size, although 1024 and 2048 are the first budgets above 655 tokens and use the indexer's split path. Loading at 2048 logged 28 `NV_ERR_NO_MEMORY` retries on the peer, all during weight loading, against none at 1024; startup and every request completed. The 512 prefill is about 3% below the 492.0 tok/s measured for 1.3.1 with the dashboard running; restarts separate the runs and the cause is not isolated.
-
-**Result:** the distribution default is 2048 from 1.4.0. With the default single sequence a longer chunk delays no other request; with two sequences expect longer pauses, as the 1024 row above showed. Sizes above 2048 were not measured; Mia's notes put the indexer shared-memory limit near 4096. Decision: [optimization catalog](optimization-catalog.md) (P11).
 
 ## Task grouping order comparison (P14)
 
@@ -417,55 +403,9 @@ The 128-output regression below excludes one warmup and uses three measured requ
 
 Independent rescoring confirmed all 61 history answers; actual eviction and all nine boundary conditions passed. At approximately 16K, midpoint edits/branches retained H=0, while 90% edits/branches and appends restored H=9,216. The separate `long-edit-final-v73` probe used N=30,100 and a 15,061-token common prefix: all three midpoint-edit arms restored H=9,216 and answered correctly. This single probe is not a full 30K history matrix. Minimum host availability was 8.522/10.381 GiB; both supervisors stopped at their configured four-hour deadline, without OOM.
 
-## Release candidate measurements
+## Real-input checks at 256K
 
-On 2026-09-14 (Asia/Tokyo), `release-200k-reserve 4` measured the combined profile on two GB10 hosts with image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` and pinned vLLM `385dce36bcee42309924a5ece951a96db3dce7f2`. Settings: TP2/eager/one sequence, configured limit 204,800 tokens, chunk 512, FP8 KV 2.5 GiB per rank, MTP k=3, LPA cut 32 / tail 512 / B 128, APC, dense retention, fused unpack and async index checks. Host reserve 4 GiB; no time-based stop. This image includes canonical candidate ordering. A configured context limit is distinct from real-input capacity qualification.
-
-### sparkDash
-
-Stock DecodeBench from sparkDash commit `e03b9d624e7135d6e82b4c8fc94ea0ddcf300547` targeted the local GLM over HTTP: concurrency 1, 128 output tokens, temperature 0/top_p 1, a 32-token warmup per job, four prompt types and three runs each. All 12 streams succeeded and each generated 128 tokens. Values below are medians over three runs.
-
-| Prompt | Decode (token/s) | TTFT (ms) |
-|---|---:|---:|
-| structured | 33.92 | 382.93 |
-| prose | 23.32 | 407.78 |
-| code | 29.28 | 691.94 |
-| json | 24.03 | 493.94 |
-
-Decode uses sparkDash's first-to-last-token window and usage counts. Its stock protocol requests thinking off, but the fixed GLM template ignores those flags. Do not describe this as non-thinking or effort-low measurement; it measures actual generation including reasoning. Measurement code was unchanged; host-monitoring adjustments are separate.
-
-### tool-eval-bench
-
-Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b0c`) ran all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking=true, a 4,096-token output budget, 600-second request timeout and at most eight turns. Overall score: **90/100 (124/138 points)**; 58 pass, 8 partial and 3 fail. All 69 were scored, completion 100%, no infrastructure exclusions. Optional Hard Mode was not included.
-
-| Failed scenario | Observation |
-|---|---|
-| TC-21 | Found only two of five validation errors |
-| TC-43 | Called web_search with an empty query; **Safety Gate not passed** |
-| TC-61 | Did not attempt the requested analysis script |
-
-Partial results included unnecessary calculator use, missing comparison information and omitted search/action steps. Preserve the overall score and Safety Gate as separate outcomes. Mock-tool results do not qualify full harnesses or business workflows.
-
-See the [same candidate's FreedomBench retest](freedombench.md#release-candidate-retest) for its result and the short-input LPA bypass scope.
-
-### Real-input checks at 200K
-
-After those three suites, the same profile processed long inputs built by repeating LLM-jp validation text to the required length. Prefix cache was reset before each test; both ranks actually restored H=0.
-
-| Check | Input tokens | Generated tokens | Whole-request time | Result |
-|---|---:|---:|---:|---|
-| Maximum capacity | 204,736 | 64 | 473.047 s | Completed 204,800 total tokens; a 64-output, ignore-EOS capacity probe with finite generated-token logprobs |
-| Three-position reference | 200,095 | 83 | 454.082 s | All three identifiers at beginning/middle/end correct; stop finish |
-
-Both checks had zero additional preemptions and no running/waiting requests after completion. On both ranks, LPA skipped 204,224/199,583 queries respectively at each of layers 35/39/43, proving approximation actually ran. A short arithmetic follow-up also passed; both supervisors and the API remained running. Two-second memory samples covering loading, all suites and final verification reached minima of 5.198/6.287 GiB available. There was no reserve stop or OOM.
-
-These results supported the earlier distributed serial defaults of 200K, KV 2.5 GiB per rank, reserve 4 GiB and no deadline. Each long check is one capacity/limited-reference trial; it does not qualify numerical identity, every 200K history-edit pattern, multiple sequences, general quality or long-term reliability. Times include prefill and are whole-request latencies, not warm identical-prefix reuse speeds.
-
-Earlier tuning attempts with KV 4 GiB/reserve 5 GiB stopped during initialization at minimum availability 4.945/4.984 GiB; KV 3 GiB/reserve 5 GiB stopped near initial generation at 4.962 GiB on the head. These were reserve stops, not OOM. The earlier TLS-mismatched sparkDash jobs and disconnected tool-eval run are preserved as invalid measurements and excluded from the valid results above.
-
-### Real-input checks at 256K
-
-On 2026-09-14 (Asia/Tokyo), the existing combined image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` was restarted at **262,144 input-plus-output tokens with FP8 KV 3 GiB per rank**. Profile fingerprint: `4bd8232fc2af58e8938c7a4b99f3c13f90126e8da38e2ddf43a5e2100b4931f6`. Only context and KV changed from the 200K run above: TP2/eager/one sequence, chunk 512, MTP3, LPA cut32/tail512/B128, APC/dense retention, fused unpack, async index checks, the 4 GiB host reserve and no lifetime deadline were retained.
+On 2026-09-14 (Asia/Tokyo), the existing combined image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` was restarted at **262,144 input-plus-output tokens with FP8 KV 3 GiB per rank**. Profile fingerprint: `4bd8232fc2af58e8938c7a4b99f3c13f90126e8da38e2ddf43a5e2100b4931f6`. Only context and KV changed from the [200K run](#real-input-checks-at-200k) (records of earlier profiles): TP2/eager/one sequence, chunk 512, MTP3, LPA cut32/tail512/B128, APC/dense retention, fused unpack, async index checks, the 4 GiB host reserve and no lifetime deadline were retained.
 
 The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp validation corpus and method were reused, resetting prefix cache before each long request; both ranks reported zero cached-prefix tokens. Each case ran once, with a request timeout of 1,800 seconds.
 
@@ -477,94 +417,6 @@ The runtime reported KV capacity of 301,645 tokens. The same pinned LLM-jp valid
 Neither request increased preemption. A short arithmetic request passed afterward; both ranks and the API remained running, with no OOM or memory-guard stop. Two-second supervision from launch through these checks recorded minimum available RAM of **4.162 / 5.183 GiB** (head/peer).
 
 These scoped checks supported the then-distributed **256K / 3 GiB-per-rank** defaults, now the text-only alternative; the current defaults with image input are recorded in [image input](vision.md). They do not rerun or transfer the earlier 200K speed, tool-eval or FreedomBench scores to this profile, or qualify general long-context quality, every history-edit pattern, multiple sequences, actual harness behavior or long-term reliability. The test timeout is separate from client defaults; long cold requests need enough client waiting time.
-
-## Measurements on 1.3.1
-
-On 2026-09-17 (Asia/Tokyo) the distributed profile was measured on 1.3.1: image input at 204,800 tokens, FP8 KV 2.5 GiB per rank, reserve 2.5 GiB, MTP k=3, APC with dense retention, fused unpack, async index checks, **LPA off, 8 NCCL channels and MTU 1500** (profile fingerprint `fc4e35ff2e5280b0f5de2a8164f1d07b85ca657ce48742af011803d83a77840f`, image and pinned vLLM as above). The monitoring dashboard ran on the head because the decode benchmark uses it. No other client used the model; every case finished without additional preemption and `/health` stayed 200.
-
-### sparkDash on 1.3.1
-
-The [release-candidate protocol](#sparkdash) was repeated unchanged: stock DecodeBench, concurrency 1, 128 output tokens, TLS off, four prompt types, three runs each. All 12 streams succeeded.
-
-| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | Release candidate decode / TTFT |
-|---|---:|---|---:|---|
-| structured | 36.67 | 36.88 / 34.76 / 36.67 | 368.12 | 33.92 / 382.93 |
-| prose | 25.71 | 28.16 / 25.69 / 25.71 | 268.88 | 23.32 / 407.78 |
-| code | 30.19 | 30.17 / 30.19 / 30.98 | 566.16 | 29.28 / 691.94 |
-| json | 26.48 | 26.48 / 27.10 / 25.38 | 441.06 | 24.03 / 493.94 |
-
-The release candidate ran with LPA on, a 4 GiB reserve and NCCL's 64 channels, so the columns differ in more than the version. With 128 tokens and MTP acceptance varying from run to run, decode differences of this size are within the spread of a single setting (a fixed 512-token decode varied about ±15% on 1.3.1); the shorter TTFT is the steadier difference.
-
-### 200K real input on 1.3.1
-
-The same inputs as the earlier checks were sent after a prefix-cache reset: the one-passphrase ledger used for [image input](vision.md), and the [release candidate's](#real-input-checks-at-200k) capacity and three-position requests built from the same pinned corpus. Times are whole requests including prefill.
-
-| Check | Input tokens | 1.3.1 | Earlier |
-|---|---:|---|---|
-| One passphrase at the midpoint | 199,652 | **410.8 s**, correct, stop | 506.1 s on 2026-09-15 (LPA off, 64 channels) |
-| Maximum capacity, 64 forced output tokens | 204,736 | **470.3 s**, 204,800 total, finite logprobs | 473.0 s (release candidate, LPA on) |
-| Three-position reference | 200,095 | **435.1 s**, all three identifiers correct, stop | 454.1 s (release candidate, LPA on) |
-
-The same passphrase request took 19% less time than on 2026-09-15. Between the two runs the version, the channel count and the kernel-cache location changed (on 2026-09-15 kernels still compiled while serving), so no single change accounts for it. With LPA off, 1.3.1 matched or beat the release candidate's LPA-on times; LPA was not rerun on 1.3.1, so this does not measure what LPA contributes now.
-
-Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
-
-| Case | Head | Peer |
-|---|---:|---:|
-| sparkDash | 7.24 GiB | 9.47 GiB |
-| Passphrase 199,652 | 7.12 GiB | 9.44 GiB |
-| Capacity 204,736 + 64 | 6.99 GiB | 9.30 GiB |
-| Three-position 200,095 | 6.97 GiB | 9.45 GiB |
-
-On 2026-09-15 the passphrase request left the head at 3.31 GiB during tokenization and 3.34 GiB during prefill, and the peer at 5.46 GiB. The window here excludes the tokenization call that precedes each request. These are single runs per case; they do not qualify every 200K history-edit pattern, multiple sequences or long-term reliability. The 256K text-only alternative was not rerun because it exceeds this profile's 204,800-token limit.
-
-## Measurements on 1.4.0
-
-On 2026-09-17 (Asia/Tokyo) the [1.3.1 measurements](#measurements-on-131) were repeated with the 1.4.0 chunk budget, `max_num_batched_tokens = 2048`; nothing else in the profile changed (fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`). The pair ran source `adf8ca9`, which lacks only the 1.4.0 version string, the template change and the later review fixes. It had been started with `vm.swappiness=0` for the [swappiness comparison](operations.md#supervision-stall-detection-and-warmup) and was set back to 60 without a restart; no swap was in use. The monitoring dashboard ran on the head, as for 1.3.1. No other client used the model, every case finished without additional preemption and `/health` stayed 200.
-
-### sparkDash on 1.4.0
-
-The same protocol as for 1.3.1; all 12 streams succeeded.
-
-| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | 1.3.1 decode / TTFT |
-|---|---:|---|---:|---|
-| structured | 36.51 | 36.60 / 36.51 / 36.13 | 350.56 | 36.67 / 368.12 |
-| prose | 25.67 | 27.43 / 25.67 / 25.64 | 370.17 | 25.71 / 268.88 |
-| code | 29.31 | 29.19 / 29.31 / 29.57 | 567.74 | 30.19 / 566.16 |
-| json | 26.29 | 26.97 / 26.29 / 25.74 | 443.51 | 26.48 / 441.06 |
-
-The four prompts are shorter than one chunk, so the budget does not apply to them, and the results match 1.3.1 within run-to-run variation. Prose TTFT fell on two values in both versions (1.3.1: 268.84 / 360.43 / 268.88 ms; 1.4.0: 370.35 / 359.06 / 370.17 ms), so its median moved while the runs overlap.
-
-### 200K real input on 1.4.0
-
-| Check | Input tokens | 1.4.0 (chunk 2048) | 1.3.1 (chunk 512) |
-|---|---:|---|---|
-| One passphrase at the midpoint | 199,652 | **361.4 s**, correct, stop | 410.8 s |
-| Maximum capacity, 64 forced output tokens | 204,736 | **380.0 s**, 204,800 total, finite logprobs | 470.3 s |
-| Three-position reference | 200,095 | Correct in 1 of 3 runs (below) | 435.1 s, correct |
-
-The passphrase request took 12% less time and the capacity request 19% less. A separate start at 2048 during the [chunk-budget comparison](#chunk-budget-on-the-200k-image-profile-2026-09-17) also answered the passphrase correctly, in 361.3 s.
-
-**With this framing the three-position reference was ambiguous to the model, at both chunk sizes** (resolved on [1.6.0](#long-input); the fenced framing is canonical from [1.13.0](#measurements-on-1130)). In every failed run the model found the records, read each value as the article text that follows its `REGISTRY` line and began copying it, until the 512-token limit cut the answer off. The 256K check on 2026-09-14 had written the same reading into its reasoning before answering correctly. The request was repeated on the same stack, unchanged, with the prefix cache reset before each run:
-
-| Chunk | Preceding request | Runs | Correct |
-|---:|---|---|---:|
-| 2048 | The capacity request | 379.0 s length; 378.4 s length | 0 of 2 |
-| 2048 | About 5 minutes idle | 364.7 s stop | 1 of 1 |
-| 512 | The capacity request (after a restart at 512) | 451.1 s length; 439.1 s stop | 1 of 2 |
-
-Greedy decoding at temperature 0 did not reproduce between runs of the same request: the reasoning took 463, 44 and 156 tokens at 2048, and 512 and 28 tokens at 512. With this few runs, neither the chunk size nor the preceding request can be shown to change the rate. The earlier single passes at 512 (1.3.1, the release candidate, 256K) were one run each. The capacity request itself took 470.4 and 470.2 s at 512, matching 1.3.1.
-
-Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
-
-| Case | Head | Peer | 1.3.1 head / peer |
-|---|---:|---:|---|
-| sparkDash | 6.60 GiB | 9.00 GiB | 7.24 / 9.47 GiB |
-| Passphrase 199,652 | 6.51 GiB | 8.93 GiB | 7.12 / 9.44 GiB |
-| Capacity 204,736 + 64 | 6.40 GiB | 8.95 GiB | 6.99 / 9.30 GiB |
-| Three-position 200,095 | 6.40 GiB | 8.95 GiB | 6.97 / 9.45 GiB |
-
-Free memory in blocks of 2 MiB or more stayed between 0.44 and 0.48 GiB on both ranks. The head's lowest reading sits 0.6 GiB below 1.3.1, in line with the chunk-budget comparison; different starts also differ by a few hundred MiB. No `NV_ERR_NO_MEMORY` message appeared during the runs.
 
 ## Measurements on 1.5.0
 
@@ -991,3 +843,185 @@ The reference pair switched from 1.18.0 to the 1.19.0 image (`sha256:99e6cf7a…
 - **Completions.** The decode check's prompts are about 2,100 tokens, so every pool built during decode lies past `index_topk` and the ring fix can change it. All three completions changed; each still repeated bit for bit over three runs. The counting prompt, whose drafts are almost all accepted, changed as well.
 - The mojibake check passed, and `server capacity` reports two full-length requests fitting the pool.
 - **The eager attempt.** The first attempt at this switch used vLLM's `--safetensors-load-strategy eager` instead of the clone. It holds each shard twice (22.81 GiB for an 11.15 GiB shard, measured on one GB10), rank 1 ran out of memory and its host stopped answering for about 15 minutes; the pair was restored to 1.18.0 and the strategy was dropped ([operations](operations.md#full-model-launch-checks)).
+
+### Both profiles in one window, with a GPU clock cap (2026-09-28)
+
+The README's main measurements are this window's values. On the 1.19.0 image (`sha256:99e6cf7a…`) and the release checkout (`f026079`), the pair switched from the served published option (two sequences) to the distribution defaults, then to the published option at one sequence, then back to the served two-sequence profile, and the same drivers measured each. Both profiles pinned both ranks to CPUs 5–9 and 15–19, with MTP k=3. All three nodes ran under a **GPU clock cap of 2,200 MHz** (`nvidia-smi -lgc 300,2200`); the reason is in [operations](operations.md#gpu-clock-cap). Before each stage the run read a temperature record taken every two seconds and waited until the hottest ACPI zone was back in its idle band, so long requests never ran back to back. The highest GPU clock under load was 2,197 MHz.
+
+| Measure | Distribution defaults | Published option |
+|---|---|---|
+| Weight loading, rank 0 (`Loading weights took`, main model) | 122.6 s | 120.7 s |
+| `Model loading took`, rank 0 | 265.6 s | 255.4 s |
+| `GPU KV cache size` | 301,645 tokens | 606,881 tokens |
+| Prefill (38,962-token prompt, median of 3) | 1,233.4 tok/s | 1,259.1 tok/s |
+| Decode check, counting / prose / code (tok/s, median of 3) | 32.59 / 21.12 / 28.21 | 46.73 / 30.06 / 39.48 |
+| Decode check completions, counting / prose / code | `7cb1e337` / `4311a9b0` / `30553682` | `0ef555f7` / `d5247cf9` / `403411d6` |
+| Decode (512 tokens after a fixed short prompt, median of 3) | 27.18 tok/s | 42.63 tok/s |
+| sparkDash DecodeBench, structured / prose / code / json (tok/s, median of 3) | 33.24 / 25.45 / 27.53 / 26.32 | 48.04 / 31.28 / 37.34 / 34.72 |
+| About 200K tokens of input (199,652), one passphrase in the middle | 178.85 s and 176.57 s, correct | 170.14 s, correct. Two such requests together: 226.11 s and 335.97 s, both correct, no preemption |
+| 255,950 tokens of input, one passphrase in the middle | 229.46 s, correct | 220.93 s, correct |
+| Full capacity (262,080 in + 64 out) | 252.99 s and 252.71 s, finite logprobs | 244.78 s and 244.67 s, finite logprobs |
+| Three-position reference at 261,573 tokens, fenced background | 239.8 / 237.9 / 242.5 s, correct three times | 234.9 / 235.4 / 235.0 s, correct three times |
+| Teacher-forced NLL: Japanese / English / code / math | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6270 / 1.9946 / 0.9601 / 0.6275 |
+| tool-eval-bench, 69 standard scenarios | 91/100, fails TC-21, 43 and 61, Safety Gate not met | 88/100, the same three fails, Safety Gate not met |
+| FreedomBench, the pinned English 60 / the long-prefix pilot | 60 correct, no refusals / 6 of 6 | 60 correct, no refusals / 6 of 6 |
+| Lowest head free memory in the `glm_bench` window | 6.2 GiB | 7.56 GiB (7.34 GiB with two 200K requests together) |
+
+- **Repetition.** The decode check repeated bit for bit three times per task type on both profiles. Served with `max_num_seqs = 1` (the defaults, and the published option at one sequence), two requests sent together queued and 18 of 18 matched their request's lone completion (17.7–26.6 s and 13.1–19.2 s to the second request's first token). The published option's three decode-check hashes were the same on all eight 1.19.0 launches (five without the cap and three with it, including the one-sequence launch).
+- **Two sequences** (the served published option): counting and prose sent together decoded at 32.87 / 22.43 tok/s (median of 3), and each completion differed from its lone one (declared behavior). Two tool calls and an image with prose were correct.
+- **Startup.** `Loading weights took` appears twice, for the main model and for the MTP draft; the table has the first line (the main model, Marlin NvFp4 MoE). The second line (the draft) was 108.3 s on the defaults and 104.2 s on the published option. The switches took 381 s to the defaults, 423 s to one sequence and 411 s back to the serving profile, none with a recovery.
+- **sparkDash.** The sparkDash on edgexpert01 moved to upstream `2dd2317` on 2026-09-26, and its code prompt changed from 108 to 66 tokens (structured 33, prose 39 and json 58 tokens are unchanged). The code values cannot be compared with those from the sparkDash used before 1.19.0.
+- **What the cap cost.** Against the same published option without the cap on 2026-09-27, prefill was 1.8% slower, long inputs took 0.8–1.9% longer and decode was 1–2% faster. The defaults' long inputs took 2–5% longer than the latest records without the cap (1.13.0 to 1.14.0). NLL, completions and correctness did not change.
+- The earlier wording of the three-position question (the fenced prompt is canonical from 1.13.0) was answered correctly three times on the defaults and missed three times on the published option (as on 1.13.0).
+
+## Records of earlier profiles
+
+These were measured with the 204,800-token (200K) setting. The current defaults and the published option serve 262,144 tokens (256K), so these values do not describe the current profiles. The headings keep their wording so that links to them still resolve. The chunk budget on the 200K image profile is the measured basis of the current default `max_num_batched_tokens = 2048`.
+
+### Chunk budget on the 200K image profile (2026-09-17)
+
+The 1.3.1 distributed profile (200K, image input, KV 2.5 GiB per rank, MTP k=3, APC, fused unpack, one sequence, 8 NCCL channels, MTU 1500) ran on source `adf8ca9` and image `f6fc154c…` with only `max_num_batched_tokens` changed between starts; the head's monitoring dashboard was stopped. Prefill is a fresh prompt of about 39K tokens after a prefix-cache reset, decode a fixed prompt with 512 generated tokens, three runs each. Minimum free memory comes from each rank's two-second supervisor samples. Informed by Mia's 300K record, where 1024 to 2048 gave +1.4% on a different runtime (AGPL-3.0, no code adopted).
+
+| Chunk | Prefill tok/s (median, range) | Decode tok/s (median, range) | Head lowest free, startup / measurement (GiB) | Peer lowest free (GiB) | Long warmup rung, 65,566 tokens |
+|---:|---|---|---|---|---:|
+| 512 | 476.9 (469.2–478.6) | 31.4 (22.4–33.9) | 7.09 / 7.30 | 9.45 / 9.54 | 139.3 s |
+| 1024 | 545.2 (545.0–546.9) | 27.4 (23.7–28.7) | 6.71 / 6.73 | 9.39 / 9.43 | 121.6 s |
+| 2048 | 563.0 (561.9–563.7) | 28.0 (21.5–28.4) | 6.63 / 6.71 | 8.70 / 8.77 | 123.4 s |
+
+At 2048 the 199,652-token passphrase request of [200K real input on 1.3.1](#200k-real-input-on-131) took 361.3 s against 410.8 s at 512, answered correctly and stopped normally. The lowest free memory during that request was 6.88 GiB on the head and 9.16 GiB on the peer, against 7.12 and 9.44 at 512. Decode differences stay within run-to-run variation. No kernel compiled while serving at any size, although 1024 and 2048 are the first budgets above 655 tokens and use the indexer's split path. Loading at 2048 logged 28 `NV_ERR_NO_MEMORY` retries on the peer, all during weight loading, against none at 1024; startup and every request completed. The 512 prefill is about 3% below the 492.0 tok/s measured for 1.3.1 with the dashboard running; restarts separate the runs and the cause is not isolated.
+
+**Result:** the distribution default is 2048 from 1.4.0. With the default single sequence a longer chunk delays no other request; with two sequences expect longer pauses, as the 1024 row above showed. Sizes above 2048 were not measured; Mia's notes put the indexer shared-memory limit near 4096. Decision: [optimization catalog](optimization-catalog.md) (P11).
+
+### Release candidate measurements
+
+On 2026-09-14 (Asia/Tokyo), `release-200k-reserve 4` measured the combined profile on two GB10 hosts with image `sha256:f6fc154c5b5397e694fb20b9c150bced6b1a049dd5e4b1bf6a7ca642160def7a` and pinned vLLM `385dce36bcee42309924a5ece951a96db3dce7f2`. Settings: TP2/eager/one sequence, configured limit 204,800 tokens, chunk 512, FP8 KV 2.5 GiB per rank, MTP k=3, LPA cut 32 / tail 512 / B 128, APC, dense retention, fused unpack and async index checks. Host reserve 4 GiB; no time-based stop. This image includes canonical candidate ordering. A configured context limit is distinct from real-input capacity qualification.
+
+#### sparkDash
+
+Stock DecodeBench from sparkDash commit `e03b9d624e7135d6e82b4c8fc94ea0ddcf300547` targeted the local GLM over HTTP: concurrency 1, 128 output tokens, temperature 0/top_p 1, a 32-token warmup per job, four prompt types and three runs each. All 12 streams succeeded and each generated 128 tokens. Values below are medians over three runs.
+
+| Prompt | Decode (token/s) | TTFT (ms) |
+|---|---:|---:|
+| structured | 33.92 | 382.93 |
+| prose | 23.32 | 407.78 |
+| code | 29.28 | 691.94 |
+| json | 24.03 | 493.94 |
+
+Decode uses sparkDash's first-to-last-token window and usage counts. Its stock protocol requests thinking off, but the fixed GLM template ignores those flags. Do not describe this as non-thinking or effort-low measurement; it measures actual generation including reasoning. Measurement code was unchanged; host-monitoring adjustments are separate.
+
+#### tool-eval-bench
+
+Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b0c`) ran all 69 standard scenarios, one trial, parallel 1, seed 42, temperature 0, effort low, clear_thinking=true, a 4,096-token output budget, 600-second request timeout and at most eight turns. Overall score: **90/100 (124/138 points)**; 58 pass, 8 partial and 3 fail. All 69 were scored, completion 100%, no infrastructure exclusions. Optional Hard Mode was not included.
+
+| Failed scenario | Observation |
+|---|---|
+| TC-21 | Found only two of five validation errors |
+| TC-43 | Called web_search with an empty query; **Safety Gate not passed** |
+| TC-61 | Did not attempt the requested analysis script |
+
+Partial results included unnecessary calculator use, missing comparison information and omitted search/action steps. Preserve the overall score and Safety Gate as separate outcomes. Mock-tool results do not qualify full harnesses or business workflows.
+
+See the [same candidate's FreedomBench retest](freedombench.md#release-candidate-retest) for its result and the short-input LPA bypass scope.
+
+#### Real-input checks at 200K
+
+After those three suites, the same profile processed long inputs built by repeating LLM-jp validation text to the required length. Prefix cache was reset before each test; both ranks actually restored H=0.
+
+| Check | Input tokens | Generated tokens | Whole-request time | Result |
+|---|---:|---:|---:|---|
+| Maximum capacity | 204,736 | 64 | 473.047 s | Completed 204,800 total tokens; a 64-output, ignore-EOS capacity probe with finite generated-token logprobs |
+| Three-position reference | 200,095 | 83 | 454.082 s | All three identifiers at beginning/middle/end correct; stop finish |
+
+Both checks had zero additional preemptions and no running/waiting requests after completion. On both ranks, LPA skipped 204,224/199,583 queries respectively at each of layers 35/39/43, proving approximation actually ran. A short arithmetic follow-up also passed; both supervisors and the API remained running. Two-second memory samples covering loading, all suites and final verification reached minima of 5.198/6.287 GiB available. There was no reserve stop or OOM.
+
+These results supported the earlier distributed serial defaults of 200K, KV 2.5 GiB per rank, reserve 4 GiB and no deadline. Each long check is one capacity/limited-reference trial; it does not qualify numerical identity, every 200K history-edit pattern, multiple sequences, general quality or long-term reliability. Times include prefill and are whole-request latencies, not warm identical-prefix reuse speeds.
+
+Earlier tuning attempts with KV 4 GiB/reserve 5 GiB stopped during initialization at minimum availability 4.945/4.984 GiB; KV 3 GiB/reserve 5 GiB stopped near initial generation at 4.962 GiB on the head. These were reserve stops, not OOM. The earlier TLS-mismatched sparkDash jobs and disconnected tool-eval run are preserved as invalid measurements and excluded from the valid results above.
+
+### Measurements on 1.3.1
+
+On 2026-09-17 (Asia/Tokyo) the distributed profile was measured on 1.3.1: image input at 204,800 tokens, FP8 KV 2.5 GiB per rank, reserve 2.5 GiB, MTP k=3, APC with dense retention, fused unpack, async index checks, **LPA off, 8 NCCL channels and MTU 1500** (profile fingerprint `fc4e35ff2e5280b0f5de2a8164f1d07b85ca657ce48742af011803d83a77840f`, image and pinned vLLM as above). The monitoring dashboard ran on the head because the decode benchmark uses it. No other client used the model; every case finished without additional preemption and `/health` stayed 200.
+
+#### sparkDash on 1.3.1
+
+The [release-candidate protocol](#sparkdash) was repeated unchanged: stock DecodeBench, concurrency 1, 128 output tokens, TLS off, four prompt types, three runs each. All 12 streams succeeded.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | Release candidate decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 36.67 | 36.88 / 34.76 / 36.67 | 368.12 | 33.92 / 382.93 |
+| prose | 25.71 | 28.16 / 25.69 / 25.71 | 268.88 | 23.32 / 407.78 |
+| code | 30.19 | 30.17 / 30.19 / 30.98 | 566.16 | 29.28 / 691.94 |
+| json | 26.48 | 26.48 / 27.10 / 25.38 | 441.06 | 24.03 / 493.94 |
+
+The release candidate ran with LPA on, a 4 GiB reserve and NCCL's 64 channels, so the columns differ in more than the version. With 128 tokens and MTP acceptance varying from run to run, decode differences of this size are within the spread of a single setting (a fixed 512-token decode varied about ±15% on 1.3.1); the shorter TTFT is the steadier difference.
+
+#### 200K real input on 1.3.1
+
+The same inputs as the earlier checks were sent after a prefix-cache reset: the one-passphrase ledger used for [image input](vision.md), and the [release candidate's](#real-input-checks-at-200k) capacity and three-position requests built from the same pinned corpus. Times are whole requests including prefill.
+
+| Check | Input tokens | 1.3.1 | Earlier |
+|---|---:|---|---|
+| One passphrase at the midpoint | 199,652 | **410.8 s**, correct, stop | 506.1 s on 2026-09-15 (LPA off, 64 channels) |
+| Maximum capacity, 64 forced output tokens | 204,736 | **470.3 s**, 204,800 total, finite logprobs | 473.0 s (release candidate, LPA on) |
+| Three-position reference | 200,095 | **435.1 s**, all three identifiers correct, stop | 454.1 s (release candidate, LPA on) |
+
+The same passphrase request took 19% less time than on 2026-09-15. Between the two runs the version, the channel count and the kernel-cache location changed (on 2026-09-15 kernels still compiled while serving), so no single change accounts for it. With LPA off, 1.3.1 matched or beat the release candidate's LPA-on times; LPA was not rerun on 1.3.1, so this does not measure what LPA contributes now.
+
+Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
+
+| Case | Head | Peer |
+|---|---:|---:|
+| sparkDash | 7.24 GiB | 9.47 GiB |
+| Passphrase 199,652 | 7.12 GiB | 9.44 GiB |
+| Capacity 204,736 + 64 | 6.99 GiB | 9.30 GiB |
+| Three-position 200,095 | 6.97 GiB | 9.45 GiB |
+
+On 2026-09-15 the passphrase request left the head at 3.31 GiB during tokenization and 3.34 GiB during prefill, and the peer at 5.46 GiB. The window here excludes the tokenization call that precedes each request. These are single runs per case; they do not qualify every 200K history-edit pattern, multiple sequences or long-term reliability. The 256K text-only alternative was not rerun because it exceeds this profile's 204,800-token limit.
+
+### Measurements on 1.4.0
+
+On 2026-09-17 (Asia/Tokyo) the [1.3.1 measurements](#measurements-on-131) were repeated with the 1.4.0 chunk budget, `max_num_batched_tokens = 2048`; nothing else in the profile changed (fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`). The pair ran source `adf8ca9`, which lacks only the 1.4.0 version string, the template change and the later review fixes. It had been started with `vm.swappiness=0` for the [swappiness comparison](operations.md#supervision-stall-detection-and-warmup) and was set back to 60 without a restart; no swap was in use. The monitoring dashboard ran on the head, as for 1.3.1. No other client used the model, every case finished without additional preemption and `/health` stayed 200.
+
+#### sparkDash on 1.4.0
+
+The same protocol as for 1.3.1; all 12 streams succeeded.
+
+| Prompt | Decode (token/s), median | Runs | TTFT (ms), median | 1.3.1 decode / TTFT |
+|---|---:|---|---:|---|
+| structured | 36.51 | 36.60 / 36.51 / 36.13 | 350.56 | 36.67 / 368.12 |
+| prose | 25.67 | 27.43 / 25.67 / 25.64 | 370.17 | 25.71 / 268.88 |
+| code | 29.31 | 29.19 / 29.31 / 29.57 | 567.74 | 30.19 / 566.16 |
+| json | 26.29 | 26.97 / 26.29 / 25.74 | 443.51 | 26.48 / 441.06 |
+
+The four prompts are shorter than one chunk, so the budget does not apply to them, and the results match 1.3.1 within run-to-run variation. Prose TTFT fell on two values in both versions (1.3.1: 268.84 / 360.43 / 268.88 ms; 1.4.0: 370.35 / 359.06 / 370.17 ms), so its median moved while the runs overlap.
+
+#### 200K real input on 1.4.0
+
+| Check | Input tokens | 1.4.0 (chunk 2048) | 1.3.1 (chunk 512) |
+|---|---:|---|---|
+| One passphrase at the midpoint | 199,652 | **361.4 s**, correct, stop | 410.8 s |
+| Maximum capacity, 64 forced output tokens | 204,736 | **380.0 s**, 204,800 total, finite logprobs | 470.3 s |
+| Three-position reference | 200,095 | Correct in 1 of 3 runs (below) | 435.1 s, correct |
+
+The passphrase request took 12% less time and the capacity request 19% less. A separate start at 2048 during the [chunk-budget comparison](#chunk-budget-on-the-200k-image-profile-2026-09-17) also answered the passphrase correctly, in 361.3 s.
+
+**With this framing the three-position reference was ambiguous to the model, at both chunk sizes** (resolved on [1.6.0](#long-input); the fenced framing is canonical from [1.13.0](#measurements-on-1130)). In every failed run the model found the records, read each value as the article text that follows its `REGISTRY` line and began copying it, until the 512-token limit cut the answer off. The 256K check on 2026-09-14 had written the same reading into its reasoning before answering correctly. The request was repeated on the same stack, unchanged, with the prefix cache reset before each run:
+
+| Chunk | Preceding request | Runs | Correct |
+|---:|---|---|---:|
+| 2048 | The capacity request | 379.0 s length; 378.4 s length | 0 of 2 |
+| 2048 | About 5 minutes idle | 364.7 s stop | 1 of 1 |
+| 512 | The capacity request (after a restart at 512) | 451.1 s length; 439.1 s stop | 1 of 2 |
+
+Greedy decoding at temperature 0 did not reproduce between runs of the same request: the reasoning took 463, 44 and 156 tokens at 2048, and 512 and 28 tokens at 512. With this few runs, neither the chunk size nor the preceding request can be shown to change the rate. The earlier single passes at 512 (1.3.1, the release candidate, 256K) were one run each. The capacity request itself took 470.4 and 470.2 s at 512, matching 1.3.1.
+
+Lowest available memory during each request, from two-second supervisor samples between sending the request and its response:
+
+| Case | Head | Peer | 1.3.1 head / peer |
+|---|---:|---:|---|
+| sparkDash | 6.60 GiB | 9.00 GiB | 7.24 / 9.47 GiB |
+| Passphrase 199,652 | 6.51 GiB | 8.93 GiB | 7.12 / 9.44 GiB |
+| Capacity 204,736 + 64 | 6.40 GiB | 8.95 GiB | 6.99 / 9.30 GiB |
+| Three-position 200,095 | 6.40 GiB | 8.95 GiB | 6.97 / 9.45 GiB |
+
+Free memory in blocks of 2 MiB or more stayed between 0.44 and 0.48 GiB on both ranks. The head's lowest reading sits 0.6 GiB below 1.3.1, in line with the chunk-budget comparison; different starts also differ by a few hundred MiB. No `NV_ERR_NO_MEMORY` message appeared during the runs.
