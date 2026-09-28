@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.20.0"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
+**Short name: NVFP4 BIZ** (cite as "NVFP4 BIZ 1.20.1"). It names this serving stack, which serves NVIDIA's pinned checkpoint as distributed. The published option's weights are **NVFP4 BIZ AXL** (AXL: the attention projections and `lm_head` in W4A16; on Hugging Face as [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16), whose repository name describes the contents). The repository names stay as they are.
 
 **BIZ** is the maintainer's mark (Bizuayeu) and states the intent: a business-use setup with commercially usable licensing, pinned assets, recorded checks and reversible operation. What it does not mean is in the [disclaimer](#disclaimer).
 
@@ -117,11 +117,11 @@ Two GB10 systems, TP=2, FA2 prefill, one token order inside each expert, indexer
 
 | | Distributed defaults | Published option |
 |---|---|---|
-| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3). Prefill 2% faster than the defaults in the same window, the split projection having removed the earlier penalty. Identical requests still repeat bit for bit when served with `max_num_seqs = 1`, and the head keeps about 4 GiB more available at 256K |
+| **Pros** | Lossless with respect to the pinned NVIDIA weights. Ships in the template with no extra download | Decode step 12–13 ms shorter on every input (78 ms mean over ten inputs at depth 3, measured on 1.7.0 on 2026-09-21). Prefill 2% faster than the defaults in the same window, the split projection having removed the earlier penalty. Identical requests still repeat bit for bit when served with `max_num_seqs = 1`, and the head keeps about 4 GiB more available at 256K |
 | **Cons** | The slower decode of the two on every task type | Not lossless: NLL 1 to 6% higher on three of four texts. Outside the template: a second checkpoint to acquire and place. Above about 250K tokens it needs the slot-mapping guard that images built from 1.7.0 carry |
 | **Choose it for** | Code and tool use, and any workload that must match the pinned weights | Japanese prose and other generation-heavy serial work where the NLL cost is acceptable |
 
-How fast MTP decodes depends on how predictable the text is: the same profile gives 45 tok/s on counting and 28 on prose. [The published option at depth three](docs/benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) and [depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) hold the numbers, and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) the choice. Every decode figure has both ranks' workers on performance cores; with either rank on efficiency cores decode falls to about a third, which [`nodes[].cpuset_cpus`](docs/server-configuration.md#optional-cpu-placement) prevents ([measurements on 1.15.0](docs/benchmarks.md#measurements-on-1150)).
+How fast MTP decodes depends on how predictable the text is: in the table above, either profile decodes counting about 1.5 times as fast as prose, because more of each draft is accepted. [Depth three for both checkpoints](docs/speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) has the acceptance lengths, and [profiles by workload](docs/optimization-overview.md#profiles-by-workload) the choice. Every decode figure has both ranks' workers on performance cores; with either rank on efficiency cores decode falls to about a third, which [`nodes[].cpuset_cpus`](docs/server-configuration.md#optional-cpu-placement) prevents ([measurements on 1.15.0](docs/benchmarks.md#measurements-on-1150)).
 
 ### Status by scope
 

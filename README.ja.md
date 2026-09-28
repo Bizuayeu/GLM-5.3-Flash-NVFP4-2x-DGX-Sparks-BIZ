@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -117,11 +117,11 @@ GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-k
 
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
+| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms。1.7.0で2026-09-21に測定）。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
 | **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
-MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。同じprofileでも、数え上げは45 tok/s、散文は28 tok/sです。数値は[深さ3の公開した任意設定](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)と[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)に、選定は[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。decodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちます。これは[`nodes[].cpuset_cpus`](docs/server-configuration.ja.md#cpu配置の任意指定)で防げます（[1.15.0での測定](docs/benchmarks.ja.md#1150での測定)）。
+MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。上の表では、どちらのprofileでも数え上げが散文のおよそ1.5倍速く出ます。下書きのうち受理される長さが違うためです。受理長は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)に、選定は[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。decodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちます。これは[`nodes[].cpuset_cpus`](docs/server-configuration.ja.md#cpu配置の任意指定)で防げます（[1.15.0での測定](docs/benchmarks.ja.md#1150での測定)）。
 
 ### 範囲ごとの状態
 

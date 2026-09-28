@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.1 — 2026-09-28
+
+### Documentation
+
+- The README's sentence on how decode speed follows the predictability of the text quoted counting and prose rates from the 2026-09-21 measurements (45 and 28 tok/s), while the headline table above it had been retaken on 1.19.0 (46.73 and 30.06 on the published option). The sentence now points at that table and states the ratio, about 1.5 for either profile. The published option's shorter decode step (78 ms mean at depth 3) is dated as measured on 1.7.0 on 2026-09-21, which no later window repeated.
+
 ## 1.20.0 — 2026-09-28
 
 ### Added
