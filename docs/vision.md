@@ -67,11 +67,26 @@ One request built to 199,652 prompt tokens, with a passphrase in the middle, ret
 
 After the switch the same checks passed on the 256K profile: the synthetic image correct, the same question without the image not guessed, text of the same length, the same image again, short arithmetic, a tool call answered from its result, and video rejected with HTTP 400. Both ranks ran with `--max-model-len 262144` and `--kv-cache-memory-bytes 3221225472`, and the warmup ladder's image rung took 1.24 s. The 256K long-context requests and the memory during them are in [measurements on 1.5.0](benchmarks.md#measurements-on-150); the head's lowest available memory there was 5.82 GiB.
 
+### 1.19.0 (2026-09-27 to 28)
+
+Both profiles were checked on the 1.19.0 image (the published option on 2026-09-27, the defaults on 2026-09-28 inside the window with the GPU clock cap, [benchmarks](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)).
+
+| Check | Published option | Distribution defaults |
+|---|---|---|
+| The seven regression checks (the table above) | All seven passed | All seven passed |
+| Large images (448 / 1,232 / 2,464 px square, reading twelve items present only in the image) | 12/12, 12/12, 12/12 (prompts of 288, 1,968 and 7,776 tokens; 2.8, 4.0 and 12.4 s) | 12/12, 12/12, 12/12 (the same token counts; 2.4, 4.1 and 10.6 s) |
+| Several images (two, four and eight 448 px images, one number each, read in order) | All in order | All in order |
+| MTP acceptance on a 512-token description (with an image / text of the same length) | 0.681 / 0.615 | 0.718 / 0.593 |
+| An image request and a prose request together | Image answered correctly | Not applicable (one sequence) |
+| Lowest head free memory | 7.07 GiB | 5.53 GiB |
+
+- One run each; times include the SSH round trip. Acceptance on image descriptions was expected to be lower than on text and came out higher on both profiles (one run each, so the spread is unknown).
+
 ## Limits and open items
 
-- Only one small synthetic image was tested. Images near the 8,000-token limit, many images in one session, and image quality in general are unmeasured.
-- The MTP draft is text-only; its acceptance rate on image requests is unmeasured. LPA with images is not validated (LPA ships disabled).
+- The checks use synthetic images. Images of up to 7,776 tokens and up to eight images were read correctly (1.19.0 above); image understanding in general is unmeasured.
+- The MTP draft is text-only; its acceptance rate on image requests was measured once per profile on 1.19.0 (above). LPA with images is not validated (LPA ships disabled).
 - In one ZCode terminal session (2026-09-15, one run), the model downloaded a screenshot with a shell command, read it with the file-read tool and correctly described text that appeared only in the image. Attaching an image directly to a ZCode prompt has not been checked (Claude Code is out of scope, [harnesses](harnesses.md#acceptance-matrix-and-status)); the measurements above used the API directly.
 - A request shape seen for the first time can still compile kernels while serving. `server warmup` sends the shapes that were observed compiling (short text, tool call, image, and the long rung set by `generation.warmup_long_tokens`) and records which kernels compiled during the ladder; `cluster switch` runs it after readiness when `generation.warmup = true`. The cache does not remove those warnings on the next start, because the monitor also reports a kernel loaded from the on-disk cache on its first use in a process; the ten reported kernels are loads ([operations](operations.md#supervision-stall-detection-and-warmup)).
 - The API server's unidentified 624 MiB mapping and its slow growth over long sessions are not characterized. `MALLOC_ARENA_MAX` could affect at most the 255 MiB in arenas.
-- Images with two sequences: one image-plus-prose pair on the published option ([concurrency scope](validation.md#concurrency-scope)). Long-term reliability is not characterized.
+- Images with two sequences: image-plus-prose pairs on the published option only (one pair each on 2026-09-23, 27 and 28) ([concurrency scope](validation.md#concurrency-scope)). Long-term reliability is not characterized.

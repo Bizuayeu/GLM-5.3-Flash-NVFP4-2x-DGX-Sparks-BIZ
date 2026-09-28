@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.19.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.19.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -93,31 +93,31 @@ TP=2の参照profileは**実測済みで、通常運用として受け入れ済�
 
 ## 確認した範囲
 
-**配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)、従来の速度・tool-evalの結果とSafety Gate未達は[リリース候補の測定](docs/benchmarks.ja.md#リリース候補の測定)が保持しています。
+**配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)が保持しています。
 
 ### 主要な測定値（1.19.0）
 
-GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)を2026-09-23に測ったもの（[1.10.4での測定](docs/benchmarks.ja.md#1104での測定)。NLLは2026-09-25、[1.13.0での測定](docs/benchmarks.ja.md#1130での測定)）で、その夜に測り直していない行は最後に測った夜の値を日付つきで残しています。配布既定の列は2026-09-22の夜です。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)です。**両列とも2026-09-28に1.19.0で、同じ枠で測りました**：配信中の任意設定→配布既定→任意設定の同時1系列（反復性のため）→配信中の任意設定の順に切り替え、同じdriverを使い、両profileとも両rankを高性能コアに置きました（[1.19.0での測定](docs/benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。**3台ともGPUクロックを2,200 MHzに制限した状態で測り**、各段の前に温度が下がるのを待ちました。GB10は持続負荷の下で電源ごと落ちることがあるためで、上限の代価はprefillで約2%、長い入力で1〜5%です（[GPUクロックの上限](docs/operations.ja.md#gpuクロックの上限)）。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
-| 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ。注記がなければ2026-09-22） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile。注記がなければ2026-09-23） |
+| 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile） |
 |---|---|---|---|
-| prefill | prefill（38,962 tokenのprompt） | 1,232.8 tok/s（1.7.1の夜は1,277.0） | **1,294.8 tok/s**（2026-09-22） |
-| decode | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.01／20.67／26.68 tok/s | **45.71／29.85／37.36 tok/s**（2026-09-26。もう一方が走っている間は数え上げ32.09／散文21.81、2026-09-23） |
-| decode | decode（固定の短いpromptの後の512 token） | 26.87〜27.31 tok/s | **41.8 tok/s**（2026-09-22） |
-| decode | sparkDash DecodeBench（128 token）：structured／prose／code／json | 36.24／26.68／31.67／26.25 tok/s（1.5.0） | **48.56／31.42／41.07／34.90 tok/s**（2026-09-26） |
-| 起動 | 重みの読み込み、rank 0（`Loading weights took`） | 1.19.0では未計測 | **100.7 s**（1.18.0では532.0 s。2026-09-26） |
-| 長文入力 | 約200K token入力、中央の合言葉1個 | 173.5 sと173.6 s、正答（199,652 token） | **165.7 s、正答**（199,649 token）。同種の2本を同時に：330.2 s、両方正答、preemptionなし |
-| 長文入力 | 255,950 token入力、中央の合言葉1個 | 217.3 s、正答 | 220.9 s、正答（2026-09-22） |
-| 長文入力 | 261,573 tokenの3か所参照、背景を囲んだprompt（1.13.0からの正典） | 234.2 s、3回とも正答（2026-09-25） | **230.7 s、3回とも正答**（2026-09-25） |
-| 長文入力 | 最大容量（入力262,080＋出力64 token） | 240.3 s、logprobは有限 | 245.7 s、logprobは有限（2026-09-22） |
-| 品質 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6270／1.9946／0.9601／0.6275（2026-09-25。同時1系列のprofileでは1.6645／2.0024／1.0031／0.6279、2026-09-21） |
-| 品質 | tool-eval-bench、標準69シナリオ | 90／100（1.0.0、2026-09-14） | 88／100、failは同じ3件、Safety Gate未達 |
-| 反復性 | temperature 0での同一要求 | 9回中9回同じcompletion、log確率の移動0。1.12.0からはどの起動も同じ数値状態（3起動中3起動） | 単独の要求なら同じ。要求が2本走っている間のcompletionはその要求の単独時と違いうる。`max_num_seqs = 1` なら同時に送った要求は待ち行列に入り、それぞれ単独のcompletionを繰り返す（[1.14.0での測定](docs/benchmarks.ja.md#1140での測定)） |
-| メモリ | bench中のheadの最小空きメモリ | 5.53 GiB（KV 3 GiB） | 200K 2本の同時で6.46 GiB、sparkDash中は7.24 GiB（KV 6 GiB） |
+| prefill | prefill（38,962 tokenのprompt） | 1,233.4 tok/s | **1,259.1 tok/s** |
+| decode | decode（2,048 tokenのpromptの後）：数え上げ／散文／コード | 32.59／21.12／28.21 tok/s | **46.73／30.06／39.48 tok/s**（もう一方が走っている間は数え上げ32.87／散文22.43） |
+| decode | decode（固定の短いpromptの後の512 token） | 27.18 tok/s | **42.63 tok/s** |
+| decode | sparkDash DecodeBench（128 token）：structured／prose／code／json | 33.24／25.45／27.53／26.32 tok/s | **48.04／31.28／37.34／34.72 tok/s** |
+| 起動 | 重みの読み込み、rank 0（`Loading weights took`、本体） | 122.6 s（`Model loading took` は265.6 s。cloneを通す前は787〜811 s） | **120.7 s**（1.18.0では532.0 s） |
+| 長文入力 | 約200K token入力、中央の合言葉1個 | 178.9 sと176.6 s、正答（199,652 token） | **170.1 s、正答**（199,649 token）。同種の2本を同時に：336.0 s、両方正答、preemptionなし |
+| 長文入力 | 255,950 token入力、中央の合言葉1個 | 229.5 s、正答 | **220.9 s、正答** |
+| 長文入力 | 261,573 tokenの3か所参照、背景を囲んだprompt（1.13.0からの正典） | 239.8 s、3回とも正答 | **235.0 s、3回とも正答** |
+| 長文入力 | 最大容量（入力262,080＋出力64 token） | 253.0 sと252.7 s、logprobは有限 | **244.8 sと244.7 s、logprobは有限** |
+| 品質 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6270／1.9946／0.9601／0.6275（同時1系列のprofileでは1.6645／2.0024／1.0031／0.6279、2026-09-21） |
+| 品質 | tool-eval-bench、標準69シナリオ | 91／100、failは3件、Safety Gate未達 | 88／100、failは同じ3件、Safety Gate未達 |
+| 反復性 | temperature 0での同一要求（`max_num_seqs = 1`） | 9回中9回同じcompletion（decode検査3文種×3回）。同時に送った2本は待ち行列に入り、それぞれ単独のcompletionを繰り返す（18本中18本） | `max_num_seqs = 1` で配信すれば同じ（同時に送った2本も18本中18本）。decode検査のcompletionは1.19.0の8起動すべてで同じ。配信中の同時2系列profileでは、2本が走っている間の反復を主張しない |
+| メモリ | bench中のheadの最小空きメモリ | 6.2 GiB（KV 3 GiB） | 7.56 GiB、200K 2本の同時で7.34 GiB（KV 6 GiB） |
 
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。prefillも同じ夜の既定より2〜5%速い（projectionの分割で以前の代価が消えた）。同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
+| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decode stepが全入力で12〜13 ms短い（深さ3・10入力の平均で78 ms）。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
 | **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
@@ -135,10 +135,10 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | 同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ：両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)が、expert内のtoken順、indexerのtop-kの同点、Inductorのrankごとのconfigの選択を固定する。どちらのprofileでも3起動とも同じcompletion。新しい起動は今も切替ごとに確かめる（重みのdigest、decode検査、kernel hash）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
-| 全モデル | 200K・256Kでの画像入力（Vision） | 合成画像1枚に両方の長さで正答、テキスト・ツールの回帰は合格、動画は拒否。大きな画像とハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
+| 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ：両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)が、expert内のtoken順、indexerのtop-kの同点、Inductorのrankごとのconfigの選択を固定する。1.12.0〜1.14.0ではどちらのprofileでも3起動とも同じcompletion、1.19.0では公開した任意設定の8起動がすべて同じcompletion。新しい起動は今も切替ごとに確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上の配信では反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
+| 全モデル | 256Kでの画像入力（Vision） | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。1.19.0では両profileで回帰7項が合格し、1枚7,776 tokenまでの大きな画像と8枚までの画像にも順番どおり正答。ハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
-| 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。他の要求とstepを共有した要求は違うcompletionになりうる（宣言した挙動）。どんな負荷でも反復するcompletionが要るなら `max_num_seqs = 1` で配信する。それを超える同時数：TP=4を推奨、TP=3は非推奨。どちらもここでは未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
+| 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。この範囲では反復を主張しない（他の要求とstepを共有した要求は違うcompletionになりうる）。反復が要るなら `max_num_seqs = 1` で配信する。それを超える同時数：TP=4を推奨、TP=3は非推奨。どちらもここでは未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLIで一巡（PASS 5・PARTIAL 6）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、1系列のdecodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 10入力で、再量子化したcheckpointでは深さ1〜5を、固定のcheckpointでは1・3・4を測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
@@ -158,7 +158,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 本プロジェクトは、**`nvidia/GLM-5.3-Flash-NVFP4`をDGX Spark相当の2台構成で、業務で評価・改造・運用しやすくすること**を目的としています。次の三点を一体として整備します。
 
 - **ライセンスと出所の選択：** 商用利用できるMIT/Apache系の構成要素を優先し、採用元・版・通知を固定します。コード・重み・コンテナ・ハーネスそれぞれの条件は[ライセンス整理](docs/licensing.ja.md)に示します。
-- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。配信profileでは2026-09-22に完了しています（固定の英語原版60問が初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。日本語訳の本体・対立的な言い回し・証拠配置は未実施です。
+- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。1.19.0では両profileで2026-09-28に完了しています（固定の英語原版60問がどちらも初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。日本語訳の本体・対立的な言い回し・証拠配置は未実施です。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
 速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**し、両方のcheckpointに共通の深さとしました。理由は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)にあります。
@@ -188,7 +188,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - **BIZは意図であり、約束ではありません。** 製品ティア・サポート・保証・認定を意味しません。業務利用に適するかは、宣言した範囲についての検収の結果であり（[範囲ごとの状態](#範囲ごとの状態)）、接尾辞からは導かれません。
 - **kpool tail ringの修正は部分的です。** [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) の移植（`patch_kpool_ring`）は上流自身が部分的な修正としており、続く変更が予定されています（[運用手順](docs/operations.ja.md#フルモデルの起動検査)）。
 - **tail ringはMTPの深さで変わります。** blockはMTPなしで4 slot、深さ1〜4で8、深さ5で16です。そのため、KV容量の分解と起動から記録する値は深さによって変わります（[KV容量](docs/server-configuration.ja.md#kv容量とramの条件)）。
-- **文脈が2,048 tokenを超えるdecodeの再現性の基準値は、1.19.0で取り直します。** indexerの `index_topk`（2,048）を超えると、ringの修正はMTPありのdecode中に作られるpoolの圧縮keyを変え得ます。長さがpromptから来てもoutputから来ても同じです。以前のimageで記録した基準hashは、その基準になりません。
+- **文脈が2,048 tokenを超えるdecodeの再現性の基準値は、1.19.0で取り直しました。** indexerの `index_topk`（2,048）を超えると、ringの修正はMTPありのdecode中に作られるpoolの圧縮keyを変え得るため、以前のimageで記録した基準hashは基準になりません。promptで超える要求は、両profileのdecode検査のhashが基準です（[1.19.0での測定](docs/benchmarks.ja.md#1190での測定)）。出力で2,048を超える要求の基準値は取っていません。
 - **`runtime.stable_indexer_topk = false` にすると、[vLLM #58785](https://github.com/vllm-project/vllm/pull/58785) が直す不具合の影響を受けます。** このpull requestは上流でまだopenで、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（両テンプレートとも有効）。
 
 ## Next Action

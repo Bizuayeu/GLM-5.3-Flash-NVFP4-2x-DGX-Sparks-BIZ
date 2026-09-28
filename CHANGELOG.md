@@ -15,6 +15,21 @@
 - An LPA launch ran the LPA worker baked into the image, not the checkout's, so a worker change after the image was built did not reach the server (found when the split modes were refused as unsupported on the reference pair). An LPA launch now mounts the checkout's `lpa.py` over the image's, as the launcher already does for the memory probe and the FA2 modules.
 - `server ask` on a native-LPA profile reset the worker by rewriting the request it had already sent; it now sends a copy.
 
+## 1.19.1 — 2026-09-28
+
+A documentation release: no code, image or default changed from 1.19.0.
+
+### Documentation
+
+- The README's headline measurements were all taken again on 1.19.0 on 2026-09-28, both profiles in one window: the pair switched from the served published option to the distribution defaults, to the option at one sequence and back, with the same drivers. The rows are no longer a mix of nights and versions, and the benchmarks hold the full table ([measurements on 1.19.0](docs/benchmarks.md#measurements-on-1190)). The run pinned both ranks to performance cores on both profiles.
+- Those measurements were taken with the GPU clock capped at 2,200 MHz (`nvidia-smi -lgc 300,2200`) on every node. GB10 machines are reported to power off under sustained load, and the reference pair's head did so once on 2026-09-27 during back-to-back 261K prefills. Operations has a new section on the cap: against the same profile without it, prefill was about 2% slower and long inputs 1–5% longer, with decode, NLL, completions and correctness unchanged ([GPU clock cap](docs/operations.md#gpu-clock-cap)). The cap is a host setting; the launcher does not apply it.
+- Repeatability is claimed for `max_num_seqs = 1` only: the headline row, the option's pros and the scope rows now say so, and the concurrency row says repetition is not claimed with two sequences in flight. On 1.19.0, requests sent together to a one-sequence profile queued and 18 of 18 repeated their lone completion on both profiles, and the published option gave the same decode-check completions on all eight launches.
+- The Disclaimer's re-baselining is done: for a prompt past 2,048 tokens the decode check's hashes on both profiles are the reference; no reference was taken for an output past it.
+- The README no longer shows values from the 204,800-token (200K) setting: the defaults' tool-eval score is 91/100 on 1.19.0 (the same three failures, Safety Gate not passed) instead of 90/100 from that setting, and the vision row covers 256K only. The benchmarks moved the release-candidate, 1.3.1, 1.4.0 and 200K chunk-budget sections under **Records of earlier profiles** with their headings unchanged, so links to them still resolve.
+- Image input on 1.19.0: both profiles passed the seven regression checks and read images of up to 7,776 tokens and up to eight images in order; MTP acceptance on image descriptions was measured once per profile ([image input](docs/vision.md)).
+- FreedomBench ran again on both 1.19.0 profiles: 60 of 60 on the first attempt with no refusal, and the long-prefix pilot 6 of 6 ([FreedomBench](docs/freedombench.md)).
+- The sparkDash used for DecodeBench changed its code prompt (108 to 66 tokens) when it moved upstream on 2026-09-26; the code column is not comparable with earlier releases.
+
 ## 1.19.0 — 2026-09-26
 
 ### Fixed

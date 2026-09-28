@@ -2,6 +2,10 @@
 
 [English](freedombench.md) · [検証一覧](validation.ja.md)
 
+## 1.19.0の両profileでの再実施（2026-09-28）
+
+1.19.0（image `99e6cf7a…`）で、配布既定と配信中の公開した任意設定（同時2系列）の両方に、同じrunnerで固定の英語原版60問と長文付きpilotを走らせた（GPUクロック上限2,200 MHz、[ベンチマーク](benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。**どちらも計画60問中60問正解、全問が初回で回答、上流の `refused` ゼロ、エラーゼロ**、pilotは6問中6問（入力4,810〜4,838 token）。出力上限は8,192。下の完了で閉じなかった3項（日本語訳の本体、対立的な言い回し、prefixの位置以外の証拠配置）は未実施のまま。
+
 ## 配信profileでの完了（2026-09-22）
 
 **参照対が配信しているprofileで2026-09-22に完了**（同日の記録では、公開した任意設定のroute l重み・分割KDA射影、同時1系列、各rank 3 GiBのKV、MTP k=3、FA2 prefill、`runtime.prefix_page_dedup`、image `76a1172b…`、fingerprint `945965bf…`）。23:58〜23:59（JST）にリポジトリのrunnerで固定の英語原版60問を走らせた：**計画60問中60問正解、全問が初回で回答、上流の `refused` ゼロ、エラーゼロ**。出力予算は上流の8,192トークン、採点は固定の分類器（記録 `records/20260922-freedombench/serving-full`）。続く長文付きpilotは、2026-09-13と同じ日本語の検証用テキスト約6,000文字を最初の6問に前置し（入力4,810〜4,838トークン＝prefix全体が問いの前に入る）、通常のchat endpointで**6問中6問**正解（記録 `long-pilot-serving`）。
