@@ -1,7 +1,11 @@
+import contextlib
 import hashlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from glm53_setup.runtime import patch_kpool_ring, patch_kpool_seed
 
@@ -283,6 +287,47 @@ class PrepareTests(unittest.TestCase):
             finally:
                 patch_kpool_ring.SOURCES.clear()
                 patch_kpool_ring.SOURCES.update(original)
+
+    def test_the_command_writes_both_files_and_the_image_record(self):
+        # The record is baked into images; its text and the printed line are evidence.
+        outputs = {
+            patch_kpool_ring.ATTENTION: b"attention",
+            patch_kpool_ring.KERNELS: b"kernels",
+        }
+        row = {
+            name: {
+                "source_sha256": patch_kpool_ring.SOURCES[name],
+                "patched_sha256": hashlib.sha256(data).hexdigest(),
+            }
+            for name, data in outputs.items()
+        }
+        for check in (False, True):
+            with self.subTest(check=check), tempfile.TemporaryDirectory() as tmp:
+                package = Path(tmp) / "vllm"
+                for name in outputs:
+                    (package / name).parent.mkdir(parents=True, exist_ok=True)
+                    (package / name).write_bytes(b"pinned")
+                printed = io.StringIO()
+                argv = ["--package", str(package)] + (["--check"] if check else [])
+                with (
+                    patch.object(patch_kpool_ring, "prepare", return_value=outputs),
+                    contextlib.redirect_stdout(printed),
+                ):
+                    patch_kpool_ring.main(argv)
+                self.assertEqual(
+                    printed.getvalue(),
+                    json.dumps({"files": row, "check_only": check}) + "\n",
+                )
+                record = Path(tmp) / patch_kpool_ring.RECORD
+                if check:
+                    self.assertFalse(record.exists())
+                    self.assertEqual(
+                        (package / patch_kpool_ring.KERNELS).read_bytes(), b"pinned"
+                    )
+                else:
+                    self.assertEqual(record.read_text(), json.dumps(row, indent=2))
+                    for name, data in outputs.items():
+                        self.assertEqual((package / name).read_bytes(), data)
 
     def test_the_kernel_hash_is_the_seed_patch_output(self):
         # The pinned hashes differ: the ring patch never takes the pristine kernel file.

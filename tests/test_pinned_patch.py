@@ -30,6 +30,45 @@ class ReplaceOnceTests(unittest.TestCase):
                 pinned_patch.replace_once(text, "y\n", "z\n")
 
 
+class ReplaceExactlyTests(unittest.TestCase):
+    def test_replaces_an_anchor_that_repeats_a_known_number_of_times(self):
+        self.assertEqual(pinned_patch.replace_exactly("y\ny\n", "y", "z", 2), "z\nz\n")
+        for text in ("y\n", "y\ny\ny\n"):
+            with self.assertRaises(ValueError):
+                pinned_patch.replace_exactly(text, "y", "z", 2)
+
+
+class PrepareFilesTests(unittest.TestCase):
+    SOURCES = {"a.py": b"a = 1\n", "b.py": b"b = 1\n"}
+
+    def test_every_file_is_checked_before_any_is_patched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            for name, data in self.SOURCES.items():
+                (package / name).write_bytes(data)
+            hashes = {n: hashlib.sha256(d).hexdigest() for n, d in self.SOURCES.items()}
+            patched = []
+
+            def edit(name):
+                def run(text):
+                    patched.append(name)
+                    return "# patched\n" + text
+
+                return run
+
+            patches = {name: edit(name) for name in self.SOURCES}
+            self.assertEqual(
+                pinned_patch.prepare_files(package, hashes, patches, "mismatch: "),
+                {n: b"# patched\n" + d for n, d in self.SOURCES.items()},
+            )
+            patched.clear()
+            with self.assertRaisesRegex(ValueError, "^mismatch: b.py$"):
+                pinned_patch.prepare_files(
+                    package, dict(hashes, **{"b.py": "0" * 64}), patches, "mismatch: "
+                )
+            self.assertEqual(patched, [])
+
+
 class PinnedPatchCommandTests(unittest.TestCase):
     SOURCE = b"import os\na = 1\n"
 
