@@ -2,6 +2,13 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.6 — 2026-09-29
+
+### Documentation
+
+- The 1.19.0 window of 2026-09-28 in benchmarks no longer reports the earlier, unfenced wording of the three-position question per profile. That wording was found ambiguous on 1.4.0, the defaults misread it too (2 of 3 on 2026-09-19, 1 of 3 on 2026-09-20) and the published option had answered it 3 of 3 on 2026-09-22, so which reading wins is a near tie on the numerical path, not a property of either checkpoint; a line that set one profile's 3 of 3 against the other's 0 of 3 read as a quality difference. The fenced prompt, canonical from 1.13.0, stays in the table, and the 1.13.0 section keeps the full account.
+- The Hugging Face card of the published option ([Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)) now carries the measurements of that window, the renamed repository and the overlays' base hashes, and states that a runtime without the slot-mapping guard must keep requests at or below 245,000 tokens. The weights are unchanged.
+
 ## 1.20.5 — 2026-09-29
 
 ### Changed

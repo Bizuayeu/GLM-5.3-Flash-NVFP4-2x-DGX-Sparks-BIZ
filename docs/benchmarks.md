@@ -881,7 +881,6 @@ The README's main measurements are this window's values. On the 1.19.0 image (`s
 - **Startup.** `Loading weights took` appears twice, for the main model and for the MTP draft; the table has the first line (the main model, Marlin NvFp4 MoE). The second line (the draft) was 108.3 s on the defaults and 104.2 s on the published option. The switches took 381 s to the defaults, 423 s to one sequence and 411 s back to the serving profile, none with a recovery.
 - **sparkDash.** The sparkDash on edgexpert01 moved to upstream `2dd2317` on 2026-09-26, and its code prompt changed from 108 to 66 tokens (structured 33, prose 39 and json 58 tokens are unchanged). The code values cannot be compared with those from the sparkDash used before 1.19.0.
 - **What the cap cost.** Against the same published option without the cap on 2026-09-27, prefill was 1.8% slower, long inputs took 0.8–1.9% longer and decode was 1–2% faster. The defaults' long inputs took 2–5% longer than the latest records without the cap (1.13.0 to 1.14.0). NLL, completions and correctness did not change.
-- The earlier wording of the three-position question (the fenced prompt is canonical from 1.13.0) was answered correctly three times on the defaults and missed three times on the published option (as on 1.13.0).
 
 ## Records of earlier profiles
 
