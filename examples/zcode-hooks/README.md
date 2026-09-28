@@ -44,5 +44,5 @@ it afterwards.
 The shell gate is a string heuristic over the command line and has misses; the
 conservative alternative is to ask for every `Bash` call. The hook only sees
 the tools its matcher names (`Write|Edit|Bash`), so a future file-writing tool
-passes unless the matcher is extended. Protection is by existence, not by content: an approved
+passes unless the matcher is extended. A `Bash` command that names the `.zcode` directory asks since 2026-09-28, after an inline `python -c` wrote a file there without a prompt (a `Write` of the same file had been refused); a command that builds the path at run time (from variables or encoded text) still passes. Protection is by existence, not by content: an approved
 overwrite is still a full overwrite.

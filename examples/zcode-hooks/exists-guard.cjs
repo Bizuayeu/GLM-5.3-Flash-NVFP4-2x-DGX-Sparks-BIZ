@@ -12,6 +12,8 @@
 //   Write  (target exists)        -> ask
 //   Write  (target absent)        -> allow
 //   Write/Edit under ~/.zcode     -> ask   (harness config directory; see docs/harnesses.md)
+//   Bash   (names ~/.zcode)       -> ask   (any spelling of the config directory in the command;
+//                                          added 2026-09-28 after python -c wrote there unasked)
 //   Bash   (destructive pattern)  -> ask   (heuristic: string match on the command;
 //                                          rm/mv/cp/patch/git reset|apply..., PowerShell
 //                                          *-Item cmdlets, > and >> except to /dev/null or NUL)
@@ -43,6 +45,8 @@ const DESTRUCTIVE = [
 ];
 
 const CONFIG_DIR = path.resolve(os.homedir(), ".zcode");
+// ".zcode" as a path component, whatever the separator, quoting or case; not "my.zcoder".
+const NAMES_CONFIG_DIR = /(^|[^\w.-])\.zcode(?![\w.-])/i;
 
 function targetPath(input, cwd) {
   const fp = input.file_path || input.filePath || input.path;
@@ -68,6 +72,7 @@ function decide(payload) {
   }
   if (tool === "Bash") {
     const cmd = String(input.command || "");
+    if (NAMES_CONFIG_DIR.test(cmd)) return ["ask", "command names the harness config directory"];
     const hit = DESTRUCTIVE.find((re) => re.test(cmd));
     return hit ? ["ask", `destructive command pattern ${hit}`] : ["allow", "non-destructive command"];
   }

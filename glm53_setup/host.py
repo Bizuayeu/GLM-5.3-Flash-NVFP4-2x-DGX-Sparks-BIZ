@@ -142,3 +142,7 @@ def foreign_gpu_containers(inspections, label):
 def fabric_checks(site):
     fabric.validate_site(site)
     return fabric.checks(site, run)
+
+
+def fabric_gid_hints(site, checks):
+    return fabric.gid_hints(site, checks)

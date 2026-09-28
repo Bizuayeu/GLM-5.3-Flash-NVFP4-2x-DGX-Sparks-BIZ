@@ -100,7 +100,7 @@ The [independent two-active-sequence evaluation](benchmarks.md#independent-activ
 
 ## Full-model TP=2 experimental scope
 
-**Status.** The serving profile of the reference pair — TP=2, 256K context, the settings in [server configuration](server-configuration.md) — is **accepted for routine use**: since 2026-09-22 for one active sequence on both profiles (accepted for the public demonstration at 生成AIなんでも展示会#6 (2026-09-23), and kept for routine use), and since 2026-09-23 for two on the published option (see [concurrency scope](#concurrency-scope)). [SETUP step 6](../SETUP.md#6-qualify-the-full-model) is the record of that acceptance and of where each item's evidence is; if this page or the README ever differs from it, step 6 holds. Outside that scope (other hardware, more sequences than those, video input, unsupported request settings) nothing is qualified. The subsections after the concurrency scope record how the evidence was gathered.
+**Status.** The serving profile of the reference pair — TP=2, 256K context, the settings in [server configuration](server-configuration.md) — is **accepted for routine use**: since 2026-09-22 for one active sequence on both profiles, and since 2026-09-23 for two on the published option (see [concurrency scope](#concurrency-scope)). [SETUP step 6](../SETUP.md#6-qualify-the-full-model) is the record of that acceptance and of where each item's evidence is; if this page or the README ever differs from it, step 6 holds. Outside that scope (other hardware, more sequences than those, video input, unsupported request settings) nothing is qualified. The subsections after the concurrency scope record how the evidence was gathered.
 
 ### Concurrency scope
 

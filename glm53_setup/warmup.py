@@ -18,6 +18,32 @@ from .server_config import optional
 COMPILED = re.compile(r"JIT compilation during inference: (.+?)\. This causes")
 ANSWER_TOKENS = 32  # Enough decode steps to reach the sampling kernels.
 LONG_LINE = "warmup line {index}.\n"
+# The last rung doubles as a correctness canary (upstream MiaAI-Lab recipe #268):
+# a launch that answers /health but decodes garbage fails its switch instead of
+# serving. Counting to 80 is checkable exactly and long enough that the MTP
+# check judges from this rung alone, whatever other rungs a profile runs: on the
+# 1.19.0 pair it took 168 tokens and drafted 126 at effort low, 207 and 162 at
+# max (records/20260928-upstream-review/obs268), so 256 answers either way.
+CANARY_COUNT = 80
+CANARY_TOKENS = 256
+# Zero accepted drafts only counts over at least this many drafted tokens, as
+# upstream's GLM53_WARMUP_CANARY_MIN_DRAFTS.
+MIN_DRAFTS = 64
+SPEC_METRICS = {
+    "vllm:spec_decode_num_draft_tokens_total": "num_draft_tokens",
+    "vllm:spec_decode_num_accepted_tokens_total": "num_accepted_tokens",
+}
+
+
+def spec_counters(metrics):
+    """The draft and accepted totals from a Prometheus /metrics text."""
+    totals = {}
+    for line in metrics.splitlines():
+        name = line.split("{", 1)[0].split(" ", 1)[0]
+        if name in SPEC_METRICS:
+            key = SPEC_METRICS[name]
+            totals[key] = totals.get(key, 0.0) + float(line.rsplit(" ", 1)[1])
+    return totals
 
 
 def compiled_kernels(logs):
@@ -94,6 +120,19 @@ def rungs(profile):
             },
         ),
         (
+            # A client that sends no temperature (ZCode) gets the checkpoint's
+            # generation_config, temperature 1.0 and top_p 0.95; its first such
+            # request compiled three _topp_sb_* kernels, which the other rungs,
+            # sent at the profile's temperature 0, never reach (2026-09-28).
+            "sampled",
+            {
+                "messages": [{"role": "user", "content": "Reply with the word ready."}],
+                "temperature": 1.0,
+                "top_p": 0.95,
+                "max_tokens": ANSWER_TOKENS,
+            },
+        ),
+        (
             "tool",
             {
                 "messages": [
@@ -144,16 +183,66 @@ def rungs(profile):
         )
     if optional(profile, "generation", "warmup_long_tokens"):
         ladder.append(("long", None))
+    ladder.append(
+        (
+            "canary",
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"Count from 1 to {CANARY_COUNT}, separated by "
+                        "single spaces. Reply with the numbers only.",
+                    }
+                ],
+                "temperature": 0,
+                "reasoning_effort": "low",
+                "max_tokens": CANARY_TOKENS,
+            },
+        )
+    )
     return ladder
 
 
-def run(profile, *, ask, count_tokens, logs, clock, reset=None):
+def read_counters(spec_counters):
+    try:
+        return spec_counters() if spec_counters is not None else None
+    except Exception:  # noqa: BLE001 - unreadable metrics leave the verdict open
+        return None
+
+
+def canary_verdict(profile, row, before, after):
+    """None where the ladder cannot judge; only a False verdict is degenerate."""
+    verdict = {"content": row.get("content"), "finish_reason": row.get("finish_reason")}
+    if row["status"] != "ok":
+        verdict["answer_ok"] = None
+    else:
+        numbers = re.split(r"[\s,]+", (row.get("content") or "").strip().rstrip("."))
+        verdict["answer_ok"] = (
+            numbers == [str(i) for i in range(1, CANARY_COUNT + 1)]
+            and row["finish_reason"] == "stop"
+        )
+    verdict["acceptance_ok"] = None
+    if profile["mtp"]["enabled"] and before is not None and after is not None:
+        drafted = after.get("num_draft_tokens", 0) - before.get("num_draft_tokens", 0)
+        accepted = after.get("num_accepted_tokens", 0) - before.get(
+            "num_accepted_tokens", 0
+        )
+        verdict.update(draft_tokens=drafted, accepted_tokens=accepted)
+        if drafted >= MIN_DRAFTS:
+            verdict["acceptance_ok"] = accepted > 0
+    verdict["degenerate"] = False in (verdict["answer_ok"], verdict["acceptance_ok"])
+    return verdict
+
+
+def run(profile, *, ask, count_tokens, logs, clock, reset=None, spec_counters=None):
     """Send every rung through ask(request); return the record, never raise.
 
     ask, count_tokens and logs are injected so the CPU tests exercise the ladder
     without a server. reset, when given, drops the warmup prefixes afterwards.
+    spec_counters, when given, returns the MTP draft/accepted totals.
     """
     before = compiled_kernels(logs())
+    counters = {}
     limit = profile["context"]["max_model_len"] - profile["generation"]["max_tokens"]
     rows = []
     for name, request in rungs(profile):
@@ -169,9 +258,15 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None):
                     "messages": [{"role": "user", "content": text}],
                     "max_tokens": ANSWER_TOKENS,
                 }
+            if name == "canary":
+                counters["before"] = read_counters(spec_counters)
             result = ask(request)
+            if name == "canary":
+                counters["after"] = read_counters(spec_counters)
             row["prompt_tokens"] = result["usage"]["prompt_tokens"]
             row["finish_reason"] = result["choices"][0]["finish_reason"]
+            if name == "canary":
+                row["content"] = result["choices"][0]["message"].get("content")
             row["status"] = "ok"
         except Exception as error:  # noqa: BLE001 - every rung is recorded, none aborts the ladder
             row["status"] = "failed"
@@ -179,11 +274,16 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None):
         row["seconds"] = round(clock() - started, 3)
         rows.append(row)
     after = compiled_kernels(logs())
+    canary = canary_verdict(
+        profile, rows[-1], counters.get("before"), counters.get("after")
+    )
     record = {
         "rungs": rows,
         "compiled_during_warmup": sorted(after - before),
         "compiled_before_warmup": sorted(before),
         "prefix_cache_reset": False,
+        "canary": canary,
+        "degenerate": canary.pop("degenerate"),
     }
     if reset is not None:
         try:
@@ -191,5 +291,7 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None):
             record["prefix_cache_reset"] = True
         except Exception as error:  # noqa: BLE001 - reset failure is evidence, not a ladder failure
             record["prefix_cache_reset_error"] = type(error).__name__
-    record["passed"] = all(row["status"] == "ok" for row in rows)
+    record["passed"] = (
+        all(row["status"] == "ok" for row in rows) and not record["degenerate"]
+    )
     return record

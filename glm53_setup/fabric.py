@@ -89,23 +89,69 @@ def fabric_env(site):
     }
 
 
+def read(path):
+    try:
+        return path.read_text().strip()
+    except (OSError, UnicodeError):
+        return ""
+
+
+def roce_v2_gid(port, index, rail):
+    """Whether GID index on port is the rail's IPv4-mapped RoCE v2 entry."""
+    try:
+        gid = ipaddress.IPv6Address(read(port / "gids" / str(index)))
+    except ipaddress.AddressValueError:
+        return False
+    return (
+        gid.ipv4_mapped == ipaddress.IPv4Address(rail["local_ip"])
+        and read(port / "gid_attrs/types" / str(index)) == "RoCE v2"
+        and read(port / "gid_attrs/ndevs" / str(index)) == rail["interface"]
+    )
+
+
+def port_path(sys_root, rail):
+    return sys_root / "class/infiniband" / rail["hca"] / "ports" / str(rail["port"])
+
+
+def gid_hints(site, checks, *, sys_root=Path("/sys")):
+    """Where the refused rails' RoCE v2 GIDs are now, for the operator to act on.
+
+    A link that went down and came back can leave the entry at another index
+    (upstream MiaAI-Lab recipe #277; our 2026-09-27 incident). The check still
+    refuses: NCCL takes one index per rank, so the fix is a config or host change.
+    """
+    hints = []
+    for number, rail in enumerate(rails(site)):
+        if checks.get(f"rail_{number}_roce_v2_gid", True):
+            continue
+        port = port_path(sys_root, rail)
+        try:
+            indices = sorted(
+                int(p.name) for p in (port / "gids").iterdir() if p.name.isdigit()
+            )
+        except OSError:
+            indices = []
+        hints.append(
+            {
+                "rail": number,
+                "hca": rail["hca"],
+                "port": rail["port"],
+                "local_ip": rail["local_ip"],
+                "configured_gid_index": rail["gid_index"],
+                "roce_v2_gid_indices": [
+                    i for i in indices if roce_v2_gid(port, i, rail)
+                ],
+            }
+        )
+    return hints
+
+
 def checks(site, run, *, sys_root=Path("/sys"), dev_root=Path("/dev")):
     result = {"rdma_devices": (dev_root / "infiniband").is_dir()}
 
-    def read(path):
-        try:
-            return path.read_text().strip()
-        except (OSError, UnicodeError):
-            return ""
-
     for index, rail in enumerate(rails(site)):
         net = sys_root / "class/net" / rail["interface"]
-        port = sys_root / "class/infiniband" / rail["hca"] / "ports" / str(rail["port"])
-        gid_index = str(rail["gid_index"])
-        try:
-            gid = ipaddress.IPv6Address(read(port / "gids" / gid_index))
-        except ipaddress.AddressValueError:
-            gid = None
+        port = port_path(sys_root, rail)
         try:
             addresses = (
                 json.loads(run("ip", "-j", "addr", "show", "dev", rail["interface"]))
@@ -121,10 +167,7 @@ def checks(site, run, *, sys_root=Path("/sys"), dev_root=Path("/dev")):
                 prefix + "port_active": read(port / "state").startswith("4:")
                 and read(port / "phys_state").startswith("5:")
                 and read(port / "link_layer") == "Ethernet",
-                prefix + "roce_v2_gid": gid is not None
-                and gid.ipv4_mapped == ipaddress.IPv4Address(rail["local_ip"])
-                and read(port / "gid_attrs/types" / gid_index) == "RoCE v2"
-                and read(port / "gid_attrs/ndevs" / gid_index) == rail["interface"],
+                prefix + "roce_v2_gid": roce_v2_gid(port, rail["gid_index"], rail),
                 prefix + "address_assigned": any(
                     a.get("local") == rail["local_ip"]
                     for n in addresses

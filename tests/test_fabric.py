@@ -111,6 +111,64 @@ class FabricTests(unittest.TestCase):
                 )
             )
 
+    def test_shifted_gid_is_found_but_still_refused(self):
+        # 2026-09-27: after the peer's power loss, rail 0's IPv4 RoCE v2 GID
+        # moved from index 3 to 4 with 3 left empty (stage5/INCIDENT.md).
+        with tempfile.TemporaryDirectory() as tmp:
+            sys_root = Path(tmp) / "sys"
+            for rail in fabric.rails(self.site):
+                port = (
+                    sys_root
+                    / "class/infiniband"
+                    / rail["hca"]
+                    / "ports"
+                    / str(rail["port"])
+                )
+                index = 4 if rail["hca"] == "roce0" else 3
+                entries = {
+                    f"gids/{index}": "::ffff:" + rail["local_ip"],
+                    f"gid_attrs/types/{index}": "RoCE v2",
+                    f"gid_attrs/ndevs/{index}": rail["interface"],
+                    # Same address as RoCE v1, and a link-local v2: not candidates.
+                    "gids/2": "::ffff:" + rail["local_ip"],
+                    "gid_attrs/types/2": "IB/RoCE v1",
+                    "gid_attrs/ndevs/2": rail["interface"],
+                    "gids/1": "fe80::1",
+                    "gid_attrs/types/1": "RoCE v2",
+                    "gid_attrs/ndevs/1": rail["interface"],
+                }
+                for name, value in entries.items():
+                    (port / name).parent.mkdir(parents=True, exist_ok=True)
+                    (port / name).write_text(value)
+            checks = {"rail_0_roce_v2_gid": False, "rail_1_roce_v2_gid": True}
+            self.assertEqual(
+                fabric.gid_hints(self.site, checks, sys_root=sys_root),
+                [
+                    {
+                        "rail": 0,
+                        "hca": "roce0",
+                        "port": 1,
+                        "local_ip": "10.53.0.1",
+                        "configured_gid_index": 3,
+                        "roce_v2_gid_indices": [4],
+                    }
+                ],
+            )
+            self.assertEqual(
+                fabric.gid_hints(
+                    self.site, {"rail_0_roce_v2_gid": True}, sys_root=sys_root
+                ),
+                [],
+            )
+            missing = copy.deepcopy(self.site)
+            missing["hca"] = "absent"
+            self.assertEqual(
+                fabric.gid_hints(missing, checks, sys_root=sys_root)[0][
+                    "roce_v2_gid_indices"
+                ],
+                [],
+            )
+
     def test_optional_toml_rails_preserve_single_input(self):
         profile = server_config.load(
             Path(__file__).resolve().parents[1] / "examples/server.example.toml"

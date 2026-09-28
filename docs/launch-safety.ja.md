@@ -25,7 +25,7 @@ python -m glm53_setup server plan --config state/server.toml --launch state/laun
 
 ## 全レール検査と両rankの切替
 
-各nodeの主レールは従来の `hca`・`interface`・`local_ip`・`gid_index`（port 1）です。任意の `additional_rails` に同じ項目と `port` を持つレコードを追加します。全レールで共通GID index、port／NIC／IPの重複排除、Ethernet portとlinkの稼働、IPv4対応RoCE v2 GID、当該NICへのIP割当を確認します。カンマ区切りのdevice文字列は受けず、構造化した設定を使います。NCCLには全HCA／portを完全一致指定し、socket bootstrapは主NICを使います。設定検査の成功と複数レール実通信の検収は別です。
+各nodeの主レールは従来の `hca`・`interface`・`local_ip`・`gid_index`（port 1）です。任意の `additional_rails` に同じ項目と `port` を持つレコードを追加します。全レールで共通GID index、port／NIC／IPの重複排除、Ethernet portとlinkの稼働、IPv4対応RoCE v2 GID、当該NICへのIP割当を確認します。カンマ区切りのdevice文字列は受けず、構造化した設定を使います。NCCLには全HCA／portを完全一致指定し、socket bootstrapは主NICを使います。設定検査の成功と複数レール実通信の検収は別です。GID の検査に落ちたときは、そのレールの IPv4 対応 RoCE v2 の項目がいまどの index にあるかを、起動前検査が `gid_hints` に並べます。リンクが落ちて戻ると項目が動くことがあり、MiaAI-Lab のレシピ #277 が報告しているほか、この対でも 2026-09-27 に head の電源断の後、相手の rail 0 が index 3 から 4 に動きました。NCCL は rank ごとに一つの index しか取らないので、検査は止めたままです。その node の全レールが揃っていればその node の `gid_index` を直し、そうでなければホスト側で index を戻します（再起動か、root でインターフェースを落として上げ直す）。
 
 単一レールでも `=hca:1` とport 1を明示します。portを省略すると、そのHCAの全portが対象となり、検査した範囲を超えるためです。[NVIDIAのNCCL HCA指定仕様](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-ib-hca)を参照してください。
 
@@ -42,7 +42,7 @@ python -m glm53_setup cluster switch --config state/server.toml \
 
 稼働中の対と新しい対に、同じimage要件は課しません。切替は稼働中の対を復旧先として検査し、失敗後の再起動も復旧先として予約します。復旧先は起動したときのまま戻せる必要があるので、自分のimageのMoE順markerを保ちます。新規の起動にはmarker 2が必要です（[起動検査](operations.ja.md#フルモデルの起動検査)）。復旧先の印は凍結したlaunchの中ではなく横に載せるので、復旧した対のfingerprintは以前と同じです。復旧先に何を許したかは、保存される `recovery_assets` の `warnings` に出ます。
 
-読み取り専用のSSH確認は通信失敗時に最大3回まで再試行します。rank側が再送を無害にできる二つの変更操作も同じです。`stop` は冪等で、`start` は既に走り出した試行に対しては二つ目の監視プロセスを立てずに `replayed` を返します（終了済み・取消済みの試行は従来どおり拒否します）。切替が新しいrankを起動する時点では古いrankを止め終えているので、その段で接続が一度切れるだけで、これまでは復旧に回っていました。起動枠の予約、profile本文の書き込み、warmupの段は自動再送しません。準備確認の通信が戻らない場合は `readiness-unconfirmed` と記録し、今回の監視プロセスによるメモリ・期限ガードを維持します。同じ `--output`・`--hosts`・`--checkout`・必要なら `--ssh-config` で `cluster resume` を実行すると、再起動せず所有識別・資材・準備状態を照合します。resumeがreadyと確かめた対は、完了した切替と同じものを受け取ります。warmupの段と、`--config` を渡した場合は両rankへのprofile本文の書き込みです。切替と同じく、どちらかが失敗しても記録に残すだけで、対は動かし続けます。復旧した旧い対には、どちらも行いません。rankの終了や準備期限の超過を確認した場合はcleanup／復旧へ進みます。失敗理由はコマンド本文や秘密値を含まない構造化した情報として残します。
+読み取り専用のSSH確認は通信失敗時に最大3回まで再試行します。rank側が再送を無害にできる二つの変更操作も同じです。`stop` は冪等で、`start` は既に走り出した試行に対しては二つ目の監視プロセスを立てずに `replayed` を返します（終了済み・取消済みの試行は従来どおり拒否します）。切替が新しいrankを起動する時点では古いrankを止め終えているので、その段で接続が一度切れるだけで、これまでは復旧に回っていました。起動枠の予約、profile本文の書き込み、warmupの段は自動再送しません。準備確認の通信が戻らない場合は `readiness-unconfirmed` と記録し、今回の監視プロセスによるメモリ・期限ガードを維持します。同じ `--output`・`--hosts`・`--checkout`・必要なら `--ssh-config` で `cluster resume` を実行すると、再起動せず所有識別・資材・準備状態を照合します。resumeがreadyと確かめた対は、完了した切替と同じものを受け取ります。warmupの段と、`--config` を渡した場合は両rankへのprofile本文の書き込みです。切替と同じく、どちらかが失敗しても記録に残すだけで、対は動かし続けます。ただし ladder の関門が異常と判定した場合（[warmup](operations.ja.md#監視停滞検知warmup)）は別で、切替は旧い対を復旧し、resume は新しい対を止めます。復旧した旧い対には、どちらも行いません。rankの終了や準備期限の超過を確認した場合はcleanup／復旧へ進みます。失敗理由はコマンド本文や秘密値を含まない構造化した情報として残します。
 
 旧profileの復旧中も同様に扱い、`recovery-readiness-unconfirmed` では復旧中の両rankを保持して `cluster resume` で再確認します。復旧確認が成功しても新候補の失敗は残し、`recovered=true` を別に記録します。復旧・cleanupの失敗にも構造化した理由を残します。
 
@@ -61,6 +61,8 @@ docker logs <rank0のcontainer> 2>&1 | gzip > records/<run>/logs-rank0.txt.gz   
 ```
 
 decode検査は他の要求が走っていない時に取ります。同時2系列のprofileでは、他の要求とstepを共有する要求は別のcompletionになり、回ごとにも変わります（[1.10.2での測定](benchmarks.ja.md#1102での測定)）。起動の中では3標本が一致すること（`distinct_completions` が1）。起動を跨いでは `completion_sha256` を同じprofileの前の起動と比べます。違ったら記録を残す：`tools/decode_divergence.py` が二つの `tokens-*.json` の最初に分岐したtokenを出し（本文の後ろでの一回の同点割れか、早くからの系統的なずれか）、二つのlogが起動ごとの唯一の証拠です。速さと採択長がそのprofileのいつもの幅の中なら、違いは同点であって故障ではありません。
+
+**新しい image を載せた後。** 別の Spark 2台のレシピは、image を作り直した直後の最初の起動だけ decode が 10〜20% 遅く（採択は変わらず）、素の再起動一回で戻ると報告しています（MiaAI-Lab issue #284。JIT cache は原因から外れ、build・load 後のホストのメモリ状態は外れていない）。この対の記録には見えていません。6つの image で、同じ profile・同じ文種の最初の起動は後の起動の中央値の 0.965〜1.019 倍で、採択と completion も同じでした（後の起動どうしの差は 0.9〜1.7%）。そのため、手順に再起動を一回足すことはしません。載せた後の最初の起動がそのprofileのいつもの幅より遅く、採択が変わらないときは、image を疑う前に対を一回再起動して decode 検査を取り直してください。image ごとの最初の起動は一回ずつなので、ときどきしか起きない現象までは否定できません。
 
 profileが `validation.memory_probe = true` を持つなら、切替の後、decode検査の前に重みのdigestも取ります：`python3 tools/weight_digest.py --output records/<run>/weights.json --reference records/<前の起動>/weights.json` が両rankのloadされた全parameterとbufferをfingerprintし、前の起動と違うtensorを名指しします（終了状態1）。別の数値状態の起動でdigestが同一なら同じbitから違う計算をした、違うならloadが違い、記録がどこかを言います。続けて `python3 tools/kernel_hashes.py --output records/<run>/kernels.json --reference records/<前の起動>/kernels.json` が、indexerの計算を固定入力で両配信workerの中で走らせ、両rankを互いと前の起動と比べます（差があれば終了状態1、keyを表示）。別の状態の起動が違って計算する箇所がtraceなしで名指しされます。
 

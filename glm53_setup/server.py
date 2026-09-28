@@ -251,7 +251,8 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
         raise ValueError("Download state must identify the pinned HF cache snapshot")
     model = model_path(profile, cache)
     metadata = read_json(model / "config.json")
-    checks = host.fabric_checks(settings.site(profile, rank))
+    site = settings.site(profile, rank)
+    checks = host.fabric_checks(site)
     requested_cpus = settings.cpuset_cpus(profile, rank)
     if requested_cpus is not None:
         try:
@@ -292,6 +293,7 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
         "scope": "experimental-reference",
         "checks": checks,
         "foreign_gpu_containers": foreign,
+        "gid_hints": host.fabric_gid_hints(site, checks),
         "warnings": settings.capability_warnings(profile, image, recovery=recovery),
         "passed": all(checks.values()),
     }
@@ -470,6 +472,7 @@ def warmup_report(profile, name):
         reset=(lambda: reset_prefix_cache(profile))
         if settings.dev_mode(profile)
         else None,
+        spec_counters=lambda: warmup.spec_counters(metrics_text(profile)),
     )
 
 

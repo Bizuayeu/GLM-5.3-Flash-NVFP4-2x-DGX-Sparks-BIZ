@@ -9,7 +9,7 @@
 ## 要約
 
 - **何であるか。** NVIDIAのGLM-5.3-Flash NVFP4 checkpointを、**DGX SparkおよびGB10を搭載する互換機2台**でQSFP/RoCE越しにTP=2で分割し、reference imageに組み込んだ固定版vLLMで配信するコミュニティ製のセットアップ・検証ツールです。掲載した実測はMSI EdgeXpert（MS-C931）2台のものです。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を軸にします。
-- **状態。** 両profileとも**2026-09-22から同時1系列の範囲で**（2026-09-23の生成AIなんでも展示会#6での公開に向けて受け入れ、以後の通常運用も同じ範囲）、公開した任意設定の同時2系列profileは**2026-09-23から同時2系列・1要求あたり約200K tokenまでの範囲で**、通常運用として受け入れ済みです。それぞれの受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、それを超える同時数、動画入力は受け入れた範囲の外です（[範囲ごとの状態](#範囲ごとの状態)）。
+- **状態。** **通常運用として受け入れ済み**：両profileは2026-09-22から同時1系列で、公開した任意設定の同時2系列profileは2026-09-23から同時2系列・1要求あたり約200K tokenまでです。それぞれの受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、それを超える同時数、動画入力は受け入れた範囲の外です（[範囲ごとの状態](#範囲ごとの状態)）。
 - **配信する二つのprofile。** **配布既定**はNVIDIA配布の固定の重みをそのまま配信します。**公開した任意設定（NVFP4 BIZ AXL）**はattention projectionと `lm_head` をW4A16に再パックしたもので、decodeが速い代わりに実測した品質の費用があり、運用者が有効にします。[確認した範囲](#確認した範囲)が両者を比較し、範囲ごとの状態を並べています。
 - **精度。** 配信はGB10上のMarlin W4A16で動きます。NVIDIAのモデルカードは別のrecipe・別の機体でcheckpointを評価しているため、その精度表はこのスタックを記述しません。どの数値がこの配信を記述するかは[検証範囲](docs/validation.ja.md#証拠であり本番認定ではない)にあります。
 - **ライセンス。** コードはApache-2.0、重みは運用者が取得するMITで同梱しません。資産ごとに条件が異なります（[ライセンスの早見表](#ライセンスの早見表)）。
@@ -177,7 +177,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 |---|---|---|
 | [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster)（kingjones30のレシピを保持） | Apache-2.0／MIT | **コードを改変して採用：** NoPEゼロ埋めpatchの構造とレシピ |
 | [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
-| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、現場の手順記録 |
+| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder とその出力の関門（#268）、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、RoCE GID のずれ（#277）、現場の手順記録 |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |
@@ -199,8 +199,9 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161)（kpool compressの作り直し）がmergeされる → `patch_kpool_seed` と `patch_kpool_ring` を読み直す。
 - #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
 - #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。
+- [vLLM #57128](https://github.com/vllm-project/vllm/pull/57128)（Mambaのprefix cacheの一致が投機の余白を無視する、[#53912](https://github.com/vllm-project/vllm/issues/53912)）がmergeされる → source固定patchとして移植する。配信profileは報告の条件（prefix caching、MTP k=3、Mamba cache mode `align`）に当たります。別の構成での現場報告に、ある要求の内容が別の要求の応答に現れたというものがありますが、ここでは観測していません。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
-- warmupの後でも、最初の利用者の要求でコンパイルされるサンプリングのkernel（1.18.0では `_gumbel_sample_kernel`、1.19.0では `_topp_sb_*` の3つ）の原因が分かる → それを通す段を足す。1.19.0で同時要求の段を試したが、新しくコンパイルされたものはなく、採らなかった。
+- warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。1.19.0で利用者の最初の要求がコンパイルした `_topp_sb_*` の3つは、temperature 0 で送るladderの段では通りませんでした。temperatureを送らない要求はcheckpointの1.0・top_p 0.95になり、これらをコンパイルするので、その設定の段を足しました。1.18.0で見た `_gumbel_sample_kernel` は、どの設定で通るかまだ突き止めていません。
 
 ## ローカルデータと開発
 

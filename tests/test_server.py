@@ -894,6 +894,7 @@ class ServerConfigTests(unittest.TestCase):
             )
         self.assertIs(result["checks"]["exclusive_gpu"], True)
         self.assertEqual(result["foreign_gpu_containers"], [])
+        self.assertEqual(result["gid_hints"], [])
 
         for check_memory in (True, False):
             with self.subTest(check_memory=check_memory):
