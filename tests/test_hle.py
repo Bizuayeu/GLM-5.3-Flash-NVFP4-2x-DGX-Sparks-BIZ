@@ -55,6 +55,109 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(extract("Exact Answer: 1\nConfidence: 150%"), ("1", None))
 
 
+class DecisionTests(unittest.TestCase):
+    """The runner's decisions, callable without a server."""
+
+    PROFILE = {"api": {"port": 1}, "generation": {"timeout_seconds": 600}}
+
+    def test_a_timeout_changes_only_the_clients_wait(self):
+        self.assertIs(hle.client_profile(self.PROFILE, None), self.PROFILE)
+        asking = hle.client_profile(self.PROFILE, 1200)
+        self.assertEqual(asking["generation"], {"timeout_seconds": 1200})
+        self.assertEqual(self.PROFILE["generation"], {"timeout_seconds": 600})
+
+    def test_the_manifest_keeps_its_field_order(self):
+        manifest = hle.run_manifest(
+            {"x": 1},
+            digest="d",
+            questions=3,
+            pilot=True,
+            label="axl",
+            image_id="sha256:i",
+            lock={"revision": "r"},
+            max_tokens=8192,
+            sampling={},
+            timeout=None,
+            fingerprint="f",
+        )
+        self.assertEqual(
+            list(manifest),
+            [
+                "questions_sha256",
+                "questions",
+                "pilot",
+                "label",
+                "profile",
+                "fingerprint",
+                "image_id",
+                "model_lock",
+                "system_prompt",
+                "max_tokens",
+                "sampling",
+                "timeout_seconds",
+                "teacher_excluded",
+            ],
+        )
+
+    def test_a_resumed_output_must_belong_to_the_same_run(self):
+        manifest = {"a": 1, "b": 2}
+        self.assertTrue(hle.same_run({"a": 1, "b": 2, "later": 3}, manifest))
+        self.assertFalse(hle.same_run({"a": 1, "b": 9}, manifest))
+        self.assertFalse(hle.same_run({"a": 1}, manifest))
+
+    def test_answered_rows_are_skipped_before_stop_and_pause_are_honoured(self):
+        step = hle.next_step
+        self.assertEqual(step(done=True, stop=True, answered_now=5, max_new=5), "skip")
+        self.assertEqual(
+            step(done=False, stop=True, answered_now=5, max_new=5), "stopped"
+        )
+        self.assertEqual(
+            step(done=False, stop=False, answered_now=5, max_new=5), "paused"
+        )
+        self.assertEqual(step(done=False, stop=False, answered_now=4, max_new=5), "ask")
+        self.assertEqual(
+            step(done=False, stop=False, answered_now=9, max_new=None), "ask"
+        )
+
+    def test_the_answer_record_reads_the_final_content_only(self):
+        row = {"id": "q1", "category": "Math", "image": ""}
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Explanation: e\nExact Answer: 7\nConfidence: 80%",
+                        "reasoning_content": "thinking",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"completion_tokens": 9},
+        }
+        record = hle.answer_record(row, response, "default", 1.5)
+        self.assertEqual(
+            list(record),
+            [
+                "id",
+                "category",
+                "has_image",
+                "label",
+                "elapsed_seconds",
+                "finish_reason",
+                "content",
+                "reasoning",
+                "answer",
+                "confidence",
+                "usage",
+                "teacher_excluded",
+            ],
+        )
+        self.assertEqual(
+            (record["answer"], record["confidence"], record["reasoning"]),
+            ("7", 80.0, "thinking"),
+        )
+        self.assertFalse(record["has_image"])
+
+
 class BudgetTests(unittest.TestCase):
     def test_the_answer_budget_is_freedombenchs(self):
         from glm53_setup.validation import freedombench
