@@ -38,7 +38,7 @@
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 | 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
-| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に[warmup ladder](operations.ja.md#監視停滞検知warmup)を流し、最後の段は正しさのcanary。長文段は指定するまで無し |
+| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に[warmup ladder](operations.ja.md#warmup-ladder)を流し、最後の段は正しさのcanary。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
 

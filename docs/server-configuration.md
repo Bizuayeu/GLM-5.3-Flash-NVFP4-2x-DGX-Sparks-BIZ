@@ -38,7 +38,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 3 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 | Supervision | `stall_seconds=600`: rank 0 also stops when requests are running but no `/metrics` signal moves for 600 s (`engine-stall`); `api.dev_endpoints=false` |
-| Warmup | `warmup=true`, `warmup_long_tokens=0`: the [warmup ladder](operations.md#supervision-stall-detection-and-warmup) after readiness, ending in the correctness canary; no long rung until set |
+| Warmup | `warmup=true`, `warmup_long_tokens=0`: the [warmup ladder](operations.md#warmup-ladder) after readiness, ending in the correctness canary; no long rung until set |
 
 The text-only alternative sets `runtime.vision = false` and keeps the length and KV above. It loads no vision tower and keeps no image preprocessing cache, and stays available for text-only serving and for checks with less memory headroom. Its [256K checks](benchmarks.md#real-input-checks-at-256k) ran on 2026-09-14 with a 4 GiB reserve at chunk 512; the template's 3 GiB reserve at chunk 2048 is not validated without images.
 

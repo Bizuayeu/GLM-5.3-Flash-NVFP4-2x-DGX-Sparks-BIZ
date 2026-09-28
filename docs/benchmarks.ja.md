@@ -980,7 +980,7 @@ prefix cacheをリセットしてから、以前と同じ入力を送りまし�
 
 ### 1.4.0での測定
 
-2026-09-17（Asia/Tokyo）に、[1.3.1での測定](#131での測定)を1.4.0のchunk予算 `max_num_batched_tokens = 2048` で繰り返しました。profileの他の値は変えていません（fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`）。ペアはsource `adf8ca9` で動いており、1.4.0との違いは版の文字列、テンプレートの変更、その後のレビュー修正だけです。[swappinessの比較](operations.ja.md#監視停滞検知warmup)のため `vm.swappiness=0` で起動し、再起動せずに60へ戻したペアで、swapは使われていませんでした。1.3.1と同じく、headでは監視ダッシュボードが動いています。他のクライアントはモデルを使っておらず、全ケースでpreemptionは増えず、`/health` は200のままでした。
+2026-09-17（Asia/Tokyo）に、[1.3.1での測定](#131での測定)を1.4.0のchunk予算 `max_num_batched_tokens = 2048` で繰り返しました。profileの他の値は変えていません（fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`）。ペアはsource `adf8ca9` で動いており、1.4.0との違いは版の文字列、テンプレートの変更、その後のレビュー修正だけです。[swappinessの比較](operations.ja.md#swap)のため `vm.swappiness=0` で起動し、再起動せずに60へ戻したペアで、swapは使われていませんでした。1.3.1と同じく、headでは監視ダッシュボードが動いています。他のクライアントはモデルを使っておらず、全ケースでpreemptionは増えず、`/health` は200のままでした。
 
 #### 1.4.0でのsparkDash
 

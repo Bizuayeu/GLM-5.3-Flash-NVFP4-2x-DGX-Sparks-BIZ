@@ -2,7 +2,7 @@
 
 [English](operations.md)
 
-**通常運用は宣言した範囲で受け入れ済みです**：両profileの同時1系列（2026-09-22）と、公開した任意設定の同時2系列profileの同時2系列（[同時実行の範囲](validation.ja.md#同時実行の範囲)、2026-09-23）。その受け入れと、各項目の証拠の所在は[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)が記録です。範囲ごとの状態はそこと、READMEの状態表、[ハーネス受け入れ一覧](harnesses.ja.md#受け入れ試験一覧と実施状態)で示し、コマンド名では示しません。他の機体、それを超える同時数、動画入力はその範囲の外です。
+通常運用として何を受け入れたか、各項目の証拠がどこにあるかは[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)が記録します。本書はランチャーの動かし方を扱います。
 
 ## ランチャーは一つ
 
@@ -19,19 +19,9 @@ checkoutの起動経路は `python -m glm53_setup server …` の一本です。
 | LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
-| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#監視停滞検知warmup)が記録する |
+| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#warmup-ladder)が記録する |
 
 LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[projector lock](../config/lpa-projector.lock.json)の写しです。ソースcheckoutのアーカイブに、このディレクトリは含まれません。
-
-ソースアーカイブには`state/`と`records/`も意図的に含めません。serverランチャーを使う前に、新しいcheckoutから各ホストの永続領域へsymlinkを作成します。
-
-```sh
-ln -sT /srv/glm53/state /srv/glm53/source/state
-ln -sT /srv/glm53/records /srv/glm53/source/records
-readlink -f /srv/glm53/source/state /srv/glm53/source/records
-```
-
-絶対パスを使います。`-T` を付けると既存ディレクトリの中に `state/state` を作らず失敗で止まり、`readlink -f` は `/srv/glm53/state` と `/srv/glm53/records` を表示するはずです。`state/state` や `records/records` で終わるパスが出たら入れ子です。復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
 
 ```text
 state/lpa/glm53-lpa-cut32-v1/
@@ -46,6 +36,16 @@ state/lpa/glm53-lpa-cut32-v1/
 └── LICENSES/
     └── ZAI-GLM-MIT.txt
 ```
+
+ソースアーカイブには`state/`と`records/`も意図的に含めません。serverランチャーを使う前に、新しいcheckoutから各ホストの永続領域へsymlinkを作成します。
+
+```sh
+ln -sT /srv/glm53/state /srv/glm53/source/state
+ln -sT /srv/glm53/records /srv/glm53/source/records
+readlink -f /srv/glm53/source/state /srv/glm53/source/records
+```
+
+絶対パスを使います。`-T` を付けると既存ディレクトリの中に `state/state` を作らず失敗で止まり、`readlink -f` は `/srv/glm53/state` と `/srv/glm53/records` を表示するはずです。`state/state` や `records/records` で終わるパスが出たら入れ子です。復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
 
 実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。両ホストのディスクに完全なcheckpointが必要です。TP=2が分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
 
@@ -112,18 +112,11 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 - Ethernet interface、RDMAのHCA、そのinterfaceのRoCEv2 GID index
 - `[api]` の未使用のAPIポートとrendezvousポート
 
-HCAとGIDの番号は、両ホストで一致している必要はありません。GIDが自機のIPv4とnet deviceに対応することを確認してください。MTU 9000は、両端と経路全体が対応する場合にだけ使います。フルモデルをロードする前に、実際のNCCL transportとcollectiveの正当性を検証します。SSHで接続できることはRDMAの試験ではありません。
-
-```sh
-python -m glm53_setup server plan --rank 0
-python -m glm53_setup server preflight --rank 0
-```
-
-`plan` は何も起動せずにcontainerコマンドを表示します。`preflight` は検査結果をJSONで表示し、一つでも失敗すれば非ゼロで終了します。完了済みで内容の一致するダウンロード状態が必要です。`start` は同じ検査を先に行い、合格したときだけ検査結果・設定・containerコマンドを `records/<timestamp>-server-r<N>/` に保存します。
+HCAとGIDの番号は、両ホストで一致している必要はありません。GIDが自機のIPv4とnet deviceに対応することを確認してください。MTU 9000は、両端と経路全体が対応する場合にだけ使います。フルモデルをロードする前に、実際のNCCL transportとcollectiveの正当性を検証します。SSHで接続できることはRDMAの試験ではありません。これらの値は `server plan` と `server preflight` が検査します（[起動検査](#フルモデルの起動検査)）。
 
 ## フルモデルの起動検査
 
-`server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、他のコンテナがGPUを使っていないこと、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。両rankの切替では、稼働中の対を止める前と新しい対を起動する前に、両rankでこの検査を繰り返します。
+`server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、他のコンテナがGPUを使っていないこと、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。合格したときは検査結果・設定・containerコマンドを `records/<timestamp>-server-r<N>/` に保存します。`server plan` はそのコマンドを何も起動せずに表示し、`preflight` は検査結果をJSONで表示して、一つでも失敗すれば非ゼロで終了します。両rankの切替では、稼働中の対を止める前と新しい対を起動する前に、両rankでこの検査を繰り返します。
 
 `server preflight` はimageの機能markerも検査します。有効な機能はそれぞれ、[imageの契約](server-configuration.ja.md#現行イメージの契約)に挙げたmarkerをimageの環境変数に見つけなければなりません。一つのmarkerには復旧のための例外があります。`runtime.canonical_moe_order = true` の場合、新規の起動には `GLM53_MOE_ORDER_API=2` が必要です。marker 1は、token整列のbuffer長を誤っていた以前のimageも持っているためです。marker 1のimageを指すprofileは、`server preflight`・`server start`・`cluster switch` の停止前検査で `moe_order_support` が不合格になります。参照imageを作り直し、`reference_image` を更新してください。すでにmarker 1のimageで稼働している対が取り残されることはありません。切替はその対を復旧先として検査し、新しい対が失敗した場合はmarker 1のまま再起動して、rankの `warnings` に `moe_order_marker_1_accepted_for_recovery` を記録します。稼働中のmarker 1の対のprofileに同じ読み取り検査を手で行う場合は、`server preflight` に `--recovery` を付けます。このflagは切替の復旧経路のためのもので、古いimageを新規に起動する手段ではありません。
 
@@ -132,7 +125,7 @@ python -m glm53_setup server preflight --rank 0
 - `GLM53_SLOT_MAPPING_GUARD=1`（1.7.0から作るimage。`glm53_setup/runtime/patch_slot_mapping.py`、vLLMのissue #53982）：slot対応付けのkernelが、block tableを行の中だけで読みます。これがないと、公開した任意設定は約25万tokenを超える要求で失敗します（[実測](benchmarks.ja.md#基準の2台の配信profile)）。このmarkerを要求する検査はないので、古いimageも起動できます。
 - `GLM53_KPOOL_SEED_STRIDE=1`（1.13.0から作るimage。`glm53_setup/runtime/patch_kpool_seed.py`、vLLMのpull request #57477と同じ変更）：kpoolのprefill seed kernelが、indexerの生tailのblockをtail自身のstrideで番地付けします。これがないと、prefillのたびに要求自身のtail blockがseedされず、最後のtokenのkeyとgateが番号の小さいindexer blockへ書き込まれます。そのblockは別の要求のものであり得ます。壊れるのは長い文脈での疎なtop-kの選択で、prefix cacheから再利用する長いpromptで最も効きます。基準の2台では、patchを入れても測った出力は一つも変わりませんでした（[実測](benchmarks.ja.md#1130での測定)）。このmarkerを要求する検査はありません。
 - `GLM53_KPOOL_RING=1`（1.19.0から作るimage。`glm53_setup/runtime/patch_kpool_ring.py`、vLLMのpull request #58454と同じ変更）：indexerの生tailのringを、1 pool分ではなく、MTPの深さkに対して `kpool * next_power_of_2(ceil((kpool + k) / kpool))` slotにします。MTPなしは4（従来どおり）、k = 1〜4は8、k = 5は16です。これがないと、kが2以上のとき、poolを完成させるdraftが棄却されると、その後ろのdraftが上書きした後のkeyからやり直すことになり、indexer cacheに誤った圧縮keyが入ります。壊れるのは、文脈が `index_topk`（2,048 token）を超えた後にdecode中に作られるpoolでの疎なtop-kの選択です。長さがpromptから来てもoutputから来ても同じです。kernelのfileへは `patch_kpool_seed` の後にだけ当たります（固定するhashはseed patchの出力）。上流はこれを部分的な修正とし、続く変更を予定しています。kernelの再現手順は[検証](validation.ja.md#kpool-tail-ringの再現)にあります。2026-09-26にGB10で、1 pool分のringは棄却されたdraftの後で投機なしの参照と食い違い、8 slotのringは一致し、上流のkernelテストも通りました（33件、skip 1件）。基準の2台（MTP k=3）では、tailのgroupが8 slotになり（`kv cache group sizes [4608, 8, 4608, 4608, 4608]`）、2,048 tokenのpromptでdecode中に作るpoolがすべて `index_topk` を超えるdecode検査3種は、どれも出力が変わり、反復はbit単位で一致したままでした（[実測](benchmarks.ja.md#1190での測定)）。このmarkerを要求する検査はないので、古いimageも `cluster switch` を通ります。
-- `GLM53_LOAD_CLONE=1`（1.19.0から作るimage。`glm53_setup/runtime/patch_load_clone.py`）：既定のsafetensorsの読み込みで、loaderがGPUへ送る前に各tensorを匿名メモリへcloneします。GB10でCUDA contextがある状態では、checkpointのfile mappingからの転送は約0.16 GiB/s、cloneしてからの転送は約1.55 GiB/sでした（GB10 1台、shardの3 GiB分を各回、2026-09-26）。基準の2台のrank 0は、1.18.0で重みの読み込みに532秒かかっていました。cloneが持つのは一度にtensor 1個分です。vLLMの `--safetensors-load-strategy eager` はこの機材では代わりになりません。読み込み中にshardを丸ごと二重に持ち（11.15 GiBのshardでピーク22.81 GiB）、2026-09-26に基準の2台で試したところ、片方のrankがメモリを使い切り、hostが約15分応答しなくなりました。このmarkerを要求する検査はありません。
+- `GLM53_LOAD_CLONE=1`（1.19.0から作るimage。`glm53_setup/runtime/patch_load_clone.py`）：既定のsafetensorsの読み込みで、loaderがGPUへ送る前に各tensorを匿名メモリへcloneします。GB10でCUDA contextがある状態では、checkpointのfile mappingからの転送は約0.16 GiB/s、cloneしてからの転送は約1.55 GiB/sでした（GB10 1台、shardの3 GiB分を各回、2026-09-26）。基準の2台のrank 0は、1.18.0で重みの読み込みに532秒かかっていました。cloneが持つのは一度にtensor 1個分です。vLLMの `--safetensors-load-strategy eager` はこの機材では代わりになりません。読み込み中にshardを丸ごと二重に持ち（11.15 GiBのshardでピーク22.81 GiB）、2026-09-26に基準の2台で試したところ、片方のrankがメモリを使い切り、hostが約15分応答しなくなりました。`enable_multithread_load` も同じくshardを丸ごと持ちます。`prefetch` は効きません。遅いのはfile-backedのページからの転送で、page cacheに載っていても同じです。このmarkerを要求する検査はありません。
 
 `exclusive_gpu` は、このランチャーの `glm53.experiment.startup` ラベルを持たない稼働中のコンテナがGPUを要求していると不合格になり、該当するコンテナを結果の `foreign_gpu_containers` に並べます。GPUの要求は `HostConfig.DeviceRequests` が空でないことで判定します。`--gpus` とCDI（`--device nvidia.com/gpu=...`）の要求はどちらもここに表れ、GPUのデバイスノードは `Devices` には表れません。このランチャーの対はfingerprintによらずラベルを持つので、旧い対が動いたままでも `cluster switch` の停止前の検査は止まりません。値が空のラベルは数えません。検査の途中で終了・削除されたコンテナは飛ばし、一覧に残っているのに調べられないコンテナがあれば、合格にせず例外で止めます。部品試験や別のモデルなど、他のGPU負荷は起動前に止めてください。無効化のオプションはありません。`server assets` もメモリ以外の検査として同じ判定を行います。着想はsfxnz PR #12（コードは採用しない）です。
 
@@ -142,19 +135,37 @@ rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態にな�
 
 ## 監視・停滞検知・warmup
 
-各rankの前面の監視プロセスは2秒ごとに `MemAvailable` を読み、`resources.reserve_gib` を割ると自分のcontainerを停止します（`stop-reason: memory-reserve`）。rank 0では `resources.stall_seconds` が正のとき、同じ周期で `/metrics` も読みます。要求がrunningのまま、生成token計数・prompt token計数・KV使用率・running数のどれもその秒数動かなければ、`stop-reason: engine-stall` で停止し、止まったままの標本を記録します。engineが固まっても `/health` は200を返し続ける（V1のhealth checkはworkerを調べない）ので、生存の信号にはなりません。chunked prefillの間はKV使用率が動き、prompt token計数は最初の出力tokenで加算されるため、長いpromptは停滞になりません。テンプレートの600秒は `generation.timeout_seconds` と同じ値で、実測の最長の要求（FA2のprefill以前、256K・chunk 2048の参照要求で493秒）が収まります。`/metrics` に届かないときは証拠なしとして数えません。`resources.jsonl` の各行には `mem_free_gib` と `free_2mib_gib` も記録します。後者は `/proc/buddyinfo` から全zoneを合算した、2 MiB以上のbuddy blockに入っている空きです。tonyd2wildのGB10メモリの記録（コードは採用しない）によると、NVRMはページキャッシュを追い出さずにこの大きさのblockを確保するため、4 GiB以上空いていても `NV_ERR_NO_MEMORY` が出ることと合います。基準のheadでは配信中、MemAvailable 7.1 GiBのときMemFreeは1.1 GiB、2 MiB以上のblockは0.49 GiBでした。どちらも観測値です。rankを止めるのは `MemAvailable` だけで、読み取りに失敗した標本は停止させずに `memory_sample_error` として記録します。同じ記録では `vm.min_free_kbytes` を4 GiBに上げるとvLLMの起動時のメモリ検査が約6.2 GiB下がったとあるため、このキットでは配布時の既定値のままにします。KV 使用率を信号に含める理由は実測で裏付けられています。82,018 token の prefill 中、token 計数 2 つは 202.8 秒凍結したままでしたが、4 信号すべてが同時に凍結した最長は 8.3 秒でした。token だけを見る検知器は、運用する最長 prefill より上に閾値を置かざるを得ません。監視による停止はもう一方のrankを残すので、新しいpairを起動する前にそちらも止めます（`cluster switch` は不完全なpairを拒否します）。これらの記述はMia PR #70の現場記録を参考にしました。そこでの2件はどちらも、containerを強制終了し、短いCUDA probeでGPUを確かめ、再起動するだけで復旧し、電源断は要りませんでした。
+### メモリの保護余裕と停滞検知
 
-`resources.jsonl` の各行には、containerのcgroupメモリと、その全プロセスの `VmRSS`／`RssAnon` の合計（`container_cgroup_gib`・`container_rss_gib`・`container_anon_gib`）も記録します。cgroup v2と `/proc` を権限なしで読みます。GB10ではGPUがホストのメモリを共有し、device側の確保はcgroupにもプロセスにも計上されないので、rankが `memory-reserve` で止まった時、記録そのものが二つの場合を切り分けます。cgroupとRSSが平らなまま `MemAvailable` が減るならdevice側の増加（decode Graph有効時の200K prefillで観測）、RSSが増えるならプロセス側の増加です。読めなかった観測は `container_memory_error` として記録し、rankの停止条件にはしません。
+各rankの前面の監視プロセスは2秒ごとに `MemAvailable` を読み、`resources.reserve_gib` を割ると自分のcontainerを停止します（`stop-reason: memory-reserve`）。rank 0では `resources.stall_seconds` が正のとき、同じ周期で `/metrics` も読みます。要求がrunningのまま、生成token計数・prompt token計数・KV使用率・running数のどれもその秒数動かなければ、`stop-reason: engine-stall` で停止し、止まったままの標本を記録します。engineが固まっても `/health` は200を返し続ける（V1のhealth checkはworkerを調べない）ので、生存の信号にはなりません。chunked prefillの間はKV使用率が動き、prompt token計数は最初の出力tokenで加算されるため、長いpromptは停滞になりません。テンプレートの600秒は `generation.timeout_seconds` と同じ値で、実測の最長の要求（FA2のprefill以前、256K・chunk 2048の参照要求で493秒）が収まります。`/metrics` に届かないときは証拠なしとして数えません。KV 使用率を信号に含める理由は実測で裏付けられています。82,018 token の prefill 中、token 計数 2 つは 202.8 秒凍結したままでしたが、4 信号すべてが同時に凍結した最長は 8.3 秒でした。token だけを見る検知器は、運用する最長 prefill より上に閾値を置かざるを得ません。監視による停止はもう一方のrankを残すので、新しいpairを起動する前にそちらも止めます（`cluster switch` は不完全なpairを拒否します）。これらの記述はMia PR #70の現場記録を参考にしました。そこでの2件はどちらも、containerを強制終了し、短いCUDA probeでGPUを確かめ、再起動するだけで復旧し、電源断は要りませんでした。
+
+### 標本に記録するもの
+
+`resources.jsonl` の各行には `mem_free_gib` と `free_2mib_gib` を記録します。後者は `/proc/buddyinfo` から全zoneを合算した、2 MiB以上のbuddy blockに入っている空きです。tonyd2wildのGB10メモリの記録（コードは採用しない）によると、NVRMはページキャッシュを追い出さずにこの大きさのblockを確保するため、4 GiB以上空いていても `NV_ERR_NO_MEMORY` が出ることと合います。基準のheadでは配信中、MemAvailable 7.1 GiBのときMemFreeは1.1 GiB、2 MiB以上のblockは0.49 GiBでした。どちらも観測値です。rankを止めるのは `MemAvailable` だけで、読み取りに失敗した標本は停止させずに `memory_sample_error` として記録します。同じ記録では `vm.min_free_kbytes` を4 GiBに上げるとvLLMの起動時のメモリ検査が約6.2 GiB下がったとあるため、このキットでは配布時の既定値のままにします。
+
+各標本には、containerのcgroupメモリと、その全プロセスの `VmRSS`／`RssAnon` の合計（`container_cgroup_gib`・`container_rss_gib`・`container_anon_gib`）も記録します。cgroup v2と `/proc` を権限なしで読みます。GB10ではGPUがホストのメモリを共有し、device側の確保はcgroupにもプロセスにも計上されないので、rankが `memory-reserve` で止まった時、記録そのものが二つの場合を切り分けます。cgroupとRSSが平らなまま `MemAvailable` が減るならdevice側の増加（decode Graph有効時の200K prefillで観測）、RSSが増えるならプロセス側の増加です。読めなかった観測は `container_memory_error` として記録し、rankの停止条件にはしません。
+
+### swap
 
 参照機はホストページ用に16 GiBのswapを持ちます。`vm.swappiness=0` は新しいページアウトを止めますが、既にswapに出たページは戻しません。長いprefill中に古いswapページへ触れたことがGB10のUVM livelockの引き金だったと同じ出典が報告しています。両containerが止まっている間に残りのswapを巡回します：`sudo swapoff -a && sudo swapon -a`。swapファイル自体は残します。swapを無くすと、確保の山でworkerがkillされました。2026-09-17に基準の対で、chunk 2048のまま `vm.swappiness` の60と0を比べました（0の前にswapを巡回）。60ではエンジンのプロセスにswapへ出たページはなく、headの0.38 GiB・peerの0.28 GiBは検索コンテナやデスクトップのシェルなど他のプロセスのものでした。0ではswapは空のままで、prefillの差は1.9%（再起動をまたぐばらつきの範囲内）、headの最小空きは0.45 GiB低く、peerは0.31 GiB高くなりました。この負荷では効果が見えなかったため、ホストは配布時の60のままにします。Spark 2台の他レシピは0を `/etc/sysctl.d` に永続化することを必須としています（tonyd2wild OPEN-PROBLEMS §4、コードは採用しない）。永続化する前に、自分の負荷で測ってください。
+
+### ホストのデーモン
 
 **ホストのデーモンは同じ統合メモリを奪い合います。** 監視は `MemAvailable` が余裕を割るとモデルを止めますが、原因がホスト上の別プロセスのこともあり、その場合はモデルだけが止まって原因は残ります。2026-09-16 には peer 側の rank が余裕 2.5 GiB に対し 2.49 GiB で停止しました。原因は、もう一方のホストで動く監視ダッシュボードが、メトリクスを 1 つ取るたびに peer へ新しい SSH ログインを張っていたことで、その頻度は毎秒 3.6 回でした。ログインごとに logind セッションと polkit の認可チェックが生じて `polkitd` が 6 日で 3.40 GiB まで太り、セッションが変わるたびに `wireplumber` が Bluetooth オーディオのプロファイルを登録し直して `bluetoothd` が「登録済み」と拒否し、この 2 つも太りました（0.69 GiB と 1.15 GiB）。さらにログインごとに `/etc/update-motd.d` の全スクリプトが走り、毎秒約 660 個のプロセスを生んでいました。ダッシュボードが動くホストは自分のメトリクスを直接読むので、0.03 GiB のままでした。ダッシュボードのホスト別名に OpenSSH の接続再利用（`ControlMaster auto`・`ControlPersist`）を入れると、peer へのログインは毎分 218 回から 0 回になり、ダッシュボードの値も変わらず取れました。長時間運転の前に、各ホストで `journalctl -u ssh --since -60s | grep -c Accepted` でログイン数を数え、`ps -eo user,rss,comm --sort=-rss | head` でデーモンの大きさを比べます。漏れるデーモンへ `MemoryMax` を入れるときは `Restart=on-failure` も併せて指定します。これらのunitは `Restart=no` で配布されており、上限に当たって落ちたきり戻らないためです。なお片肺はAPIからは見えません。生き残った rank が `/health` に 200 を返し続けるので、両ホストで `docker ps` を見ます。
 
 **原因の特定と、その後に確かめたこと。** peer で Bluetooth を止めても接続の出入りは止まりませんでした（新しい D-Bus 接続は毎秒 7.3 回続き、接続元はディスプレイマネージャのグリーターセッション）。新しいプロセス・スレッドの ID を数えるとホストの差がはっきりし、10 秒で peer は 6,642、モデルの負荷がより重い head は 176 でした。新規プロセスのスナップショットではログインメッセージのスクリプトが 8 秒に 30 回起動しており、`journalctl -u ssh` には 60 秒で 218 回の受理ログインが head の fabric アドレスから記録され、その親はダッシュボードでした。接続を再利用させると、peer の 30 秒あたりの値は、新しい D-Bus 接続が約 220 から 1、`polkitd` の増加が約 450 KB から 0、新しいプロセス・スレッド ID が約 19,900 から 1,191 になりました。Bluetooth を再び有効にして電源を入れ直した後も、300 秒の間 `polkitd`・`bluetoothd`・`wireplumber` の大きさは変わらず、2026-09-17 のダッシュボードの再起動では、その後の 60 秒で peer へのログインは 0 回でした。事故の最中に peer の `polkitd` へ入れた上限（`MemoryMax=512M` と `Restart=on-failure`）は二重の備えとして残しており、上限に当たったときの再起動はまだ起きていません。
 
+### peerの喪失
+
 **待機中のpairではpeerの喪失を検知しません。** Mia Issue #193は、同じ機種でこの事故を逆向きにした事例を報告しています。TP=2で連続配信している最中にheadのホストがすべてのネットワークで応答しなくなり、物理的な再起動が必要になりました。containerはOOM killされておらず、直前にkernel・NCCL・containerのエラーは何も記録されず、pstoreも空でした。worker側では、kernelがRoCEリンクのダウンを、NCCLが再送上限超過の完了を記録しました。worker containerは動き続け、運用者が止めるまで100 GB超を抱えていました。報告者は固まった原因をモデルに帰しておらず、そのホストでは以前にも異常終了があったと書いています。この機体に持ち込める点は2つです。各監視プロセスは自分が守るホストの上で動くので、ホストが固まれば監視も一緒に止まります。reserveが防ぐのはモデルによる統合メモリの枯渇で、ホスト自体の固まりではありません。また、待機中の片肺はどちらの監視でも止まりません。メモリはreserveを割らず、停滞検知はrunningの要求を条件にしているためです。各rankが相手を確かめてpeer喪失で停止する停止理由は設計案で、実装していません。
 
-`server warmup` はreadiness後に、通常のchat endpointへ要求のladderを流します。短文1往復をprofileのtemperatureで1本とcheckpointのサンプリング（temperature 1.0・top_p 0.95。temperatureを送らないクライアントが受ける設定）で1本、tool呼び出し、合成画像1枚（`runtime.vision` 有効時）、`generation.warmup_long_tokens` を指定した場合はその長さのprompt（配信中のtokenizerで長さを合わせる）です。これらは配信中にカーネルのコンパイルが観測された形です（[画像入力](vision.ja.md#限界と未解決の事項)）。固定の起動はvLLM自身のJIT warmupを無効にしており、そのコンパイルの山が一度headを保護余裕の下へ押し下げました。コンパイル済みカーネルはruntime cacheに残りますが、ladderは起動のたびに同じカーネルを報告します。固定のTritonは、プロセス内で初めてカーネルを使うとき、コンパイルしたかディスクのcacheから読み込んだかに関わらずpost-compile hookを呼び、jit monitorはそのhookで警告を出すためです（TileLang側の判定もプロセス内のcacheだけを見ます）。ladderが最初のユーザー要求より前に済ませているのは、このプロセスごとの読み込みです。記録（`records/<stamp>-warmup-r0/result.json`）には段ごとの秒数・prompt token・結果、jit monitorがladderの前と最中に報告したカーネル名、その後prefix cacheをリセットしたか（`api.dev_endpoints = true` のときだけ。それ以外ではwarmupのpromptは追い出されるまでcacheに残る）が入ります。最後の段は出力の正しさの関門で、MiaAI-Lab のレシピ #268 に倣いました（コードは採用していません）。temperature 0・effort low で1から80までの数列を、上限256 tokenで求めます（promptと上限は `glm53_setup/warmup.py` の定数）。答えがちょうど 1〜80 の数列でない、または `stop` で終わらない場合、あるいは MTP が有効でこの段の draft が64 token 以上（上流の閾値）あるのに受理が0の場合に、その起動を異常と判定します。80 まで数えさせるのは、profile がほかにどの段を走らせるかによらず、この段だけで draft の検査が判定できる長さにするためです。2026-09-28 の実機では effort low で 168 token・draft 126、max で 207 token・draft 162 でした（一語で答える段では、AXL の ladder 全体でも draft は 69 で、段が少なければ 64 に届きませんでした）。段を送れなかった、metrics を読めなかった、draft が足りなかった場合は判定を保留し、異常とは数えません。`generation.warmup = true` なら、`cluster switch` は両rankのreadiness後、profile本文を書き込む前にrank 0でladderを実行し、結果を `result.json` の `warmup` に残します。異常の判定は切替を失敗にし、readinessの失敗と同じく旧い対を復旧します。それ以外のladderの失敗は記録されるだけで、新しい対は動かし続けます。`cluster resume` も同じladderを流しますが、記録に旧い起動が無いので、異常と判定した対は止めるだけで旧い対は復旧しません。長文段は起動のたびにフルprefillを払います（FA2のprefill以前、1.5.0での実測：chunk 2048では256Kで約490秒・200Kで380秒、512では200Kで約500秒・82Kで206秒。現在の全長prefillの時間は[ベンチマーク](benchmarks.ja.md)）。参照機では、毎回のladderが同じ10個のカーネルを報告します。その中には `BuildPrefillChunkMetadataKernel` と、一度はユーザーの要求を処理中にコンパイルされたTileLangの `mhc_pre_big_fuse_with_norm_tilelang` の形が含まれます。2026-09-17の5回の起動でruntime cache（Triton 1,840・TileLang 55ファイル）は1ファイルも増えず、短い段は1〜2秒でした。 `BuildPrefillChunkMetadataKernel` には、長い要求の途中でしか現れない形があります。indexerは1要求の問い合わせ長×圧縮後の系列長が `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB`（固定imageで512）の予算を超えると問い合わせ側を分割し、2つ目以降の区間は開始位置が0でなくなって、Tritonの別の特殊化を要求します。圧縮比は `index_kpool` の4なので、分割が始まる入力長は 134,217,728 ÷ `max_num_batched_tokens` × 4 tokenです。2048では262,144で、判定は「以下」のため、配布既定の256Kいっぱいの要求でも分割は起きません。4096なら131,072、8192なら65,536から始まります。chunkを上げるか `max_model_len` を262,144より上げるときは、その長さ以上の `generation.warmup_long_tokens` を指定して、このコンパイルを起動時に済ませてください。値は稼働中のcontainerのsourceと設定から読みました（2026-09-18）。分割される長さの要求は流していません。機構の着想はMia PR #203（コードは採用しない）で、固定imageのvLLM自身のwarmup keyは3つの区分を既に列挙しており、その修正は要りません。
+### warmup ladder
+
+`server warmup` はreadiness後に、通常のchat endpointへ要求のladderを流します。短文1往復をprofileのtemperatureで1本とcheckpointのサンプリング（temperature 1.0・top_p 0.95。temperatureを送らないクライアントが受ける設定）で1本、tool呼び出し、合成画像1枚（`runtime.vision` 有効時）、`generation.warmup_long_tokens` を指定した場合はその長さのprompt（配信中のtokenizerで長さを合わせる）です。これらは配信中にカーネルのコンパイルが観測された形です（[画像入力](vision.ja.md#限界と未解決の事項)）。固定の起動はvLLM自身のJIT warmupを無効にしており、そのコンパイルの山が一度headを保護余裕の下へ押し下げました。コンパイル済みカーネルはruntime cacheに残りますが、ladderは起動のたびに同じカーネルを報告します。固定のTritonは、プロセス内で初めてカーネルを使うとき、コンパイルしたかディスクのcacheから読み込んだかに関わらずpost-compile hookを呼び、jit monitorはそのhookで警告を出すためです（TileLang側の判定もプロセス内のcacheだけを見ます）。ladderが最初のユーザー要求より前に済ませているのは、このプロセスごとの読み込みです。記録（`records/<stamp>-warmup-r0/result.json`）には段ごとの秒数・prompt token・結果、jit monitorがladderの前と最中に報告したカーネル名、その後prefix cacheをリセットしたか（`api.dev_endpoints = true` のときだけ。それ以外ではwarmupのpromptは追い出されるまでcacheに残る）が入ります。
+
+最後の段は出力の正しさの関門で、MiaAI-Lab のレシピ #268 に倣いました（コードは採用していません）。temperature 0・effort low で1から80までの数列を、上限256 tokenで求めます（promptと上限は `glm53_setup/warmup.py` の定数）。答えがちょうど 1〜80 の数列でない、または `stop` で終わらない場合、あるいは MTP が有効でこの段の draft が64 token 以上（上流の閾値）あるのに受理が0の場合に、その起動を異常と判定します。80 まで数えさせるのは、profile がほかにどの段を走らせるかによらず、この段だけで draft の検査が判定できる長さにするためです。2026-09-28 の実機では effort low で 168 token・draft 126、max で 207 token・draft 162 でした（一語で答える段では、AXL の ladder 全体でも draft は 69 で、段が少なければ 64 に届きませんでした）。段を送れなかった、metrics を読めなかった、draft が足りなかった場合は判定を保留し、異常とは数えません。`generation.warmup = true` なら、`cluster switch` は両rankのreadiness後、profile本文を書き込む前にrank 0でladderを実行し、結果を `result.json` の `warmup` に残します。異常の判定は切替を失敗にし、readinessの失敗と同じく旧い対を復旧します。それ以外のladderの失敗は記録されるだけで、新しい対は動かし続けます。`cluster resume` も同じladderを流しますが、記録に旧い起動が無いので、異常と判定した対は止めるだけで旧い対は復旧しません。
+
+長文段は起動のたびにフルprefillを払います（FA2のprefill以前、1.5.0での実測：chunk 2048では256Kで約490秒・200Kで380秒、512では200Kで約500秒・82Kで206秒。現在の全長prefillの時間は[ベンチマーク](benchmarks.ja.md)）。参照機では、毎回のladderが同じ10個のカーネルを報告します。その中には `BuildPrefillChunkMetadataKernel` と、一度はユーザーの要求を処理中にコンパイルされたTileLangの `mhc_pre_big_fuse_with_norm_tilelang` の形が含まれます。2026-09-17の5回の起動でruntime cache（Triton 1,840・TileLang 55ファイル）は1ファイルも増えず、短い段は1〜2秒でした。 `BuildPrefillChunkMetadataKernel` には、長い要求の途中でしか現れない形があります。indexerは1要求の問い合わせ長×圧縮後の系列長が `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB`（固定imageで512）の予算を超えると問い合わせ側を分割し、2つ目以降の区間は開始位置が0でなくなって、Tritonの別の特殊化を要求します。圧縮比は `index_kpool` の4なので、分割が始まる入力長は 134,217,728 ÷ `max_num_batched_tokens` × 4 tokenです。2048では262,144で、判定は「以下」のため、配布既定の256Kいっぱいの要求でも分割は起きません。4096なら131,072、8192なら65,536から始まります。chunkを上げるか `max_model_len` を262,144より上げるときは、その長さ以上の `generation.warmup_long_tokens` を指定して、このコンパイルを起動時に済ませてください。値は稼働中のcontainerのsourceと設定から読みました（2026-09-18）。分割される長さの要求は流していません。機構の着想はMia PR #203（コードは採用しない）で、固定imageのvLLM自身のwarmup keyは3つの区分を既に列挙しており、その修正は要りません。
 
 ## GPUクロックの上限
 

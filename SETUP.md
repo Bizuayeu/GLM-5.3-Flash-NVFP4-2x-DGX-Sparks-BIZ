@@ -75,14 +75,7 @@ python tools/check_publication.py
 
 Do not copy `state/`, credentials or local records into Git. Each host owns its own state. Use the default `$HOME/.cache/huggingface` for this release: the launcher assumes that location. Custom cache environment variables are not integrated into its mount resolution yet. Store state and reports under this checkout's `state/` and `records/`.
 
-When deploying a source archive to a new checkout, connect its Git-excluded runtime directories to the host's persistent state before running `server preflight` or `cluster switch`. The source archive intentionally omits these directories. Keep the old checkout and its records intact until the new pair is ready:
-
-```sh
-ln -sT /srv/glm53/state /srv/glm53/source/state
-ln -sT /srv/glm53/records /srv/glm53/source/records
-```
-
-Use the actual absolute paths on each host. `-T` makes `ln` fail instead of creating `state/state` inside an existing directory; `readlink -f /srv/glm53/source/state` must print `/srv/glm53/state`, not a path ending in `state/state`. Do not copy credentials or raw records into the source archive. The `state/server.toml` path used by a switch must be the same path that the remote checkout resolves through this link.
+A source archive omits `state/` and `records/` by design. When deploying one to a new checkout, link those directories to the host's persistent ones before `server preflight` or `cluster switch`, with the commands in [artifact storage](docs/operations.md#artifact-storage-and-paths), and keep the old checkout and its records until the new pair is ready. The `state/server.toml` path a switch uses must be the path the remote checkout resolves through that link.
 
 **Checkpoint:** same source commit and lock on both nodes; CPU tests pass.
 
@@ -106,7 +99,7 @@ Follow [host preparation](docs/operations.md#prepare-each-host): inspect the pin
 
 **Building the reference image is required to install this repository's vLLM/GLM runtime patches**, including [canonical sparse candidate ordering](docs/candidate-order.md). Run `python -m glm53_setup build-reference` from the reviewed checkout; no manual vLLM source editing is required. The official base image alone does not contain these changes. After a source update, rebuild and verify the new image ID before replacing containers: an existing image or running container is not updated automatically. A source-hash mismatch must stop the build, not be bypassed.
 
-**Weight loading: use the image's clone patch; do not use vLLM's `eager` strategy.** On GB10 a host-to-device copy from the checkpoint's file mapping runs at about 0.13–0.20 GiB/s, so the reference image clones each tensor into anonymous memory before loading it (`patch_load_clone`, about 1.2–1.6 GiB/s, one tensor of extra memory); rank 0 of the reference pair loaded in 101 s instead of 532 s. Do not pass `--safetensors-load-strategy eager` or `enable_multithread_load` when launching vLLM yourself: they hold whole shards in memory (22.81 GiB for an 11.15 GiB shard), and on 2026-09-26 eager ran a rank out of memory and the host stopped answering for about 15 minutes. `prefetch` does not help; the slow copy is from file-backed pages even when they are cached ([operations](docs/operations.md#full-model-launch-checks)).
+**Weight loading: use the image's clone patch; do not pass `--safetensors-load-strategy eager` or `enable_multithread_load` when launching vLLM yourself.** They hold whole shards in memory, and on 2026-09-26 eager ran a rank out of memory and its host stopped answering for about 15 minutes. The copy speeds and why the image clones each tensor are in the [launch checks](docs/operations.md#full-model-launch-checks) (`GLM53_LOAD_CLONE`).
 
 Run the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture) on the first host. Keep its resource limits, selected precision, output and assessment together. A fixture pass checks selected kernels/state behavior; it cannot establish full-model quality or TP=2 correctness. Repeat appropriate component checks on the peer once available.
 
