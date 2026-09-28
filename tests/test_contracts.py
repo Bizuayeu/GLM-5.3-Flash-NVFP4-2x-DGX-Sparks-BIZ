@@ -43,7 +43,6 @@ class MountedRuntimeTests(unittest.TestCase):
             "glm53_setup.config:REVISION",
             "glm53_setup.config:TEACHER_PRECISION",
             "glm53_setup.runtime.apc_worker:report",
-            "glm53_setup.runtime.graph_policy:lpa_execution_supported",
             "glm53_setup.runtime.lpa_query:ReferenceQueryMask",
         },
         "memory_probe.py": {

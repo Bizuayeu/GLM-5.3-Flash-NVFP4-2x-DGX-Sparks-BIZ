@@ -41,7 +41,7 @@
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
-| `glm53_setup/runtime/fused_unpack.py`、`graph_policy.py` | FP8 unpack融合kernel、LPAがeager実行を要する条件 |
+| `glm53_setup/runtime/fused_unpack.py` | FP8 unpack融合kernel（LPAがeager実行を要する条件は `lpa.py` に置く） |
 | `glm53_setup/runtime/indexer_capture.py`、`indexer_worker.py`、`component_worker.py` | CSA2のindexer観測と、排他的な部品診断worker（[Indexer再利用](indexer-reuse.ja.md)） |
 | `glm53_setup/runtime/memory_probe.py` | dev の `/collective_rpc` 経由で配信workerを調べるprobe。`validation.memory_probe` がこれを読み込み、checkoutの版をimageの上にmountする：`allocator_stats`、`host_stats`、`host_census`、`weight_digest`、`kernel_hashes`、`autotuners`、`inductor_state`、`fa2_stage`、`trace_begin`／`trace_end`（[起動設定](server-configuration.ja.md#apiと診断)） |
 | `glm53_setup/runtime/pipeline_state.py`、`patch_pipeline.py` | PP fixtureの転送と、そのsource固定patch（P17） |

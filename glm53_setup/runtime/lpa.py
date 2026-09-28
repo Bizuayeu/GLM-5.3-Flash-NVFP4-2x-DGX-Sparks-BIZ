@@ -17,6 +17,11 @@ PROJECTOR_FORMAT = 2
 LPA_MTP_DEPTHS = (1, 2, 3)
 
 
+def lpa_execution_supported(config):
+    """LPA's Python hooks run only under eager execution."""
+    return bool(config.model_config.enforce_eager)
+
+
 @dataclass(frozen=True)
 class ExperimentSpec:
     mode: str
@@ -540,8 +545,6 @@ class LPAWorkerExtension:
             raise ValueError("Only explicitly enabled MTP k=1/k=2/k=3 is supported")
         if config.cache_config.enable_prefix_caching:
             raise ValueError("Prefix caching must be disabled")
-        from .graph_policy import lpa_execution_supported
-
         if not lpa_execution_supported(config):
             raise ValueError("LPA requires eager execution")
         if not hasattr(self, "lpa_experiment"):

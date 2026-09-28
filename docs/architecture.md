@@ -41,7 +41,7 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/runtime/inductor_pin.py`, `inductor_pin_pth.txt` | Keeps Inductor's deterministic mode on through Dynamo's state restore, which turns it off after the first compiled frame (`runtime.inductor_deterministic`); the text file, mounted as `glm53-inductor-pin.pth` in the image's site directory, runs it at interpreter start |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |
-| `glm53_setup/runtime/fused_unpack.py`, `graph_policy.py` | Fused FP8 unpack kernel and LPA's eager-execution requirement |
+| `glm53_setup/runtime/fused_unpack.py` | Fused FP8 unpack kernel (LPA's eager-execution requirement lives in `lpa.py`) |
 | `glm53_setup/runtime/indexer_capture.py`, `indexer_worker.py`, `component_worker.py` | CSA2 indexer observation and the exclusive component diagnostics worker ([indexer reuse](indexer-reuse.md)) |
 | `glm53_setup/runtime/memory_probe.py` | The probe of a serving worker over dev `/collective_rpc`; `validation.memory_probe` loads it and mounts the checkout's copy over the image: `allocator_stats`, `host_stats`, `host_census`, `weight_digest`, `kernel_hashes`, `autotuners`, `inductor_state`, `fa2_stage`, `trace_begin`/`trace_end` ([server configuration](server-configuration.md#api-and-diagnostics)) |
 | `glm53_setup/runtime/pipeline_state.py`, `patch_pipeline.py` | PP fixture transport and its source-pinned patch (P17) |
