@@ -31,14 +31,14 @@ With prefix caching on, P22 restores the exact prefix first and approximates onl
 
 ## Download the trained projector
 
-The tested cut32 projector is available as a separate [GitHub Release asset](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1), under **Apache-2.0**. [config/lpa-projector.lock.json](../config/lpa-projector.lock.json) owns the download URL, exact size/hash, format, teacher identity and training provenance. The NVIDIA checkpoint remains a separate download. No retraining is needed to use this projector.
+The tested cut32 projector is available as a separate [GitHub Release asset](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1), under **Apache-2.0**. [config/lpa-projector.lock.json](../config/lpa-projector.lock.json) owns the download URL, exact size/hash, format, teacher identity and training provenance. The NVIDIA checkpoint remains a separate download. No retraining is needed to use this projector.
 
 On **each Linux host**, from the checkout:
 
 ```sh
 mkdir -p state/lpa
-curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
-curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
+curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
+curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
 (cd state/lpa && sha256sum --check SHA256SUMS)
 ```
 

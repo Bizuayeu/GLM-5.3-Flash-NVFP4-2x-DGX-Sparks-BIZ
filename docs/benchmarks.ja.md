@@ -818,7 +818,7 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 
 ### 参照対でのCPU配置（2026-09-26）
 
-1.15.0の `nodes[].cpuset_cpus` について（[#1](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/issues/1)）。参照対は公開した任意設定を2系列で配信したまま（image `8444078038c0…`、source `b7cd765`）、`docker update --cpuset-cpus` で各rankの稼働中のコンテナを再起動なしにコア間で移した（`records/20260926-cpu-placement/`）。両ホストとも、最大2.8 GHzの高効率コア10個（0〜4、10〜14）と最大3.9 GHzの高性能コア10個（5〜9、15〜19）を持ち、governorは `performance`、boostはoff、周波数の上限なし。各状態でdecode check（2,048トークン前後のprompt）と22トークンのprompt（`PROMPT_TOKENS=0`、数え上げ）を、512トークンを3サンプルずつ、他の要求なしで走らせた。表はtok/sの中央値。
+1.15.0の `nodes[].cpuset_cpus` について（[#1](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/issues/1)）。参照対は公開した任意設定を2系列で配信したまま（image `8444078038c0…`、source `b7cd765`）、`docker update --cpuset-cpus` で各rankの稼働中のコンテナを再起動なしにコア間で移した（`records/20260926-cpu-placement/`）。両ホストとも、最大2.8 GHzの高効率コア10個（0〜4、10〜14）と最大3.9 GHzの高性能コア10個（5〜9、15〜19）を持ち、governorは `performance`、boostはoff、周波数の上限なし。各状態でdecode check（2,048トークン前後のprompt）と22トークンのprompt（`PROMPT_TOKENS=0`、数え上げ）を、512トークンを3サンプルずつ、他の要求なしで走らせた。表はtok/sの中央値。
 
 | rank 0のCPU | rank 1のCPU | 数え上げ／散文／コード | 22トークンのprompt |
 |---|---|---|---:|

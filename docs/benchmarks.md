@@ -818,7 +818,7 @@ Later the same day the serving pair ran with the Marlin MoE split pinned for dec
 
 ### CPU placement on the reference pair (2026-09-26)
 
-For 1.15.0's `nodes[].cpuset_cpus` ([#1](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/issues/1)): the pair kept serving the published option at two sequences (image `8444078038c0…`, source `b7cd765`), and `docker update --cpuset-cpus` moved each rank's running container between cores without a restart (`records/20260926-cpu-placement/`). Both hosts have ten efficiency cores at up to 2.8 GHz (0–4, 10–14) and ten performance cores at up to 3.9 GHz (5–9, 15–19), governor `performance`, boost off, no frequency cap. Each state ran the decode check (2,048-token prompts) and a 22-token prompt (`PROMPT_TOKENS=0`, counting), three samples of 512 tokens each, with nothing else in flight; the table gives medians in tok/s.
+For 1.15.0's `nodes[].cpuset_cpus` ([#1](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/issues/1)): the pair kept serving the published option at two sequences (image `8444078038c0…`, source `b7cd765`), and `docker update --cpuset-cpus` moved each rank's running container between cores without a restart (`records/20260926-cpu-placement/`). Both hosts have ten efficiency cores at up to 2.8 GHz (0–4, 10–14) and ten performance cores at up to 3.9 GHz (5–9, 15–19), governor `performance`, boost off, no frequency cap. Each state ran the decode check (2,048-token prompts) and a 22-token prompt (`PROMPT_TOKENS=0`, counting), three samples of 512 tokens each, with nothing else in flight; the table gives medians in tok/s.
 
 | Rank 0 CPUs | Rank 1 CPUs | Counting / prose / code | 22-token prompt |
 |---|---|---|---:|

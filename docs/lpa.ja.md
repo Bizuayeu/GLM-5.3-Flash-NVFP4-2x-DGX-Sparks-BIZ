@@ -31,14 +31,14 @@ prefix cachingが有効な場合、P22は通常計算由来のprefixを先に復
 
 ## 学習済みprojectorの取得
 
-検証済みcut32 projectorを、**Apache-2.0**の独立した[GitHub Release添付物](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1)として配布します。取得URL、正確な容量・hash、形式、教師モデル、学習来歴の正典は[config/lpa-projector.lock.json](../config/lpa-projector.lock.json)です。NVIDIAの本体checkpointは別途取得します。このprojectorを使うための再学習は不要です。
+検証済みcut32 projectorを、**Apache-2.0**の独立した[GitHub Release添付物](https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/tag/lpa-cut32-v1)として配布します。取得URL、正確な容量・hash、形式、教師モデル、学習来歴の正典は[config/lpa-projector.lock.json](../config/lpa-projector.lock.json)です。NVIDIAの本体checkpointは別途取得します。このprojectorを使うための再学習は不要です。
 
 **両方のLinuxホスト**のcheckoutで実行します。
 
 ```sh
 mkdir -p state/lpa
-curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
-curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-2x-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
+curl --fail --location --output state/lpa/glm53-lpa-cut32-v1.tar.gz https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/glm53-lpa-cut32-v1.tar.gz
+curl --fail --location --output state/lpa/SHA256SUMS https://github.com/Bizuayeu/GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ/releases/download/lpa-cut32-v1/SHA256SUMS
 (cd state/lpa && sha256sum --check SHA256SUMS)
 ```
 
