@@ -4,6 +4,16 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.21.0 — 2026-09-29
+
+### Added
+
+- `python -m glm53_setup freedombench --cases <ファイル> --cases-sha256 <hash> --condition <条件>` で、hash で固定した派生設問ファイルの一つの条件を回せるようにしました。FB-05 の対立的な言い回し・証拠配置の設問のためです（[FreedomBench](docs/freedombench.ja.md#実装採点時の注意)）。型 M は上流の system prompt と回答書式のままでなければならず、自動で採点します。型 E は自前の prompt を持ち、1 回だけ尋ねて人手の採点に回します。記録は `teacher_excluded` を付けた pilot で、上流の設問の回し方は変わりません。
+
+### Documentation
+
+- README の Next Action のサンプリングの kernel の項は、1.18.0 で見た `_gumbel_sample_kernel` がどの設定で通るかまだ突き止めていない、と書いていました。突き止められました。2026-09-28 の夜間 HLE で配布既定を起動したとき、checkpoint のサンプリング（temperature 1.0、top_p 0.95）で送る ladder の段の中で、`_topp_sb_*` の 3 つと一緒にコンパイルされ、その後その設定で送った 53 問ではサンプリングの kernel は一つもコンパイルされませんでした。項目のきっかけはそのまま残します。
+
 ## 1.20.7 — 2026-09-29
 
 ### Documentation

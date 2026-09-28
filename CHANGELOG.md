@@ -2,6 +2,16 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.21.0 — 2026-09-29
+
+### Added
+
+- `python -m glm53_setup freedombench --cases <file> --cases-sha256 <hash> --condition <key>` runs one condition of a derived case file pinned by its hash, for the FB-05 framing and evidence-placement cases ([FreedomBench](docs/freedombench.md#runner-and-scoring-requirements)). Type M cases must keep the upstream system prompt and answer format and are scored automatically; type E cases carry their own prompts, are asked once and are left for hand scoring. The record is a pilot marked `teacher_excluded`; the upstream suite runs as before.
+
+### Documentation
+
+- The README's Next Action item on sampling kernels said that `_gumbel_sample_kernel`, seen on 1.18.0, had not been traced to its settings. It has: in the nightly HLE run of 2026-09-28 a launch of the distributed defaults compiled it inside the ladder's rung at the checkpoint's sampling (temperature 1.0, top_p 0.95), with the three `_topp_sb_*` kernels, and the 53 questions sent at those settings afterwards compiled no sampling kernel. The item keeps its trigger.
+
 ## 1.20.7 — 2026-09-29
 
 ### Documentation
