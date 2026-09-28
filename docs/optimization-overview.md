@@ -110,7 +110,7 @@ Changes to APC history, branching, checkpoint retention, block alignment or conc
 
 ### Q. If 12.5 GiB of KV cache is available per rank, can it accommodate a 1M context?
 
-**Not on two hosts with the pinned weights.** Without the derived checkpoint the launcher refuses more than 3 GiB of KV per rank (`check_kv_budget`), because the pinned weights leave the head too little room above the reserve ([KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements)). The repacked weights load less and serve 6 GiB, the largest budget measured here; 12.5 GiB is untested and needs memory freed elsewhere (next question) or more ranks (TP=4, [concurrency scope](validation.md#concurrency-scope)).
+**Not on two hosts with the pinned weights.** Without the derived checkpoint the launcher refuses more than 3 GiB of KV per rank (`check_kv_budget`), because the pinned weights leave the head too little room above the reserve ([KV capacity and RAM requirements](server-configuration.md#kv-capacity-and-ram-requirements)). The repacked weights load less and serve 6 GiB, the largest budget measured here; 12.5 GiB is untested and needs memory freed elsewhere (next question) or more ranks (TP=3, [concurrency scope](validation.md#concurrency-scope)).
 
 The budget itself does not scale exactly with length from the 256K one: GLM combines token-dependent state with fixed recurrent state, block alignment and checkpoint retention, so check the pinned runtime's cache groups and state-slot counts. Weights, activations, indexer workspace, the OS and other allocations must fit outside that budget. Verify KV allocation, total host-RAM fit and completion of a real 1M request in that order.
 
@@ -128,7 +128,7 @@ This is neither a measured 1M time nor a TTFT guarantee. Configuration changes, 
 
 ### Q. Could 5 GiB of KV cache per rank make concurrent serving and EP or PP worthwhile?
 
-**On the pinned weights 5 GiB is refused; the published option already serves two sequences from 6 GiB.** Its acceptance covers up to about 200K tokens each, with completions that depend on the co-scheduled request; two maximum-length requests together are not measured ([concurrency scope](validation.md#concurrency-scope)). LPA supports one active sequence. More sequences need more ranks (TP=4).
+**On the pinned weights 5 GiB is refused; the published option already serves two sequences from 6 GiB.** Its acceptance covers up to about 200K tokens each, with completions that depend on the co-scheduled request; two maximum-length requests together are not measured ([concurrency scope](validation.md#concurrency-scope)). LPA supports one active sequence. More sequences need more ranks (TP=3, catalog P28).
 
 Larger batches may improve expert-compute efficiency or pipeline utilization, while communication and stage waiting can grow too. [EP](benchmarks.md#independent-expert-parallel-evaluation-p21) and [PP](benchmarks.md#independent-tp2-versus-pp2-evaluation-p17) were not adopted for performance on the measured workloads. Different concurrency and workloads merit reevaluation; a larger KV budget alone does not establish a speedup.
 
