@@ -19,6 +19,36 @@ from glm53_setup.config import DEFAULT_PROFILE, STATE
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def preflight_harness(
+    model, image_id, *, containers=(), checks=None, metadata=None, run=None
+):
+    """The host a preflight runs against: one inspected image, the pinned snapshot,
+    passing rails unless ``checks`` says otherwise, and ``run`` for other docker calls.
+    """
+
+    def docker(*args):
+        if args[:3] == ("docker", "image", "inspect"):
+            env = ["GLM53_REFERENCE_ATTENTION=1"]
+            return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
+        if run is not None:
+            return run(*args)
+        raise AssertionError(args)
+
+    config_json = metadata or {
+        "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
+    }
+    stack = contextlib.ExitStack()
+    for target, name, kwargs in (
+        (server, "read_json", {"return_value": config_json}),
+        (server.host, "snapshot_from_state", {"return_value": model}),
+        (server.host, "fabric_checks", {"return_value": checks or {}}),
+        (server.host, "run", {"side_effect": docker}),
+        (server.host, "running_containers", {"return_value": list(containers)}),
+    ):
+        stack.enter_context(patch.object(target, name, **kwargs))
+    return stack
+
+
 class ServerConfigTests(unittest.TestCase):
     def setUp(self):
         self.profile = config.load(ROOT / "examples/server.example.toml")
@@ -99,32 +129,12 @@ class ServerConfigTests(unittest.TestCase):
         cache = Path.home() / ".cache/huggingface"
         model = server.model_path(self.profile, cache)
         image_id = config.selected_image(self.profile)
-
-        def run(*args):
-            if args[:3] == ("docker", "image", "inspect"):
-                return json.dumps(
-                    [
-                        {
-                            "Id": image_id,
-                            "Config": {"Env": ["GLM53_REFERENCE_ATTENTION=1"]},
-                        }
-                    ]
-                )
-            raise AssertionError(args)
-
         with (
-            patch.object(server, "read_json") as read_json,
-            patch.object(server.host, "snapshot_from_state", return_value=model),
-            patch.object(server.host, "fabric_checks", return_value={}),
-            patch.object(server.host, "run", side_effect=run),
-            patch.object(server.host, "running_containers", return_value=[]),
+            preflight_harness(model, image_id),
             patch.object(
                 server.os, "sched_getaffinity", return_value={5, 6}, create=True
             ),
         ):
-            read_json.return_value = {
-                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
-            }
             result = server.preflight(
                 self.profile, ROOT / "state/server.toml", 0, check_memory=False
             )
@@ -937,22 +947,7 @@ class ServerConfigTests(unittest.TestCase):
             {"Name": "/other-gpu", "Config": {"Labels": {}}, "HostConfig": gpu},
         ]
 
-        def run(*args):
-            if args[:3] == ("docker", "image", "inspect"):
-                env = ["GLM53_REFERENCE_ATTENTION=1"]
-                return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
-            raise AssertionError(args)
-
-        with (
-            patch.object(server, "read_json") as read_json,
-            patch.object(server.host, "snapshot_from_state", return_value=model),
-            patch.object(server.host, "fabric_checks", return_value={}),
-            patch.object(server.host, "run", side_effect=run),
-            patch.object(server.host, "running_containers", return_value=[owned]),
-        ):
-            read_json.return_value = {
-                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
-            }
+        with preflight_harness(model, image_id, containers=[owned]):
             result = server.preflight(
                 profile, ROOT / "state/server.toml", 0, check_memory=False
             )
@@ -964,16 +959,9 @@ class ServerConfigTests(unittest.TestCase):
         refused = {"rail_0_roce_v2_gid": False}
         hint = [{"rail": 0, "configured_gid_index": 3, "roce_v2_gid_indices": [4]}]
         with (
-            patch.object(server, "read_json") as read_json,
-            patch.object(server.host, "snapshot_from_state", return_value=model),
-            patch.object(server.host, "fabric_checks", return_value=refused),
-            patch.object(server.host, "run", side_effect=run),
-            patch.object(server.host, "running_containers", return_value=[owned]),
+            preflight_harness(model, image_id, containers=[owned], checks=refused),
             patch.object(server.host, "fabric_gid_hints", return_value=hint) as hints,
         ):
-            read_json.return_value = {
-                "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
-            }
             result = server.preflight(
                 profile, ROOT / "state/server.toml", 0, check_memory=False
             )
@@ -985,20 +973,9 @@ class ServerConfigTests(unittest.TestCase):
         for check_memory in (True, False):
             with self.subTest(check_memory=check_memory):
                 with (
-                    patch.object(server, "read_json") as read_json,
-                    patch.object(
-                        server.host, "snapshot_from_state", return_value=model
-                    ),
-                    patch.object(server.host, "fabric_checks", return_value={}),
-                    patch.object(server.host, "run", side_effect=run),
-                    patch.object(
-                        server.host, "running_containers", return_value=foreign
-                    ),
+                    preflight_harness(model, image_id, containers=foreign),
                     patch.object(server, "available_gib", return_value=100),
                 ):
-                    read_json.return_value = {
-                        "text_config": {"num_hidden_layers": server.MODEL_LAYERS}
-                    }
                     result = server.preflight(
                         profile,
                         ROOT / "state/server.toml",
@@ -1384,28 +1361,19 @@ class ServerConfigTests(unittest.TestCase):
             image_id = config.selected_image(self.profile)
 
             def run(*args):
-                if args[:3] == ("docker", "image", "inspect"):
-                    env = ["GLM53_REFERENCE_ATTENTION=1"]
-                    return json.dumps([{"Id": image_id, "Config": {"Env": env}}])
                 if args[:2] == ("docker", "run"):
                     return "a" * 64 + "  kda.py\n"
                 raise AssertionError(args)
 
-            with (
-                patch.object(server, "read_json") as read_json,
-                patch.object(server.host, "snapshot_from_state", return_value=snapshot),
-                patch.object(server.host, "fabric_checks", return_value={}),
-                patch.object(server.host, "run", side_effect=run),
-                patch.object(server.host, "running_containers", return_value=[]),
-            ):
-                read_json.return_value = {
-                    "text_config": {"num_hidden_layers": server.MODEL_LAYERS},
-                    "quantization_config": {
-                        "quant_algo": "MIXED_PRECISION",
-                        "producer": {"requant_target": "g"},
-                        "quantized_layers": {},
-                    },
-                }
+            metadata = {
+                "text_config": {"num_hidden_layers": server.MODEL_LAYERS},
+                "quantization_config": {
+                    "quant_algo": "MIXED_PRECISION",
+                    "producer": {"requant_target": "g"},
+                    "quantized_layers": {},
+                },
+            }
+            with preflight_harness(snapshot, image_id, metadata=metadata, run=run):
                 result = server.preflight(
                     self.profile, ROOT / "state/server.toml", 0, check_memory=False
                 )
