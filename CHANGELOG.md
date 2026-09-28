@@ -12,6 +12,7 @@
 
 ### Documentation
 
+- The README's Next Action adds vLLM #57128 (#53912): the serving profiles match the conditions of a field report on another stack.
 - The README and [validation](docs/validation.md) state the accepted scope without the aside about the 2026-09-23 exhibition; [SETUP step 6](SETUP.md#6-qualify-the-full-model) keeps the record.
 - [Launch safety](docs/launch-safety.md#after-a-switch-the-decode-check) records that this pair's first launches after an image load decoded at 0.965–1.019 of later launches, so the restart MiaAI-Lab issue #284 recommends after a rebuild is not part of the routine, and what to do if one is slower. [Operations](docs/operations.md) no longer says that `cluster resume` skips the ladder; it has run it since resume was given the switch's last steps.
 

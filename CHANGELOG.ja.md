@@ -14,6 +14,7 @@
 
 ### Documentation
 
+- README の Next Action に vLLM #57128（#53912）を足しました。配信 profile は、別の構成での現場報告の条件に当たります。
 - README と[検証](docs/validation.ja.md)の受け入れの範囲から、2026-09-23 の展示会についての括弧書きを外しました。経緯は[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)に残しています。
 - [起動の安全](docs/launch-safety.ja.md#切替の後のdecode検査)に、この対では image を載せた後の最初の起動の decode が後の起動の 0.965〜1.019 倍だったこと、そのため MiaAI-Lab issue #284 が勧める作り直し後の再起動を手順に入れないこと、遅かった場合の手順を書きました。[運用](docs/operations.ja.md)の「`cluster resume` は ladder を流さない」という記述を外しました。resume が切替の最後の手順を受け取るようになってから、ladder は走っていました。
 

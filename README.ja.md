@@ -199,6 +199,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161)（kpool compressの作り直し）がmergeされる → `patch_kpool_seed` と `patch_kpool_ring` を読み直す。
 - #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
 - #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。
+- [vLLM #57128](https://github.com/vllm-project/vllm/pull/57128)（Mambaのprefix cacheの一致が投機の余白を無視する、[#53912](https://github.com/vllm-project/vllm/issues/53912)）がmergeされる → source固定patchとして移植する。配信profileは報告の条件（prefix caching、MTP k=3、Mamba cache mode `align`）に当たります。別の構成での現場報告に、ある要求の内容が別の要求の応答に現れたというものがありますが、ここでは観測していません。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
 - warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。1.19.0で利用者の最初の要求がコンパイルした `_topp_sb_*` の3つは、temperature 0 で送るladderの段では通りませんでした。temperatureを送らない要求はcheckpointの1.0・top_p 0.95になり、これらをコンパイルするので、その設定の段を足しました。1.18.0で見た `_gumbel_sample_kernel` は、どの設定で通るかまだ突き止めていません。
 
