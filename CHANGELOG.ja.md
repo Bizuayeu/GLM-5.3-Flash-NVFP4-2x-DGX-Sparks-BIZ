@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.20.5 — 2026-09-29
+
+### Changed
+
+- NoPE の参照 patch が image の `mla.py` と SM120 の sparse MLA backend に書き込む見出しを、改名後の配布物の名前にしました。1.20.4 では「変えると patch 後の hash が動く」として image の作り直しまで旧名を残していましたが、この2ファイルの patch 後の hash に依存するものはありません（上から当てる patch は無く、公開した任意設定の overlay が照合するのは `model.py` と `kda.py`）。そのため今回揃えました。この source から作る image は、前の image とこのコメント1行だけが違います。稼働中の image の作り直しは要りません。
+
 ## 1.20.4 — 2026-09-29
 
 ### Documentation

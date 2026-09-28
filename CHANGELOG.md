@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.5 — 2026-09-29
+
+### Changed
+
+- The header that the NoPE reference patch writes into the image's `mla.py` and SM120 sparse-MLA backend names the renamed distribution. 1.20.4 kept the old name there until an image rebuild, on the grounds that changing it moves the patched hash; nothing pins those two files' patched hashes (no later patch applies on top of them, and the published option's overlays check `model.py` and `kda.py`), so it follows now. An image built from this source differs from the previous one by that comment line only; running images need no rebuild.
+
 ## 1.20.4 — 2026-09-29
 
 ### Documentation
