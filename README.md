@@ -8,7 +8,7 @@
 
 ## Summary
 
-- **What it is.** A community setup and validation toolkit that serves NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **two DGX Spark or compatible GB10 systems**, partitioned TP=2 over a QSFP/RoCE link, through a pinned vLLM built into a reference image. Published measurements come from two MSI EdgeXpert (MS-C931) systems. The focus is commercially usable licensing, pinned artifacts, observable checks and reversible operation.
+- **What it is.** A community setup and validation toolkit that serves NVIDIA's GLM-5.3-Flash NVFP4 checkpoint on **DGX Spark or compatible GB10 systems** through a pinned vLLM built into a reference image. This release serves two hosts partitioned TP=2 over a QSFP/RoCE link; three hosts at TP=3, cabled as a ring without a switch, is the next target ([P28](docs/optimization-catalog.md#performance-initiatives)). Published measurements come from two MSI EdgeXpert (MS-C931) systems. The focus is commercially usable licensing, pinned artifacts, observable checks and reversible operation.
 - **Status.** **Accepted for routine use:** both profiles for one active sequence since 2026-09-22, and the published option's two-sequence profile for two sequences of up to about 200K tokens each since 2026-09-23. [SETUP step 6](SETUP.md#6-qualify-the-full-model) records what each acceptance rests on; harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status). Other hardware, more sequences than those and video input are outside the accepted scope ([status by scope](#status-by-scope)).
 - **Two served profiles.** The **distributed defaults** serve the pinned weights exactly as NVIDIA distributes them. The **published option (NVFP4 BIZ AXL)** repacks the attention projections and `lm_head` to W4A16 for faster decode at a measured quality cost, and is an operator opt-in. [What has been verified](#what-has-been-verified) compares them and lists the status of every scope.
 - **Precision.** Serving runs Marlin W4A16 on GB10. NVIDIA's model card evaluated its checkpoint under a different recipe on different hardware, so its accuracy table does not describe this stack; [validation](docs/validation.md#evidence-not-production-qualification) says which numbers do.
@@ -24,9 +24,9 @@ The stack is **Z.ai's original model â†’ NVIDIA's distributed NVFP4 checkpoint â
 | Original model | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
 | Checkpoint and download source | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4); [runtime.lock.json](config/runtime.lock.json) owns the fixed revision |
 | This distribution's role | Acquire and verify weights, adapt the runtime for GB10, launch and evaluate performance/quality. The distributed defaults serve NVIDIA's base checkpoint as it is, without project-specific requantization or fine-tuning. Serving a requantized copy is an [optional setting](docs/server-configuration.md#distributed-defaults) that an operator enables; nothing requantized is bundled in this repository |
-| Hardware | Two Linux ARM64 systems, each with GB10, 128 GB-class unified memory and NVIDIA GPU-enabled Docker. TP=2 partitions the model over a QSFP/RoCE connection |
+| Hardware | Linux ARM64 systems, each with GB10, 128 GB-class unified memory and NVIDIA GPU-enabled Docker: two for this release, where TP=2 partitions the model over a QSFP/RoCE connection. Three at TP=3 is the next target and not yet supported |
 | Tested scope | Published measurements are from MSI EdgeXpert. Other DGX Spark-compatible systems require driver/GPU/memory/fabric checks in the [setup runbook](SETUP.md#1-collect-inputs-and-inspect-both-hosts); a product name alone does not qualify them. Windows supports management/CPU checks; inference runs on the Linux hosts |
-| Storage | Weights live in each Linux host's Hugging Face cache. Reserve approximately 205 GB of disk per host plus images and working space. Each host stores the complete checkpoint even with TP=2; partitioning happens at load time. [Paths and verification](docs/operations.md#artifact-storage-and-paths) |
+| Storage | Weights live in each Linux host's Hugging Face cache. Reserve approximately 205 GB of disk per host plus images and working space. Each host stores the complete checkpoint even under tensor parallelism; partitioning happens at load time. [Paths and verification](docs/operations.md#artifact-storage-and-paths) |
 | Server configuration | [One server TOML](docs/server-configuration.md) groups context, cache, MTP, LPA, generation and per-node settings for the launcher and client. The distributed template enables the serial optimized profile on the pinned weights; [server defaults and required assets](docs/server-configuration.md#distributed-defaults) |
 
 The source checkout contains code, pinned references and build instructions. The base checkpoint and built Docker images are acquired/built separately. MTP uses checkpoint-provided tensors through a separate metadata view; the trained LPA auxiliary projector is available as a separate [GitHub Release asset](docs/lpa.md#download-the-trained-projector). See [artifact roles, package contents and storage](docs/operations.md#artifact-storage-and-paths).
@@ -54,7 +54,7 @@ Distributing this repository as source, pinned references and build steps requir
 
 - Python 3.11+ for checkout-local tools. CPU checks run on Windows and Linux.
 - Linux ARM64, NVIDIA GPU-enabled Docker and a GB10 GPU for GPU validation.
-- Two suitable systems and a verified QSFP/RoCE path for the planned TP=2 configuration.
+- Two suitable systems and a verified QSFP/RoCE path for the TP=2 configuration this release serves.
 - Host kernel: the measurements used `6.17.0-1032-nvidia`. Current DGX OS updates install `7.0.0-1019-nvidia`, whose defaults can break two-host RoCE; keep the previous kernel or boot with `kho=off`. See [host kernel and multi-node RoCE](docs/operations.md#host-kernel-and-multi-node-roce).
 - Storage on each deployment node for approximately 205 GB of model files, plus images, caches and optional fixtures. A full checkpoint does not fit one 128 GB node.
 
@@ -155,7 +155,7 @@ The fixture keeps the original widths, experts and selected tensor bytes, but is
 
 ## Business-use objectives (BIZ)
 
-This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on two DGX Spark-class systems easier to evaluate, adapt and operate for business use**. Its engineering work covers three connected concerns:
+This project makes **`nvidia/GLM-5.3-Flash-NVFP4` on DGX Spark-class systems easier to evaluate, adapt and operate for business use**. Its engineering work covers three connected concerns:
 
 - **License and provenance selection:** prefer commercially usable MIT/Apache components, pin their origin and preserve notices. The [licensing guide](docs/licensing.md) distinguishes the terms for code, weights, containers and harnesses.
 - **Evidence about political bias and source fidelity:** use [FreedomBench and business-context extensions](docs/freedombench.md) to examine political-topic answers, refusals and unsupported claims inserted into supplied material. Report the tested scope and failures; a benchmark score is not proof of universal ideological neutrality. Closed on 1.19.0 for both profiles on 2026-09-28 (the pinned English suite 60 of 60 on the first attempt with no refusal on each, the long-prefix pilot 6 of 6); the Japanese translation of the suite, opposed framings and evidence placement were not run.

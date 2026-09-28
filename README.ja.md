@@ -8,7 +8,7 @@
 
 ## 要約
 
-- **何であるか。** NVIDIAのGLM-5.3-Flash NVFP4 checkpointを、**DGX SparkおよびGB10を搭載する互換機2台**でQSFP/RoCE越しにTP=2で分割し、reference imageに組み込んだ固定版vLLMで配信するコミュニティ製のセットアップ・検証ツールです。掲載した実測はMSI EdgeXpert（MS-C931）2台のものです。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を軸にします。
+- **何であるか。** NVIDIAのGLM-5.3-Flash NVFP4 checkpointを、**DGX SparkおよびGB10を搭載する互換機**で、reference imageに組み込んだ固定版vLLMにより配信するコミュニティ製のセットアップ・検証ツールです。本リリースは2台をQSFP/RoCE越しにTP=2で分割して配信し、スイッチなしのリングで結ぶ3台のTP=3が次の目標です（[P28](docs/optimization-catalog.ja.md#性能施策一覧)）。掲載した実測はMSI EdgeXpert（MS-C931）2台のものです。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を軸にします。
 - **状態。** **通常運用として受け入れ済み**：両profileは2026-09-22から同時1系列で、公開した任意設定の同時2系列profileは2026-09-23から同時2系列・1要求あたり約200K tokenまでです。それぞれの受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、それを超える同時数、動画入力は受け入れた範囲の外です（[範囲ごとの状態](#範囲ごとの状態)）。
 - **配信する二つのprofile。** **配布既定**はNVIDIA配布の固定の重みをそのまま配信します。**公開した任意設定（NVFP4 BIZ AXL）**はattention projectionと `lm_head` をW4A16に再パックしたもので、decodeが速い代わりに実測した品質の費用があり、運用者が有効にします。[確認した範囲](#確認した範囲)が両者を比較し、範囲ごとの状態を並べています。
 - **精度。** 配信はGB10上のMarlin W4A16で動きます。NVIDIAのモデルカードは別のrecipe・別の機体でcheckpointを評価しているため、その精度表はこのスタックを記述しません。どの数値がこの配信を記述するかは[検証範囲](docs/validation.ja.md#証拠であり本番認定ではない)にあります。
@@ -24,9 +24,9 @@
 | 原モデル | [Z.ai GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) |
 | 使用する重み・取得元 | [nvidia/GLM-5.3-Flash-NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)。固定revisionは [runtime.lock.json](config/runtime.lock.json) が正典 |
 | この配布物の役割 | 重みの取得・検証、GB10向けruntime適合、起動と性能・品質検証。配布の既定は、NVIDIA配布のcheckpointをそのまま配信し、独自の再量子化・追加学習は行わない。再量子化したコピーの配信は運用者が有効にする[任意の設定](docs/server-configuration.ja.md#配布用の既定設定)で、再量子化した重みは本リポジトリに同梱しない |
-| 機体 | 1台あたりGB10・128 GB級統合メモリ、Linux ARM64、NVIDIA GPU対応Dockerを備える2台。TP=2でモデルを分割し、QSFP/RoCEで接続する |
+| 機体 | 1台あたりGB10・128 GB級統合メモリ、Linux ARM64、NVIDIA GPU対応Dockerを備える機体。本リリースは2台で、TP=2でモデルを分割しQSFP/RoCEで接続する。3台のTP=3は次の目標で、まだ対応していない |
 | 検証範囲 | MSI EdgeXpertでの結果を掲載。他のDGX Spark互換機も機種名だけで対応済みとはせず、ドライバー・GPU・メモリ・通信を[導入手順](SETUP.ja.md#1-必要情報を集め2台とも現状確認する)で検収する。Windowsは管理・CPU検査用で、推論はLinux実機上で行う |
-| 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。TP=2でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.ja.md#資材の保管場所とパス) |
+| 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。テンソル並列でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.ja.md#資材の保管場所とパス) |
 | 起動設定 | [一つの起動設定TOML](docs/server-configuration.ja.md)に、コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定をまとめ、ランチャーと専用クライアントから使う。配布用テンプレートは固定の重みで直列最適化構成を有効にする。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定) |
 
 ソースcheckoutにはコード・固定参照・ビルド手順を含みます。本体checkpointと完成Dockerイメージは利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAの学習済み補助器は独立した[GitHub Release添付物](docs/lpa.ja.md#学習済みprojectorの取得)として提供します。[資材の区別・配布ファイル構成・配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。
@@ -54,7 +54,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 - ツール用にPython 3.11以上。CPU検査はWindows・Linuxで実行可能。
 - GPU検証にはLinux ARM64、NVIDIA GPU対応Docker、GB10。
-- TP=2には2台の実機と、検証済みのQSFP/RoCE接続。
+- 本リリースが配信するTP=2には、2台の実機と検証済みのQSFP/RoCE接続。
 - ホストカーネル：実測は `6.17.0-1032-nvidia`。現在の DGX OS の更新で入る `7.0.0-1019-nvidia` は、既定設定のままだと2台間のRoCEが失敗することがあるため、旧カーネルを使い続けるか `kho=off` で起動する。[ホストカーネルと複数ノードRoCE](docs/operations.ja.md#ホストカーネルと複数ノードroce)を参照。
 - 各配置先に約205 GBの重み、加えてイメージ・cache・任意のfixtureを保存できる容量。全checkpointは128 GBの1台には収まりません。
 
@@ -155,7 +155,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ## 業務利用に向けた取り組み（BIZ）
 
-本プロジェクトは、**`nvidia/GLM-5.3-Flash-NVFP4`をDGX Spark相当の2台構成で、業務で評価・改造・運用しやすくすること**を目的としています。次の三点を一体として整備します。
+本プロジェクトは、**`nvidia/GLM-5.3-Flash-NVFP4`をDGX Spark相当の機体で、業務で評価・改造・運用しやすくすること**を目的としています。次の三点を一体として整備します。
 
 - **ライセンスと出所の選択：** 商用利用できるMIT/Apache系の構成要素を優先し、採用元・版・通知を固定します。コード・重み・コンテナ・ハーネスそれぞれの条件は[ライセンス整理](docs/licensing.ja.md)に示します。
 - **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。1.19.0では両profileで2026-09-28に完了しています（固定の英語原版60問がどちらも初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。日本語訳の本体・対立的な言い回し・証拠配置は未実施です。

@@ -6,7 +6,7 @@ The launcher and its client read [one server TOML](docs/server-configuration.md)
 
 **Routine use is accepted within a declared scope: both profiles for one active sequence (2026-09-22), and the published option's two-sequence profile for two (2026-09-23).** [Step 6](#6-qualify-the-full-model) records what each acceptance rests on; other hardware, more sequences than those and video input are outside it, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).
 
-This is the ordered runbook for a human or an AI operator. Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
+This is the ordered runbook for a human or an AI operator, for the two-host TP=2 deployment this release serves; three hosts at TP=3 is not covered yet ([P28](docs/optimization-catalog.md#performance-initiatives)). Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
 ## Shortest path to a smoke test
 
