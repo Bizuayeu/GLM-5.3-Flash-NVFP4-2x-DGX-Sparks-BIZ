@@ -2,7 +2,11 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
-## Unreleased
+## 1.20.0 — 2026-09-28
+
+### Added
+
+- `python -m glm53_setup hle` answers a pinned HLE question file with the local GLM, one question at a time through the serving API. The question file carries no reference answers; grading (exact match where it settles the answer, a judge otherwise) happens off the model host. Each answer is saved on its own, so a run can pause after `--max-new` questions or a STOP file and resume without resending completed questions; `--temperature`, `--top-p` and `--timeout` override the profile's settings for the run. Nothing it records is teacher data. Results are not published yet.
 
 ### Changed
 
@@ -13,6 +17,8 @@
 
 ### Documentation
 
+- The [harness acceptance matrix](docs/harnesses.md#acceptance-matrix-and-status) records the run of 2026-09-28: H-01 to H-11 all PASS on the npm ZCode CLI 3.14.1 at the 262,144-token context, on three fixture repositories. It closes the six rows the 2026-09-15 run left PARTIAL; H-04 found that the guard let a `Bash` command write under `.zcode` (fixed above), and MCP tools stay outside the guard. The connection settings name 3.14.1's configuration files.
+- [Validation](docs/validation.md) records a measurement of the proposed upstream fix vllm-project/vllm#58979 for the launch states of 1.12.0: with `runtime.inductor_deterministic` off, three eager launches agreed across the ranks at every traced indexer call and repeated their completions, and a launch with decode CUDA graphs gave the same completions. The profiles keep the key.
 - The README's Next Action adds vLLM #57128 (#53912): the serving profiles match the conditions of a field report on another stack.
 - The README and [validation](docs/validation.md) state the accepted scope without the aside about the 2026-09-23 exhibition; [SETUP step 6](SETUP.md#6-qualify-the-full-model) keeps the record.
 - [Launch safety](docs/launch-safety.md#after-a-switch-the-decode-check) records that this pair's first launches after an image load decoded at 0.965–1.019 of later launches, so the restart MiaAI-Lab issue #284 recommends after a rebuild is not part of the routine, and what to do if one is slower. [Operations](docs/operations.md) no longer says that `cluster resume` skips the ladder; it has run it since resume was given the switch's last steps.

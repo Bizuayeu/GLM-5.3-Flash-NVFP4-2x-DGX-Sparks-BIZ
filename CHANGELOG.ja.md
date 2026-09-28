@@ -4,7 +4,11 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
-## Unreleased
+## 1.20.0 — 2026-09-28
+
+### Added
+
+- `python -m glm53_setup hle` を足しました。固定した HLE の設問ファイルに、配信 API 越しにローカルの GLM が一問ずつ答えます。設問ファイルは正答を持たず、採点（答えが決まるものは完全一致、それ以外は judge）はモデルのホストの外で行います。答えは一問ずつ保存するので、`--max-new` の問数か STOP ファイルで止めて、答えた問を送り直さずに再開できます。`--temperature`・`--top-p`・`--timeout` はその run だけ profile の設定を上書きします。記録は教師データにしません。結果はまだ公開していません。
 
 ### Changed
 
@@ -15,6 +19,8 @@
 
 ### Documentation
 
+- [ハーネスの受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に 2026-09-28 の run を記録しました。npm 版 ZCode CLI 3.14.1・context 262,144 で、試験 repo 3 つを使い H-01〜H-11 がすべて PASS です。2026-09-15 の run で PARTIAL だった 6 行が閉じました。H-04 では guard が `.zcode` 配下への `Bash` の書き込みを通すことが分かり（上記で修正）、MCP のツールは guard の外のままです。接続設定の節に 3.14.1 の設定ファイルの場所を書きました。
+- [検証](docs/validation.ja.md)に、1.12.0 の起動状態に対する上流の修正案 vllm-project/vllm#58979 の測定を記録しました。`runtime.inductor_deterministic` を外しても、eager の 3 起動は trace したすべての indexer の呼び出しで rank が一致し、completion も起動をまたいで同じでした。decode を CUDA graph にした 1 起動でも completion は同じでした。profile はこの key を保ちます。
 - README の Next Action に vLLM #57128（#53912）を足しました。配信 profile は、別の構成での現場報告の条件に当たります。
 - README と[検証](docs/validation.ja.md)の受け入れの範囲から、2026-09-23 の展示会についての括弧書きを外しました。経緯は[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)に残しています。
 - [起動の安全](docs/launch-safety.ja.md#切替の後のdecode検査)に、この対では image を載せた後の最初の起動の decode が後の起動の 0.965〜1.019 倍だったこと、そのため MiaAI-Lab issue #284 が勧める作り直し後の再起動を手順に入れないこと、遅かった場合の手順を書きました。[運用](docs/operations.ja.md)の「`cluster resume` は ladder を流さない」という記述を外しました。resume が切替の最後の手順を受け取るようになってから、ladder は走っていました。
