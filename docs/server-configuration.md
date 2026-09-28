@@ -38,7 +38,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 3 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 | Supervision | `stall_seconds=600`: rank 0 also stops when requests are running but no `/metrics` signal moves for 600 s (`engine-stall`); `api.dev_endpoints=false` |
-| Warmup | `warmup=true`, `warmup_long_tokens=0`: the [warmup ladder](operations.md#supervision-stall-detection-and-warmup) after readiness, ending in the correctness canary; no long rung until set |
+| Warmup | `warmup=true`, `warmup_long_tokens=0`: the [warmup ladder](operations.md#warmup-ladder) after readiness, ending in the correctness canary; no long rung until set |
 
 The text-only alternative sets `runtime.vision = false` and keeps the length and KV above. It loads no vision tower and keeps no image preprocessing cache, and stays available for text-only serving and for checks with less memory headroom. Its [256K checks](benchmarks.md#real-input-checks-at-256k) ran on 2026-09-14 with a 4 GiB reserve at chunk 512; the template's 3 GiB reserve at chunk 2048 is not validated without images.
 
@@ -107,7 +107,7 @@ These switches cover a request alone. With `max_num_seqs` of 2 or more a request
 
 ### Image input
 
-`runtime.vision` is false when absent; the template sets `true`. `false` keeps `--language-model-only`, so the vision tower is not loaded and requests stay text/tools only. `true` removes that flag on both ranks and adds `--limit-mm-per-prompt '{"video": 0}'`. **Video input is disabled and rejected even with `vision = true`; only images are accepted.** The reason is startup memory: vLLM profiles by encoding the largest item once, and this checkpoint's video budget (capped at 30,000 tokens, 120,000 patches) is far larger than one image (up to 8,000 tokens). The image count per prompt keeps the vLLM default, because chat harnesses resend earlier images every turn. With vision on, `cache.mm_processor_cache_gb` (0.1 when absent) sets `--mm-processor-cache-gb`, the preprocessed-image cache that vLLM keeps in both the API and engine processes, which run on rank 0 only; the vLLM default of 4 GiB could take up to 8 GiB of host RAM on the head. A processed image larger than the budget is served uncached (with a warning) rather than rejected. The vision tower is BF16 and excluded from quantization (`model.visual*` in both exclusion lists). Measurements, the head's memory margin and open items are in [image input](vision.md). Validation fixtures load text-only regardless of this key.
+`runtime.vision` is false when absent; the template sets `true`. `false` keeps `--language-model-only`, so the vision tower is not loaded and requests stay text/tools only. `true` removes that flag on both ranks and adds `--limit-mm-per-prompt '{"video": 0}'`: **video input is rejected even with `vision = true`; only images are accepted**, and the image count per prompt keeps the vLLM default. With vision on, `cache.mm_processor_cache_gb` (0.1 when absent) sets `--mm-processor-cache-gb`; a processed image larger than the budget is served uncached (with a warning) rather than rejected. Why video is off, why the cache is 0.1 GiB instead of vLLM's 4, and how the tower loads are in [how the settings were chosen](vision.md#how-the-settings-were-chosen); measurements and the head's memory margin in [image input](vision.md). Validation fixtures load text-only regardless of this key.
 
 ### API and diagnostics
 

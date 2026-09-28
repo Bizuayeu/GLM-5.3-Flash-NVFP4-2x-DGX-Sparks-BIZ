@@ -18,6 +18,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.10.4](#measurements-on-1104) | 2026-09-23 | sparkDash and tool-eval-bench on the two-sequence profile |
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
+| [1.15.0](#measurements-on-1150) | 2026-09-26 | CPU placement on the reference pair |
 | [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
@@ -540,6 +541,14 @@ Three launches of this profile, with launches of other profiles between them, pr
 
 The 1.6.0 requantization and depth comparisons used one prompt per task type; candidate arms generally produced different completions, so their decode rates include the change in draft acceptance. At the same depth (k=3), the decode rate divided by the acceptance length estimates steps/s and separates the two: requantization raised it on counting / prose / code from 9.20 / 9.68 / 9.21 to 11.18 / 11.79 / 11.07 (+20–22%), while the acceptance length moved by +6%, 0% and +5%, so most of the gain is per-step speed. The estimate does not compare depths, whose verification cost per step differs. Client/server output-token totals of the saved decode windows match; no independent completed-request counters were saved. Apply the [comparison procedure](validation.md#comparing-a-candidate-with-an-unchanged-control) to new workloads.
 
+### How route g was reached (2026-09-18 to 20)
+
+**First reading (2026-09-18).** On a yardstick that moved 11% between identical runs, decode was 26.96 tok/s against 24.91 and 26.21 unmodified (spread 24.35–34.44) as the mean acceptance length fell from 2.9 to 2.37, mathematics NLL rose about 5% and argmax agreement with a reference run was 0.909 against 0.946–0.962 between unmodified runs. The method had moved from load-time FP8 to tenhkspark's route g, the same Marlin arithmetic as the experts. P23 was closed then and reopened once identical requests repeated. On the four-layer fixture the 33 repacked tensors have a relative error of 0.091–0.095, and the layer-3 candidate sets overlap the unmodified fixture at Jaccard 0.950 (0.948 on the eight-layer fixture's second MLA layer), so the shift does not compound across MLA layers ([requantization checks](validation.md#repeatability)).
+
+**Route g off/on/off**, after the expert order fix and with FA2 prefill: decode over nine samples rose from 32.87 to 42.39 tok/s on counting (+29%), 20.82 to 25.31 on prose (+22%) and 27.62 to 34.93 on code (+27%) with the acceptance length unchanged, the two unmodified launches within 1% of each other. The weights were 4.0 GiB smaller per rank and the head kept at least 9.52 GiB. NLL rose 4.0% on Japanese, 5.9% on code and 4.3% on mathematics and fell 1.1% on English.
+
+**Adding the shared experts (2026-09-20), not adopted:** 0.68 GiB smaller per rank and counting +3.9%, against code −10.2%, short prompts −23% and prose −2.3%, as the draft's acceptance length fell.
+
 ## Measurements on 1.7.0
 
 On 2026-09-21 (Asia/Tokyo) the reference pair ran the 1.7.0 runtime: the guarded image `b3f6e18c…` (slot-mapping guard, MoE order marker 2, `TRITON_CACHE_AUTOTUNING=1`), FA2 prefill, the fixed expert order and settled indexer ties, one active sequence. The distributed defaults were not re-measured on 1.7.0; their numbers here are those [measured on 1.6.0](#measurements-on-160) (same-night pairs followed on [1.7.1](#measurements-on-171) and [1.8.0](#measurements-on-180)), and the long-input series of 2026-09-20 already ran on an image with the marker-2 build. What 1.7.0 adds is the pair's new serving profile, a full-model reading of decode Graphs, and the ten-input depth sweep, which [speculative decoding](speculative-decoding.md#depth-three-for-both-checkpoints-2026-09-21) owns.
@@ -570,7 +579,7 @@ On the ten-input set (three repeats each, median tok/s, mean acceptance length; 
 | Tool round-trip, tuning / evaluation | 35.44 (2.80) / 34.62 (2.74) | 28.75 / 30.77 |
 | Mean step time over the ten inputs (ms) | 78.0 | 88.2 |
 
-The step is 10 ms shorter at the same depth on every input; where tok/s rises by more than that, the completion changed with the `lm_head` repack and drafted longer (the short counting prompt and the tuning tool input, whose k=3 completions on repack `g` had been the short-drafting variants). Teacher-forced NLL is the same to four decimals as on 2026-09-21 morning at depth 4, as it must be: the depth does not enter it.
+The step is 10 ms shorter at the same depth on every input (12–13 ms at depth 4 on the same repacks: counting 102.7 → 89.7 ms, code 104.0 → 91.8, Japanese prose 96.0 → 83.8; the BF16 `lm_head` is read once per draft depth, so the saving grows with the depth); where tok/s rises by more than that, the completion changed with the `lm_head` repack and drafted longer (the short counting prompt and the tuning tool input, whose k=3 completions on repack `g` had been the short-drafting variants). Teacher-forced NLL is the same to four decimals as on 2026-09-21 morning at depth 4, as it must be: the depth does not enter it.
 
 On 2026-09-22 (08:07 to 08:38, Asia/Tokyo) the same profile, still fingerprint `70d01dbf82ca…`, ran the items the defaults had and this profile lacked: the prefill and short-prompt decode of the [1.6.0 table](#prefill-and-decode-on-160) (three samples each, `glm_bench.py`) and the [256K series](#long-input) (`bench_256k.py`, the script of the defaults' series, each request after a prefix-cache reset). No other work ran on either host; the memory minima are from the servers' own resource logs over the window.
 
@@ -604,7 +613,7 @@ On 2026-09-22 (08:59 to 10:12, Asia/Tokyo) the reference pair ran the two profil
 | Decode after a 2,048-token prompt: counting / prose / code (tok/s) | 46.28 / 28.80 / 37.57 | 32.58 / 20.64 / 27.42 | 45.81 / 28.48 / 38.13 |
 | Weights per rank / lowest available memory on the head during the bench | 91.38 GiB / 10.22 GiB | 95.76 GiB / 6.20 GiB | 91.38 GiB / 10.15 GiB |
 
-The two option launches agree within 0.45% on prefill and 0.2% on the long requests, and their decode completions hash the same on all three task types, so the gap to the defaults is not launch-to-launch variation: **the repack costs 1.8% of prefill on the 38,962-token prompt, 1.2% on the 199,652-token request and 3.4% on the 261,461-token request.** The 200K figure understates the prefill difference, because the defaults answered that request with 100 completion tokens (89 of reasoning) against 20 for the option, about three seconds of decode; on prefill alone the gap is nearer 2.5%. The numbers of the defaults agree with the [1.6.0 table](#prefill-and-decode-on-160) within their spread (1,277.0 against 1,271.6 tok/s, 167.3 against 167.7 s), so the 1.7.0 runtime did not move them. The cost, in the fused KDA input projection at prefill widths, was the price of the decode gain until 1.8.0 split that projection ([measurements on 1.8.0](#measurements-on-180)).
+The two option launches agree within 0.45% on prefill and 0.2% on the long requests, and their decode completions hash the same on all three task types, so the gap to the defaults is not launch-to-launch variation: **the repack costs 1.8% of prefill on the 38,962-token prompt, 1.2% on the 199,652-token request and 3.4% on the 261,461-token request.** The 200K figure understates the prefill difference, because the defaults answered that request with 100 completion tokens (89 of reasoning) against 20 for the option, about three seconds of decode; on prefill alone the gap is nearer 2.5%. The numbers of the defaults agree with the [1.6.0 table](#prefill-and-decode-on-160) within their spread (1,277.0 against 1,271.6 tok/s, 167.3 against 167.7 s), so the 1.7.0 runtime did not move them. The cost, in the fused KDA input projection at prefill widths, was the price of the decode gain until 1.8.0 split that projection ([measurements on 1.8.0](#measurements-on-180)). The first kernel reading behind it put the fused projection under W4A16 Marlin at 1.48 times a BF16 GEMM at 2,048-row chunks, read at a per-rank width of 12,416 columns without the output slice; 1.8.0 measured the widths in full.
 
 ## Measurements on 1.8.0
 
@@ -921,7 +930,7 @@ Version `2.6.1.dev52+g81eae0a33` (commit `81eae0a3345eb212526cd98a2dd30a5088b74b
 
 Partial results included unnecessary calculator use, missing comparison information and omitted search/action steps. Preserve the overall score and Safety Gate as separate outcomes. Mock-tool results do not qualify full harnesses or business workflows.
 
-See the [same candidate's FreedomBench retest](freedombench.md#release-candidate-retest) for its result and the short-input LPA bypass scope.
+See the [same candidate's FreedomBench retest](freedombench.md#earlier-runs) for its result and the short-input LPA bypass scope.
 
 #### Real-input checks at 200K
 
@@ -980,7 +989,7 @@ On 2026-09-15 the passphrase request left the head at 3.31 GiB during tokenizati
 
 ### Measurements on 1.4.0
 
-On 2026-09-17 (Asia/Tokyo) the [1.3.1 measurements](#measurements-on-131) were repeated with the 1.4.0 chunk budget, `max_num_batched_tokens = 2048`; nothing else in the profile changed (fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`). The pair ran source `adf8ca9`, which lacks only the 1.4.0 version string, the template change and the later review fixes. It had been started with `vm.swappiness=0` for the [swappiness comparison](operations.md#supervision-stall-detection-and-warmup) and was set back to 60 without a restart; no swap was in use. The monitoring dashboard ran on the head, as for 1.3.1. No other client used the model, every case finished without additional preemption and `/health` stayed 200.
+On 2026-09-17 (Asia/Tokyo) the [1.3.1 measurements](#measurements-on-131) were repeated with the 1.4.0 chunk budget, `max_num_batched_tokens = 2048`; nothing else in the profile changed (fingerprint `9291344b7a2df3054698c3b1e84871c58b12ea78f5700b690578cbf3b73bd4fd`). The pair ran source `adf8ca9`, which lacks only the 1.4.0 version string, the template change and the later review fixes. It had been started with `vm.swappiness=0` for the [swappiness comparison](operations.md#swap) and was set back to 60 without a restart; no swap was in use. The monitoring dashboard ran on the head, as for 1.3.1. No other client used the model, every case finished without additional preemption and `/health` stayed 200.
 
 #### sparkDash on 1.4.0
 

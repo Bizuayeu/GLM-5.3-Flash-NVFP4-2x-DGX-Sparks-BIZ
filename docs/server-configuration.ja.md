@@ -38,7 +38,7 @@
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 | 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
-| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に[warmup ladder](operations.ja.md#監視停滞検知warmup)を流し、最後の段は正しさのcanary。長文段は指定するまで無し |
+| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に[warmup ladder](operations.ja.md#warmup-ladder)を流し、最後の段は正しさのcanary。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
 
@@ -118,7 +118,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 ### 画像入力
 
-`runtime.vision` は未指定でfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は無効で、送ると拒否されます。受け付けるのは画像だけです。** 理由は起動時のメモリです。vLLMは最大の入力1件を一度エンコードしてメモリを見積もり、このチェックポイントの動画の上限（30,000 token＝120,000パッチに制限済み）は画像1枚（最大8,000 token）よりはるかに大きいためです。1 promptあたりの画像枚数はvLLMの既定のままです（チャットハーネスは過去の画像を毎ターン送り直すため）。Vision有効時は `cache.mm_processor_cache_gb`（未指定は0.1）が `--mm-processor-cache-gb` を決めます。これは前処理済み画像のキャッシュで、vLLMはAPIプロセスとエンジンプロセスの両方に持ち、どちらもrank 0にだけ載ります。vLLMの既定4 GiBのままだと、headのホストRAMを最大8 GiB使い得ます。上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。視覚塔はBF16で量子化の対象外です（両方の除外リストに `model.visual*`）。実測、headのメモリ余裕、未解決の事項は[画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
+`runtime.vision` は未指定でfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は拒否し、受け付けるのは画像だけです。** 1 promptあたりの画像枚数はvLLMの既定のままです。Vision有効時は `cache.mm_processor_cache_gb`（未指定は0.1）が `--mm-processor-cache-gb` を決め、上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。動画を無効にする理由、キャッシュをvLLMの4 GiBでなく0.1 GiBにする理由、視覚塔の読み込み方は[設定を選んだ経緯](vision.ja.md#設定を選んだ経緯)に、実測とheadのメモリ余裕は[画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
 
 ### APIと診断
 
