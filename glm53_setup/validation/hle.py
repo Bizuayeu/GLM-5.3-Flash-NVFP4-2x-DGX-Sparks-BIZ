@@ -84,12 +84,40 @@ def main(argv=None):
     )
     parser.add_argument("--limit", type=int, help="Pilot only; never a full-set score")
     parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    parser.add_argument("--temperature", type=float, help="Default: the profile's")
+    parser.add_argument("--top-p", type=float, help="Default: the server's")
+    parser.add_argument(
+        "--timeout", type=int, help="Client seconds per question; default the profile's"
+    )
+    parser.add_argument(
+        "--max-new",
+        type=int,
+        help="Answer at most this many new questions, then pause (status paused), "
+        "so a driver can wait for the hosts to cool between questions",
+    )
     args = parser.parse_args(argv)
     if os.name != "posix":
         parser.error("Run on the Linux model host; grading is CPU-portable")
-    if args.max_tokens < 1 or (args.limit is not None and args.limit < 1):
-        parser.error("Budgets and limit must be positive")
+    if any(
+        value is not None and value < 1
+        for value in (args.max_tokens, args.limit, args.timeout, args.max_new)
+    ):
+        parser.error("Budgets, limit, timeout and max-new must be positive")
     profile = server_config.load(args.config)
+    sampling = {
+        key: value
+        for key, value in (("temperature", args.temperature), ("top_p", args.top_p))
+        if value is not None
+    }
+    # Only the client's wait changes; the served profile and its fingerprint do not.
+    asking = profile
+    if args.timeout is not None:
+        asking = dict(
+            profile,
+            generation=dict(
+                profile.get("generation", {}), timeout_seconds=args.timeout
+            ),
+        )
     digest, rows = load_questions(args.questions)
     selected = rows[: args.limit] if args.limit else rows
     _, info = server.running_head(profile)
@@ -106,6 +134,8 @@ def main(argv=None):
         "model_lock": load_lock(),
         "system_prompt": SYSTEM_PROMPT,
         "max_tokens": args.max_tokens,
+        "sampling": sampling,
+        "timeout_seconds": args.timeout,
         "teacher_excluded": True,
     }
     args.output.mkdir(parents=True, exist_ok=True)
@@ -118,6 +148,7 @@ def main(argv=None):
         write_json(stored, manifest)
     stop = args.output / "STOP"
     status = {"status": "running"}
+    answered_now = 0
     with server.request_lock():
         try:
             for row in selected:
@@ -127,11 +158,18 @@ def main(argv=None):
                 if stop.exists():
                     status = {"status": "stopped"}
                     break
+                if args.max_new is not None and answered_now == args.max_new:
+                    status = {"status": "paused"}
+                    break
                 began = time.monotonic()
                 try:
                     response = server.ask(
-                        profile,
-                        {"messages": messages(row), "max_tokens": args.max_tokens},
+                        asking,
+                        {
+                            "messages": messages(row),
+                            "max_tokens": args.max_tokens,
+                            **sampling,
+                        },
                     )
                 except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
                     write_json(
@@ -164,6 +202,7 @@ def main(argv=None):
                         "teacher_excluded": True,
                     },
                 )
+                answered_now += 1
                 print(row["id"], finish, answer is not None, flush=True)
             else:
                 status = {"status": "complete"}

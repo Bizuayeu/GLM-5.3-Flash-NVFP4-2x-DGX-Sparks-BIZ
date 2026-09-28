@@ -169,6 +169,66 @@ class RunnerTests(unittest.TestCase):
                     tmp, lambda p, b: reply("x"), extra=["--max-tokens", "100"]
                 )
 
+    def test_distribution_sampling_and_a_longer_client_timeout_reach_the_request(self):
+        # J2 case c (2026-09-28): the model card's sampling, 16,384 tokens, and a
+        # timeout that covers 16,384 at the slowest measured decode (20.67 tok/s).
+        seen = []
+
+        def ask(profile, body):
+            seen.append((profile, body))
+            return reply("Exact Answer: 1\nConfidence: 10%")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = self.run_main(
+                tmp,
+                ask,
+                extra=[
+                    "--max-tokens",
+                    "16384",
+                    "--temperature",
+                    "1.0",
+                    "--top-p",
+                    "0.95",
+                    "--timeout",
+                    "1200",
+                ],
+            )
+            manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+        profile, body = seen[0]
+        self.assertEqual(body["temperature"], 1.0)
+        self.assertEqual(body["top_p"], 0.95)
+        self.assertEqual(body["max_tokens"], 16384)
+        self.assertEqual(profile["generation"]["timeout_seconds"], 1200)
+        self.assertEqual(manifest["sampling"], {"temperature": 1.0, "top_p": 0.95})
+        self.assertEqual(manifest["timeout_seconds"], 1200)
+
+    def test_profile_sampling_is_left_alone_unless_asked(self):
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            self.run_main(
+                tmp,
+                lambda p, b: seen.append(b) or reply("Exact Answer: 1\nConfidence: 1%"),
+            )
+        self.assertNotIn("temperature", seen[0])
+        self.assertNotIn("top_p", seen[0])
+
+    def test_max_new_pauses_so_a_driver_can_cool_the_hosts_between_questions(self):
+        calls = []
+
+        def ask(profile, body):
+            calls.append(body)
+            return reply("Exact Answer: 1\nConfidence: 10%")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = self.run_main(tmp, ask, extra=["--max-new", "1"])
+            first = json.loads((out / "status.json").read_text(encoding="utf-8"))
+            self.run_main(tmp, ask, extra=["--max-new", "1"])
+            second = json.loads((out / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(first["status"], "paused")
+        self.assertEqual(first["summary"]["answered"], 1)
+        self.assertEqual(second["status"], "complete")
+        self.assertEqual(len(calls), 2)
+
     def test_truncation_is_counted_not_parsed(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = self.run_main(tmp, lambda p, b: reply(None, finish="length"))
