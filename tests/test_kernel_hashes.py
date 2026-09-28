@@ -14,6 +14,7 @@ from glm53_setup.runtime.memory_probe import (
     MemoryProbeWorker,
     kernel_hash_differences,
 )
+from tests.tool_host import served_tool
 
 HASHES = {
     "head_gate_fp32_rows4": "aa",
@@ -500,31 +501,20 @@ class ToolTests(unittest.TestCase):
                 path = Path(directory) / "reference.json"
                 path.write_text(json.dumps(reference), encoding="utf-8")
                 args += ["--reference", str(path)]
+            replies = {
+                "autotuners": autotuners,
+                "inductor_state": [
+                    {"rank": 1, "environ_disagrees": True},
+                    {"rank": 0, "environ_disagrees": False},
+                ],
+            }
             with (
-                patch.object(
-                    kernel_hashes.server,
-                    "running_head",
-                    return_value=({"name": "c"}, {"Image": "sha256:img"}),
-                ),
-                patch.object(
-                    kernel_hashes.server,
-                    "collective_rpc",
-                    side_effect=lambda profile, method, **kw: {
-                        "autotuners": autotuners,
-                        "inductor_state": [
-                            {"rank": 1, "environ_disagrees": True},
-                            {"rank": 0, "environ_disagrees": False},
-                        ],
-                    }.get(method, ranks),
+                served_tool(
+                    kernel_hashes,
+                    side_effect=lambda profile, method, **kw: replies.get(
+                        method, ranks
+                    ),
                 ) as rpc,
-                patch.object(
-                    kernel_hashes.server_config,
-                    "load",
-                    return_value={"runtime": {}, "api": {}},
-                ),
-                patch.object(
-                    kernel_hashes.server_config, "fingerprint", return_value="fp"
-                ),
                 contextlib.redirect_stdout(io.StringIO()) as printed,
             ):
                 code = kernel_hashes.main(args)

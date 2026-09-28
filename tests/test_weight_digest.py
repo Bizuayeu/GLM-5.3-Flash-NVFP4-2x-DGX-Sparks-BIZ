@@ -14,6 +14,7 @@ from glm53_setup.runtime.memory_probe import (
     digest_summary,
     layer_of,
 )
+from tests.tool_host import served_tool
 
 ROWS = [
     ["model.layers.0.mlp.experts.w13", 8, 123],
@@ -186,22 +187,7 @@ class ToolTests(unittest.TestCase):
                 path.write_text(json.dumps(reference), encoding="utf-8")
                 args += ["--reference", str(path)]
             with (
-                patch.object(
-                    weight_digest.server,
-                    "running_head",
-                    return_value=({"name": "c"}, {"Image": "sha256:img"}),
-                ),
-                patch.object(
-                    weight_digest.server, "collective_rpc", return_value=ranks
-                ) as rpc,
-                patch.object(
-                    weight_digest.server_config,
-                    "load",
-                    return_value={"runtime": {}, "api": {}},
-                ),
-                patch.object(
-                    weight_digest.server_config, "fingerprint", return_value="fp"
-                ),
+                served_tool(weight_digest, return_value=ranks) as rpc,
                 contextlib.redirect_stdout(io.StringIO()) as printed,
             ):
                 code = weight_digest.main(args)
