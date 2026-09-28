@@ -75,6 +75,52 @@ def model_path(profile, cache):
     )
 
 
+def runtime_mounts(profile):
+    """The checkout files mounted over the image's copies, as (source, target).
+
+    A mounted file runs over an image built earlier: its package imports resolve
+    to that image's modules, so it may drop imports but not add them
+    (tests/test_contracts.py).
+    """
+    runtime = ROOT / "glm53_setup/runtime"
+    image = f"{IMAGE_PACKAGE_DIR}/runtime"
+    mounts = []
+    if profile["lpa"]["enabled"]:
+        # The image bakes the worker it was built with; the launched worker is
+        # the checkout's copy, so a worker change reaches the server.
+        mounts.append((runtime / "lpa.py", f"{image}/lpa.py"))
+    if settings.optional(profile, "validation", "memory_probe"):
+        # The probe is newer than the image; mount the checkout's copy.
+        mounts.append((runtime / "memory_probe.py", f"{image}/memory_probe.py"))
+    if settings.optional(profile, "runtime", "inductor_deterministic"):
+        # Keeps TORCHINDUCTOR_DETERMINISTIC on through Dynamo's state restore,
+        # which turns it off after the first compiled frame (torch 2.12.1 and
+        # 2.13, pytorch/pytorch#198563). The .pth runs the module at
+        # interpreter start in every container process.
+        mounts += [
+            (runtime / "inductor_pin.py", f"{image}/inductor_pin.py"),
+            (
+                runtime / "inductor_pin_pth.txt",
+                f"{SITE_PACKAGES}/glm53-inductor-pin.pth",
+            ),
+        ]
+    if settings.optional(profile, "runtime", "fa2_attention"):
+        # cc-defer: mounts kept although preflight already requires the FA2 marker,
+        # recovery included (fa2_attention_support); drop them once the reference
+        # image carries this checkout's copies of the three files.
+        # The FA2 path and its dispatch are newer than the image, and so is the
+        # fused unpack that takes its element count at run time: the image's
+        # copy compiles one kernel per size, which FA2's varying row counts leak.
+        reference = runtime / "reference_attention.py"
+        mounts += [
+            (runtime / "fused_unpack.py", f"{image}/fused_unpack.py"),
+            (runtime / "fa2_attention.py", f"{image}/fa2_attention.py"),
+            (reference, f"{image}/reference_attention.py"),
+            (reference, IMAGE_REFERENCE),
+        ]
+    return mounts
+
+
 def command(profile, config_path, rank, name, cache=None):
     settings.validate(profile)
     cache = cache or hf_cache()
@@ -125,45 +171,8 @@ def command(profile, config_path, rank, name, cache=None):
     if profile["lpa"]["enabled"]:
         target = settings.LPA_PROJECTOR
         args += ["-v", f"{projector_path(profile, config_path)}:{target}:ro"]
-        # The image bakes the worker it was built with; the launched worker is
-        # the checkout's copy, so a worker change reaches the server.
-        source = ROOT / "glm53_setup/runtime/lpa.py"
-        args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/lpa.py:ro"]
-    if settings.optional(profile, "validation", "memory_probe"):
-        # The probe is newer than the image; mount the checkout's copy.
-        source = ROOT / "glm53_setup/runtime/memory_probe.py"
-        args += ["-v", f"{source}:{IMAGE_PACKAGE_DIR}/runtime/memory_probe.py:ro"]
-    if settings.optional(profile, "runtime", "inductor_deterministic"):
-        # Keeps TORCHINDUCTOR_DETERMINISTIC on through Dynamo's state restore,
-        # which turns it off after the first compiled frame (torch 2.12.1 and
-        # 2.13, pytorch/pytorch#198563). The .pth runs the module at
-        # interpreter start in every container process.
-        runtime = ROOT / "glm53_setup/runtime"
-        args += [
-            "-v",
-            f"{runtime / 'inductor_pin.py'}:{IMAGE_PACKAGE_DIR}/runtime/inductor_pin.py:ro",
-            "-v",
-            f"{runtime / 'inductor_pin_pth.txt'}:{SITE_PACKAGES}/glm53-inductor-pin.pth:ro",
-        ]
-    if settings.optional(profile, "runtime", "fa2_attention"):
-        # cc-defer: mounts kept although preflight already requires the FA2 marker,
-        # recovery included (fa2_attention_support); drop them once the reference
-        # image carries this checkout's copies of the three files.
-        # The FA2 path and its dispatch are newer than the image, and so is the
-        # fused unpack that takes its element count at run time: the image's
-        # copy compiles one kernel per size, which FA2's varying row counts leak.
-        runtime = ROOT / "glm53_setup/runtime"
-        reference = runtime / "reference_attention.py"
-        args += [
-            "-v",
-            f"{runtime / 'fused_unpack.py'}:{IMAGE_PACKAGE_DIR}/runtime/fused_unpack.py:ro",
-            "-v",
-            f"{runtime / 'fa2_attention.py'}:{IMAGE_PACKAGE_DIR}/runtime/fa2_attention.py:ro",
-            "-v",
-            f"{reference}:{IMAGE_PACKAGE_DIR}/runtime/reference_attention.py:ro",
-            "-v",
-            f"{reference}:{IMAGE_REFERENCE}:ro",
-        ]
+    for source, target in runtime_mounts(profile):
+        args += ["-v", f"{source}:{target}:ro"]
     if profile["profiling"]["enabled"]:
         args += ["-v", f"{RECORDS / 'profiles' / name}:/profiles"]
     for key, value in settings.environment(profile, rank).items():

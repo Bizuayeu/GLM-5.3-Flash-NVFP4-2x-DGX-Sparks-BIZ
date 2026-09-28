@@ -211,6 +211,36 @@ class ServerConfigTests(unittest.TestCase):
             # The CUDA driver's JIT cache, otherwise ~/.nv/ComputeCache.
             self.assertEqual(env["CUDA_CACHE_PATH"], "/root/.cache/nv")
 
+    def test_runtime_mounts_follow_the_settings_that_need_them(self):
+        runtime = server.ROOT / "glm53_setup/runtime"
+        image = f"{server.IMAGE_PACKAGE_DIR}/runtime"
+        self.assertEqual(server.runtime_mounts(self.profile), [])
+        self.profile["runtime"]["fa2_attention"] = True
+        self.profile["runtime"]["inductor_deterministic"] = True
+        self.profile.setdefault("validation", {})["memory_probe"] = True
+        self.assertEqual(
+            server.runtime_mounts(self.profile),
+            [
+                (runtime / "memory_probe.py", f"{image}/memory_probe.py"),
+                (runtime / "inductor_pin.py", f"{image}/inductor_pin.py"),
+                (
+                    runtime / "inductor_pin_pth.txt",
+                    f"{server.SITE_PACKAGES}/glm53-inductor-pin.pth",
+                ),
+                (runtime / "fused_unpack.py", f"{image}/fused_unpack.py"),
+                (runtime / "fa2_attention.py", f"{image}/fa2_attention.py"),
+                (runtime / "reference_attention.py", f"{image}/reference_attention.py"),
+                (runtime / "reference_attention.py", server.IMAGE_REFERENCE),
+            ],
+        )
+        lpa = copy.deepcopy(self.profile)
+        lpa["runtime"].update(fa2_attention=False, inductor_deterministic=False)
+        lpa["validation"]["memory_probe"] = False
+        lpa["lpa"]["enabled"] = True
+        self.assertEqual(
+            server.runtime_mounts(lpa), [(runtime / "lpa.py", f"{image}/lpa.py")]
+        )
+
     def test_tokenize_request_names_the_served_model(self):
         model = self.profile["api"]["served_model_name"]
         self.assertEqual(
