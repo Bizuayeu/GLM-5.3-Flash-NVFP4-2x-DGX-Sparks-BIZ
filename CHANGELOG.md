@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.20.7 — 2026-09-29
+
+### Documentation
+
+- Catalog P28 credited the TP=3 mechanism to MiaAI-Lab's recipe as "heads padded to 66 and 96 of the 288 experts per rank through expert parallelism". MiaAI-Lab's TP=3 overlays are vendored from FlyCockpit's EXL3 recipe (MIT), and the expert parallelism is specific to EXL3, which packs the expert width at 2,048. The route shown on vLLM with NVFP4 weights, FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks, zero-pads the heads to 66, the routed and shared expert width to 2,112 and the vocabulary to a multiple of 192 and stays tensor-parallel. P28 now says so in both languages, and the README's table of other recipes gains a FlyCockpit row (MIT, no code adopted).
+
 ## 1.20.6 — 2026-09-29
 
 ### Documentation

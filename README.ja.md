@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.6」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.20.7」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -171,7 +171,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
-同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
+同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
 
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
@@ -181,6 +181,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |
+| [FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks](https://github.com/FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks) | MIT | コードは採用しない。vLLM・NVFP4の重みでのTP=3の幾何（attentionとKDAのhead、expertの幅、語彙を0で埋め、tensor parallelのまま）を[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照点として。測定は別のcheckpointとimageによる |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
 
 ## 免責事項

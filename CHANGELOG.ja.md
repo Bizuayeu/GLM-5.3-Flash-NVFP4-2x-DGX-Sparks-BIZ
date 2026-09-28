@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.20.7 — 2026-09-29
+
+### Documentation
+
+- 施策台帳 P28 は TP=3 の方式を MiaAI-Lab のレシピとして「head を 66 へ埋め、expert parallel で各 rank に 288 expert のうち 96」と書いていました。MiaAI-Lab の TP=3 の overlay は FlyCockpit の EXL3 版（MIT）からの vendoring で、expert parallel は expert の幅を 2,048 で詰めて持つ EXL3 の事情です。vLLM・NVFP4 の重みで示された方式（FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks）は、head を 66、routed と shared の expert の幅を 2,112、語彙を 192 の倍数へ 0 で埋め、tensor parallel のまま動かします。P28 を日英ともそのように直し、README の他のレシピの表に FlyCockpit の行（MIT、コードは採用しない）を足しました。
+
 ## 1.20.6 — 2026-09-29
 
 ### Documentation
