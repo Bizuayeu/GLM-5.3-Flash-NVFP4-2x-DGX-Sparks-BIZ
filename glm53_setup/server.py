@@ -140,10 +140,9 @@ def command(profile, config_path, rank, name, cache=None):
             f"{runtime / 'inductor_pin_pth.txt'}:{SITE_PACKAGES}/glm53-inductor-pin.pth:ro",
         ]
     if settings.optional(profile, "runtime", "fa2_attention"):
-        # cc-defer: redundant on images that carry GLM53_FA2_ATTENTION_API=1; drop
-        # the mounts once no image without it can be a recovery target. That is now
-        # checked: preflight requires the marker of an FA2 profile, recovery
-        # included (fa2_attention_support).
+        # cc-defer: mounts kept although preflight already requires the FA2 marker,
+        # recovery included (fa2_attention_support); drop them once the reference
+        # image carries this checkout's copies of the three files.
         # The FA2 path and its dispatch are newer than the image, and so is the
         # fused unpack that takes its element count at run time: the image's
         # copy compiles one kernel per size, which FA2's varying row counts leak.

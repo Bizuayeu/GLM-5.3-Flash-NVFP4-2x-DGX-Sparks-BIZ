@@ -38,7 +38,7 @@
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 | 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
-| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に短文・tool・画像の段を流す。長文段は指定するまで無し |
+| warmup | `warmup=true`、`warmup_long_tokens=0`：readiness後に[warmup ladder](operations.ja.md#監視停滞検知warmup)を流し、最後の段は正しさのcanary。長文段は指定するまで無し |
 
 テキスト専用の代替は `runtime.vision = false` にし、上の長さとKVはそのまま使います。視覚塔を読み込まず、画像前処理キャッシュも持ちません。テキストだけを扱う運用と、メモリの余裕が小さいときの確認用に残しています。その[256K確認](benchmarks.ja.md#256kでの実入力確認)は2026-09-14に保護余裕4 GiB・chunk 512で実施しており、テンプレートの保護3 GiB・chunk 2048は画像なしでは未検証です。
 
@@ -88,7 +88,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 `runtime.canonical_moe_order`（テンプレートは `true`。未指定はimageの既定に従い、1.6.0から作ったimageでは有効）は、両rankに `GLM53_CANONICAL_MOE_ORDER` を渡します。固定版vLLMの `moe_align_block_size` はexpert内のtokenをCUDAスレッドのスケジューリング順に並べ、MarlinのMoEの結果はその順序にわずかに依存し、後段のrouterがそれを増幅するため、同一要求の反復が一致しませんでした（上流はvLLM issue #52525）。`true` にすると、参照imageがkernelの前に各expertのスロットをtoken id順に並べます。新規の起動には `GLM53_MOE_ORDER_API=2`（1.7.0から作ったimage）が要ります。marker 1は、切替の復旧先として残す稼働中の対にだけ認めます（[起動検査](operations.ja.md#フルモデルの起動検査)）。`false` は比較用のarmで、imageの対応は要りません。expert parallelには手を入れません。参照機では同一要求がbit一致で反復し、decodeは遅くならず、MTPの採択長は上がりました。既定で有効にしているのは、今後のA/Bを読む物差しとして、再現できる基準が要るためです。
 
-`runtime.stable_indexer_topk`（テンプレートは `true`。未指定はimageの既定で、1.6.0から作ったimageではon）は、両rankに `GLM53_STABLE_INDEXER_TOPK` を設定します。kpool indexerは4 tokenを1 poolに畳み、query行ごとに512 poolを選びます。固定の `persistent_topk`（decode）と `top_k_per_row_prefill` は、512位の境界にpoolの同点があると同じ入力から違う*集合*を返し、ある1 stepの同点一つでcompletionが割れます。`true` の時、同点は低いpool indexに決まります。decodeは安定なsort（最大6行、1回0.07〜0.25 ms。kernelは0.01〜0.02 ms。同期なし）、prefillはkernelのまま、512位の値を収まりきらない数のpoolが共有している行だけを選び直します（呼び出しごとに同期1回）。`GLM53_INDEXER_TOPK_API=1` が要ります。`false` は比較用のarmです。
+`runtime.stable_indexer_topk`（テンプレートは `true`。未指定はimageの既定で、1.6.0から作ったimageではon）は、両rankに `GLM53_STABLE_INDEXER_TOPK` を設定します。kpool indexerは4 tokenを1 poolに畳み、query行ごとに512 poolを選びます。固定の `persistent_topk`（decode）と `top_k_per_row_prefill` は、512位の境界にpoolの同点があると同じ入力から違う*集合*を返し、ある1 stepの同点一つでcompletionが割れます。`true` の時、同点は低いpool indexに決まります。decodeは安定なsort（6行で計測して1回0.07〜0.25 ms。kernelは0.01〜0.02 ms。同期なし）、prefillはkernelのまま、512位の値を収まりきらない数のpoolが共有している行だけを選び直します（呼び出しごとに同期1回）。`GLM53_INDEXER_TOPK_API=1` が要ります。`false` は比較用のarmです。
 
 `runtime.inductor_deterministic`（1.12.0からテンプレートは `true`。未指定か `false` はInductorの計測による選択）は、両rankに `TORCHINDUCTOR_DETERMINISTIC=1` を設定し、`TORCHINDUCTOR_CACHE_DIR` を `/root/.cache/torchinductor-deterministic` に移します。複製されたindexerはkeyを、候補configが三つの `torch.compile` のleafで正規化します。以前は各rankが起動のたびに計測で一つを選び、三つのうち一つは行の足し算の順が違うため、両rankが別のclassを引くとpoolが同点になる所でcompletionが分かれました。決定性モードのInductorはreductionのconfigを計測せずに、どのrankでも同じものに決めます。torch 2.13と2.12.1は最初にcompileしたframeの後でモードを切るので（[pytorch/pytorch#198563](https://github.com/pytorch/pytorch/issues/198563)。GB10では [vllm-project/vllm#58636](https://github.com/vllm-project/vllm/issues/58636) に報告）、launcherは `glm53_setup/runtime/inductor_pin.py` と一行の `.pth` をmountし、設定を強制値で保ちます。モードなしでcompileしたgraphは既存のcacheから計測の候補ごと戻ってくるので、モードは専用のcacheにcompileします。keyを付けた最初の起動ではindexerのleafを作り直します（rankごとに約45ファイル）。pointwiseのleafはrankごとに計測を続けますが、要素ごとに同じ命令で計算するのでblockの大きさはbitを変えません。imageの対応は要りません。
 
@@ -254,7 +254,7 @@ Graph経路では内部候補indexの範囲検査をGPU上で非同期に行い�
 
 `cache.fused_unpack=true` が配布既定です。falseならTorchの参照変換を使い、trueなら656バイトのMLAキャッシュからのFP8変換とFP32スケール乗算を一つのTritonカーネルで処理し、`GLM53_FUSED_UNPACK_SUPPORTED=1` が必要です。候補集合の変更や層間のKV共有は行いません。
 
-`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受けます。五つとも再量子化したcheckpointで、1・3・4は固定のcheckpointで測定済みで、両方のexampleは3を使います（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。LPAは `runtime.fa2_attention` と排他で、MTPと併用するときは深さ1・2・3を受け（4と5は検証で拒否します）、MTP対応を明示したLPA workerを含むイメージが必要です。深さ2のLPAは4層fixtureでだけ確かめています（[部品検証](component-validation.ja.md#apc優先lpaのcache隔離p22)）。`lpa.py` と `apc_worker.py` はマウントではなくイメージに焼き込まれるため、深さ2を許す前に作ったイメージは要求のたびにこれを拒否します。
+`mtp.enabled` と `lpa.enabled` を個別に切り替えます。MTP有効時は [prepare_mtp_view.py](../tools/prepare_mtp_view.py) で作成したviewとBF16 Triton下書きバックエンドを使います。`mtp.num_speculative_tokens` は1〜5を受けます。五つとも再量子化したcheckpointで、1・3・4は固定のcheckpointで測定済みで、両方のexampleは3を使います（[投機デコード](speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)）。LPA有効時は `runtime.lpa_image` を選び、projectorを読み取り専用でマウントしてworker拡張を有効にします。LPAは `runtime.fa2_attention` と排他で、MTPと併用するときは深さ1・2・3を受け（4と5は検証で拒否します）、MTP対応を明示したLPA workerを含むイメージが必要です。深さ2のLPAは4層fixtureでだけ確かめています（[部品検証](component-validation.ja.md#apc優先lpaのcache隔離p22)）。LPAの起動はこのcheckoutの `lpa.py` をマウントするので、prefix cachingなしなら深さ2はどのイメージでも動きます。`apc_worker.py` はイメージに焼き込まれたままなので、prefix cachingありでは、深さ2を許す前に作ったイメージが要求のたびにこれを拒否します。
 
 LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。
 

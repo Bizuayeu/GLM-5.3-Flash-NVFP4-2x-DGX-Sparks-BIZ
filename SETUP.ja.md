@@ -18,7 +18,7 @@
 4. ケーブルを接続し、2 rankのNCCL診断でfabricを検証する（[手順5](#5-ケーブル接続とfabric検証)）。
 5. [配布テンプレート](docs/server-configuration.ja.md#配布用の既定設定)から起動設定TOMLを記入し、両機の同じパスに置く。
 6. 両rankで `server plan` と `server preflight` を実行し、指摘をすべて解消する（[手順6](#6-フルモデルの検証)）。
-7. `cluster switch`（[切替手順](docs/launch-safety.ja.md#全レール検査と両rankの切替)）、またはrank 1→rank 0の順の `server start`（[コマンド](docs/server-configuration.ja.md#コマンド)）で対を起動し、warmup ladderの完了を待つ。
+7. `cluster switch`（[切替手順](docs/launch-safety.ja.md#全レール検査と両rankの切替)）、またはrank 1→rank 0の順の `server start`（[コマンド](docs/server-configuration.ja.md#コマンド)）で対を起動し、warmup ladderの完了を待つ（`cluster switch` は自分で流す。`server start` の後はrank 0で `server warmup` を実行する）。
 8. APIへ短い要求を送り、応答を読む（[手順7](#7-サービス起動と受け入れ--手順6合格後のみ)）。
 
 ## 1. 必要情報を集め、2台とも現状確認する
@@ -154,7 +154,7 @@ python -m glm53_setup server preflight --rank 0
 | 上記の項目 | 記録先 |
 |---|---|
 | 層のロード・メモリ・余裕・KV・OOMなし | [1.8.0での測定](docs/benchmarks.ja.md#180での測定)：両profileとも同じ夜に、rankあたりFP8 KV 3 GiBで、rankあたりの重みと長文benchでのheadの最小空きを記録。あわせて起動のたびに走る[起動検査](docs/operations.ja.md#フルモデルの起動検査) |
-| 短文・長文、context境界、繰り返し要求、キャンセル | [ベンチマーク](docs/benchmarks.ja.md)：宣言した境界262,144 tokenの内側で199,652 tokenと261,461 tokenの要求に正答し、同一要求はbit一致で反復する。本profileは同時1系列（`max_num_seqs = 1`）で配信するため、並行要求は順番待ちになる。これが宣言した挙動。キャンセルは[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)のH-06 PARTIAL：bgジョブの停止は確認済み、生成中の割り込みは未試験で、これが唯一の未了の小項目 |
+| 短文・長文、context境界、繰り返し要求、キャンセル | [ベンチマーク](docs/benchmarks.ja.md)：宣言した境界262,144 tokenの内側で199,652 tokenと261,461 tokenの要求に正答し、同一要求はbit一致で反復する。本profileは同時1系列（`max_num_seqs = 1`）で配信するため、並行要求は順番待ちになる。これが宣言した挙動。キャンセルは[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)のH-06 PASS（2026-09-28：生成を中断、自動の再送なし、サーバーは配信を継続） |
 | ツール利用 | [ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)のAPI-03 PASS |
 | 精度・backend・品質・throughput | W4A16 Marlinは[検証範囲](docs/validation.ja.md)、教師強制NLLの表とthroughputの基準は[ベンチマーク](docs/benchmarks.ja.md)。W4A4の挙動は主張しない |
 | 停止・再起動と両rankの復旧 | warmup ladderを伴う `cluster switch`：2026-09-22の2回の切替はいずれも復旧なしで完了（[ベンチマーク](docs/benchmarks.ja.md)）。復旧経路そのものは[起動安全](docs/launch-safety.ja.md#全レール検査と両rankの切替)に記録した過去のドリルで確認済み |
@@ -164,7 +164,7 @@ python -m glm53_setup server preflight --rank 0
 | 上の項目 | 記録先 |
 |---|---|
 | 層、メモリ、保護、KV、OOMなし | [1.10.2での測定](docs/benchmarks.ja.md#1102での測定)：rankあたりKV 6 GiB（606,881 token）、約200Kの要求2本の同時でpreemptionなし、headの空き6.46 GiB。[1.10.4](docs/benchmarks.ja.md#1104での測定)のベンチ中は7.24 GiB |
-| 短文・長文、context境界、繰り返し要求、キャンセル | 約200Kの合言葉要求2本の同時が両方正答。単独の要求は起動内でbit一致で反復し、他の要求とstepを共有したcompletionは単独時と異なる（宣言した挙動、[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。境界の要求2本の同時は未測定。キャンセルは配布既定と同じく[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)のH-06 PARTIAL |
+| 短文・長文、context境界、繰り返し要求、キャンセル | 約200Kの合言葉要求2本の同時が両方正答。単独の要求は起動内でbit一致で反復し、他の要求とstepを共有したcompletionは単独時と異なる（宣言した挙動、[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。境界の要求2本の同時は未測定。キャンセルは配布既定と同じく[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)のH-06 PASS |
 | ツール利用 | tool呼び出し2本の同時が両方正しい（[1.10.2](docs/benchmarks.ja.md#1102での測定)）。同profileでのtool-eval-benchは配布既定と同じ結果（[1.10.4](docs/benchmarks.ja.md#1104での測定)） |
 | 精度・backend、品質、throughput | 公開した任意設定の教師強制NLLとdecodeの行は[ベンチマーク](docs/benchmarks.ja.md)とREADMEの主要な測定値、同時2系列のdecodeは[1.10.2](docs/benchmarks.ja.md#1102での測定) |
 | 制御された停止・再起動と対の復旧 | 2026-09-23にこのprofileへの `cluster switch` 3回が復旧なしで完了。各回のあとに[起動の安全](docs/launch-safety.ja.md#切替の後のdecode検査)の重みのdigest・decode検査・traceを実施 |

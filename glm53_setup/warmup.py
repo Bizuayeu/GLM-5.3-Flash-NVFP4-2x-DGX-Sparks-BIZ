@@ -3,8 +3,10 @@
 The pinned launch disables vLLM's own JIT warmup, so a prompt shape seen for the
 first time compiles while serving. On this kit that compile burst once pushed the
 head below its memory reserve (docs/vision.md). The rungs come from the shapes
-that were observed compiling during serving: a short text turn, a tool call, one
-image and the longest prompt the operator intends to serve.
+that were observed compiling during serving: a short text turn (also at the
+checkpoint's sampling), a tool call, one image and the longest prompt the
+operator intends to serve. A counting canary closes the ladder and judges
+whether the launch decodes correctly (docs/operations.md).
 """
 
 import base64

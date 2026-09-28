@@ -1,9 +1,11 @@
-"""CPU-portable HLE answer extraction and exact-match gating.
+"""CPU-portable HLE answer extraction, and the exact-match rule for the grader.
 
 The format, normalization and exact-match rule follow the private lineage
 experiment that sampled the question set, so GLM rows can sit beside its
-Claude rows. Anything not settled by exact match goes to a judge; this module
-never guesses equivalence itself.
+Claude rows. The runner (hle.py) only extracts; grading happens off the host,
+and ``normalize``/``exact`` are kept here as that grader's rule so both sides
+read one definition. Anything not settled by exact match goes to a judge; this
+module never guesses equivalence itself.
 """
 
 import re

@@ -40,7 +40,7 @@ API側の認証を設定している場合は、そのローカルサービス�
 
 npm版CLI 3.11.2の設定ファイルは`~/.zcode/cli/config.json`です。3.14.1ではproviderを`~/.zcode/v2/provider_config.json`、クライアント設定を`~/.zcode/cli/setting.json`に持ち、context上限の項目名は`contextWindow`です。OpenAI互換のproviderを`baseURL` `http://127.0.0.1:8893/v1`、model ID `glm-5.3-flash-nvidia`（項目は`provider.<id>.models.<model>`）で追加し、実際の要求パスで`/v1`が二重にならないことを確認します。ローカルAPIが認証を要求するなら一致する鍵を使い、無認証loopbackへ非空の値が要る場合だけ秘密でない試験用値を使います。それは認証保護にはなりません。
 
-入力はサーバに合わせてテキスト・ツール・画像を宣言し（例示profileは二つとも `runtime.vision = true`。ZCodeでは `modalities.input = ["text", "image"]`）、サーバが拒否する動画は宣言しません。cloud providerへのfallback、外部連携、追加エージェントは既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。モデルの`limit.context`をサーバの`max_model_len`に合わせ、`limit.output`は32000に留め、`modelStream.idleTimeoutMs`を想定する最長のprefillより大きくします（[モデル上限](#zcodeの権限モードモデル上限既存ファイルガード)を参照）。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
+入力はサーバに合わせてテキスト・ツール・画像を宣言し（例示profileは二つとも `runtime.vision = true`。ZCodeでは `modalities.input = ["text", "image"]`）、サーバが拒否する動画は宣言しません。cloud providerへのfallback、外部連携、追加エージェントは既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。モデルのcontext上限（3.11.2では`limit.context`、3.14.1では`contextWindow`）をサーバの`max_model_len`に合わせ、`limit.output`は32000に留め、`modelStream.idleTimeoutMs`を想定する最長のprefillより大きくします（[モデル上限](#zcodeの権限モードモデル上限既存ファイルガード)を参照）。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
 
 ## ZCodeの権限モード・モデル上限・既存ファイルガード
 

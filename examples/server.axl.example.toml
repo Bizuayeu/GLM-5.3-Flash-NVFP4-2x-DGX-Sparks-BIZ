@@ -164,12 +164,12 @@ max_tokens = 4096 # Thinking counts against this; a one-line answer at low effor
 reasoning_effort = "low"
 clear_thinking = true
 timeout_seconds = 600 # Same timeout as the measured experiment client
-warmup = true # cluster switch runs `server warmup` on rank 0 after readiness; omitted = false
+warmup = true # cluster switch and cluster resume run `server warmup` on rank 0 after readiness; omitted = false
 warmup_long_tokens = 0 # Long-prefill rung in prompt tokens; 0 = no long rung. Must leave room for max_tokens.
 # A new prompt shape can still compile kernels while serving (docs/vision.md); the
 # 200K request compiled one TileLang shape. Set this to the longest prompt you will
 # serve and pay its prefill once per start (prefill times by length: docs/benchmarks.md).
-# 起動後に短文・tool・画像（vision時）・長文の順で流す。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（長さごとの prefill 時間は docs/benchmarks.ja.md）。
+# 起動後に短文（2本）・tool・画像（vision時）・長文・正しさのcanaryの順で流す（docs/operations.ja.md）。長文段は運用する最長 prompt を指定し、起動ごとに一度 prefill を払う（長さごとの prefill 時間は docs/benchmarks.ja.md）。
 
 [resources]
 # Existing experimental memory budgets; larger workloads need new measurement.

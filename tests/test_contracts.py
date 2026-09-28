@@ -248,6 +248,62 @@ class TemplateTableTests(unittest.TestCase):
                     self.assertIn(value, table)
 
 
+class HarnessStatusTests(unittest.TestCase):
+    """A harness case's status quoted elsewhere is the matrix's status."""
+
+    STATUS = r"(PASS|PARTIAL|FAIL|NOT RUN|BLOCKED)"
+
+    def matrix(self, name):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        return {
+            case: status
+            for case, status in re.findall(
+                rf"(?m)^\| (H-\d\d) \|.*\| {self.STATUS}[^|]*\|$", text
+            )
+        }
+
+    def test_quoted_statuses_follow_the_matrix(self):
+        pages = {
+            "docs/harnesses.md": ("SETUP.md", "docs/validation.md"),
+            "docs/harnesses.ja.md": ("SETUP.ja.md", "docs/validation.ja.md"),
+        }
+        for owner, quoting in pages.items():
+            matrix = self.matrix(owner)
+            self.assertIn("H-06", matrix)
+            for name in quoting:
+                text = (ROOT / name).read_text(encoding="utf-8")
+                for case, status in re.findall(
+                    rf"(H-\d\d)\]?(?:\([^)]*\))? {self.STATUS}", text
+                ):
+                    with self.subTest(page=name, case=case):
+                        self.assertEqual(status, matrix[case])
+
+
+class CanaryDocTests(unittest.TestCase):
+    """operations describes the canary; warmup.py owns its prompt and limits."""
+
+    PAGES = ("docs/operations.md", "docs/operations.ja.md")
+
+    def test_the_numbers_quoted_are_the_code_values(self):
+        for name in self.PAGES:
+            text = (ROOT / name).read_text(encoding="utf-8")
+            for value in (
+                f"{warmup.CANARY_COUNT}",
+                f"{warmup.CANARY_TOKENS} token",
+                f"{warmup.MIN_DRAFTS} token",
+            ):
+                with self.subTest(page=name, value=value):
+                    self.assertIn(value, text)
+
+    def test_the_prompt_is_not_copied_into_the_documents(self):
+        profile = config.load(ROOT / "examples/server.example.toml")
+        prompt = dict(warmup.rungs(profile))["canary"]["messages"][0]["content"]
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                self.assertFalse(prompt in text, "quote the prompt from warmup.py")
+
+
 class SpecMetricTests(unittest.TestCase):
     def test_warmup_reads_the_counters_the_decode_check_reads(self):
         # tools/decode_check.py runs without the package, so it keeps its own table.
