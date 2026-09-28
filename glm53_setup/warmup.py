@@ -20,12 +20,14 @@ ANSWER_TOKENS = 32  # Enough decode steps to reach the sampling kernels.
 LONG_LINE = "warmup line {index}.\n"
 # The last rung doubles as a correctness canary (upstream MiaAI-Lab recipe #268):
 # a launch that answers /health but decodes garbage fails its switch instead of
-# serving. On the 1.19.0 pair the question took 9 tokens at effort low and 115
-# at max (records/20260928-upstream-review/obs268), so 128 answers either way.
-CANARY_WORD = "ready"
-CANARY_TOKENS = 128
+# serving. Counting to 80 is checkable exactly and long enough that the MTP
+# check judges from this rung alone, whatever other rungs a profile runs: on the
+# 1.19.0 pair it took 168 tokens and drafted 126 at effort low, 207 and 162 at
+# max (records/20260928-upstream-review/obs268), so 256 answers either way.
+CANARY_COUNT = 80
+CANARY_TOKENS = 256
 # Zero accepted drafts only counts over at least this many drafted tokens, as
-# upstream's GLM53_WARMUP_CANARY_MIN_DRAFTS; one text rung drafted 30 here.
+# upstream's GLM53_WARMUP_CANARY_MIN_DRAFTS.
 MIN_DRAFTS = 64
 SPEC_METRICS = {
     "vllm:spec_decode_num_draft_tokens_total": "num_draft_tokens",
@@ -173,7 +175,11 @@ def rungs(profile):
             "canary",
             {
                 "messages": [
-                    {"role": "user", "content": f"Reply with the word {CANARY_WORD}."}
+                    {
+                        "role": "user",
+                        "content": f"Count from 1 to {CANARY_COUNT}, separated by "
+                        "single spaces. Reply with the numbers only.",
+                    }
                 ],
                 "temperature": 0,
                 "reasoning_effort": "low",
@@ -197,8 +203,11 @@ def canary_verdict(profile, row, before, after):
     if row["status"] != "ok":
         verdict["answer_ok"] = None
     else:
-        word = (row.get("content") or "").strip().rstrip(".!").lower()
-        verdict["answer_ok"] = word == CANARY_WORD and row["finish_reason"] == "stop"
+        numbers = re.split(r"[\s,]+", (row.get("content") or "").strip().rstrip("."))
+        verdict["answer_ok"] = (
+            numbers == [str(i) for i in range(1, CANARY_COUNT + 1)]
+            and row["finish_reason"] == "stop"
+        )
     verdict["acceptance_ok"] = None
     if profile["mtp"]["enabled"] and before is not None and after is not None:
         drafted = after.get("num_draft_tokens", 0) - before.get("num_draft_tokens", 0)
@@ -220,7 +229,7 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None, spec_counters=No
     spec_counters, when given, returns the MTP draft/accepted totals.
     """
     before = compiled_kernels(logs())
-    counters_before = read_counters(spec_counters)
+    counters = {}
     limit = profile["context"]["max_model_len"] - profile["generation"]["max_tokens"]
     rows = []
     for name, request in rungs(profile):
@@ -236,7 +245,11 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None, spec_counters=No
                     "messages": [{"role": "user", "content": text}],
                     "max_tokens": ANSWER_TOKENS,
                 }
+            if name == "canary":
+                counters["before"] = read_counters(spec_counters)
             result = ask(request)
+            if name == "canary":
+                counters["after"] = read_counters(spec_counters)
             row["prompt_tokens"] = result["usage"]["prompt_tokens"]
             row["finish_reason"] = result["choices"][0]["finish_reason"]
             if name == "canary":
@@ -249,7 +262,7 @@ def run(profile, *, ask, count_tokens, logs, clock, reset=None, spec_counters=No
         rows.append(row)
     after = compiled_kernels(logs())
     canary = canary_verdict(
-        profile, rows[-1], counters_before, read_counters(spec_counters)
+        profile, rows[-1], counters.get("before"), counters.get("after")
     )
     record = {
         "rungs": rows,

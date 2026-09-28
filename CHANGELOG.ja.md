@@ -8,7 +8,7 @@
 
 ### Changed
 
-- warmup ladder の最後に出力の正しさの関門を置きました。MiaAI-Lab のレシピ #268 に倣ったものです（コードは採用していません）。temperature 0・effort low で「Reply with the word ready.」を送ります。答えが `ready` でない起動、または ladder 全体で64 token 以上の draft に対して MTP の受理が0だった起動を異常と判定します。異常なら `cluster switch` は失敗して旧い対を復旧し、`cluster resume` は対を止めます。ladder は profile 本文の書き込みより前に走るようになり、それ以外の ladder の失敗では従来どおり対を動かし続けます（[運用](docs/operations.ja.md#監視停滞検知warmup)）。
+- warmup ladder の最後に出力の正しさの関門を置きました。MiaAI-Lab のレシピ #268 に倣ったものです（コードは採用していません）。temperature 0・effort low で 1 から 80 まで数えさせます。答えがちょうどその数列でない起動、またはその段で64 token 以上の draft に対して MTP の受理が0だった起動を異常と判定します。異常なら `cluster switch` は失敗して旧い対を復旧し、`cluster resume` は対を止めます。ladder は profile 本文の書き込みより前に走るようになり、それ以外の ladder の失敗では従来どおり対を動かし続けます（[運用](docs/operations.ja.md#監視停滞検知warmup)）。
 - レールの RoCE v2 GID の検査に落ちたとき、起動前検査と切替の静的検査のエラーが、そのレールの項目がいまある index を `gid_hints` に並べるようにしました。検査は止めたままです（MiaAI-Lab のレシピ #277。2026-09-27 には head の電源断の後、相手の rail 0 が index 3 から 4 に動いた）（[起動の安全](docs/launch-safety.ja.md)）。
 
 ### Documentation

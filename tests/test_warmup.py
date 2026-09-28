@@ -99,7 +99,7 @@ class WarmupTests(unittest.TestCase):
                 logs.append(LOG_LINE.format(name="mhc_pre_big_fuse_with_norm_tilelang"))
             return {
                 "usage": {"prompt_tokens": fake_count(str(request["messages"]))},
-                "choices": [{"finish_reason": "stop", "message": {"content": "ready"}}],
+                "choices": [{"finish_reason": "stop", "message": {"content": COUNT}}],
             }
 
         clock = iter(range(0, 100, 1))
@@ -152,6 +152,9 @@ def answering(content, finish="stop"):
     return ask
 
 
+COUNT = " ".join(str(i) for i in range(1, warmup.CANARY_COUNT + 1))
+
+
 class CanaryTests(unittest.TestCase):
     """Mia #268: a boot that answers /health but serves garbage must not pass."""
 
@@ -181,46 +184,72 @@ class CanaryTests(unittest.TestCase):
             },
         ]
 
+    def test_the_canary_asks_for_a_count_long_enough_to_judge_the_drafts(self):
+        canary = dict(warmup.rungs(self.profile))["canary"]
+        self.assertIn(f"1 to {warmup.CANARY_COUNT}", canary["messages"][0]["content"])
+
+    def test_the_counters_bracket_the_canary_rung_alone(self):
+        # Judged from the canary only, so the verdict does not depend on which
+        # other rungs a profile runs (2026-09-28: the full AXL ladder drafted 69).
+        events = []
+
+        def ask(request):
+            events.append("ask")
+            return answering(COUNT)(request)
+
+        def counters():
+            events.append("read")
+            return {"num_draft_tokens": 0.0, "num_accepted_tokens": 0.0}
+
+        warmup.run(
+            self.profile,
+            ask=ask,
+            count_tokens=fake_count,
+            logs=lambda: "",
+            clock=lambda: 0,
+            spec_counters=counters,
+        )
+        self.assertEqual(events[-3:], ["read", "ask", "read"])
+        self.assertEqual(events.count("read"), 2)
+
     def test_a_healthy_answer_with_accepted_drafts_passes(self):
-        for content in ("ready", " Ready.\n", "READY!"):
-            with self.subTest(content=content):
-                record = self.run_ladder(answering(content), self.counters(120, 80))
+        for content in (COUNT, " " + COUNT + ".\n", COUNT.replace(" ", ", ")):
+            with self.subTest(content=content[:12]):
+                record = self.run_ladder(answering(content), self.counters(126, 126))
                 self.assertIs(record["canary"]["answer_ok"], True)
                 self.assertIs(record["canary"]["acceptance_ok"], True)
                 self.assertIs(record["degenerate"], False)
                 self.assertTrue(record["passed"])
 
     def test_garbage_or_a_truncated_answer_is_degenerate(self):
+        short = " ".join(str(i) for i in range(1, warmup.CANARY_COUNT))
         for content, finish in (
-            ("readyreadyready", "stop"),
-            ("", "length"),
+            (short, "stop"),
+            (COUNT, "length"),
+            (COUNT.replace("41", "14"), "stop"),
             ("是的", "stop"),
         ):
-            with self.subTest(content=content):
+            with self.subTest(content=content[-12:], finish=finish):
                 record = self.run_ladder(
-                    answering(content, finish), self.counters(120, 80)
+                    answering(content, finish), self.counters(126, 126)
                 )
                 self.assertIs(record["canary"]["answer_ok"], False)
                 self.assertIs(record["degenerate"], True)
                 self.assertFalse(record["passed"])
 
     def test_zero_acceptance_over_enough_drafts_is_degenerate(self):
-        record = self.run_ladder(
-            answering("ready"), self.counters(warmup.MIN_DRAFTS, 0)
-        )
+        record = self.run_ladder(answering(COUNT), self.counters(warmup.MIN_DRAFTS, 0))
         self.assertIs(record["canary"]["acceptance_ok"], False)
         self.assertIs(record["degenerate"], True)
 
     def test_what_cannot_be_judged_never_trips(self):
-        few = self.run_ladder(
-            answering("ready"), self.counters(warmup.MIN_DRAFTS - 1, 0)
-        )
+        few = self.run_ladder(answering(COUNT), self.counters(warmup.MIN_DRAFTS - 1, 0))
         self.assertIsNone(few["canary"]["acceptance_ok"])
         self.assertIs(few["degenerate"], False)
-        unread = self.run_ladder(answering("ready"))
+        unread = self.run_ladder(answering(COUNT))
         self.assertIsNone(unread["canary"]["acceptance_ok"])
         self.profile["mtp"]["enabled"] = False
-        off = self.run_ladder(answering("ready"), self.counters(120, 0))
+        off = self.run_ladder(answering(COUNT), self.counters(126, 0))
         self.assertIsNone(off["canary"]["acceptance_ok"])
         self.assertIs(off["degenerate"], False)
 
@@ -237,7 +266,7 @@ class CanaryTests(unittest.TestCase):
 
         record = warmup.run(
             self.profile,
-            ask=answering("ready"),
+            ask=answering(COUNT),
             count_tokens=fake_count,
             logs=lambda: "",
             clock=lambda: 0,
