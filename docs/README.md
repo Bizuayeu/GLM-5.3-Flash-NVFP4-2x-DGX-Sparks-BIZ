@@ -19,7 +19,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| Operations | Artifact storage paths, acquisition, host preparation, launch checks, recovery | [EN](operations.md) | [JA](operations.ja.md) |
+| Operations | Artifact storage paths, acquisition, host preparation, launch checks, supervision and the warmup ladder, GPU clock cap, recovery | [EN](operations.md) | [JA](operations.ja.md) |
 | Server configuration | The categorized server TOML, the published option against the defaults, every optional key, KV/RAM conditions, image markers, feature limits | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFP network | Direct QSFP connection and persistent NetworkManager profiles | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL validation | Two-host collective diagnostic and its limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |

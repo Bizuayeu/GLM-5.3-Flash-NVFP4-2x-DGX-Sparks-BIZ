@@ -19,7 +19,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| 運用手順 | 資材の保管場所、取得、機体準備、起動検査、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
+| 運用手順 | 資材の保管場所、取得、機体準備、起動検査、監視とwarmup ladder、GPUクロックの上限、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
 | 起動設定 | カテゴリ別の起動TOML、公開した任意設定と配布既定の差、全任意キー、KV／RAM条件、imageのmarker、機能の制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
 | QSFPネットワーク | QSFP直結とNetworkManagerの永続profile | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
 | NCCL検証 | 2台のcollective診断とその限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |

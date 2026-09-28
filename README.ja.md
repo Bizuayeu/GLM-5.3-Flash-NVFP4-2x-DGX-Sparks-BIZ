@@ -89,7 +89,7 @@ python -m glm53_setup build-reference
 
 [GPU 1台のfixture手順](docs/validation.ja.md#gpu-1台のfixtureを再現する)で、実行完了・再現性・数値差を分けて確認できます。
 
-TP=2の参照profileは**実測済みで、通常運用として受け入れ済み（2026-09-22）**です。`server preflight` は起動前に各ホストで資材・fabric・image・GPUの専有・メモリを検査しますが、品質や可用性を保証するものではありません。検査の内容は[運用手順](docs/operations.ja.md#フルモデルの起動検査)、受け入れ各項目の証拠の所在は[セットアップ手順](SETUP.ja.md#6-フルモデルの検証)を参照してください。
+通常運用の受け入れはコマンドではなく記録です。範囲と各項目の証拠の所在は[セットアップ手順6](SETUP.ja.md#6-フルモデルの検証)が示します。`server preflight` は起動前に各ホストで資材・fabric・image・GPUの専有・メモリを検査しますが、品質も可用性も保証しません（[起動検査](docs/operations.ja.md#フルモデルの起動検査)）。
 
 ## 確認した範囲
 
@@ -135,11 +135,11 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
 | 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ：両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)が、expert内のtoken順、indexerのtop-kの同点、Inductorのrankごとのconfigの選択を固定する。1.12.0〜1.14.0ではどちらのprofileでも3起動とも同じcompletion、1.19.0では公開した任意設定の8起動がすべて同じcompletion。新しい起動は今も切替ごとに確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上の配信では反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
+| 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ（両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)による）。切替後の起動は今も毎回確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上が処理中の間は反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
 | 全モデル | 256Kでの画像入力（Vision） | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。1.19.0では両profileで回帰7項が合格し、1枚7,776 tokenまでの大きな画像と8枚までの画像にも順番どおり正答。ハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
 | 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。この範囲では反復を主張しない（他の要求とstepを共有した要求は違うcompletionになりうる）。反復が要るなら `max_num_seqs = 1` で配信する。それを超える同時数：TP=4を推奨、TP=3は非推奨。どちらもここでは未計測。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
-| ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11はnpm版ZCode CLI 3.14.1・context 262,144で全件PASS（試験repo 3つ、2026-09-28）。公式ZCode Desktopは**BLOCKED**（同梱CLIが対話起動できない。[feedback #270](https://github.com/zai-org/feedback/issues/270)）、Claude Codeは**判断で見送り**（同じ機体のAnthropicサブスクリプション設定と競合する）。受け入れた経路はnpm版ZCode CLI。[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
+| ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11は、受け入れた経路であるnpm版ZCode CLI 3.14.1・262,144 tokenで全件PASS（2026-09-28）。公式ZCode Desktopは**BLOCKED**、Claude Codeは**判断で見送り**。理由とケース別の状態は[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、1系列のdecodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 10入力で、再量子化したcheckpointでは深さ1〜5を、固定のcheckpointでは1・3・4を測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
 | テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
