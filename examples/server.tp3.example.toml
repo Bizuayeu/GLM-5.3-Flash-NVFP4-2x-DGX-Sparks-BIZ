@@ -71,6 +71,8 @@ max_num_seqs = 1
 # Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
 # 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
 max_num_batched_tokens = 2048
+# long_prefill_token_threshold = 512 # Optional: cap each request's prefill chunk per step; omitted or 0 = no cap
+# 任意：要求ごとの1 stepのprefill chunkの上限。未指定・0は上限なし（長文のprefill中も並ぶ要求のdecodeを進める）
 chunked_prefill = true
 
 [profiling]

@@ -83,6 +83,7 @@ OPTIONAL_KEYS = {
             "inductor_deterministic",
         }
     ),
+    "server.context": frozenset({"long_prefill_token_threshold"}),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
@@ -114,6 +115,7 @@ OPTIONAL_DEFAULTS = {
         "prefix_page_dedup": False,
         "inductor_deterministic": False,
     },
+    "context": {"long_prefill_token_threshold": 0},
     "cache": {"prefix_cache_retention_interval": 0, "mm_processor_cache_gb": 0.1},
     "api": {"prompt_tokens_details": False, "dev_endpoints": False},
     "validation": {"memory_probe": False},
@@ -231,6 +233,14 @@ def check_optional_shapes(profile):
             raise ValueError(
                 "cache.mm_processor_cache_gb must be a finite nonnegative number"
             )
+    threshold = optional(profile, "context", "long_prefill_token_threshold")
+    if (
+        type(threshold) is not int
+        or not 0 <= threshold <= profile["context"]["max_model_len"]
+    ):
+        raise ValueError(
+            "context.long_prefill_token_threshold must be an integer from 0 to max_model_len"
+        )
     if type(optional(profile, "api", "dev_endpoints")) is not bool:
         raise ValueError("api.dev_endpoints must be true or false")
     effort = profile["api"].get("default_reasoning_effort", "max")
@@ -869,7 +879,7 @@ def apply_scalar_settings(args, profile):
         **{
             "--" + key.replace("_", "-"): value
             for key, value in profile["context"].items()
-            if key != "chunked_prefill"
+            if key not in ("chunked_prefill", "long_prefill_token_threshold")
         },
     }
     for flag, value in values.items():
@@ -892,6 +902,17 @@ def apply_boolean_flags(args, profile):
             args.remove(flag)
             if key == "chunked_prefill":
                 args.append("--no-enable-chunked-prefill")
+
+
+def apply_long_prefill(args, profile):
+    """Cap each request's prefill chunk per step; absent or 0 passes nothing.
+
+    With chunked prefill a long prompt takes the whole step budget, so a request
+    decoding beside it waits for a full chunk every step (TP3 Stage 5 entry).
+    """
+    threshold = optional(profile, "context", "long_prefill_token_threshold")
+    if threshold:
+        args += ["--long-prefill-token-threshold", str(threshold)]
 
 
 # The vision tower's attention heads (the pinned checkpoint's vision_config).
@@ -1100,6 +1121,7 @@ def serve_template(site, model_path):
 SERVE_STEPS = (
     apply_scalar_settings,
     apply_boolean_flags,
+    apply_long_prefill,
     apply_vision,
     apply_cache,
     apply_reasoning_default,

@@ -764,6 +764,35 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "mm_processor_cache_gb"):
                 config.validate(self.profile)
 
+    def test_long_prefill_threshold_is_passed_only_when_set(self):
+        def threshold_arg(profile):
+            args = config.serve_args(profile, 0, "/hf/model")
+            if "--long-prefill-token-threshold" not in args:
+                return None
+            return args[args.index("--long-prefill-token-threshold") + 1]
+
+        # Absent or 0: no flag, so every existing launch keeps its arguments.
+        self.profile["context"].pop("long_prefill_token_threshold", None)
+        config.validate(self.profile)
+        self.assertIsNone(threshold_arg(self.profile))
+        self.profile["context"]["long_prefill_token_threshold"] = 0
+        config.validate(self.profile)
+        self.assertIsNone(threshold_arg(self.profile))
+        # Set: each request's prefill chunk per step is capped (vLLM's scheduler).
+        self.profile["context"]["long_prefill_token_threshold"] = 512
+        config.validate(self.profile)
+        for rank in (0, 1):
+            args = config.serve_args(self.profile, rank, "/hf/model")
+            self.assertEqual(
+                args[args.index("--long-prefill-token-threshold") + 1], "512"
+            )
+        # vLLM refuses a threshold above max_model_len at startup; refuse it here.
+        too_long = self.profile["context"]["max_model_len"] + 1
+        for bad in (-1, "512", 1.5, True, too_long):
+            self.profile["context"]["long_prefill_token_threshold"] = bad
+            with self.assertRaisesRegex(ValueError, "long_prefill_token_threshold"):
+                config.validate(self.profile)
+
     def test_graph_combination_scope_is_explicit_until_integration(self):
         # One sequence with MTP and prefix caching was qualified on the MTP fixture
         # (records/20260918-stage1-graph); batching was not.

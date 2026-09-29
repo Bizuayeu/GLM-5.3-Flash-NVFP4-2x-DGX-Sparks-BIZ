@@ -88,6 +88,8 @@ max_num_seqs = 2 # Two active sequences; the KV below is sized for them on the r
 # 同時2系列。最大長×同時数のKV容量をランチャーは検査しない。engineの数えでは6 GiBは参照対で606,881トークン＝256K要求の2.32倍で、
 # 全長2本が入る。2026-09-23に同時2要求を配信した（docs/validation.ja.md）。
 max_num_batched_tokens = 2048
+# long_prefill_token_threshold = 512 # Optional: cap each request's prefill chunk per step; omitted or 0 = no cap
+# 任意：要求ごとの1 stepのprefill chunkの上限。未指定・0は上限なし（長文のprefill中も並ぶ要求のdecodeを進める）
 chunked_prefill = true
 
 [profiling]
