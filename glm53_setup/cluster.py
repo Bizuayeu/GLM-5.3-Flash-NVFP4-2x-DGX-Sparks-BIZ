@@ -459,7 +459,6 @@ def act_switch(cli, args):
         )
     if not args.remote_config.startswith("/") or not args.checkout.startswith("/"):
         cli.error("Remote paths must be absolute Linux paths")
-    args.output.mkdir(parents=True, exist_ok=False)
     # Read once: the manifest and the text the ranks write come from the same
     # bytes. Text mode turns CRLF into LF on the way.
     text = args.config.read_text(encoding="utf-8")
@@ -467,6 +466,7 @@ def act_switch(cli, args):
     nodes = server_config.node_count(profile)
     if len(args.hosts) != nodes:
         cli.error(f"switch needs one --hosts entry per node ({nodes})")
+    args.output.mkdir(parents=True, exist_ok=False)
     launch = {
         "manifest": server_config.freeze(profile),
         "config_path": args.remote_config,
