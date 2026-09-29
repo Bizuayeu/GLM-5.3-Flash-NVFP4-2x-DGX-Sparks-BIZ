@@ -14,7 +14,7 @@ from collections import namedtuple
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agreement, capacity, host, model_http, mojibake, warmup
+from . import agreement, capacity, fabric, host, model_http, mojibake, warmup
 from . import server_config as settings
 from .config import (
     DEFAULT_PROFILE,
@@ -43,9 +43,13 @@ IMAGE_PACKAGE_DIR = "/opt/glm53/glm53_setup"
 IMAGE_REFERENCE = f"{SITE_PACKAGES}/{REFERENCE_FILE}"
 
 
-def runtime_cache_dir():
-    """The host side of the runtime cache mount (settings.RUNTIME_CACHE inside)."""
-    return STATE / "tp2-runtime-cache"
+def runtime_cache_dir(nodes=2):
+    """The host side of the runtime cache mount (settings.RUNTIME_CACHE inside).
+
+    One per node count: Triton, Inductor and TileLang keep per-rank shapes, and the
+    TP=2 pair (PP2 included) keeps the name its caches were built under.
+    """
+    return STATE / f"tp{nodes}-runtime-cache"
 
 
 def hf_cache():
@@ -158,7 +162,7 @@ def command(profile, config_path, rank, name, cache=None):
         "-v",
         f"{cache.resolve()}:/hf:ro",
         "-v",
-        f"{runtime_cache_dir()}:{settings.RUNTIME_CACHE}",
+        f"{runtime_cache_dir(settings.node_count(profile))}:{settings.RUNTIME_CACHE}",
     ]
     if profile["nodes"][rank].get("cpuset_cpus") is not None:
         args += ["--cpuset-cpus", profile["nodes"][rank]["cpuset_cpus"]]
@@ -644,21 +648,21 @@ def report_verdict(result):
 
 def act_plan(cli, args, profile):
     """Show what a launch would run, without touching the host."""
-    print(
-        json.dumps(
-            {
-                "scope": "experimental-reference",
-                "fingerprint": settings.fingerprint(profile),
-                "command": command(
-                    profile, args.config, args.rank, container_name(args.rank, "RUN")
-                ),
-                "generation": profile["generation"],
-                "resources": profile["resources"],
-                "lpa": profile["lpa"],
-            },
-            indent=2,
-        )
-    )
+    plan = {
+        "scope": "experimental-reference",
+        "fingerprint": settings.fingerprint(profile),
+        "command": command(
+            profile, args.config, args.rank, container_name(args.rank, "RUN")
+        ),
+        "generation": profile["generation"],
+        "resources": profile["resources"],
+        "lpa": profile["lpa"],
+    }
+    probes = fabric.link_probes(settings.site(profile, args.rank))
+    if probes is not None:
+        # A ring rank's links, each for tools/nccl_probe.py with --world-size 2.
+        plan["link_probes"] = probes
+    print(json.dumps(plan, indent=2))
 
 
 def act_freeze(cli, args, profile):
@@ -788,7 +792,7 @@ def start_rank(cli, args, profile, result):
     name = container_name(args.rank, args.run_id or stamp.lower())
     record = RECORDS / (stamp + f"-server-r{args.rank}")
     record.mkdir(parents=True)
-    runtime_cache_dir().mkdir(parents=True, exist_ok=True)
+    runtime_cache_dir(settings.node_count(profile)).mkdir(parents=True, exist_ok=True)
     if profile["profiling"]["enabled"]:
         (RECORDS / "profiles" / name).mkdir(parents=True)
     cmd = command(profile, args.config, args.rank, name)
@@ -854,6 +858,13 @@ ACTIONS = {
 }
 
 
+def rank_number(text):
+    """A nonnegative rank; the profile's node count bounds it (settings.site)."""
+    if not text.isdigit():
+        raise argparse.ArgumentTypeError("rank must be a nonnegative integer")
+    return int(text)
+
+
 def parser():
     """The launcher's argument interface; ``main`` adds the table's guards."""
     cli = argparse.ArgumentParser(description=__doc__)
@@ -864,7 +875,12 @@ def parser():
         help="Saved agreement result.json to compare this run against",
     )
     cli.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
-    cli.add_argument("--rank", type=int, choices=[0, 1], default=0)
+    cli.add_argument(
+        "--rank",
+        type=rank_number,
+        default=0,
+        help="0 is the head; the profile's node count bounds the rest",
+    )
     cli.add_argument("--prompt")
     cli.add_argument("--run-id", help="Unique coordinator-owned launch ID")
     cli.add_argument("--request", type=Path)
