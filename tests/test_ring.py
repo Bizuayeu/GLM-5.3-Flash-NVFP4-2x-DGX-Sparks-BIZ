@@ -287,12 +287,25 @@ class RingValidationTests(unittest.TestCase):
         profile = with_host_addresses(ring())
         profile["nodes"][2]["host_address"] = "10.41.13.2"
         self.refused(profile, "host_address")
-        profile = with_host_addresses(ring())
-        profile["nodes"][2]["host_interface"] = "wlP9s9"
-        self.refused(profile, "Wi-Fi")
         two = config.load(DEFAULTS)
         two["nodes"][1].update(host_address="10.40.0.2", host_interface="glmhost")
         self.refused(two, "host_address belongs to nodes with links")
+
+    def test_a_ring_host_address_may_sit_on_the_management_wifi(self):
+        # Ring data goes over the links' HCAs; host_interface carries only the
+        # sockets, so a management Wi-Fi address serves as a test setting (plan
+        # Stage 3/4). The links themselves stay refused on Wi-Fi.
+        profile = ring()
+        for rank, address in enumerate(
+            ("192.168.68.56", "192.168.68.59", "192.168.68.57")
+        ):
+            profile["nodes"][rank].update(host_address=address, host_interface="wlP9s9")
+        config.validate(profile)
+        env = config.environment(profile, 2)
+        self.assertEqual(env["NCCL_SOCKET_IFNAME"], "=wlP9s9")
+        self.assertEqual(env["GLOO_SOCKET_IFNAME"], "wlP9s9")
+        self.assertEqual(env["VLLM_HOST_IP"], "192.168.68.57")
+        self.assertEqual(env["NCCL_IB_HCA"], "=rocep1s0f1:1,rocep1s0f0:1")
 
     def test_fewer_than_two_nodes_are_refused(self):
         profile = config.load(DEFAULTS)

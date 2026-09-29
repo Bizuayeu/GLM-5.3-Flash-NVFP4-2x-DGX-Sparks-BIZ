@@ -101,7 +101,9 @@ def validate_site(site):
     for key in ("interface",) if "links" in site else ("interface", "hca"):
         if not re.fullmatch(DEVICE_NAME, site.get(key, "")):
             raise ValueError(f"Set a concrete {key} from the local device inventory")
-    if is_wifi(site["interface"]):
+    # A ring's data path is its links (checked in rails); its socket interface may be
+    # the management network, a test setting until the hosts carry a /32 (plan Stage 4).
+    if "links" not in site and is_wifi(site["interface"]):
         raise ValueError("The real-model profile requires RoCE, not Wi-Fi")
     if "links" not in site and (
         type(site.get("gid_index")) is not int or site["gid_index"] < 0
@@ -166,9 +168,8 @@ def validate_nodes(nodes):
         if "host_interface" in node and (
             not isinstance(node["host_interface"], str)
             or not re.fullmatch(DEVICE_NAME, node["host_interface"])
-            or is_wifi(node["host_interface"])
         ):
-            raise ValueError(f"{name}.host_interface cannot be Wi-Fi or a list")
+            raise ValueError(f"{name}.host_interface must name one interface")
     link_addresses = set()
     for rank, node in enumerate(nodes):
         for link in node["links"]:
