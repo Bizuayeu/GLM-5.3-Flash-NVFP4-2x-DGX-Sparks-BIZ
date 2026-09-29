@@ -151,7 +151,8 @@ class RemoteProcedureGapTests(unittest.TestCase):
                     cluster.rpc("current", 0, None)
 
     def test_an_invalid_rank_is_refused_before_any_action_runs(self):
-        for rank in (2, -1, True, "0", None):
+        # Rank 2 is a ring's third node (tests/test_cluster.py RingClusterTests).
+        for rank in (-1, True, "0", None):
             with self.subTest(rank=rank):
                 with self.assertRaises(ValueError):
                     cluster.rpc("current", rank, None)

@@ -644,8 +644,83 @@ class SwitchVocabularyTests(unittest.TestCase):
             backend = MagicMock()
             with (
                 self.subTest(status=status),
-                self.assertRaisesRegex(ValueError, "unconfirmed two-rank readiness"),
+                self.assertRaisesRegex(ValueError, "unconfirmed readiness observation"),
             ):
                 switch.resume(backend, {"status": status, "new": rows})
             backend.current.assert_not_called()
             backend.ready.assert_not_called()
+
+
+RING = Path(__file__).resolve().parents[1] / "examples/server.tp3.example.toml"
+
+
+class RingClusterTests(unittest.TestCase):
+    """The coordinator addresses one host per node of the launch."""
+
+    def switch_with(self, config, hosts):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(
+                cluster, "switch", return_value={"status": "complete"}
+            ) as switched,
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            cluster.main(
+                [
+                    "switch",
+                    "--config",
+                    str(config),
+                    "--remote-config",
+                    "/srv/glm53/state/server.toml",
+                    "--hosts",
+                    *hosts,
+                    "--checkout",
+                    "/srv/glm53/source",
+                    "--output",
+                    str(Path(tmp) / "out"),
+                ]
+            )
+            return switched.call_args
+
+    def test_a_ring_switch_addresses_three_hosts(self):
+        call = self.switch_with(RING, ["head", "peer", "third"])
+        self.assertEqual(call.kwargs["nodes"], 3)
+        self.assertEqual(call.args[0].hosts, ["head", "peer", "third"])
+        self.assertEqual(self.switch_with(EXAMPLE, ["head", "peer"]).kwargs["nodes"], 2)
+
+    def test_the_host_count_must_be_the_node_count(self):
+        for config, hosts in (
+            (RING, ["head", "peer"]),
+            (EXAMPLE, ["head", "peer", "third"]),
+        ):
+            with self.subTest(config=config.name), self.assertRaises(SystemExit):
+                self.switch_with(config, hosts)
+
+    def test_readiness_needs_every_rank(self):
+        backend = cluster.SSHBackend(["head", "peer", "third"], "/srv/model", None, 30)
+        rows = [{"rank": r, "identity": {}} for r in (1, 0)]
+        with self.assertRaisesRegex(ValueError, "every rank"):
+            backend.ready(rows)
+
+    def test_a_running_launch_of_another_size_is_refused_before_anything_stops(self):
+        backend = cluster.SSHBackend(["head", "peer", "third"], "/srv/model", None, 30)
+        running = {
+            "name": "old-0",
+            "fingerprint": "f",
+            "launch": {"manifest": {"profile": server_config.load(EXAMPLE)}},
+        }
+        with (
+            patch.object(backend, "call", return_value=running),
+            self.assertRaisesRegex(ValueError, "2 nodes"),
+        ):
+            backend.current(0)
+        with patch.object(backend, "call", return_value=None):
+            self.assertIsNone(backend.current(2))
+
+    def test_a_rank_rpc_accepts_the_third_rank(self):
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            self.assertIsNone(cluster.rpc("current", 2, None))
+        for bad in (-1, "2", None):
+            with self.subTest(rank=bad), self.assertRaises(ValueError):
+                cluster.rpc("current", bad, None)

@@ -1,4 +1,5 @@
-"""Two-rank stop/start transaction and its resume, independent of the transport."""
+"""Stop/start transaction over every rank of a launch (two, or N on a ring) and its
+resume, independent of the transport."""
 
 # A transport raises these reasons when it loses a rank's reply; the switch
 # then journals one of the two statuses, which only resume carries forward.
@@ -97,24 +98,32 @@ def finish(backend, report, *, save, config=None):
     return report
 
 
-def switch(backend, launch, *, save, config=None):
+def differ(assets):
+    """Whether the ranks' prepared assets disagree on what they must share."""
+    return any(asset["common"] != assets[0]["common"] for asset in assets[1:])
+
+
+def switch(backend, launch, *, save, config=None, nodes=2):
     """backend operations must address explicit owned launch identities.
 
     prepare checks static assets/fabric only. start performs the post-stop memory
-    check. ready checks the new head API and both rank identities. This is a
+    check. ready checks the new head API and every rank identity. This is a
     recoverable stop/start, not an atomic or zero-downtime deployment. config is
-    the profile text both ranks write to the launch's configuration path once
-    the new pair is complete; None leaves the remote files alone.
+    the profile text every rank writes to the launch's configuration path once
+    the new launch is complete; None leaves the remote files alone. nodes is the
+    launch's rank count; workers start from the highest rank, the head last.
     """
+    ranks = range(nodes)
     report = {"status": "preparing", "new": [], "stopped": [], "recovery": []}
     save(report)
-    old = [backend.current(rank) for rank in (0, 1)]
-    if (old[0] is None) != (old[1] is None):
+    old = [backend.current(rank) for rank in ranks]
+    if len({previous is None for previous in old}) > 1:
         raise ValueError(
-            "Only one old rank is running; preserve it and resolve the incomplete pair first"
+            "Only some old ranks are running; preserve them and resolve the "
+            "incomplete launch first"
         )
-    first = [backend.prepare(rank, launch) for rank in (0, 1)]
-    if first[0]["common"] != first[1]["common"]:
+    first = [backend.prepare(rank, launch) for rank in ranks]
+    if differ(first):
         raise ValueError(
             "Rank assets or common launch configuration differ; nothing stopped"
         )
@@ -123,9 +132,9 @@ def switch(backend, launch, *, save, config=None):
     for rank, previous in enumerate(old):
         if previous is not None:
             old_assets.append(backend.prepare(rank, previous["launch"], recovery=True))
-    if old_assets and old_assets[0]["common"] != old_assets[1]["common"]:
+    if old_assets and differ(old_assets):
         raise ValueError("Old ranks differ; a common recoverable profile is required")
-    second = [backend.prepare(rank, launch) for rank in (0, 1)]
+    second = [backend.prepare(rank, launch) for rank in ranks]
     old_again = [
         backend.prepare(rank, previous["launch"], recovery=True)
         for rank, previous in enumerate(old)
@@ -134,7 +143,7 @@ def switch(backend, launch, *, save, config=None):
     if (
         first != second
         or old_assets != old_again
-        or old != [backend.current(rank) for rank in (0, 1)]
+        or old != [backend.current(rank) for rank in ranks]
     ):
         raise ValueError("Launch assets or running identities changed before stop")
     report["assets"] = first
@@ -150,7 +159,7 @@ def switch(backend, launch, *, save, config=None):
                 report.pop("stop_pending")
                 report["stopped"].append(rank)
                 save(report)
-        for rank in (1, 0):
+        for rank in reversed(ranks):
             # Reserve identity before start: a failed/ambiguous transport must
             # still allow cleanup of only the new attempt's container/process.
             new = backend.reserve(rank, launch)
@@ -179,7 +188,7 @@ def switch(backend, launch, *, save, config=None):
         cleanup_failed = "stop_pending" in report or not stopped
         # Never compete with an unconfirmed new process for the same GPU/RAM.
         if not cleanup_failed:
-            for rank in (1, 0):
+            for rank in reversed(ranks):
                 if rank in report["stopped"]:
                     try:
                         identity = backend.reserve(
@@ -221,11 +230,13 @@ def resume(backend, report, *, config=None, save=lambda report: None):
     if report["status"] not in (
         READINESS_UNCONFIRMED,
         RECOVERY_READINESS_UNCONFIRMED,
-    ) or {r["rank"] for r in rows} != {0, 1}:
+    ):
         raise ValueError(
-            "Only a recorded, unconfirmed two-rank readiness observation can resume"
+            "Only a recorded, unconfirmed readiness observation can resume"
         )
     assets = report["recovery_assets"] if recovering else report["assets"]
+    if len(assets) < 2 or {r["rank"] for r in rows} != set(range(len(assets))):
+        raise ValueError("A resumed launch needs every rank it recorded")
     for row in rows:
         current_rank = backend.current(row["rank"])
         identity = row["identity"]

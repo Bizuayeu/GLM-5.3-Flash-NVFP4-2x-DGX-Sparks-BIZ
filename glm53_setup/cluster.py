@@ -1,4 +1,5 @@
-"""Preflight both ranks, then perform an owned, recoverable two-rank switch."""
+"""Preflight every rank, then perform an owned, recoverable switch of all of them
+(the two-node pair, or N nodes on a ring)."""
 
 import argparse
 import json
@@ -106,7 +107,8 @@ def install(rank, value):
 
 
 def rpc(action, rank, value):
-    if type(rank) is not int or rank not in (0, 1):
+    # The launch's profile bounds the rank where one is read (server_config.site).
+    if type(rank) is not int or rank < 0:
         raise ValueError("Invalid rank")
     if action == "current":
         return current(rank)
@@ -318,7 +320,20 @@ class SSHBackend:
             time.sleep(1)
 
     def current(self, rank):
-        return self.call("current", rank)
+        running = self.call("current", rank)
+        nodes = (
+            None
+            if running is None
+            else len(running["launch"]["manifest"]["profile"]["nodes"])
+        )
+        if nodes is not None and nodes != len(self.hosts):
+            # Stopping only some of its ranks would leave the rest in a broken
+            # launch, and a recovery could not restart it on these hosts.
+            raise ValueError(
+                f"Rank {rank} runs a launch of {nodes} nodes and this switch "
+                f"addresses {len(self.hosts)} hosts; stop that launch first"
+            )
+        return running
 
     def prepare(self, rank, launch, *, recovery=False):
         return self.call("prepare", rank, as_recovery(launch) if recovery else launch)
@@ -340,8 +355,8 @@ class SSHBackend:
         return self.call("warmup", 0, head["identity"])
 
     def ready(self, rows):
-        if {r["rank"] for r in rows} != {0, 1}:
-            raise ValueError("Recovery did not restore both ranks")
+        if {r["rank"] for r in rows} != set(range(len(self.hosts))):
+            raise ValueError("Recovery did not restore every rank")
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             statuses = [self.call("poll", r["rank"], r["identity"]) for r in rows]
@@ -357,7 +372,9 @@ class SSHBackend:
 
 
 def ssh_backend(args):
-    """The transport both transported actions address the two ranks through."""
+    """The transport both transported actions address the ranks through."""
+    if len(args.hosts) < 2:
+        raise ValueError("Name one SSH host per rank, at least two")
     return SSHBackend(args.hosts, args.checkout, args.ssh_config, args.ready_timeout)
 
 
@@ -446,8 +463,12 @@ def act_switch(cli, args):
     # Read once: the manifest and the text the ranks write come from the same
     # bytes. Text mode turns CRLF into LF on the way.
     text = args.config.read_text(encoding="utf-8")
+    profile = server_config.loads(text)
+    nodes = server_config.node_count(profile)
+    if len(args.hosts) != nodes:
+        cli.error(f"switch needs one --hosts entry per node ({nodes})")
     launch = {
-        "manifest": server_config.freeze(server_config.loads(text)),
+        "manifest": server_config.freeze(profile),
         "config_path": args.remote_config,
     }
     write_json(args.output / "launch.json", launch)
@@ -457,6 +478,7 @@ def act_switch(cli, args):
             launch,
             save=lambda r: write_json(args.output / "result.json", r),
             config=None if args.no_send_config else text,
+            nodes=nodes,
         )
     except Exception as error:
         write_json(
@@ -495,17 +517,17 @@ def parser():
     cli.add_argument("action", choices=list(ACTIONS))
     cli.add_argument("--config", type=Path)
     cli.add_argument(
-        "--remote-config", help="Same absolute configuration path on both Linux ranks"
+        "--remote-config", help="Same absolute configuration path on every Linux rank"
     )
     cli.add_argument(
         "--no-send-config",
         action="store_true",
-        help="Leave the --remote-config files as they are (default: both ranks "
-        "write the --config text there once the new pair is complete)",
+        help="Leave the --remote-config files as they are (default: every rank "
+        "writes the --config text there once the new launch is complete)",
     )
-    cli.add_argument("--hosts", nargs=2)
+    cli.add_argument("--hosts", nargs="+", help="SSH hosts, rank 0 (head) first")
     cli.add_argument(
-        "--checkout", help="Same audited absolute Linux checkout on both ranks"
+        "--checkout", help="Same audited absolute Linux checkout on every rank"
     )
     cli.add_argument("--ssh-config", type=Path)
     cli.add_argument("--output", type=Path)
