@@ -26,7 +26,7 @@
 | `glm53_setup/server.py`、`server_config.py`、`capacity.py`、`warmup.py`、`mojibake.py`、`agreement.py` | 起動・監視・headへのクライアント。カテゴリ別のTOML設定と、そこから導くもの（vLLM引数の雛形、imageのcapability検査と警告、凍結した起動manifest、devモード）。KV起動行の分解、readiness後の要求ladder、日本語・韓国語の化け文字検査、参照runとのtoken単位の一致（`server agreement`） |
 | `glm53_setup/host.py` | ランチャーが共用するホスト側の補助：fabric検査、snapshot解決、メモリ標本、container検査、subprocess実行 |
 | `glm53_setup/download.py`、`verify_download.py`、`images.py`、`build_reference.py` | 資材の準備（固定checkpointの取得、downloaderを待つchecksum検証、base imageの確認とその合格規則、reference imageのbuild）と、ガード付きのローカル操作 |
-| `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 両rankの停止前検査、所有権つきの切替・復旧とその再開（resume）、読み取り専用の起動識別情報、サイト設定の検査・NCCL環境・RoCEレール検査（[起動契約](launch-safety.ja.md)） |
+| `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 全rankの停止前検査、所有権つきの切替・復旧とその再開（resume）、読み取り専用の起動識別情報、サイト設定の検査・リングのリンクとrankごとのアドレス・NCCL環境・RoCEレール検査（[起動契約](launch-safety.ja.md)） |
 | `glm53_setup/tool_gate/` | モデルAPIの前にloopbackの別ポートで立てる任意のtool引数ゲート：schemaによる検査（`check`、判断）、1回の作り直し（`repair`、組み立て）、streamingを含むHTTPの中継（`proxy`、入口と副作用） |
 | `glm53_setup/model_http.py`、`io.py` | モデルAPIに限定しredirectに従わないHTTP transport、ローカル状態の永続化helper |
 | `glm53_setup/runtime/pinned_patch.py`、`patch_*.py` | image buildが当てるsource固定のvLLM patch群。`pinned_patch` が共通部分（固定ファイルのhash検査、`--package`／`--check` コマンド、package脇に書くrecord）を持ち、各 `patch_*` moduleは対象・pin・anchorだけを、逸脱した・適用済みのsourceを拒む純粋関数 `patch_text(text)` として述べる（`patch_kpool_ring` は2ファイルを固定し、複数ファイル版の `prepare_files`／`main_files` を使う。`patch_apc_lpa` と `patch_nope_reference` は独自のflagを持つ） |
@@ -56,7 +56,7 @@
 | `glm53_setup/validation/kpool_ring_repro.py` | 参照imageでのkpool tail ringのGPU再現：pool完成のdraftが棄却されたときの結果をprefill側の書き込みと比べる。1 pool分のringとMTP 3のring（[検証](validation.ja.md#kpool-tail-ringの再現)） |
 | `glm53_setup/validation/fused_nope.py`、`fused_nope_dot.py`、`indexer_candidates.py`、`indexer_reindex.py`、`indexer_shared_pool.py` | 再現のために残す退役した試作。呼ぶのはそれぞれのベンチとテストだけ：融合NoPE attention（[部品検証](component-validation.ja.md)）とindexer候補の再利用（[Indexer再利用](indexer-reuse.ja.md)） |
 | `config/` | モデル・imageの固定値と`lpa-projector.lock.json`（Release URL、checksum、教師・学習来歴）。認証情報や実測したサイト設定は持たない |
-| `examples/` | 二つの起動設定 `server.example.toml`（配布既定）と `server.axl.example.toml`（公開した任意設定）、MTP投機設定のテンプレート。値はすべて例示 |
+| `examples/` | 二つの起動設定 `server.example.toml`（配布既定）と `server.axl.example.toml`（公開した任意設定）。値は例示。`server.tp3.example.toml`（3ノードのリングで配布既定、TP=3は作業中、参照機のリンクの値）。MTP投機設定のテンプレート |
 | `examples/zcode-hooks/` | ZCodeの既存ファイルガードhookと導入手順（[ハーネス](harnesses.ja.md)） |
 | `overlays/` | 公開した任意設定のcheckpointが要するvLLM source overlay 2件と、その台帳（[overlays/README.md](../overlays/README.md)） |
 | `docker/` | imageの構築。base digestはビルドコマンドがロックから渡す |

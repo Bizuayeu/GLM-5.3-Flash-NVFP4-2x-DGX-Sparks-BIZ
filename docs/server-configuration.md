@@ -16,7 +16,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 | `api` | Loopback/rendezvous ports, served name and parsers, the reasoning effort a request that names none gets, dev routes, cached-token usage |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout; warmup ladder |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline, stall detection |
-| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set |
+| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set. Three or more nodes (TP=3, under construction) list per node their direct `links` to every other node and may name a `host_address`/`host_interface` ([`server.tp3.example.toml`](../examples/server.tp3.example.toml)) |
 
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
@@ -231,7 +231,7 @@ Build the reference image from the checkout you launch (`python -m glm53_setup b
 | `GLM53_KPOOL_SEED_STRIDE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.13.0 |
 | `GLM53_KPOOL_RING=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
 | `GLM53_LOAD_CLONE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
-| `GLM53_TP_PAD_API=1` | Never; the image can zero-pad for tensor-parallel sizes that do not divide the heads, off unless `GLM53_TP_PAD_MULTIPLE` is set (`glm53_setup/runtime/patch_tp_padding.py`) | 1.22.0 |
+| `GLM53_TP_PAD_API=1` | Three nodes, whose TP does not divide the heads, MoE width and vocabulary (`tp_padding_support`); the launcher then sets `GLM53_TP_PAD_MULTIPLE` on every rank, and the image zero-pads at load time (`glm53_setup/runtime/patch_tp_padding.py`) | 1.22.0 |
 
 Images built from 1.14.0 through 1.17.0 also carry `GLM53_MLA_DECODE_CPB_API=1` and the unreachable patch of the removed `runtime.mla_decode_cpb`; no check reads them, and they are harmless.
 

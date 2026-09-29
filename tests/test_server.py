@@ -1578,7 +1578,6 @@ class ReferenceImageMarkerTests(unittest.TestCase):
         "GLM53_KPOOL_SEED_STRIDE=1": "build-patch record, no reader (CHANGELOG 1.13.0)",
         "GLM53_KPOOL_RING=1": "build-patch record, no reader (vLLM #58454)",
         "GLM53_LOAD_CLONE=1": "build-patch record, no reader (weight loading off the file mapping)",
-        "GLM53_TP_PAD_API=1": "build-patch record, no reader until the launcher runs TP=3",
         "GLM53_SLOT_MAPPING_GUARD=1": "build-patch record, no reader (CHANGELOG 1.7.0)",
         "GLM53_CANONICAL_CANDIDATES=1": "switch default read by candidate_order",
         "GLM53_CANONICAL_MOE_ORDER=1": "switch default read by moe_token_order",
@@ -1606,16 +1605,24 @@ class ReferenceImageMarkerTests(unittest.TestCase):
         profile["lpa"]["enabled"] = True
         return profile
 
+    def ring_profile(self):
+        # TP=3: the only shape that pads; the two-node profile above cannot.
+        return config.load(ROOT / "examples/server.tp3.example.toml")
+
     def test_every_reference_marker_is_required_or_named_unchecked(self):
-        env, profile = self.dockerfile_env(), self.enabled_profile()
+        env = self.dockerfile_env()
+        profiles = (self.enabled_profile(), self.ring_profile())
         # A marker is required when the checks fail without it (new launch).
         unchecked = {
             marker
             for marker in env
             if all(
-                config.image_capability_checks(
-                    profile, {"Config": {"Env": [m for m in env if m != marker]}}
-                ).values()
+                all(
+                    config.image_capability_checks(
+                        profile, {"Config": {"Env": [m for m in env if m != marker]}}
+                    ).values()
+                )
+                for profile in profiles
             )
         }
         self.assertEqual(unchecked, set(self.UNCHECKED_MARKERS))
@@ -1644,6 +1651,11 @@ class ReferenceImageMarkerTests(unittest.TestCase):
             ],
         )
         self.assertEqual([key for key, ok in checks.items() if not ok], [])
+        ring = config.image_capability_checks(
+            self.ring_profile(), {"Config": {"Env": env}}
+        )
+        self.assertIn("tp_padding_support", ring)
+        self.assertEqual([key for key, ok in ring.items() if not ok], [])
 
 
 class HostFactOwnerTests(unittest.TestCase):
