@@ -42,6 +42,28 @@ The npm CLI 3.11.2 reads its configuration from `~/.zcode/cli/config.json`; 3.14
 
 Declare text, tool and image input to match the server (`runtime.vision = true` in both example profiles; in ZCode, `modalities.input = ["text", "image"]`), and never video, which the server rejects. Do not enable cloud fallback, external integrations or additional agents by default. Point both the main and the helper ("lite") model at the local served ID. Set the model's context limit (`limit.context` in 3.11.2, `contextWindow` in 3.14.1) to the server `max_model_len`, keep `limit.output` at 32000, and raise `modelStream.idleTimeoutMs` above the longest prefill you expect (see [model limits](#zcode-permission-modes-model-limits-and-the-existing-file-guard)). Confirm the selected model and actual destination. The UI locale accepts only the values the client documents (`zcode --help` lists them); an unsupported value invalidates the whole configuration file.
 
+## Tool-argument gate
+
+The model API on 8893 returns tool calls as the model writes them. `python -m glm53_setup tool-gate` (from 1.22.0, off unless started) serves a relay on another loopback port that checks the tool calls of `/v1/chat/completions` requests that declare `tools`, against the tools' own schemas:
+
+- **Rules**: arguments that are not a JSON object; a `required` argument that is absent or null; a `required` string argument that is empty or blank. Types, enums and ranges are not checked, and a tool the request did not declare, or one without `required`, passes.
+- **A violating turn is not returned.** The gate answers each call of that turn with a tool reply (the violating call: not executed, which argument, and to ask the user for a missing value instead of calling again without it; the other calls: not executed because another call was invalid) and asks the model once more. A second violation is returned as it is.
+- **Streaming**: content and reasoning deltas are relayed at once; tool-call deltas are held and sent together at the end, so a repaired turn shows its reasoning twice. A stream carries the SSE comment `: tool-gate <outcome>`, a non-streaming answer the header `x-glm53-tool-gate` (`passed`, `repaired`, `unrepaired`, `error`).
+- **Everything else is relayed unchanged**, credentials included. Anthropic-format requests (`/v1/messages`, used by Claude Code) are relayed but not checked. Bodies over 64 MiB are refused; the upstream timeout is 2,400 s (`--timeout`).
+- **Log**: one JSON line per checked request with the outcome and the tool and argument names of a violation; never argument values, prompts or replies.
+
+Start it on the head host from a checkout, and tunnel its port instead of 8893:
+
+```bash
+python -m glm53_setup tool-gate --port 8894 --upstream http://127.0.0.1:8893 --log records/<run>/gate.jsonl
+```
+
+```powershell
+ssh -N -L 127.0.0.1:8894:127.0.0.1:8894 node-a
+```
+
+Then point the client at `http://127.0.0.1:8894/v1`. The launcher does not supervise the gate: it does not start with a switch or after a reboot. tool-eval-bench exercised it with streaming and non-streaming requests ([measurements](benchmarks.md#tool-eval-bench-through-the-tool-argument-gate-2026-09-29)). On 2026-09-29 a ZCode CLI 3.14.1-27 session through it made six tool-using streaming turns unchanged; asked to call Read without a path, its turn was repaired (`file_path` missing) and the model reported that the call had not run and why. The rejection is the gate's: on 8893 the same call goes out empty.
+
 ## ZCode permission modes, model limits and the existing-file guard
 
 The facts below come from a static read of the Desktop-bundled runtime (`resources/glm/zcode.cjs`, Desktop 3.11.2, runtime 0.16.5, 2026-09-14), the runtime version (0.16.5) the npm distribution also vendors. They are version-bound; recheck after any client update. They do not close an acceptance case.

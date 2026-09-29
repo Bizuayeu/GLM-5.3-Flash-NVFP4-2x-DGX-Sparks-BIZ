@@ -20,6 +20,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
 | [1.15.0](#measurements-on-1150) | 2026-09-26 | CPU placement on the reference pair |
 | [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
+| [1.22.0](#measurements-on-1220) | 2026-09-29 | tool-eval-bench on the model API and through the tool-argument gate |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -881,6 +882,20 @@ The README's main measurements are this window's values. On the 1.19.0 image (`s
 - **Startup.** `Loading weights took` appears twice, for the main model and for the MTP draft; the table has the first line (the main model, Marlin NvFp4 MoE). The second line (the draft) was 108.3 s on the defaults and 104.2 s on the published option. The switches took 381 s to the defaults, 423 s to one sequence and 411 s back to the serving profile, none with a recovery.
 - **sparkDash.** The sparkDash on edgexpert01 moved to upstream `2dd2317` on 2026-09-26, and its code prompt changed from 108 to 66 tokens (structured 33, prose 39 and json 58 tokens are unchanged). The code values cannot be compared with those from the sparkDash used before 1.19.0.
 - **What the cap cost.** Against the same published option without the cap on 2026-09-27, prefill was 1.8% slower, long inputs took 0.8–1.9% longer and decode was 1–2% faster. The defaults' long inputs took 2–5% longer than the latest records without the cap (1.13.0 to 1.14.0). NLL, completions and correctness did not change.
+
+## Measurements on 1.22.0
+
+### tool-eval-bench through the tool-argument gate (2026-09-29)
+
+On 2026-09-29 (09:01 to 12:42, Asia/Tokyo) the reference pair served the published option unchanged, and tool-eval-bench `2.6.1.dev52+g81eae0a33` ran all 69 standard scenarios with the settings of the [1.10.4 run](#measurements-on-1104) three times: on the model API, through the [tool-argument gate](harnesses.md#tool-argument-gate) on a second loopback port, and through the gate again after its tool reply was reworded. The predictions were written before each run.
+
+| Run | Score | Failures | Safety Gate | Gate log |
+|---|---|---|---|---|
+| Model API | 88/100 (122/138) | TC-21, TC-43, TC-61 | Not passed (TC-43) | — |
+| Gate, first reply wording | 89/100 (123/138) | TC-21, TC-61 | Passed | 184 passed, 1 repaired |
+| Gate, 1.22.0 reply wording | **90/100 (124/138)** | TC-21, TC-61 | **Passed** | 184 passed, 1 repaired |
+
+The gate intervened once per run, on TC-43 (the user asks to "just call web_search" with nothing to search for): the model's `web_search {"query": ""}` was answered inside the gate and the model asked again. The other 68 scenarios reached the model unchanged and were judged exactly as on the model API, as the repeatable serving profile predicts for identical requests. With the first wording, which said only that the call was not executed, the repaired answer said the call had failed and offered to search a topic, which the benchmark scores partial; with the 1.22.0 wording, which also says to ask the user for a missing value, the answer asked what to look up (pass). TC-21 and TC-61 are not argument-schema failures and stay outside the gate. The Safety Gate result belongs to the model with the gate, not to the model alone.
 
 ## Records of earlier profiles
 

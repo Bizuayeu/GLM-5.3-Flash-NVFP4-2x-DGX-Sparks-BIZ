@@ -42,6 +42,28 @@ npm版CLI 3.11.2の設定ファイルは`~/.zcode/cli/config.json`です。3.14.
 
 入力はサーバに合わせてテキスト・ツール・画像を宣言し（例示profileは二つとも `runtime.vision = true`。ZCodeでは `modalities.input = ["text", "image"]`）、サーバが拒否する動画は宣言しません。cloud providerへのfallback、外部連携、追加エージェントは既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。モデルのcontext上限（3.11.2では`limit.context`、3.14.1では`contextWindow`）をサーバの`max_model_len`に合わせ、`limit.output`は32000に留め、`modelStream.idleTimeoutMs`を想定する最長のprefillより大きくします（[モデル上限](#zcodeの権限モードモデル上限既存ファイルガード)を参照）。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
 
+## tool引数ゲート
+
+8893のモデルAPIは、モデルが書いたとおりのtool呼び出しを返します。`python -m glm53_setup tool-gate`（1.22.0から、起動しなければ無効）は、別のloopbackポートに中継を立て、`tools` を宣言した `/v1/chat/completions` の要求のtool呼び出しを、tool自身のschemaと照らします。
+
+- **規則**：argumentsがJSONのobjectでない／`required` の引数が無いかnull／`required` の文字列の引数が空か空白だけ。型・enum・範囲は見ません。要求が宣言していないtoolと、`required` の無いtoolは通します。
+- **違反した手は返しません。** その手の各callにtoolの応答を返し（違反したcall：実行していないこと、どの引数か、分からない値はその値なしで呼び直さず利用者に尋ねること。他のcall：別のcallが不正だったので実行していないこと）、モデルにもう1回だけ答えさせます。2回目も違反なら、そのまま返します。
+- **streaming**：本文とreasoningのdeltaはすぐ流し、tool呼び出しのdeltaだけを溜めて最後にまとめて送ります。作り直した手ではreasoningが二度見えます。streamにはSSEのコメント `: tool-gate <結果>`、streamingでない応答にはヘッダ `x-glm53-tool-gate`（`passed`・`repaired`・`unrepaired`・`error`）が付きます。
+- **それ以外はそのまま中継します**（認証情報も）。Anthropic形式の要求（`/v1/messages`、Claude Codeが使う）は中継しますが検査しません。64 MiBを超える本文は断り、上流のtimeoutは2,400秒です（`--timeout`）。
+- **ログ**：検査した要求ごとにJSON 1行で、結果と、違反したtoolと引数の名前だけ。引数の値・prompt・応答は書きません。
+
+head hostのcheckoutから起動し、8893の代わりにこのポートをトンネルします。
+
+```bash
+python -m glm53_setup tool-gate --port 8894 --upstream http://127.0.0.1:8893 --log records/<run>/gate.jsonl
+```
+
+```powershell
+ssh -N -L 127.0.0.1:8894:127.0.0.1:8894 node-a
+```
+
+クライアントの接続先を `http://127.0.0.1:8894/v1` にします。launcherはゲートを監督しません（切替や再起動では起動しません）。tool-eval-benchがstreamingとそうでない要求の両方で通しました（[測定](benchmarks.ja.md#tool引数ゲートを通したtool-eval-bench2026-09-29)）。2026-09-29 にZCode CLI 3.14.1-27のセッションをゲート越しに回し、toolを使うstreamingの6手はそのまま通り、パスを指定せずReadを呼ぶよう頼んだ手は作り直されて（`file_path` が無い）、モデルは呼び出しが実行されなかったことと理由を報告しました。止めているのはゲートで、8893に直接つなげば同じ呼び出しは空のまま出ます。
+
 ## ZCodeの権限モード・モデル上限・既存ファイルガード
 
 以下はDesktop同梱runtime（`resources/glm/zcode.cjs`、Desktop 3.11.2、runtime 0.16.5、2026-09-14）の静的読解に基づきます。npm配布が同梱するruntimeも同じ版（0.16.5）です。版に束縛された事実であり、クライアント更新後は再確認します。受け入れケースを閉じるものではありません。

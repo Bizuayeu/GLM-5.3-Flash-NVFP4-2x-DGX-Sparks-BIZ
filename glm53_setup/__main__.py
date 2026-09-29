@@ -28,6 +28,7 @@ COMMANDS = {
     "lpa-train": "validation.train_lpa",
     "freedombench": "validation.freedombench",
     "hle": "validation.hle",
+    "tool-gate": "tool_gate.proxy",
     "profile-assess": "validation.profile_trace",
     "indexer-overlap": "validation.indexer_overlap",
     "quant-error": "validation.quant_error",

@@ -4,6 +4,16 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.22.0 — 2026-09-29
+
+### Added
+
+- `python -m glm53_setup tool-gate` は、モデルAPIの前のloopbackポートに任意のtool引数ゲートを立てます（[ハーネス](docs/harnesses.ja.md#tool引数ゲート)）。toolを宣言したchat completionの要求のtool呼び出しを、tool自身のschemaと照らします（argumentsがJSONのobjectでない、requiredの引数が無いかnull、requiredの文字列が空白）。違反した手は返さず、その手の各callにtoolの応答を返し（違反したcallには、実行していないことと、分からない値は利用者に尋ねること）、モデルにもう1回答えさせます。streamは本文をすぐ流し、tool呼び出しのdeltaだけを溜めます。他の要求はそのまま通します。起動しなければ無効です。
+
+### Documentation
+
+- [ベンチマーク](docs/benchmarks.ja.md#1220での測定)とREADMEに、2026-09-29 の公開した任意設定でのtool-eval-benchを載せました。モデルAPIに直接では 88／100 で Safety Gate 未達（TC-43、空のqueryでの `web_search`）、ゲートを通すと 90／100 で Safety Gate 通過です。TC-43 は pass になり、他の68シナリオはモデルAPIに直接のときと同じ判定でした。実行していないことだけを伝えたゲートの最初の文言では TC-43 が partial に留まったので、公開の前に変えました。ゲート越しのZCodeのセッションでは、toolを使うstreamingの6手がそのまま通り、パスの無いReadの呼び出し1件が作り直されました（[ハーネス](docs/harnesses.ja.md#tool引数ゲート)）。
+
 ## 1.21.0 — 2026-09-29
 
 ### Added

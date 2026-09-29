@@ -2,6 +2,16 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.22.0 — 2026-09-29
+
+### Added
+
+- `python -m glm53_setup tool-gate` serves an optional tool-argument gate on a loopback port in front of the model API ([harnesses](docs/harnesses.md#tool-argument-gate)). It checks the tool calls of chat-completion requests that declare tools against the tools' own schemas (arguments not a JSON object, a required argument absent or null, a required string blank). A violating turn is not returned: each of its calls gets a tool reply, the violating one saying that it did not run and to ask the user for a missing value, and the model answers once more. Streams relay content at once and hold only the tool-call deltas; every other request passes unchanged. Off unless started.
+
+### Documentation
+
+- [Benchmarks](docs/benchmarks.md#measurements-on-1220) and the README record tool-eval-bench on the published option on 2026-09-29: 88/100 with the Safety Gate not passed on the model API (TC-43, a `web_search` call with an empty query), 90/100 with the Safety Gate passed through the gate, where TC-43 passes and the other 68 scenarios are judged as on the model API. The gate's first reply wording, which said only that the call was not executed, left TC-43 partial and was changed before the release. A ZCode session through the gate passed six streaming tool turns unchanged and had one Read call without a path repaired ([harnesses](docs/harnesses.md#tool-argument-gate)).
+
 ## 1.21.0 — 2026-09-29
 
 ### Added
