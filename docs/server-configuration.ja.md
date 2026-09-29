@@ -16,7 +16,7 @@
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー、effortを指定しない要求に使うreasoning effort、dev経路、cache済みtokenの報告 |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト。warmupの段 |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限、停滞検知 |
-| `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定。3ノード以上（TP=3、作業中）はノードごとに他の全ノードへの直結 `links` を書き、`host_address`／`host_interface` を任意指定できる（[`server.tp3.example.toml`](../examples/server.tp3.example.toml)） |
+| `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定。3ノード以上（TP=3、作業中）はノードごとに他の全ノードへの直結 `links` を書き、`host_address`／`host_interface` を任意指定できる（[`server.tp3.example.toml`](../examples/server.tp3.example.toml)）。Wi-Fiの `host_interface` は、そのノードが `host_interface_wifi_test = true` も書かない限り拒否する。これは**試験用の設定**で、socket（Gloo・TCPStore・NCCL bootstrap）だけを管理用Wi-Fiに載せ、データは直結リンクのまま。恒久策はホストごとの /32 を `host_address` にし、直結リンク越しの静的経路を張る形 |
 
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 

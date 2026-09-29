@@ -16,7 +16,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 | `api` | Loopback/rendezvous ports, served name and parsers, the reasoning effort a request that names none gets, dev routes, cached-token usage |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout; warmup ladder |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline, stall detection |
-| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set. Three or more nodes (TP=3, under construction) list per node their direct `links` to every other node and may name a `host_address`/`host_interface` ([`server.tp3.example.toml`](../examples/server.tp3.example.toml)) |
+| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set. Three or more nodes (TP=3, under construction) list per node their direct `links` to every other node and may name a `host_address`/`host_interface` ([`server.tp3.example.toml`](../examples/server.tp3.example.toml)). A Wi-Fi `host_interface` is refused unless that node also sets `host_interface_wifi_test = true`: a **test setting** that puts only the sockets (Gloo, TCPStore, NCCL bootstrap) on the management Wi-Fi while the data stays on the links. Its permanent replacement is a per-host /32 as `host_address` with static routes over the direct links |
 
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 

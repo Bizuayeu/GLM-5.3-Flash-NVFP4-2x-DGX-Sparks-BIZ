@@ -27,6 +27,12 @@ def rail_check(index, name):
     return f"rail_{index}_{name}"
 
 
+# Test setting: a ring node's sockets (Gloo, TCPStore, NCCL bootstrap) on the management
+# Wi-Fi. The data path stays on the links. cc-defer: the first TP=3 boots ran this way
+# because the hosts carry no /32 yet; replace with host_address on a per-host /32 and
+# static routes over the direct links once the hosts carry them.
+WIFI_TEST_KEY = "host_interface_wifi_test"
+
 # What a ring node writes for each direct link; the port is always 1.
 LINK_KEYS = frozenset({"peer", "hca", "interface", "local_ip", "peer_ip", "gid_index"})
 RAIL_KEYS = ("hca", "interface", "local_ip", "gid_index")
@@ -101,9 +107,9 @@ def validate_site(site):
     for key in ("interface",) if "links" in site else ("interface", "hca"):
         if not re.fullmatch(DEVICE_NAME, site.get(key, "")):
             raise ValueError(f"Set a concrete {key} from the local device inventory")
-    # A ring's data path is its links (checked in rails); its socket interface may be
-    # the management network, a test setting until the hosts carry a /32 (plan Stage 4).
-    if "links" not in site and is_wifi(site["interface"]):
+    # A ring's data path is its links (checked in rails); its sockets may use the
+    # management Wi-Fi only when the node opts in (WIFI_TEST_KEY).
+    if is_wifi(site["interface"]) and site.get(WIFI_TEST_KEY) is not True:
         raise ValueError("The real-model profile requires RoCE, not Wi-Fi")
     if "links" not in site and (
         type(site.get("gid_index")) is not int or site["gid_index"] < 0
@@ -133,7 +139,11 @@ def validate_nodes(nodes):
             raise ValueError(
                 "Three or more nodes need links: one direct link per pair of nodes"
             )
-        if any("host_address" in n or "host_interface" in n for n in nodes):
+        if any(
+            key in n
+            for n in nodes
+            for key in ("host_address", "host_interface", WIFI_TEST_KEY)
+        ):
             raise ValueError("host_address belongs to nodes with links")
         return
     for rank, node in enumerate(nodes):
@@ -170,6 +180,18 @@ def validate_nodes(nodes):
             or not re.fullmatch(DEVICE_NAME, node["host_interface"])
         ):
             raise ValueError(f"{name}.host_interface must name one interface")
+        if WIFI_TEST_KEY in node and (
+            node[WIFI_TEST_KEY] is not True or "host_interface" not in node
+        ):
+            raise ValueError(f"{name}.{WIFI_TEST_KEY} is true beside a host_interface")
+        if (
+            "host_interface" in node
+            and is_wifi(node["host_interface"])
+            and WIFI_TEST_KEY not in node
+        ):
+            raise ValueError(
+                f"{name}.host_interface cannot be Wi-Fi without {WIFI_TEST_KEY} = true"
+            )
     link_addresses = set()
     for rank, node in enumerate(nodes):
         for link in node["links"]:

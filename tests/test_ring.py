@@ -287,25 +287,56 @@ class RingValidationTests(unittest.TestCase):
         profile = with_host_addresses(ring())
         profile["nodes"][2]["host_address"] = "10.41.13.2"
         self.refused(profile, "host_address")
+        profile = with_host_addresses(ring())
+        profile["nodes"][2]["host_interface"] = "wlP9s9"
+        self.refused(profile, "Wi-Fi")
         two = config.load(DEFAULTS)
         two["nodes"][1].update(host_address="10.40.0.2", host_interface="glmhost")
         self.refused(two, "host_address belongs to nodes with links")
 
-    def test_a_ring_host_address_may_sit_on_the_management_wifi(self):
-        # Ring data goes over the links' HCAs; host_interface carries only the
-        # sockets, so a management Wi-Fi address serves as a test setting (plan
-        # Stage 3/4). The links themselves stay refused on Wi-Fi.
-        profile = ring()
-        for rank, address in enumerate(
-            ("192.168.68.56", "192.168.68.59", "192.168.68.57")
-        ):
-            profile["nodes"][rank].update(host_address=address, host_interface="wlP9s9")
+    def test_a_management_wifi_host_address_is_an_explicit_test_setting(self):
+        # Ring data goes over the links' HCAs and host_interface carries only the
+        # sockets; the first TP=3 boot ran them on the management Wi-Fi (plan
+        # Stage 4). Allowed only when the node says so; the links stay refused.
+        def wifi(opt_in):
+            profile = ring()
+            for rank, address in enumerate(
+                ("192.168.68.56", "192.168.68.59", "192.168.68.57")
+            ):
+                profile["nodes"][rank].update(
+                    host_address=address, host_interface="wlP9s9"
+                )
+                if opt_in:
+                    profile["nodes"][rank]["host_interface_wifi_test"] = True
+            return profile
+
+        self.refused(wifi(False), "Wi-Fi")
+        profile = wifi(True)
         config.validate(profile)
         env = config.environment(profile, 2)
         self.assertEqual(env["NCCL_SOCKET_IFNAME"], "=wlP9s9")
         self.assertEqual(env["GLOO_SOCKET_IFNAME"], "wlP9s9")
         self.assertEqual(env["VLLM_HOST_IP"], "192.168.68.57")
         self.assertEqual(env["NCCL_IB_HCA"], "=rocep1s0f1:1,rocep1s0f0:1")
+        # One node without the key refuses the profile.
+        profile = wifi(True)
+        del profile["nodes"][1]["host_interface_wifi_test"]
+        self.refused(profile, "Wi-Fi")
+        # The key is true or absent, and only beside a host_interface.
+        profile = wifi(True)
+        profile["nodes"][0]["host_interface_wifi_test"] = "yes"
+        self.refused(profile, "host_interface_wifi_test")
+        profile = ring()
+        profile["nodes"][0]["host_interface_wifi_test"] = True
+        self.refused(profile, "host_interface_wifi_test")
+        two = config.load(DEFAULTS)
+        two["nodes"][1]["host_interface_wifi_test"] = True
+        self.refused(two, "nodes with links")
+        # The site check refuses a Wi-Fi socket interface without the key.
+        site = config.site(wifi(True), 2)
+        del site["host_interface_wifi_test"]
+        with self.assertRaisesRegex(ValueError, "Wi-Fi"):
+            fabric.validate_site(site)
 
     def test_fewer_than_two_nodes_are_refused(self):
         profile = config.load(DEFAULTS)

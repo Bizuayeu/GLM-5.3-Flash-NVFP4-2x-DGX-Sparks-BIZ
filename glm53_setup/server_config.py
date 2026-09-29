@@ -93,7 +93,13 @@ OPTIONAL_KEYS = {
     "server.resources": frozenset({"stall_seconds"}),
     "server.generation": frozenset({"warmup", "warmup_long_tokens"}),
     "server.nodes[]": frozenset(
-        {"additional_rails", "cpuset_cpus", "host_address", "host_interface"}
+        {
+            "additional_rails",
+            "cpuset_cpus",
+            "host_address",
+            "host_interface",
+            "host_interface_wifi_test",
+        }
     ),
 }
 
