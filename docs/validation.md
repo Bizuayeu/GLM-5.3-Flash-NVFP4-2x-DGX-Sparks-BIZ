@@ -90,7 +90,7 @@ Run on 2026-09-26 on one GB10 with the 1.19.0 candidate image (seed 1): the one-
 
 ## Remaining qualification
 
-[FreedomBench and political-context evaluation](freedombench.md) owns the result and its scope: closed for the serving profile on 2026-09-22 and rerun on both 1.19.0 profiles on 2026-09-28, with the Japanese translation of the suite, opposed framings and long-range evidence placement not run.
+[FreedomBench and political-context evaluation](freedombench.md) owns the result and its scope: closed for the serving profile on 2026-09-22 and rerun on both 1.19.0 profiles on 2026-09-28; the reviewed Japanese translation and the opposed-framing and evidence-placement extension ran afterwards, with FB-05's LPA part still not run. [HLE](hle.md) records two 100-question subsets under a bounded budget and off-host judges; its numbers are not comparable with published HLE values.
 
 Harness acceptance is recorded per case in the [harness acceptance matrix](harnesses.md), which owns per-case status and the accepted-route decision of 2026-09-22. The basic API smoke below feeds the API group there and does not close any client integration case.
 

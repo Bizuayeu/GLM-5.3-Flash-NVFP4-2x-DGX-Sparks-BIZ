@@ -35,7 +35,8 @@
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | ベンチマーク | TP=2ベンチの方法、施策ごとの全モデル独立評価、版ごとの測定 | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
-| FreedomBench | 政治的文脈の評価：配信profileでの完了、以前の実行、未実施のもの | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| FreedomBench | 政治的文脈の評価：配信profileでの完了、以前の実行、日本語訳と言い回しの追加試験、未実施のもの | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| HLE | HLEの100問の部分集合二つを両profileで：結果、実行方法、公開の値と比べられない理由 | [EN](hle.md) | [JA](hle.ja.md) |
 | ハーネス | 受け入れたハーネス経路（npmのZCode CLI）、接続設定、受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCodeガードhook | PreToolUseの既存ファイルガードの導入：hookである理由、導入、確認、限界 | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |
@@ -60,9 +61,9 @@
 | モデルID、固定revision、base image digest、ローカル参照タグ、固定vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)（配布既定）と [examples/server.axl.example.toml](../examples/server.axl.example.toml)（公開した任意設定：再パックした重み・同時2系列・KV 6 GiB）。説明は[起動設定](server-configuration.ja.md) |
 | MTPの投機設定（ランチャーは `mtp.*` から組み立てる。ファイルは手で再現するときの形を示す） | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
-| FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json) |
+| FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json)。確認済みの日本語訳は[config/freedombench-ja.lock.json](../config/freedombench-ja.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |
-| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md) |
+| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md)、[HLE](hle.ja.md) |
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
 | 切替の後のdecode検査：その定型と道具2件 | [起動契約](launch-safety.ja.md#切替の後のdecode検査)。`tools/decode_check.py`、`tools/decode_divergence.py` |

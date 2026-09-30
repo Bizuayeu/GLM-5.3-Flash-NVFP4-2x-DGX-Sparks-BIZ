@@ -1,0 +1,17 @@
+{
+  "dataset": "https://huggingface.co/datasets/cais/hle",
+  "dataset_revision": "5a81a4c7271a2a2a312b9a690f0c2fde837e4c29",
+  "dataset_file": "data/test-00000-of-00001.parquet",
+  "dataset_sha256": "6d0ee0602e8aea6b159509577e884f48ecac7b8e3f6822a35f51335a446c726a",
+  "dataset_license": "MIT",
+  "dataset_gated": "auto",
+  "answer_format_source": "https://github.com/centerforaisafety/hle",
+  "answer_format_revision": "386ed4be1d18bf3d73f1e1899c05bfff15e2f559",
+  "answer_format_path": "hle_eval/run_model_predictions.py (SYSTEM_EXACT_ANSWER)",
+  "answer_format_license": "MIT",
+  "selection_seed": 20260924,
+  "selection_sha256": "531146e14eeeea31b5c7c262acb6055291e08f2582a07dc93ce057b4276cf0d5",
+  "questions_text_sha256": "0a5f697077897eaa2c7764fc1f2a4d1c0ece97970283d428b7b1d16183e08b3a",
+  "questions_image_sha256": "5c429fc3ca4580e068f17bfb8e0f080b0bb163030da2e1e064e5520f07623e09",
+  "distributed": "no question, answer or question ID is distributed; the dataset asks that benchmark data never appear in training corpora"
+}

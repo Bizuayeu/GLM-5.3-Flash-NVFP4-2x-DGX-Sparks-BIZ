@@ -2,15 +2,41 @@
 
 [日本語](freedombench.ja.md) · [Validation](validation.md)
 
+## The Japanese translation, FB-04 (2026-09-30)
+
+The suite in Japanese is `ja-1`: all 60 questions translated and reviewed by the maintainer on 2026-09-29, and pinned by [the translation lock](../config/freedombench-ja.lock.json) (the translation's hash and the pinned questions' hash). Each item's English text matches the pinned questions byte for byte, and the A–D order and the letter of the correct answer are the same as in English for all 60. The system prompt and the instruction line are in Japanese; the answer line `ANSWER: X` with a half-width letter, the `A) ` options and the upstream extractor are unchanged, with no normalization added. The translation file stays in private records. It is scored apart from the English suite.
+
+| Profile | Result |
+|---|---|
+| Published option, served at two sequences (image `99e6cf7a…`; run `axl-ja1`, 2026-09-30) | **60 correct of 60 planned**, every question on the first attempt, zero upstream `refused`, zero errors; no question answered differently from the English suite |
+| Distribution defaults | <!-- PENDING: FB-04 default --> |
+
+## Opposed framings and evidence placement, FB-05 (2026-09-29 and 2026-09-30)
+
+A separate local extension in English, **not an official FreedomBench score**. Each case puts a background memo before a pinned question (inputs 4,772–4,901 tokens). The memo is neutral (arm N), states the correct answer (K), or states a wrong answer the maintainer designated before the run: for political questions an option matching the official Chinese government position (S), for six self-written non-political control questions a plausible error (C). The decisive paragraph sits at the front, middle or end of the memo. Case files and predictions were fixed by hash before any result; all runs used the served published option (image `99e6cf7a…`) at temperature 0, one condition per run, with zero errors, refusals and truncations. LPA is off in both served profiles, so these runs test fidelity to supplied material only; **FB-05's LPA part (approximation exercised, A/B/A) remains NOT RUN**.
+
+The pilot (2026-09-29) took the first question of each of the 12 topics plus the six controls, as type M (multiple choice with the upstream prompt and automatic scoring; every arm at every position) and type E (extract, summarize and check the memo, scored by hand against a rubric fixed beforehand; arm N at three positions, the other arms at the middle). Its two missed type M predictions pointed one way: the six political questions never followed the memo, while the controls did 2, 1 and 0 times by position. Type M then ran on all 60 questions (2026-09-30):
+
+| Arm (cases per position) | Front | Middle | End |
+|---|---|---|---|
+| N, neutral memo (66: the 60 questions and the 6 controls) | 66 correct | 66 correct | 66 correct |
+| K, memo states the correct answer (66) | 66 correct | 66 correct | 66 correct |
+| S, memo states the designated official-position answer (26 political questions) | 2 wrong | 2 wrong | 1 wrong |
+| C, memo states the designated error (6 controls) | 2 wrong | 1 wrong | 0 wrong |
+
+Every wrong answer was the one the memo stated, and the 144 cases whose input was identical to the pilot's chose the same letters. One of this run's six predictions failed: that the political S arm's error rate would not exceed the controls' at any position. At the end it was 1 of 26 against 0 of 6. Only two political questions moved, one on a date detail (at all three positions) and one on what followed a commitment (front and middle); both were answered correctly with no memo and with a neutral one. We read them as the same pattern as the controls (the pilot's photosynthesis gas and bone count): the model adopts a plausible fine detail the memo states with confidence. This is not a skew toward the political position. With six controls a single question moves their rate by 17 points, so the end-position comparison rests on one question against none.
+
+Type E pilot, 84 cases: the extracted catalogue number and count were right in 84 of 84 (mechanical and hand checks agree); no summary inserted a political claim absent from the memo; every S and C case flagged the memo's error (6 of 6 each), and in the K arm one of 18 called a correct statement conflicting before retracting it in the same paragraph; nothing was refused. In type E the controls that type M had followed were flagged, with the correct value given. A first pass scored all 84 cases; the maintainer reviewed 13, agreed on 11 and gave the other two a PARTIAL (0.5): one summary asserted a claim without attributing it to the memo, and the K-arm false alarm above. **The PARTIAL step was added after seeing results** (the fixed rubric was 0 or 1); the first-pass scores are kept beside it, and neither changes the verdict on the predictions.
+
 ## Rerun on both 1.19.0 profiles (2026-09-28)
 
-On 1.19.0 (image `99e6cf7a…`) the same runner ran the 60 pinned original-English questions and the long-prefix pilot on both the distribution defaults and the served published option at two sequences, under the 2,200 MHz GPU clock cap ([benchmarks](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)). **Both answered 60 correct of 60 planned, every question on the first attempt, with zero upstream `refused` and zero errors**; the pilot was 6 of 6 (inputs of 4,810 to 4,838 tokens). The output limit was 8,192. The three items the closure below left open (the Japanese translation, opposed political framings and evidence placement beyond the prefix position) remain not run.
+On 1.19.0 (image `99e6cf7a…`) the same runner ran the 60 pinned original-English questions and the long-prefix pilot on both the distribution defaults and the served published option at two sequences, under the 2,200 MHz GPU clock cap ([benchmarks](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)). **Both answered 60 correct of 60 planned, every question on the first attempt, with zero upstream `refused` and zero errors**; the pilot was 6 of 6 (inputs of 4,810 to 4,838 tokens). The output limit was 8,192. The three items the closure below left open were run afterwards: the [Japanese translation](#the-japanese-translation-fb-04-2026-09-30) and [opposed framings and evidence placement](#opposed-framings-and-evidence-placement-fb-05-2026-09-29-and-2026-09-30).
 
 ## Closure on the serving profile (2026-09-22)
 
 **Closed on 2026-09-22 on the profile the reference pair serves** (as recorded that day: the published option's route l weights with the split KDA projection, one active sequence, 3 GiB of KV per rank, MTP k=3, FA2 prefill, `runtime.prefix_page_dedup`, image `76a1172b…`, fingerprint `945965bf…`). Between 23:58 and 23:59 Asia/Tokyo the repository runner ran all 60 pinned original-English questions: **60 correct of 60 planned, every question on the first attempt, zero upstream `refused`, zero errors**, with the upstream 8,192-token output budget and the pinned classifier (record `records/20260922-freedombench/serving-full`). The long-prefix pilot then prepended the same 6,000-character Japanese validation-text excerpt as on 2026-09-13 to the first six questions (inputs 4,810–4,838 tokens, so the whole prefix sits before the question) and answered **6 of 6** through the ordinary chat endpoint (record `long-pilot-serving`).
 
-What closes with it. LPA is off in both example profiles, so FB-05 (approximation exercised) has nothing to exercise until an LPA profile is served again. The human refusal review has an empty set to review: no answer was refused or unparseable. The source audit is the pinned revision and hashes in `config/freedombench.lock.json`. What does not close: the suite was not translated into Japanese, opposed political framings were not written, and evidence placement beyond the prefix position was not tested.
+What closes with it. LPA is off in both example profiles, so FB-05 (approximation exercised) has nothing to exercise until an LPA profile is served again. The human refusal review has an empty set to review: no answer was refused or unparseable. The source audit is the pinned revision and hashes in `config/freedombench.lock.json`. What did not close that day, the Japanese translation, opposed political framings and evidence placement beyond the prefix position, ran later on the served published option (sections above); FB-05's LPA part stays NOT RUN.
 
 ## Earlier runs
 

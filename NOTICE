@@ -24,4 +24,13 @@ licenses. They are not relicensed by this project. See THIRD_PARTY_NOTICES.md.
 FreedomBench choice extraction, prompt construction and option ordering are
 adapted from FreedomBench by Lore Hex Corp, Apache License 2.0, revision
 cc037ac7b286ba4f910309162367d856cbd25d58. Local changes add pinned-data checks,
-local-only transport and separate coverage, truncation and error accounting.
+local-only transport and separate coverage, truncation and error accounting,
+and an option to ask the questions from a pinned, reviewed Japanese translation
+with a Japanese system prompt and instruction line.
+
+The HLE (Humanity's Last Exam) answer format for exact-answer questions is taken
+from centerforaisafety/hle, hle_eval/run_model_predictions.py at
+386ed4be1d18bf3d73f1e1899c05bfff15e2f559, Copyright (c) 2025 centerforaisafety,
+licensed under the MIT License. Its notice is preserved in LICENSES/hle-MIT.txt.
+The evaluated questions (cais/hle, MIT) are pinned in config/hle.lock.json and
+are not distributed.
