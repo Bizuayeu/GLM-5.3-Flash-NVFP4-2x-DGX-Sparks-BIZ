@@ -34,6 +34,8 @@ python -m glm53_setup hle --questions <固定した設問ファイル> --config 
 
 設問ファイルはホストの外で書き出し、正答を持たない。runnerは配信APIを通して一問ずつ尋ね、回答を一問ずつ保存し、答えた問を送り直さずに再開できる。`--max-new 1` は一問ごとに止まるので、driverが間にホストを休ませられる。`--limit` はpilotとして記録し、全問結果には数えない。
 
+サーバーがHTTPのclient error（401と403以外の4xx）で拒否した問は、`finish_reason` を `rejected` としてHTTP statusと共に保存し、次の問へ進む。予算で切れた回答と同じく、誤答ではなく欠測として数える。認証エラー・サーバーエラー・timeout・接続断はこれまでどおりrunを止め、再開すると次の未回答の問から続ける。配布のprofileで起きた拒否はencoder cacheの隙間による：7,922〜8,000 tokenの画像はHTTP 400で拒否される。profileのencoder cacheは7,921 tokenだが、モデルのprocessorは8,000まで許すため（[画像入力](vision.ja.md#限界と未解決の事項)）。
+
 この予算にした理由：公開した任意設定でtemperature 0・8,192 tokenのpilot 5問はすべて最終回答なしで上限に達し、32,768を与えた1問もすべてを思考に使った。そこでcheckpointのサンプリングと16,384 tokenにした。測った中で最も遅いdecodeでも1,200秒のtimeoutに収まる。
 
 運用上の注意。配布既定でのテキストの組は夜間の2回に分けて回した：配布既定へ切り替え、decodeを確かめ、問に答え、公開した任意設定へ戻して再びdecodeを確かめる。各問の前にdriverは両ホストが冷えるまで待ち（7問目から60 ℃未満・最大600秒、それ以前はより厳しい帯）、両ホストとも2,200 MHzの[GPUクロックの上限](operations.ja.md#gpuクロックの上限)の下で動いた。
