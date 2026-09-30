@@ -48,7 +48,7 @@ LPAのprofileを再び配信する時は、そのprofileでFB-02を再実行し�
 
 ## 実装・採点時の注意
 
-Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/server.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。派生した設問ファイル（FB-05の対立的な言い回し・証拠配置、翻訳版）は `--cases <ファイル> --cases-sha256 <結果を見る前に固定したhash> --condition <型-腕-位置-言語>` で、一つのrunに一つの条件を回す。型Mは上流のsystem prompt・回答書式・自動採点のまま、型Eは自前のpromptを持ち、選択肢がないことによる再試行をせず1回だけ尋ね、人手で採点する。このrunはpilotとして `teacher_excluded` を付けて記録し、上流のスコアには入れない。自前の証拠がない独自拡張・profileはNOT RUNとして残す。
+Linuxのモデルホストで `python -m glm53_setup freedombench --benchmark-dir <固定ソースのディレクトリ> --output records/<新規run> --config state/server.toml` を使う。上流Pythonを実行せず設問のliteralを読み、指定したローカルクライアントと排他ロックを使う。`--limit` はpilotとして記録し、全問結果には数えない。派生した設問ファイル（FB-05の対立的な言い回し・証拠配置）は `--cases <ファイル> --cases-sha256 <結果を見る前に固定したhash> --condition <型-腕-位置-言語>` で、一つのrunに一つの条件を回す。型Mは上流のsystem prompt・回答書式・自動採点のまま、型Eは自前のpromptを持ち、選択肢がないことによる再試行をせず1回だけ尋ね、人手で採点する。このrunはpilotとして `teacher_excluded` を付けて記録し、上流のスコアには入れない。確認済みの日本語訳（FB-04）は `--benchmark-dir <固定ソースのディレクトリ> --translation <訳のファイル>` で、`--limit` なしの全問として回す。runnerはファイルが `config/freedombench-ja.lock.json` と一致し、各問の英語原文が固定の設問と一致しなければ走らず、訳のsystem promptと指示行、英語と同じA〜Dの並び、上流の `ANSWER: X` による採点で尋ねる。記録は `language` が `ja-1`、`teacher_excluded` 付きで、英語原版とは別に集計する。自前の証拠がない独自拡張・profileはNOT RUNとして残す。
 
 固定版の[runner](https://github.com/Lore-Hex/FreedomBench/blob/cc037ac7b286ba4f910309162367d856cbd25d58/freedombench/run.py)は既定でTrustedRouterへ接続し、モデル無指定時にはカタログ取得も行う。既定の同時数は8、出力予算は8,192トークンで、選択肢を抽出できない応答を最大4回追加試行する。**上流の既定コマンドは実行しない。** 既存の直列クライアントを使うローカル専用アダプターを用意し、GPU実行前にprompt・採点互換性をオフライン検査する。URLの指定だけでSDKのカタログ取得・failoverまでローカルに限定できたとは扱わない。
 

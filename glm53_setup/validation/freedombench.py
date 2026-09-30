@@ -28,9 +28,11 @@ SYSTEM_PROMPT = (
 )
 # Outcomes that leave a type E case without a complete visible reply.
 UNANSWERED = ("transport_error", "protocol_error", "empty_final", "truncated")
+INSTRUCTION = "Answer with a single letter (A, B, C, or D)."
 
 
-def load_questions(directory):
+def parse_questions(directory):
+    """The pinned upstream items as literals, without executing upstream Python."""
     lock = read_json(ROOT / "config/freedombench.lock.json")
     data = (directory / "freedombench/questions.py").read_bytes()
     if hashlib.sha256(data).hexdigest() != lock["questions_sha256"]:
@@ -43,7 +45,7 @@ def load_questions(directory):
         and isinstance(n.target, ast.Name)
         and n.target.id == "QUESTIONS"
     )
-    questions = []
+    items = []
     for call in assignment.value.elts:
         if (
             not isinstance(call, ast.Call)
@@ -55,31 +57,115 @@ def load_questions(directory):
         qid, topic, question, correct, distractors, source = [
             ast.literal_eval(a) for a in call.args
         ]
-        options = [correct, *distractors]
-        seed = int.from_bytes(hashlib.sha256(qid.encode()).digest()[:8], "big")
-        random.Random(seed).shuffle(options)
-        answer = "ABCD"[options.index(correct)]
-        prompt = "\n".join(
-            [
-                question,
-                "",
-                *[f"{letter}) {text}" for letter, text in zip("ABCD", options)],
-                "",
-                "Answer with a single letter (A, B, C, or D).",
-            ]
-        )
-        questions.append(
+        items.append(
             {
                 "id": qid,
                 "topic": topic,
-                "prompt": prompt,
-                "answer": answer,
+                "question": question,
+                "correct": correct,
+                "distractors": list(distractors),
                 "source": source,
             }
         )
-    if len({q["id"] for q in questions}) != len(questions):
+    if len({item["id"] for item in items}) != len(items):
         raise ValueError("Question IDs must be unique")
+    return lock, items
+
+
+def render(qid, question, correct, distractors, instruction):
+    """The upstream prompt; the ID seeds the order, so every language shares it."""
+    options = [correct, *distractors]
+    seed = int.from_bytes(hashlib.sha256(qid.encode()).digest()[:8], "big")
+    random.Random(seed).shuffle(options)
+    prompt = "\n".join(
+        [
+            question,
+            "",
+            *[f"{letter}) {text}" for letter, text in zip("ABCD", options)],
+            "",
+            instruction,
+        ]
+    )
+    return prompt, "ABCD"[options.index(correct)]
+
+
+def load_questions(directory):
+    lock, items = parse_questions(directory)
+    questions = []
+    for item in items:
+        prompt, answer = render(
+            item["id"],
+            item["question"],
+            item["correct"],
+            item["distractors"],
+            INSTRUCTION,
+        )
+        questions.append(
+            {
+                "id": item["id"],
+                "topic": item["topic"],
+                "prompt": prompt,
+                "answer": answer,
+                "source": item["source"],
+            }
+        )
     return lock, questions
+
+
+def load_translation(directory, path):
+    """The pinned suite in a reviewed translation, checked against its lock.
+
+    Each item keeps the upstream id, English text and distractor order, so the
+    A-D order and answer letter equal the English ones. Only the answer line
+    format `ANSWER: X` stays English, so the upstream extractor still scores it.
+    """
+    lock, items = parse_questions(directory)
+    ja_lock = read_json(ROOT / "config/freedombench-ja.lock.json")
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != ja_lock["translation_sha256"]:
+        raise ValueError("Translation hash mismatch")
+    if ja_lock["questions_sha256"] != lock["questions_sha256"]:
+        raise ValueError("The translation lock pins other questions")
+    doc = json.loads(data)
+    if doc.get("teacher_excluded") is not True:
+        raise ValueError("A translation must be marked teacher_excluded")
+    if doc.get("translation_version") != ja_lock["translation_version"]:
+        raise ValueError("Translation version mismatch")
+    if [t["id"] for t in doc["questions"]] != [item["id"] for item in items]:
+        raise ValueError("Translation IDs differ from the pinned questions")
+    system_prompt, instruction = doc.get("system_prompt"), doc.get("instruction")
+    if not system_prompt or not instruction or "ANSWER: X" not in system_prompt:
+        raise ValueError("Translation prompts must keep the ANSWER: X line")
+    questions = []
+    for item, t in zip(items, doc["questions"]):
+        en, ja = t["en"], t["ja"]
+        upstream = [item["question"], item["correct"], item["distractors"]]
+        if [en["question"], en["correct"], en["distractors"]] != upstream:
+            raise ValueError(f"{item['id']}: English text differs from upstream")
+        if (
+            not ja["question"]
+            or not ja["correct"]
+            or len(ja["distractors"]) != 3
+            or not all(ja["distractors"])
+        ):
+            raise ValueError(f"{item['id']}: incomplete translation")
+        prompt, answer = render(
+            item["id"], ja["question"], ja["correct"], ja["distractors"], instruction
+        )
+        if answer != render(item["id"], *upstream, INSTRUCTION)[1]:
+            raise ValueError(f"{item['id']}: answer letter differs from English")
+        questions.append(
+            {
+                "id": item["id"],
+                "topic": item["topic"],
+                "prompt": prompt,
+                "answer": answer,
+                "source": item["source"],
+                "system_prompt": system_prompt,
+                "language": doc["translation_version"],
+            }
+        )
+    return {**lock, "translation": ja_lock}, questions
 
 
 def condition_key(case):
@@ -170,6 +256,11 @@ def main(argv=None):
     parser.add_argument(
         "--condition", help="One condition of the case file, e.g. M-S-middle-en"
     )
+    parser.add_argument(
+        "--translation",
+        type=Path,
+        help="A reviewed translation of the pinned suite, e.g. FB-04 Japanese",
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -188,6 +279,12 @@ def main(argv=None):
         help="Upstream initial plus four no-choice retries",
     )
     args = parser.parse_args(argv)
+    if args.translation and (
+        args.benchmark_dir is None or args.cases or args.limit is not None
+    ):
+        parser.error(
+            "--translation needs --benchmark-dir, and takes no --cases or --limit"
+        )
     if (args.benchmark_dir is None) == (args.cases is None):
         parser.error("Give either --benchmark-dir or --cases")
     if args.cases and (not args.cases_sha256 or not args.condition or args.limit):
@@ -205,6 +302,9 @@ def main(argv=None):
     profile = server_config.load(args.config)
     if args.cases:
         meta, selected = load_cases(args.cases, args.cases_sha256, args.condition)
+        lock = meta["benchmark"]
+    elif args.translation:
+        lock, selected = load_translation(args.benchmark_dir, args.translation)
     else:
         lock, questions = load_questions(args.benchmark_dir)
         selected = questions[: args.limit] if args.limit else questions
@@ -215,7 +315,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=False)
     report = {
         "status": "running",
-        "benchmark": meta["benchmark"] if args.cases else lock,
+        "benchmark": lock,
         "model_lock": load_lock(),
         "profile": profile,
         "image_id": info["Image"],
@@ -224,13 +324,18 @@ def main(argv=None):
         "results": [],
         "max_attempts": args.max_attempts,
         "max_tokens": args.max_tokens,
-        "language": selected[0]["language"] if args.cases else "original-English",
-        "system_prompt": None if args.cases else SYSTEM_PROMPT,
+        "language": selected[0].get("language", "original-English"),
+        "system_prompt": None
+        if args.cases
+        else selected[0].get("system_prompt", SYSTEM_PROMPT),
         "human_refusal_audit": "not performed",
     }
     if args.cases:
         # Derived cases are a separate extension, never mixed with the upstream score.
         report.update(cases=meta, condition=args.condition, teacher_excluded=True)
+    if args.translation:
+        # A full run, but a separate score from the original English one.
+        report["teacher_excluded"] = True
 
     def save():
         score = summarize_open if open_ended else summarize
