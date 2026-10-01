@@ -61,6 +61,12 @@ On a ring ([network](qsfp-network.md#8-three-hosts-in-a-ring)), run the probe on
 
 Accept as above on every rank. Reference result (three GB10 hosts, NCCL runtime 2.30.7, 2026-09-29): all 11 checks passed on three ranks; NCCL merged each host's two HCAs into one virtual NIC, built the ring 0→1→2 and ran every channel over `NET/IB`, with no fallback to sockets. AllReduce bus bandwidth was 7.87 GB/s at 16 MiB and 7.01 GB/s at 256 MiB in FP32, 8.56 and 6.94 GB/s in BF16; these are bus bandwidths, not the probe's per-rank `payload_GB_per_s`. GPUDirect RDMA stayed off, as on the pair.
 
+## A GID index that moves
+
+`server preflight` refuses a rail whose IPv4-mapped RoCE v2 GID is not at the configured index, and lists under `gid_hints` where that entry is now, with `fixes`. A link that goes down and comes back can move it ([launch contracts](launch-safety.md#all-rail-checks-and-two-rank-switch)). A second IPv6 link-local address on the interface moves it too: NetworkManager's default `ipv6.addr-gen-mode` of `stable-privacy` adds one beside the kernel's, its GID entries come first, and the IPv4 entries shift to later indices (MiaAI-Lab recipe #291 reports 5 and 6 instead of 2 and 3). On a node with two rails, each HCA can then end at a different index, while NCCL takes one per rank. `gid_hints` names this `likely_cause: nm_stable_privacy` when the rail's net device carries two distinct link-local GIDs and the IPv4 RoCE v2 entry is at another index; with one link-local it names no cause.
+
+To confirm, `ip -o addr show dev <interface>` lists two `inet6 fe80::` addresses, and `nmcli -g ipv6.addr-gen-mode connection show <connection>` shows a mode other than `eui64`. The recipe's fixes, both as root: set the connection's `ipv6.addr-gen-mode` to `eui64` and reactivate it, or rebind the HCA's `mlx5_core` PCI function so its GID table is rebuilt. The check keeps refusing until the entry is back at the configured index. Neither fix has been needed on the reference hosts.
+
 ## Channel count
 
 On its own, NCCL 2.30.7 opens 64 channels on this pair (identical on 2026-09-11 and 2026-09-17). The template sets [`runtime.nccl_channels = 8`](server-configuration.md). The measurements behind that value were taken on 2026-09-17 with the reference image and the launcher's fabric environment, changing only `NCCL_MIN_NCHANNELS`/`NCCL_MAX_NCHANNELS`.

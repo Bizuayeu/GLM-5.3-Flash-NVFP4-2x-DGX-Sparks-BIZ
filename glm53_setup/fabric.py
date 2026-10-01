@@ -338,12 +338,50 @@ def port_path(sys_root, rail):
     return sys_root / "class/infiniband" / rail["hca"] / "ports" / str(rail["port"])
 
 
+def gid_cause(gids, roce_v2_gid_indices):
+    """Why a rail's IPv4 RoCE v2 GID left its index, when the GID table says so.
+
+    gids maps each index of the rail's net device to its GID text. NetworkManager's
+    default ipv6.addr-gen-mode stable-privacy adds a second IPv6 link-local next to
+    the kernel's, and its GID entries push the IPv4 ones to later indices (upstream
+    MiaAI-Lab recipe #291). RoCE v1 and v2 rows of one address count once.
+    """
+    link_locals = set()
+    for text in gids.values():
+        try:
+            address = ipaddress.IPv6Address(text)
+        except ipaddress.AddressValueError:
+            continue
+        if address.is_link_local:
+            link_locals.add(address)
+    if roce_v2_gid_indices and len(link_locals) >= 2:
+        return "nm_stable_privacy"
+    return None
+
+
+def gid_fixes(rail, cause):
+    """What the operator can change on the host or in the profile; root for host steps."""
+    if cause == "nm_stable_privacy":
+        return [
+            f"set ipv6.addr-gen-mode eui64 on the NetworkManager connection of "
+            f"{rail['interface']} and reactivate it",
+            f"or rebind the mlx5_core PCI function of {rail['hca']} "
+            f"(/sys/class/infiniband/{rail['hca']}/device) to rebuild its GID table",
+        ]
+    return [
+        "set this node's gid_index to a listed index when all its rails agree",
+        f"or restore the index on the host: reboot, or bring {rail['interface']} "
+        "down and up",
+    ]
+
+
 def gid_hints(site, checks, *, sys_root=Path("/sys")):
-    """Where the refused rails' RoCE v2 GIDs are now, for the operator to act on.
+    """Where the refused rails' RoCE v2 GIDs are now, why, and how to fix it.
 
     A link that went down and came back can leave the entry at another index
-    (upstream MiaAI-Lab recipe #277; our 2026-09-27 incident). The check still
-    refuses: NCCL takes one index per rank, so the fix is a config or host change.
+    (upstream MiaAI-Lab recipe #277; our 2026-09-27 incident); a second IPv6
+    link-local can too (gid_cause). The check still refuses: NCCL takes one index
+    per rank, so the fix is a config or host change.
     """
     hints = []
     for number, rail in enumerate(rails(site)):
@@ -356,18 +394,24 @@ def gid_hints(site, checks, *, sys_root=Path("/sys")):
             )
         except OSError:
             indices = []
-        hints.append(
-            {
-                "rail": number,
-                "hca": rail["hca"],
-                "port": rail["port"],
-                "local_ip": rail["local_ip"],
-                "configured_gid_index": rail["gid_index"],
-                "roce_v2_gid_indices": [
-                    i for i in indices if roce_v2_gid(port, i, rail)
-                ],
-            }
-        )
+        found = [i for i in indices if roce_v2_gid(port, i, rail)]
+        gids = {
+            i: read(port / "gids" / str(i))
+            for i in indices
+            if read(port / "gid_attrs/ndevs" / str(i)) == rail["interface"]
+        }
+        cause = gid_cause(gids, found)
+        hint = {
+            "rail": number,
+            "hca": rail["hca"],
+            "port": rail["port"],
+            "local_ip": rail["local_ip"],
+            "configured_gid_index": rail["gid_index"],
+            "roce_v2_gid_indices": found,
+        }
+        if cause:
+            hint["likely_cause"] = cause
+        hints.append({**hint, "fixes": gid_fixes(rail, cause)})
     return hints
 
 

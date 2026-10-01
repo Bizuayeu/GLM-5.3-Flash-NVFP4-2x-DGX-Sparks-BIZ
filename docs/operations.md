@@ -77,6 +77,8 @@ Hashing 200 GB fills the page cache, which shares unified memory with the GPU. A
 3. Build the reference image once with `build-reference`. Its base digest comes from the lock. To replicate it, use Docker image save/load over the verified local link and compare actual image IDs.
 4. Run the [single-GPU validation](validation.md). Keep the image, precision, source hashes and generated records together.
 
+Docker's overlay2 storage cannot load an image of more than about 125 layers: `docker load` on the receiving host fails with `max depth exceeded` (MiaAI-Lab recipe #301–#304, whose image had reached 126). `build-reference` writes the built image's layer count (`RootFS.Layers`), that limit and the headroom to `image-layers.json` in its record, and warns above 123 layers, the budget that recipe's test enforces.
+
 ## Host kernel and multi-node RoCE
 
 **Check the kernel and the driver before installing updates and before the two-host steps.** The measurements in this repository ran on `6.17.0-1032-nvidia` with driver 580.173.02 and ConnectX-7 firmware 28.45.4028 on MSI EdgeXpert (MS-C931). Kernel `7.0.0-1019-nvidia` and driver 580.178.04 are not validated here.
@@ -138,6 +140,8 @@ Rank 1 starts headless first, followed by rank 0 once the worker is waiting for 
 A profile with three `[[nodes]]` runs TP=3 on a QSFP ring ([three nodes](server-configuration.md#three-nodes), [`server.tp3.example.toml`](../examples/server.tp3.example.toml)). Start the ranks from the highest down, every rank but the head headless, and the head last; stop from the head. `cluster switch` and `cluster resume` handle every rank of a launch but refuse a switch to a launch of another rank count: to move between the pair and the ring, stop every rank and then start the other launch.
 
 The ring keeps its Triton, Inductor and TileLang caches in `state/tp3-runtime-cache/` on each host, apart from the pair's. Triton picks some kernel configs by timing, so a fresh cache can give a rank another config and the launch another numerical state; the heads of different ranks do not overlap, so this does not affect correctness. The decode-check hashes of a TP=3 launch hold only with the same per-host cache: on the reference ring with the distributed defaults, counting `b00a842f`, prose `03184d52` and code `e9175d9b` (first recorded 2026-09-29), each repeating bit for bit within a launch. Read them again after a cache is cleared or replaced.
+
+**Rebooting one host of a ring.** outstandly's three-host recipe reports that while `/etc/nvidia/cx7-hotplug-enabled` is in place, rebooting one host can make a ConnectX port disappear from the PCI bus of the neighbor cabled to it; the recipe moves that file aside on every node and reboots all three together. This has not been reproduced on the reference ring. Before rebooting a single host, check whether the file exists on each host, and afterwards confirm on its neighbors that both ring interfaces and their HCAs are still listed (`ibdev2netdev`).
 
 A derived checkpoint (the published option) and its overlays must be present on every host at the paths the profile names; `server preflight` checks them on each rank. Profiles of the published option need the KDA overlay of 1.24.0 (SHA-256 `27a532ce…`): at 22 heads per rank the earlier one hands Marlin inputs it refuses.
 

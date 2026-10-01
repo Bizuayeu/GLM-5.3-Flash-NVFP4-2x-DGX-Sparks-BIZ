@@ -77,6 +77,8 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 3. `build-reference` でreference imageを一度だけビルドする。base digestはロックから取る。複製する場合は、検証済みのローカル回線越しにDockerのimage save/loadを使い、実際のimage IDを比較する。
 4. [GPU 1台の検証](validation.ja.md)を実施する。image、精度、sourceのhash、生成した記録をまとめて保存する。
 
+Dockerのoverlay2は、約125層を超えるimageを読み込めません。受け取る側のホストで `docker load` が `max depth exceeded` で失敗します（MiaAI-Labのレシピ #301〜#304、そのimageは126層に達していました）。`build-reference` は、ビルドしたimageの層数（`RootFS.Layers`）、この上限、残りの余裕を記録の `image-layers.json` に書き、123層を超えると警告します。123はそのレシピのテストが課す予算です。
+
 ## ホストカーネルと複数ノードRoCE
 
 **更新を入れる前と、2台で動かす手順の前に、カーネルとドライバーを確認してください。** 本リポジトリの実測は、MSI EdgeXpert（MS-C931）上の `6.17.0-1032-nvidia`、ドライバー 580.173.02、ConnectX-7 ファームウェア 28.45.4028 で行いました。カーネル `7.0.0-1019-nvidia` とドライバー 580.178.04 は、ここでは未検証です。
@@ -138,6 +140,8 @@ rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態にな�
 `[[nodes]]` が3つのprofileは、QSFPリング上でTP=3を動かします（[3ノード](server-configuration.ja.md#3ノード)、[`server.tp3.example.toml`](../examples/server.tp3.example.toml)）。rankは大きいほうから起動し、head以外はheadlessで、headを最後にします。止めるときはheadからです。`cluster switch` と `cluster resume` は起動の全rankを扱いますが、rank数の違う起動への切替は拒みます。対とリングの間を移るには、全rankを止めてからもう一方を起動します。
 
 リングはTriton・Inductor・TileLangのcacheを各ホストの `state/tp3-runtime-cache/` に、対のcacheとは別に置きます。Tritonは一部のkernelの設定を時間で選ぶので、新しいcacheではあるrankが別の設定を選び、起動が別の数値状態になりえます。rankごとのheadは重ならないので、正しさには影響しません。TP=3の起動のdecode checkのhashは、ホストごとのcacheが同じときだけ保たれます。参照リングの配布既定では、counting `b00a842f`、prose `03184d52`、code `e9175d9b`（初出2026-09-29）で、どれも起動内ではbit単位で繰り返しました。cacheを消したり置き換えたりした後は読み直してください。
+
+**リングの1台だけを再起動するとき。** outstandlyの3台構成のレシピは、`/etc/nvidia/cx7-hotplug-enabled` があるままだと、1台の再起動で、それに直結した隣のホストのPCI busからConnectXのポートが消えることがあると報告しています。このレシピは全ノードでそのファイルを退避し、3台を同時に再起動します。参照リングでは再現していません。1台だけを再起動する前に各ホストでこのファイルの有無を確かめ、再起動の後は隣のホストでリングの2つのinterfaceとそのHCAがまだ並ぶことを確認します（`ibdev2netdev`）。
 
 derived checkpoint（公開した任意設定）とそのoverlayは、profileが指すパスにすべてのホストで置きます。`server preflight` は各rankでこれを確かめます。公開した任意設定のprofileには1.24.0のKDA overlay（SHA-256 `27a532ce…`）が要ります。rankあたり22 headでは、以前のものはMarlinが拒む入力を渡します。
 

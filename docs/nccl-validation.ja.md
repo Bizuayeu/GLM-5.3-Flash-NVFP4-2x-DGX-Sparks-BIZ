@@ -63,6 +63,12 @@ NVIDIAの[Spark移植ガイド](https://docs.nvidia.com/dgx/dgx-spark-porting-gu
 
 合格条件は上と同じで、全rankに適用します。参照の結果（GB10 3台、NCCL実ランタイム2.30.7、2026-09-29）：3 rankで11項目すべて合格。NCCLは各機の2つのHCAを1つの仮想NICにまとめ、0→1→2のringを組み、全チャネルが`NET/IB`で、socketへのfallbackはありませんでした。AllReduceのbus bandwidthはFP32で16 MiB 7.87 GB/s、256 MiB 7.01 GB/s、BF16で8.56と6.94 GB/sです。これはbus bandwidthであり、診断ツールの1 rankあたり`payload_GB_per_s`ではありません。GPUDirect RDMAはpairと同じく無効のままでした。
 
+## GID indexが動く
+
+`server preflight` は、IPv4対応のRoCE v2 GIDが設定したindexにないレールを拒否し、その項目がいまどこにあるかを `gid_hints` に `fixes` とともに並べます。リンクが落ちて戻ると項目が動くことがあります（[起動契約](launch-safety.ja.md#全レール検査と両rankの切替)）。interfaceに2つ目のIPv6 link-localアドレスが付いても動きます。NetworkManagerの `ipv6.addr-gen-mode` の既定 `stable-privacy` がkernelのものとは別にもう1つ足し、そのGIDの項目が先に並ぶので、IPv4の項目が後ろのindexへずれます（MiaAI-Labのレシピ #291 は2と3が5と6になったと報告しています）。レールが2本のnodeでは、HCAごとに別のindexになりえますが、NCCLはrankごとに1つしか取りません。`gid_hints` は、レールのnet deviceに異なるlink-localのGIDが2つあり、IPv4のRoCE v2の項目が別のindexにあるとき、これを `likely_cause: nm_stable_privacy` と示します。link-localが1つなら原因は示しません。
+
+確かめるには、`ip -o addr show dev <interface>` に `inet6 fe80::` が2つ並び、`nmcli -g ipv6.addr-gen-mode connection show <connection>` が `eui64` 以外を返すことを見ます。レシピの直し方は2つで、どちらもrootで行います。接続の `ipv6.addr-gen-mode` を `eui64` にして接続を有効にし直すか、HCAの `mlx5_core` のPCI functionをrebindしてGIDの表を作り直します。項目が設定したindexに戻るまで検査は拒否を続けます。参照ホストではどちらの直し方も必要になっていません。
+
 ## チャネル数
 
 NCCL 2.30.7に任せると、このpairでは64チャネルになります（2026-09-11と2026-09-17で同じ）。テンプレートは[`runtime.nccl_channels = 8`](server-configuration.ja.md)を設定します。その根拠となる測定は2026-09-17に、参照imageとランチャーと同じfabric環境変数で、`NCCL_MIN_NCHANNELS`/`NCCL_MAX_NCHANNELS` だけを変えて行いました。

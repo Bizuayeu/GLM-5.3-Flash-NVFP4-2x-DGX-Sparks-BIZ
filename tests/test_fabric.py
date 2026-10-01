@@ -150,19 +150,22 @@ class FabricTests(unittest.TestCase):
             self.assertEqual(
                 fabric.gid_hints(self.site, measured, sys_root=sys_root)[0]["rail"], 0
             )
+            # One link-local address: no likely_cause, only the general fixes.
+            (hint,) = fabric.gid_hints(self.site, checks, sys_root=sys_root)
+            fixes = hint.pop("fixes")
             self.assertEqual(
-                fabric.gid_hints(self.site, checks, sys_root=sys_root),
-                [
-                    {
-                        "rail": 0,
-                        "hca": "roce0",
-                        "port": 1,
-                        "local_ip": "10.53.0.1",
-                        "configured_gid_index": 3,
-                        "roce_v2_gid_indices": [4],
-                    }
-                ],
+                hint,
+                {
+                    "rail": 0,
+                    "hca": "roce0",
+                    "port": 1,
+                    "local_ip": "10.53.0.1",
+                    "configured_gid_index": 3,
+                    "roce_v2_gid_indices": [4],
+                },
             )
+            self.assertIn("gid_index", fixes[0])
+            self.assertIn("fabric0", fixes[1])
             self.assertEqual(
                 fabric.gid_hints(self.site, {gid: True}, sys_root=sys_root),
                 [],
@@ -175,6 +178,62 @@ class FabricTests(unittest.TestCase):
                 ],
                 [],
             )
+
+    def test_second_link_local_names_stable_privacy(self):
+        # MiaAI-Lab recipe #291: NetworkManager's stable-privacy address adds a
+        # second IPv6 link-local, and the IPv4 entries move past its pair.
+        with tempfile.TemporaryDirectory() as tmp:
+            sys_root = Path(tmp) / "sys"
+            port = sys_root / "class/infiniband/roce0/ports/1"
+            entries = {}
+            for index, (gid, kind) in enumerate(
+                [
+                    ("fe80::1", "IB/RoCE v1"),
+                    ("fe80::1", "RoCE v2"),
+                    ("fe80::2", "IB/RoCE v1"),
+                    ("fe80::2", "RoCE v2"),
+                    ("::ffff:10.53.0.1", "IB/RoCE v1"),
+                    ("::ffff:10.53.0.1", "RoCE v2"),
+                ]
+            ):
+                entries[f"gids/{index}"] = gid
+                entries[f"gid_attrs/types/{index}"] = kind
+                entries[f"gid_attrs/ndevs/{index}"] = "fabric0"
+            for name, value in entries.items():
+                (port / name).parent.mkdir(parents=True, exist_ok=True)
+                (port / name).write_text(value)
+            checks = {
+                fabric.rail_check(0, "roce_v2_gid"): False,
+                fabric.rail_check(1, "roce_v2_gid"): True,
+            }
+            (hint,) = fabric.gid_hints(self.site, checks, sys_root=sys_root)
+            self.assertEqual(hint["roce_v2_gid_indices"], [5])
+            self.assertEqual(hint["likely_cause"], "nm_stable_privacy")
+            self.assertTrue(any("eui64" in fix for fix in hint["fixes"]))
+            self.assertTrue(any("mlx5" in fix for fix in hint["fixes"]))
+            # Still refused: the hint does not touch the check.
+            self.assertFalse(checks[fabric.rail_check(0, "roce_v2_gid")])
+
+    def test_gid_cause_needs_two_link_locals_and_a_moved_ipv4_entry(self):
+        two = {
+            0: "fe80::1",
+            1: "fe80::1",
+            2: "fe80::2",
+            3: "fe80::2",
+            4: "::ffff:10.53.0.1",
+            5: "::ffff:10.53.0.1",
+        }
+        one = {1: "fe80::1", 2: "::ffff:10.53.0.1", 4: "::ffff:10.53.0.1"}
+        for gids, indices, cause in (
+            (two, [5], "nm_stable_privacy"),
+            # v1 and v2 rows of one address are one link-local, not two.
+            (one, [4], None),
+            # No IPv4 RoCE v2 entry anywhere: an address or link fault.
+            (two, [], None),
+            ({**two, 6: "", 7: "not a gid"}, [5], "nm_stable_privacy"),
+        ):
+            with self.subTest(gids=gids, indices=indices):
+                self.assertEqual(fabric.gid_cause(gids, indices), cause)
 
     def test_fabric_addresses_exclude_loopback_unspecified_and_multicast(self):
         for value, ok in (

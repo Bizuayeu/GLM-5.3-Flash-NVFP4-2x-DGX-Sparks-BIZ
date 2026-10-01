@@ -3,6 +3,7 @@
 import argparse
 import json
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +25,28 @@ def build_command(lock):
         lock["reference_candidate"]["tag"],
         str(ROOT),
     ]
+
+
+# overlay2 stops loading an image past about 125 layers ("max depth exceeded" on
+# `docker load`; MiaAI-Lab recipe #301-#304, moby/moby#46740). The warning mirrors
+# that recipe's budget test (#304), which fails above 123.
+LAYER_LIMIT = 125
+LAYER_WARNING = 123
+
+
+def layer_budget(inspect):
+    """Layers of an image from `docker image inspect` JSON and its headroom to the limit.
+
+    RootFS.Layers is the stack overlay2 mounts; `docker history` also lists steps
+    that add no layer.
+    """
+    layers = len(inspect[0]["RootFS"]["Layers"])
+    return {
+        "layers": layers,
+        "limit": LAYER_LIMIT,
+        "headroom": LAYER_LIMIT - layers,
+        "warning": layers > LAYER_WARNING,
+    }
 
 
 def main(argv=None):
@@ -60,4 +83,12 @@ def main(argv=None):
         check=True,
     )
     (record / "image-inspect.json").write_text(result.stdout, encoding="utf-8")
+    budget = layer_budget(json.loads(result.stdout))
+    write_json(record / "image-layers.json", budget)
+    if budget["warning"]:
+        print(
+            f"Warning: the image has {budget['layers']} layers; overlay2 cannot "
+            f"load more than about {LAYER_LIMIT} (docker load: max depth exceeded)",
+            file=sys.stderr,
+        )
     print("Build record:", record)
