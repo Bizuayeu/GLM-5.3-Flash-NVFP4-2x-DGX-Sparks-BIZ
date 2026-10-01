@@ -7,6 +7,9 @@ fingerprint on both ranks; a difference here means a TP=2 launch moved.
 
 One deliberate change since (2026-10-01): the AXL profile's KDA overlay was revised (sha256
 27a532ce..., f_a/g_a copied before Marlin for TP=3), which moves only that profile's fingerprint.
+Rebased onto 1.23.0 (2026-10-01): every template gained --default-chat-template-kwargs
+'{"reasoning_effort": "high"}' (api.default_reasoning_effort), which adds that one pair of arguments
+and moves every fingerprint; nothing else in the TP=2 launches changed.
 """
 
 import json
