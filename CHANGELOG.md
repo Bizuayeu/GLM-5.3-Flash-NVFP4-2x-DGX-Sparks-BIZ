@@ -2,6 +2,18 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.26.0 — 2026-10-02
+
+### Changed
+
+- All three server templates (`server.example.toml`, `server.axl.example.toml`, `server.tp3.example.toml`) set `runtime.shm_spin_seconds = 0.002` (P29): a reader of vLLM's shared-memory broadcast spins 2 ms after its last read, not 1 s, before it sleeps on a zmq poll. On the reference pair (published option, the 1.25.0 image, three arms with the GPU clock cap unchanged) the decode-check completions stayed the same, the head's EngineCore fell from about 98% to 5% CPU and the head's SoC ran 2.2–3.1 °C cooler, at the cost of 1.4% of counting decode (44.31 tok/s against 44.94 and 44.91 without the key; prose and code within the arms' spread) ([measurements on 1.25.0](docs/benchmarks.md#measurements-on-1250)). It is adopted because the head's temperature matters under concurrent load. TP=3 takes it by extension: with one GPU per host its shared-memory readers are on the head as at TP=2 ([server configuration](docs/server-configuration.md#parallelism-and-transport)), but its effect at TP=3 is not measured, and its decode-check hashes are taken at the next TP=3 switch. A profile without the key launches as in 1.25.0, and both launch goldens keep that form as `*_no_spin` entries. To adopt it, add the key to `state/server.toml`; no new image is needed.
+
+### Documentation
+
+- [Validation](docs/validation.md#prefix-cache-correctness-gate): the prefix-cache gate on the reference pair (2026-10-02, the 1.25.0 image). The distributed defaults passed at both lengths (14,014 and 98,982 prompt tokens; warm requests restored 9,216 and 92,160). The published option was inconclusive (`cold_incorrect`) at both: one task missed with the same answer cold, warm and sent alone with 0 cached tokens, so it is not a cache defect and prefix caching stays on. Each wrong answer was the code of the record just before the one asked (Record 03008 answered with 03007's code, 00374 with 00373's), an off-by-one retrieval in long context measured on the option only; the defaults answered the same tasks right. The cause is not isolated, and the W4A16 attention requantization is a hypothesis. The README's cons of the option and its status table point there, and [catalog P19](docs/optimization-catalog.md#performance-initiatives) records the gate as run.
+- [Validation](docs/validation.md#multibyte-output): sampled `server mojibake` (temperature 1.0, top_p 0.95, seeds 42 to 47) found no broken character in twelve answers, six on each profile, so the UTF-8 guard stays a trigger in the README's Next Action. On the 1.25.0 image, with the #50843 bound, both profiles gave the 1.24.0 decode-check completions bit for bit and the option's `server agreement` matched its reference exactly.
+- The spin key is documented in [server configuration](docs/server-configuration.md#parallelism-and-transport) and its measurement in [benchmarks](docs/benchmarks.md#measurements-on-1250); catalog P29 and the [overview](docs/optimization-overview.md) move it from candidate to adopted, and the README headline moves to 1.25.0, the newest measured version.
+
 ## 1.25.0 — 2026-10-02
 
 ### Added

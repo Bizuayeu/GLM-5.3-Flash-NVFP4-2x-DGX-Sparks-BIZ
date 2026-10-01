@@ -4,6 +4,18 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.26.0 — 2026-10-02
+
+### Changed
+
+- 3つの起動テンプレート（`server.example.toml`、`server.axl.example.toml`、`server.tp3.example.toml`）は `runtime.shm_spin_seconds = 0.002` を設定します（P29）。vLLMの共有メモリbroadcastの読み手は、最後に読んでから1秒ではなく2 msだけspinし、zmqのpollで眠ります。参照機（公開した任意設定、1.25.0のimage、GPUクロックの上限は変えずに3つの腕）では、decodeの確認のcompletionは変わらず、headのEngineCoreのCPUは約98%から5%に、headのSoCは2.2〜3.1 °C下がり、代わりにcountingのdecodeが1.4%遅くなりました（キーなしの44.94と44.91に対して44.31 tok/s。proseとcodeは腕の幅の中）（[1.25.0での測定](docs/benchmarks.ja.md#1250での測定)）。同時に要求を受けるとheadの温度が効くため採用しました。TP=3は延長での適用です。hostあたりGPU 1基では、共有メモリの読み手はTP=2と同じくheadにしかいません（[起動設定](docs/server-configuration.ja.md#並列化と通信)）。ただしTP=3での効果は測っておらず、decodeの確認のhashは次のTP=3への切替で取ります。キーの無いprofileは1.25.0と同じに起動し、2つの起動のgoldenはその形を `*_no_spin` の項目として持ちます。採用するには `state/server.toml` にキーを足します。新しいimageは要りません。
+
+### Documentation
+
+- [検証](docs/validation.ja.md#prefix-cacheの正しさの関門)：参照機でのprefix cacheの関門（2026-10-02、1.25.0のimage）。配布既定は両方の長さで合格です（promptは14,014と98,982 token、warmの要求は9,216と92,160 tokenを戻した）。公開した任意設定は両方で判定不能（`cold_incorrect`）でした。外れた課題1問は、cold・warm・cached 0 tokenでの1本だけの送り直しのどれでも同じ答えだったので、cacheの不具合ではなく、prefix cachingはonのままです。誤答はどれも、問われた記録の直前の記録のコードでした（Record 03008にはRecord 03007の、00374には00373のコード）。長いcontextで1つずれた読み取りで、任意設定だけで測った所見です。配布既定は同じ課題に正答しました。原因は切り分けておらず、W4A16のattentionの再量子化は仮説です。READMEの任意設定の短所と状況の表からそこを指し、[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)に関門の実施を記しました。
+- [検証](docs/validation.ja.md#マルチバイト出力)：sampledの `server mojibake`（temperature 1.0、top_p 0.95、seed 42〜47）は、各profile 6本、計12本の回答に化け文字を見つけませんでした。UTF-8のガードはREADMEのNext Actionのきっかけのままです。#50843のガードが入った1.25.0のimageで、両profileは1.24.0のdecodeの確認のcompletionをbit単位で再現し、任意設定の `server agreement` は基準と完全に一致しました。
+- spinのキーを[起動設定](docs/server-configuration.ja.md#並列化と通信)に、測定を[ベンチマーク](docs/benchmarks.ja.md#1250での測定)に書き、施策台帳のP29と[全体像](docs/optimization-overview.ja.md)で候補から採用へ移しました。READMEの主要な測定値は、測った最新の版である1.25.0になりました。
+
 ## 1.25.0 — 2026-10-02
 
 ### Added
