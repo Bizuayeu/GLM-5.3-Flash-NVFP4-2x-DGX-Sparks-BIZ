@@ -172,18 +172,21 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
-同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
+同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29、knapcio・kindlingai・jetnet・tonyd2wild・tenhkspark・sfxnzは2026-10-01）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
 
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
 | [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster)（kingjones30のレシピを保持） | Apache-2.0／MIT | **コードを改変して採用：** NoPEゼロ埋めpatchの構造とレシピ |
-| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[Wabi checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-Wabi) | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
+| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[GLM-5.3-Flash-NVFP4-h checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-h)（2026-10-01まではWabiという名前。重みのファイルは同じ） | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
 | [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder とその出力の関門（#268）、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、RoCE GID のずれ（#277）、現場の手順記録 |
-| [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と他container検出の起動ガードを参照点として |
+| [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と、PR #12（mergeされずにclose）で提案された他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
-| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)） |
+| [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)）。2026-09-29からの既定はknapcioのstackをTP=2へ移したもの。issue #26 には、NVIDIAのcheckpointを三角形に配線した3台で動かした第三者のTP=3の測定があり、[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照点とする |
 | [FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks](https://github.com/FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks) | MIT | コードは採用しない。vLLM・NVFP4の重みでのTP=3の幾何（attentionとKDAのhead、expertの幅、語彙を0で埋め、tensor parallelのまま）を[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照点として。測定は別のcheckpointとimageによる |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
+| [knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4](https://github.com/knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4) | リポジトリ自身の素材はMIT。NOTICEが挙げるTony由来の素材は除く | コードは採用しない。prefix cacheの正しさをcoldとwarmで比べる走査（`bench/prefix_scan.py`）を、prefix cacheの関門の参照として（[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)の候補）。KDAのcheckpointがschedulerのchunkの終わりとずれる解析（issue #2）。本stackは該当しない：配信のログはattentionのblockを4,608 tokenにしており、固定vLLMのalignモードはKDAの状態にも同じblockを与える（`block_size` = `mamba_block_size`） |
+| [kindlingai/glm-5.3-flash-gx10](https://github.com/kindlingai/glm-5.3-flash-gx10) | なし（ライセンスファイルなし。一部のファイルにApache-2.0のヘッダ） | コードは採用しない。機構と測定：RecoverSSM（要求ごとにKDAの再帰状態を1本）の動機と測定、shm_broadcastのspin待ちの観察、3台で1M tokenを通した測定（issue #52）、TP=3で長いprefillの閾値をKDAのblockの倍数にすること |
+| [jetnet/glm53-flash-nvfp4-tp3](https://github.com/jetnet/glm53-flash-nvfp4-tp3) | MIT | コードは採用しない。NVIDIAのcheckpointでのTP=3の設定と、token・rankあたりのKVのbyte数の実測を[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照として |
 
 ## 免責事項
 
