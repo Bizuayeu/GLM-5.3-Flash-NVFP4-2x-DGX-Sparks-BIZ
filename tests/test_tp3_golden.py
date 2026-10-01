@@ -4,8 +4,13 @@ tests/tp3_launch_golden.json was written by ``snapshot()`` from the tree of 856e
 before the optional ``runtime.shm_spin_seconds``. The three-node example, and the AXL settings on
 its nodes (the serving shape), must still give the same site, environment, vLLM arguments, docker
 command, image checks and fingerprint on every rank; a profile without the new key launches as before.
+1.26.0 (2026-10-02): the TP=3 and AXL templates set runtime.shm_spin_seconds = 0.002, which adds
+GLM53_SHM_SPIN_SECONDS and its two read-only mounts on every rank and moves both fingerprints. The
+``*_no_spin`` entries drop the key again and equal the 1.24.0 golden's ``ring`` and ``ring_axl``
+byte for byte.
 """
 
+import copy
 import json
 import re
 import unittest
@@ -25,6 +30,10 @@ def variants():
     axl = config.load(ROOT / "examples/server.axl.example.toml")
     axl["nodes"] = ring["nodes"]
     result = {"ring": ring, "ring_axl": axl}
+    for name in ("ring", "ring_axl"):
+        without = copy.deepcopy(result[name])
+        del without["runtime"]["shm_spin_seconds"]
+        result[name + "_no_spin"] = without
     for profile in result.values():
         profile["runtime"]["reference_image"] = IMAGE
         profile["runtime"]["lpa_image"] = IMAGE

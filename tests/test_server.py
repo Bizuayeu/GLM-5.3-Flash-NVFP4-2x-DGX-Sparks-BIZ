@@ -59,6 +59,7 @@ class ServerConfigTests(unittest.TestCase):
         self.profile["runtime"]["stable_indexer_topk"] = False
         self.profile["runtime"]["fa2_attention"] = False
         self.profile["runtime"]["inductor_deterministic"] = False
+        self.profile["runtime"].pop("shm_spin_seconds", None)
         self.profile["mtp"]["enabled"] = False
         self.profile["lpa"]["enabled"] = False
         self.profile["cache"]["prefix_caching"] = False

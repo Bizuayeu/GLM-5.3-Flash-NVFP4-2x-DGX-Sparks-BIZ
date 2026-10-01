@@ -88,7 +88,8 @@ class SettingTests(unittest.TestCase):
         )
 
     def test_absent_key_adds_no_hook_and_keeps_the_fingerprint(self):
-        self.assertNotIn("shm_spin_seconds", self.profile["runtime"])
+        # The templates set the key from 1.26.0; a profile without it launches as before.
+        self.assertEqual(self.profile["runtime"].pop("shm_spin_seconds"), 0.002)
         command = self.command(self.profile)
         self.assertFalse(any("shm_spin" in arg for arg in command))
         self.assertFalse(any(arg.startswith(shm_spin.ENV) for arg in command))

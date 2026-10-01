@@ -40,6 +40,10 @@ nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses
 # 8 returned about 3 GiB per rank against 64 with no prefill loss (docs/nccl-validation.md#channel-count).
 # 両rankのNCCLチャネル数（MIN=MAX）。未指定はNCCL任せ（参照機では64）。8で各rank約3 GiB戻り、prefillは落ちない。
 # 起動元の環境変数を使う場合は server freeze で一度解決し、同じ --launch を両rankへ。
+shm_spin_seconds = 0.002 # Shared-memory broadcast readers spin 2 ms before they sleep, not vLLM's 1 s
+# Measured on the two-host pair only (docs/benchmarks.md) and applied here by extension: the readers that
+# spin are on the head at TP=3 as at TP=2. Its effect at TP=3 is unmeasured. Omitted = 1 s.
+# TP=2の対で測った設定を延長して適用（spinする読み手はTP=3でもheadだけ）。TP=3での効果は未測定。未指定はvLLMの1秒。
 # Immutable Docker image IDs measured on BOTH nodes; replace placeholders.
 # 両ノードで確認したイメージID。LPA有効時のみ lpa_image を選択。
 reference_image = "sha256:0000000000000000000000000000000000000000000000000000000000000000"

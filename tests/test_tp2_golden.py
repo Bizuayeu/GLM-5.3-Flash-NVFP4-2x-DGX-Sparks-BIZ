@@ -10,8 +10,13 @@ One deliberate change since (2026-10-01): the AXL profile's KDA overlay was revi
 Rebased onto 1.23.0 (2026-10-01): every template gained --default-chat-template-kwargs
 '{"reasoning_effort": "high"}' (api.default_reasoning_effort), which adds that one pair of arguments
 and moves every fingerprint; nothing else in the TP=2 launches changed.
+1.26.0 (2026-10-02): both two-node templates set runtime.shm_spin_seconds = 0.002, which adds
+GLM53_SHM_SPIN_SECONDS and its two read-only mounts and moves every fingerprint (pp2 and ep inherit
+it from the defaults). The ``*_no_spin`` entries drop the key again and equal the 1.25.0 golden's
+``defaults`` and ``axl`` byte for byte: a profile without the key launches as before.
 """
 
+import copy
 import json
 import re
 import unittest
@@ -42,6 +47,10 @@ def variants():
         "pp2": pp2,
         "ep": ep,
     }
+    for name in ("defaults", "axl"):
+        without = copy.deepcopy(result[name])
+        del without["runtime"]["shm_spin_seconds"]
+        result[name + "_no_spin"] = without
     for profile in result.values():
         profile["runtime"]["reference_image"] = IMAGE
         profile["runtime"]["lpa_image"] = IMAGE
