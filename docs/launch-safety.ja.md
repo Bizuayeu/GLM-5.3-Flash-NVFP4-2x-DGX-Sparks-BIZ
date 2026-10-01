@@ -25,7 +25,7 @@ python -m glm53_setup server plan --config state/server.toml --launch state/laun
 
 ## 全レール検査と両rankの切替
 
-各nodeの主レールは従来の `hca`・`interface`・`local_ip`・`gid_index`（port 1）です。任意の `additional_rails` に同じ項目と `port` を持つレコードを追加します。全レールで共通GID index、port／NIC／IPの重複排除、Ethernet portとlinkの稼働、IPv4対応RoCE v2 GID、当該NICへのIP割当を確認します。カンマ区切りのdevice文字列は受けず、構造化した設定を使います。NCCLには全HCA／portを完全一致指定し、socket bootstrapは主NICを使います。設定検査の成功と複数レール実通信の検収は別です。GID の検査に落ちたときは、そのレールの IPv4 対応 RoCE v2 の項目がいまどの index にあるかを、起動前検査が `gid_hints` に並べます。リンクが落ちて戻ると項目が動くことがあり、MiaAI-Lab のレシピ #277 が報告しているほか、この対でも 2026-09-27 に head の電源断の後、相手の rail 0 が index 3 から 4 に動きました。NCCL は rank ごとに一つの index しか取らないので、検査は止めたままです。その node の全レールが揃っていればその node の `gid_index` を直し、そうでなければホスト側で index を戻します（再起動か、root でインターフェースを落として上げ直す）。
+各nodeの主レールは従来の `hca`・`interface`・`local_ip`・`gid_index`（port 1）です。任意の `additional_rails` に同じ項目と `port` を持つレコードを追加します。全レールで共通GID index、port／NIC／IPの重複排除、Ethernet portとlinkの稼働、IPv4対応RoCE v2 GID、当該NICへのIP割当を確認します。カンマ区切りのdevice文字列は受けず、構造化した設定を使います。NCCLには全HCA／portを完全一致指定し、socket bootstrapは主NICを使います。設定検査の成功と複数レール実通信の検収は別です。GID の検査に落ちたときは、そのレールの IPv4 対応 RoCE v2 の項目がいまどの index にあるかを、起動前検査が直し方（`fixes`）とともに `gid_hints` に並べ、2つ目の IPv6 link-local アドレスで動いたときは `likely_cause: nm_stable_privacy` と示します（[NCCL検証](nccl-validation.ja.md#gid-indexが動く)）。リンクが落ちて戻ると項目が動くことがあり、MiaAI-Lab のレシピ #277 が報告しているほか、この対でも 2026-09-27 に head の電源断の後、相手の rail 0 が index 3 から 4 に動きました。NCCL は rank ごとに一つの index しか取らないので、検査は止めたままです。その node の全レールが揃っていればその node の `gid_index` を直し、そうでなければホスト側で index を戻します（再起動か、root でインターフェースを落として上げ直す）。
 
 単一レールでも `=hca:1` とport 1を明示します。portを省略すると、そのHCAの全portが対象となり、検査した範囲を超えるためです。[NVIDIAのNCCL HCA指定仕様](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-ib-hca)を参照してください。
 

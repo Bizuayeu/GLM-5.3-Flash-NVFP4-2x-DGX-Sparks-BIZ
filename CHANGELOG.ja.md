@@ -4,6 +4,24 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.25.0 — 2026-10-02
+
+### Added
+
+- `server prefix-gate` は、prefix cacheのhitがcoldの計算と同じ状態を戻すかを確かめます（[起動設定](docs/server-configuration.ja.md#コマンド)）。seedで正答が決まる合成ログ1本に課題6本を、新しい `cache_salt` で投げ（cold）、同じsaltでもう一度投げます（warm）。ログの長さは `/tokenize` で数えてprompt 99,000 token以下、`--prefix-length short` で14,025 token以下です。coldで正しくwarmで誤った課題があれば不合格（`prefix_cache_corruption`）で、warmの回答がcached tokenを持たない、coldの回答が誤る、要求が失敗するときは判定不能とし、合格にはしません。記録の書式・課題・解析はknapcioの `bench/prefix_scan.py`（MIT。NOTICE、THIRD_PARTY_NOTICES、`LICENSES/knapcio-MIT.txt`）からの翻案です。稼働中のheadへのクライアントで、新しいimageは要りません。
+- `server mojibake --temperature T --top-p P` はsampledの回答で化け文字を数えます。i回目はprofileの `runtime.seed` にiを足したseedで引き、`--repeats` で言語ごとの回答数を決めます（既定3）。これらを付けなければ検査はtemperature 0のままで、記録も変わりません。
+- 任意の `runtime.shm_spin_seconds`（0.002〜1）は、vLLMの共有メモリのbroadcastのreaderが眠る前にspinする時間を決めます。固定のvLLMでは1秒に固定され、届く設定がありません。ランチャーはcheckoutから `glm53_setup/runtime/shm_spin.py` と `.pth` のhookをmountするので、新しいimageは要りません。未指定なら何もmountも設定もせず、TP=2とTP=3の起動は1.24.0とbyte単位で同じです（TP=2に加えてTP=3の起動のgoldenを置きました）。
+- RoCEのGID検査に落ちたとき、`gid_hints` の各項目に `fixes` を付け、レールのnet deviceに異なるIPv6 link-localのGIDが2つあり、IPv4のRoCE v2の項目が別のindexにあるときは `likely_cause: nm_stable_privacy` と示します。NetworkManagerの既定の `stable-privacy` のアドレスがIPv4の項目をずらすためです（MiaAI-Labのレシピ #291）。検査は拒否したままです（[NCCL検証](docs/nccl-validation.ja.md#gid-indexが動く)）。
+- `build-reference` は、ビルドしたimageの層数（`RootFS.Layers`）、overlay2の約125層という上限、残りの余裕を記録の `image-layers.json` に書き、123層を超えると警告します（MiaAI-Labのレシピ #301〜#304、moby#46740）。
+
+### Fixed
+
+- 参照imageは、上流では未mergeのvLLMのpull request #50843を固定のsourceに当てます（`glm53_setup/runtime/patch_sampler_nonfinite.py`、marker `GLM53_SAMPLER_VOCAB_BOUND=1`）。Gumbel sampler、rejection samplerのgreedyの統計とresampleが、tileのargmaxを語彙の範囲に収めます。これがないと、最後のtileが非有限のlogitsだけの行は語彙外のidを出しえて、embeddingはそれを0として読みます。MTPではtemperature 0でもrejection samplerを通ります。参照imageを作り直して `reference_image` を更新すること。このmarkerを要求する検査はなく、固定しているvLLMが#50843をmergeしたcommitより先へ進んだらpatchは外す。
+
+### Documentation
+
+- [運用](docs/operations.ja.md)：imageの複製の箇所にoverlay2の層数の上限を、outstandlyが報告するCX7のhotplugの罠（リングの1台を再起動すると、隣のホストのPCI busからConnectXのポートが消えうる）を加えました。[NCCL検証](docs/nccl-validation.ja.md#gid-indexが動く)：GID indexが動く原因としてのstable-privacyと2つの直し方。[起動の安全](docs/launch-safety.ja.md#全レール検査と両rankの切替)からそこを指します。[イメージの契約](docs/server-configuration.ja.md#現行イメージの契約)に `GLM53_SAMPLER_VOCAB_BOUND=1` を加え、[構成](docs/architecture.ja.md)に新しいmoduleを、READMEと[ライセンス](docs/licensing.ja.md)にknapcioからの翻案を載せ、READMEのNext Actionに#50843のpatchを外すきっかけとUTF-8のガードを計画するきっかけを足しました。
+
 ## 1.24.0 — 2026-10-01
 
 ### Added

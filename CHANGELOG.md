@@ -2,6 +2,24 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.25.0 — 2026-10-02
+
+### Added
+
+- `server prefix-gate` checks that a prefix-cache hit restores the state the cold computation had ([server configuration](docs/server-configuration.md#commands)). Six tasks over one synthetic log, whose answers its seed fixes, are asked under a fresh `cache_salt` (cold) and again under the same salt (warm); the log is sized through `/tokenize` to at most 99,000 prompt tokens, or 14,025 with `--prefix-length short`. A task answered right cold and wrong warm fails the gate (`prefix_cache_corruption`); a warm answer without cached tokens, a wrong cold answer or a failed request makes it inconclusive, never a pass. The record format, tasks and parsing are adapted from knapcio's `bench/prefix_scan.py` (MIT; NOTICE, THIRD_PARTY_NOTICES, `LICENSES/knapcio-MIT.txt`). It is a client of the running head and needs no new image.
+- `server mojibake --temperature T --top-p P` counts broken characters in sampled answers: run *i* draws with the profile's `runtime.seed` plus *i*, and `--repeats` sets the answers per language (default 3). Without the options the check runs at temperature 0 and its record is unchanged.
+- Optional `runtime.shm_spin_seconds` (0.002 to 1) sets how long a vLLM shared-memory broadcast reader spins before it sleeps; the pinned vLLM fixes it at 1 s with no setting that reaches it. The launcher mounts `glm53_setup/runtime/shm_spin.py` and a `.pth` hook from the checkout, so no new image is needed. Absent, nothing is mounted or set: TP=2 and TP=3 launches are byte for byte those of 1.24.0 (a TP=3 launch golden joins the TP=2 one).
+- A refused RoCE GID check attaches `fixes` to every entry of `gid_hints`, and names `likely_cause: nm_stable_privacy` when the rail's net device carries two distinct IPv6 link-local GIDs and the IPv4 RoCE v2 entry sits at another index: NetworkManager's default `stable-privacy` address shifts the IPv4 entries (MiaAI-Lab recipe #291). The check still refuses ([NCCL validation](docs/nccl-validation.md#a-gid-index-that-moves)).
+- `build-reference` writes the built image's layer count (`RootFS.Layers`), the overlay2 limit of about 125 and the headroom to `image-layers.json` in its record, and warns above 123 layers (MiaAI-Lab recipe #301–#304, moby#46740).
+
+### Fixed
+
+- Reference images carry vLLM pull request #50843, open upstream, on the pinned source (`glm53_setup/runtime/patch_sampler_nonfinite.py`, marker `GLM53_SAMPLER_VOCAB_BOUND=1`): the Gumbel sampler, the rejection sampler's greedy stats and its resampling clamp a tile's argmax to the vocabulary. Without it a row whose last tile holds only non-finite logits can emit an id past the vocabulary, which the embedding reads as zeros; under MTP the rejection sampler runs at temperature 0 too. Rebuild the reference image and update `reference_image`; no check requires the marker, and the patch goes when the pinned vLLM passes the commit that merges #50843.
+
+### Documentation
+
+- [Operations](docs/operations.md): the overlay2 layer limit beside image replication, and the CX7 hotplug trap outstandly reports, where rebooting one host of a ring can drop a ConnectX port from its neighbor's PCI bus. [NCCL validation](docs/nccl-validation.md#a-gid-index-that-moves): the stable-privacy cause of a moving GID index and its two fixes, which [launch safety](docs/launch-safety.md#all-rail-checks-and-two-rank-switch) now points to. The [image contract](docs/server-configuration.md#current-image-contract) lists `GLM53_SAMPLER_VOCAB_BOUND=1`; [architecture](docs/architecture.md) lists the new modules, the README and [licensing](docs/licensing.md) the knapcio adaptation, and the README's Next Action gains the triggers to drop the #50843 patch and to plan a UTF-8 guard.
+
 ## 1.24.0 — 2026-10-01
 
 ### Added

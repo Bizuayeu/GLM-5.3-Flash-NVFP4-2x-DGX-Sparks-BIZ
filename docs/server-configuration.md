@@ -263,6 +263,7 @@ Build the reference image from the checkout you launch (`python -m glm53_setup b
 | `GLM53_KPOOL_RING=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
 | `GLM53_LOAD_CLONE=1` | Never ([operations](operations.md#full-model-launch-checks)) | 1.19.0 |
 | `GLM53_TP_PAD_API=1` | Three nodes, whose TP does not divide the heads, MoE width and vocabulary (`tp_padding_support`); the launcher then sets `GLM53_TP_PAD_MULTIPLE` on every rank, and the image zero-pads at load time (`glm53_setup/runtime/patch_tp_padding.py`) | 1.24.0 |
+| `GLM53_SAMPLER_VOCAB_BOUND=1` | Never; the samplers clamp a tile's argmax to the vocabulary (`glm53_setup/runtime/patch_sampler_nonfinite.py`, vLLM #50843) | 1.25.0 |
 
 Images built from 1.14.0 through 1.17.0 also carry `GLM53_MLA_DECODE_CPB_API=1` and the unreachable patch of the removed `runtime.mla_decode_cpb`; no check reads them, and they are harmless.
 
