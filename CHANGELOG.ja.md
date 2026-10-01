@@ -16,6 +16,10 @@
 
 - 公開した任意設定のKDAのoverlay（`overlays/kda-quant-split.py`、SHA-256 `27a532ce…`）は、`f_a` と `g_a` を新しい領域へ写してから `f_b_proj`・`g_b_proj` へ渡します。1 rank 22ヘッドでは分割したviewの行の間隔が278、行の先頭からのずれが44・300 byteになり、Marlinが受け付けません。TP=2ではviewのままで収まっていました。写すのは同じ値です。公開した任意設定のprofileには新しいSHA-256が要ります。
 
+### Documentation
+
+- TP=3を全体に反映しました：[QSFPネットワーク](docs/qsfp-network.ja.md#8-3台をリングにつなぐ)のリング（リンクごとに/30、ホストごとに/32と静的経路）、3 rankの[NCCL probe](docs/nccl-validation.ja.md#3台のリング)、起動の順とrank数が変わる切替の拒否（[起動の安全](docs/launch-safety.ja.md#3ノード)）、3ノードの設定・KV容量・prefillの上限（[起動設定](docs/server-configuration.ja.md)）、ホストごとのruntime cache（[運用](docs/operations.ja.md)）、[1.24.0での測定](docs/benchmarks.ja.md#1240での測定)、[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)、SETUP、README。[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)は実施済みとし、見積もりを実測の容量に置き換えました。
+
 ## 1.23.1 — 2026-10-01
 
 ### Documentation

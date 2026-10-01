@@ -14,6 +14,10 @@
 
 - The published option's KDA overlay (`overlays/kda-quant-split.py`, SHA-256 `27a532ce…`) copies `f_a` and `g_a` into fresh storage before the `f_b_proj` and `g_b_proj` projections. At 22 heads per rank the split leaves them as views with a row stride of 278 that start 44 and 300 bytes into the row, which Marlin refuses; at TP=2 the views fit. The copy carries the same values. Profiles of the published option need the new SHA-256.
 
+### Documentation
+
+- TP=3 throughout: the ring in the [QSFP network guide](docs/qsfp-network.md#8-three-hosts-in-a-ring) (one /30 per link, a /32 per host with static routes), the three-rank [NCCL probe](docs/nccl-validation.md#three-hosts-in-a-ring), launch order and the switch's refusal of a rank-count change ([launch safety](docs/launch-safety.md#three-nodes)), the three-node settings, KV capacity and prefill cap ([server configuration](docs/server-configuration.md#three-nodes)), the per-host runtime cache ([operations](docs/operations.md#three-nodes)), [measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240), the [concurrency scope](docs/validation.md#concurrency-scope), SETUP and the README. [Catalog P28](docs/optimization-catalog.md#performance-initiatives) is done, with the measured capacity in place of the estimate.
+
 ## 1.23.1 — 2026-10-01
 
 ### Documentation
