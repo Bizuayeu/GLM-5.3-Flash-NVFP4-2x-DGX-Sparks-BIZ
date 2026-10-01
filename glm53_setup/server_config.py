@@ -81,6 +81,7 @@ OPTIONAL_KEYS = {
             "fa2_attention",
             "prefix_page_dedup",
             "inductor_deterministic",
+            "shm_spin_seconds",
         }
     ),
     "server.context": frozenset({"long_prefill_token_threshold"}),
@@ -122,6 +123,10 @@ OPTIONAL_DEFAULTS = {
     "resources": {"stall_seconds": 0},
     "generation": {"warmup": False, "warmup_long_tokens": 0},
 }
+
+
+# The busy-loop seconds a shared-memory reader may be given (runtime.shm_spin_seconds).
+SHM_SPIN_SECONDS = (0.002, 1)
 
 
 def optional(profile, section, key):
@@ -224,6 +229,18 @@ def check_optional_shapes(profile):
         raise ValueError("runtime.inductor_deterministic must be true or false")
     if type(optional(profile, "runtime", "prefix_page_dedup")) is not bool:
         raise ValueError("runtime.prefix_page_dedup must be true or false")
+    if "shm_spin_seconds" in profile["runtime"]:
+        spin = profile["runtime"]["shm_spin_seconds"]
+        # cc-defer: only the span measured on a GB10 pair is accepted: 1 s, vLLM's
+        # default, and 0.002 s (nacyot, 2026-08); 0 was reported slower (kindling).
+        # Widen it after a measurement on this cluster.
+        if (
+            type(spin) not in (int, float)
+            or not SHM_SPIN_SECONDS[0] <= spin <= SHM_SPIN_SECONDS[1]
+        ):
+            raise ValueError(
+                "runtime.shm_spin_seconds must be a number from 0.002 to 1"
+            )
     if optional(profile, "runtime", "fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
         raise ValueError("runtime.fa2_attention excludes LPA")
@@ -687,6 +704,9 @@ def environment(profile, rank):
         result["TORCHINDUCTOR_CACHE_DIR"] = (
             f"{RUNTIME_CACHE}/torchinductor-deterministic"
         )
+    if "shm_spin_seconds" in profile["runtime"]:
+        # Absent: vLLM's 1 s; read by the mounted runtime/shm_spin.py.
+        result["GLM53_SHM_SPIN_SECONDS"] = str(profile["runtime"]["shm_spin_seconds"])
     if "canonical_moe_order" in profile["runtime"]:
         # Absent: the image decides (on where the patch is installed).
         result["GLM53_CANONICAL_MOE_ORDER"] = str(

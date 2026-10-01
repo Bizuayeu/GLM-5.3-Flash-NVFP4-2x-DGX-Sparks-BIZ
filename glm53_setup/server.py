@@ -118,6 +118,14 @@ def runtime_mounts(profile):
                 f"{SITE_PACKAGES}/glm53-inductor-pin.pth",
             ),
         ]
+    if "shm_spin_seconds" in profile["runtime"]:
+        # A shared-memory reader spins for 1 s after each read, with no setting
+        # that reaches it; the .pth runs the module that replaces that default
+        # at interpreter start in every container process.
+        mounts += [
+            (runtime / "shm_spin.py", f"{image}/shm_spin.py"),
+            (runtime / "shm_spin_pth.txt", f"{SITE_PACKAGES}/glm53-shm-spin.pth"),
+        ]
     if settings.optional(profile, "runtime", "fa2_attention"):
         # cc-defer: mounts kept although preflight already requires the FA2 marker,
         # recovery included (fa2_attention_support); drop them once the reference

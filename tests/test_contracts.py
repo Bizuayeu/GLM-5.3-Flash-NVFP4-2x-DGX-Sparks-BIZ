@@ -51,6 +51,7 @@ class MountedRuntimeTests(unittest.TestCase):
             "glm53_setup.runtime.fa2_attention:DECODE_MAX_ROWS",
         },
         "inductor_pin.py": set(),
+        "shm_spin.py": set(),
         "fused_unpack.py": set(),
         "fa2_attention.py": {"glm53_setup.runtime.reference_attention:unpack_latent"},
         "reference_attention.py": {
@@ -65,6 +66,7 @@ class MountedRuntimeTests(unittest.TestCase):
         fa2 = config.load(ROOT / "examples/server.example.toml")
         fa2["runtime"]["fa2_attention"] = True
         fa2["runtime"]["inductor_deterministic"] = True
+        fa2["runtime"]["shm_spin_seconds"] = 0.002
         fa2.setdefault("validation", {})["memory_probe"] = True
         with_lpa = config.load(ROOT / "examples/server.example.toml")
         with_lpa["lpa"]["enabled"] = True

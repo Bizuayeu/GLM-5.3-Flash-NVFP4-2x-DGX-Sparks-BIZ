@@ -18,6 +18,7 @@ RUN python3 -m glm53_setup.runtime.patch_kpool_seed
 RUN python3 -m glm53_setup.runtime.patch_kpool_ring
 RUN python3 -m glm53_setup.runtime.patch_load_clone
 RUN python3 -m glm53_setup.runtime.patch_tp_padding
+RUN python3 -m glm53_setup.runtime.patch_sampler_nonfinite
 ENV GLM53_APC_LPA_API=1
 ENV GLM53_PIPELINE_API=1
 ENV GLM53_REFERENCE_ATTENTION=1

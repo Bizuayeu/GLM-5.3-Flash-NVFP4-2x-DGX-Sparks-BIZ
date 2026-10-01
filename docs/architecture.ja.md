@@ -41,7 +41,9 @@
 | `glm53_setup/runtime/patch_load_clone.py` | source固定patch：safetensorsのtensorを、loaderがGPUへ送る前にcheckpointのfile mappingから匿名メモリへcloneする |
 | `glm53_setup/runtime/tp_padding.py` | tensor並列の数で割り切れないヘッド・MoEの幅・語彙を埋めた形を、`GLM53_TP_PAD_MULTIPLE`（未設定なら無効）の純粋関数として持つ。3ならヘッド66・幅2,112・語彙は192の倍数。loaderがrankの分を取る前に掛けるゼロ拡張も持つ |
 | `glm53_setup/runtime/patch_tp_padding.py` | その埋め方をロード時に組み込むsource固定patch。text config、column・row・shardedのparameter loader、FusedMoEのloader、語彙のembeddingに当て、checkpointは公開されたままにする。`patch_load_clone` の後に当てる（[3ノード](server-configuration.ja.md#3ノード)） |
+| `glm53_setup/runtime/patch_sampler_nonfinite.py` | source固定patch：Gumbel sampler、rejection samplerのgreedyの統計とresampleで、tileのargmaxを語彙の範囲に収め、非有限のlogitsの行が語彙外のidを出さないようにする（vLLM #50843、上流では未merge） |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
+| `glm53_setup/runtime/shm_spin.py`、`shm_spin_pth.txt` | 共有メモリのbroadcastのreaderが眠る前にspinする時間を設定する（`runtime.shm_spin_seconds`。未指定はvLLMの1秒）。テキストファイルを image の site ディレクトリに `glm53-shm-spin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
 | `glm53_setup/runtime/fused_unpack.py` | FP8 unpack融合kernel（LPAがeager実行を要する条件は `lpa.py` に置く） |
