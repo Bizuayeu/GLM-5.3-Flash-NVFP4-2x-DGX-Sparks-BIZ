@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.23.1 — 2026-10-01
+
+### Documentation
+
+- READMEのNext Action：prefix cacheのhitとKDAのcheckpointの確認は、`/metrics` ではなく起動ログを読むようにしました。2026-10-01のTP=3の起動では、`vllm:cache_config_info` が `block_size` 3,072・`mamba_block_size` 256を報告する一方、起動ログではcacheのgroupがすべて3,072でした。固定vLLMではalignモードの大きさの変更をworkerは適用し、engineのプロセスは適用せず（`platforms/interface.py`）、`/metrics` はengineの値を載せます。schedulerとKDAのcache managerは3,072 tokenのblockを使うので、本stackは引き続きknapcioのissue #2に該当しません。1.23.0の書き方では、ずれではないものをずれと判定するところでした。
+
 ## 1.23.0 — 2026-10-01
 
 ### Changed

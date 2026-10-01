@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.23.1 — 2026-10-01
+
+### Documentation
+
+- README Next Action: the check for prefix-cache hits against KDA checkpoints reads the boot log, not `/metrics`. On the TP=3 launch of 2026-10-01, `vllm:cache_config_info` reported `block_size` 3,072 and `mamba_block_size` 256 while the boot log showed every cache group at 3,072: in the pinned vLLM the workers apply align mode's resize (`platforms/interface.py`), the engine process does not, and `/metrics` carries the engine's value. The scheduler and the KDA cache manager use the 3,072-token block, so the stack still does not meet knapcio's issue #2; 1.23.0's wording would have flagged a mismatch that is not one.
+
 ## 1.23.0 — 2026-10-01
 
 ### Changed
