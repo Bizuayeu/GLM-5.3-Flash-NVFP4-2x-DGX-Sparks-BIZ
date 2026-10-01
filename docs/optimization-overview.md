@@ -144,6 +144,7 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 
 - P24 Per-request prefix-cache no-store: measured need, not started ([catalog](optimization-catalog.md#performance-initiatives))
 - P28 TP=3 on three GB10 hosts for full-length requests, six at once: the next minor's candidate, an estimate so far ([catalog](optimization-catalog.md#performance-initiatives))
+- P29 Reader spin of the shared-memory broadcast: a one-value change aimed at SoC temperature, unmeasured ([catalog](optimization-catalog.md#performance-initiatives))
 - Euryale, a draft-proposer project outside this repository ([README](../README.md#related-research-outside-this-repository))
 - P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 256K and broader long-context coverage, multiple sequences with LPA
 - The pinned vLLM: the source-pinned patches ([architecture](architecture.md)) go when a newer pin carries the upstream fixes; that move requalifies every measure above
