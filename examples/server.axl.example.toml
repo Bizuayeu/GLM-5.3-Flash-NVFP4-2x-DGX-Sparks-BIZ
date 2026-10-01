@@ -155,6 +155,10 @@ prompt_tokens_details = true # Report usage.prompt_tokens_details.cached_tokens 
 dev_endpoints = false # true mounts vLLM's dev routes on the loopback API (/reset_prefix_cache, /collective_rpc, /sleep …); omitted = false
 # Needed to reset the prefix cache without a restart (benchmarks, warmup cleanup). Off by default: the routes have no authentication.
 # 再起動なしで prefix cache を消す（ベンチ・warmup 後始末）ために立てる。dev 経路は無認証なので既定は off。
+default_reasoning_effort = "high" # What a request that names no effort gets; its own reasoning_effort wins. omitted = max
+# Sent as --default-chat-template-kwargs. The checkpoint's chat template reads low and high and turns anything else,
+# an omitted effort included, into max, whose thinking has no practical bound (docs/harnesses.md).
+# effortを指定しない要求に使う値。要求側の reasoning_effort が優先。未指定は max（チャットテンプレートが low・high 以外を max とするため）。
 
 [generation]
 # Defaults used by `server ask`; these are request options, not vLLM flags.

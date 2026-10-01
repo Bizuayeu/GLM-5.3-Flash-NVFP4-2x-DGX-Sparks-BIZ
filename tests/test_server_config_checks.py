@@ -61,6 +61,9 @@ class OptionalKeyTests(unittest.TestCase):
         # Absent, the launcher sets no environment and the image's patch decides.
         for key in ("canonical_moe_order", "stable_indexer_topk"):
             self.assertNotIn(key, config.OPTIONAL_DEFAULTS["runtime"])
+        # Absent, the launcher sends no default and the chat template decides.
+        self.assertIn("default_reasoning_effort", config.OPTIONAL_KEYS["server.api"])
+        self.assertNotIn("default_reasoning_effort", config.OPTIONAL_DEFAULTS["api"])
 
 
 class CheckOrderTests(unittest.TestCase):

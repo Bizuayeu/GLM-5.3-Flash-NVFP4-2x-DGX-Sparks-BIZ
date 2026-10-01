@@ -59,6 +59,10 @@ def decode_graphs(profile):
     return not runtime["enforce_eager"] if "enforce_eager" in runtime else False
 
 
+# The efforts the checkpoint's chat template distinguishes: it reads low and high and
+# resolves any other value, an omitted one included, to max.
+REASONING_EFFORTS = frozenset({"low", "high", "max"})
+
 # Keys a profile may omit, per category. The shipped example file is the
 # schema; these are the entries whose absence is not a typo.
 OPTIONAL_KEYS = {
@@ -80,7 +84,9 @@ OPTIONAL_KEYS = {
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
-    "server.api": frozenset({"prompt_tokens_details", "dev_endpoints"}),
+    "server.api": frozenset(
+        {"prompt_tokens_details", "dev_endpoints", "default_reasoning_effort"}
+    ),
     "server.validation": frozenset({"memory_probe"}),
     "server.resources": frozenset({"stall_seconds"}),
     "server.generation": frozenset({"warmup", "warmup_long_tokens"}),
@@ -89,7 +95,8 @@ OPTIONAL_KEYS = {
 
 
 # What an absent optional key means, where it means a value. canonical_moe_order and
-# stable_indexer_topk have none: absent, the launcher sets nothing and the image decides.
+# stable_indexer_topk have none: absent, the launcher sets nothing and the image decides;
+# nor has default_reasoning_effort: absent, the checkpoint's chat template decides (max).
 OPTIONAL_DEFAULTS = {
     "runtime": {
         "vision": False,
@@ -202,6 +209,11 @@ def check_optional_shapes(profile):
             )
     if type(optional(profile, "api", "dev_endpoints")) is not bool:
         raise ValueError("api.dev_endpoints must be true or false")
+    effort = profile["api"].get("default_reasoning_effort", "max")
+    if type(effort) is not str or effort not in REASONING_EFFORTS:
+        raise ValueError(
+            "api.default_reasoning_effort must be low, high or max; thinking-off is unqualified"
+        )
     if type(optional(profile, "generation", "warmup")) is not bool:
         raise ValueError("generation.warmup must be true or false")
     for section, key in (
@@ -366,7 +378,7 @@ def check_generation(profile):
         >= profile["context"]["max_model_len"]
     ):
         raise ValueError("warmup_long_tokens plus max_tokens must fit the context")
-    if profile["generation"]["reasoning_effort"] not in {"low", "high", "max"}:
+    if profile["generation"]["reasoning_effort"] not in REASONING_EFFORTS:
         raise ValueError(
             "Use a supported reasoning_effort; thinking-off is unqualified"
         )
@@ -843,6 +855,16 @@ def apply_determinism(args, profile):
     ]
 
 
+def apply_reasoning_default(args, profile):
+    """The effort a request gets when it names none; a request's own value wins."""
+    if "default_reasoning_effort" not in profile["api"]:
+        return
+    args += [
+        "--default-chat-template-kwargs",
+        json.dumps({"reasoning_effort": profile["api"]["default_reasoning_effort"]}),
+    ]
+
+
 def speculative_config(depth):
     """vLLM's MTP draft at this depth; examples/speculative.mtp*.json spell it."""
     return {"method": "mtp", "num_speculative_tokens": depth, "moe_backend": "triton"}
@@ -987,6 +1009,7 @@ SERVE_STEPS = (
     apply_boolean_flags,
     apply_vision,
     apply_cache,
+    apply_reasoning_default,
     apply_determinism,
     apply_speculation,
     apply_decode_graphs,

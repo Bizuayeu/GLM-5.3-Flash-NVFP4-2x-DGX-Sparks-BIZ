@@ -13,7 +13,7 @@
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、checkpoint保持、メモリ使用率、unpack融合 |
 | `mtp` | MTP有効化、下書きトークン数、モデルのメタデータview |
 | `lpa` | LPA有効化、近似開始層、通常計算を残す末尾、損益分岐の閾値、クエリ省略、projectorとハッシュ |
-| `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー、dev経路、cache済みtokenの報告 |
+| `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー、effortを指定しない要求に使うreasoning effort、dev経路、cache済みtokenの報告 |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト。warmupの段 |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限、停滞検知 |
 | `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定 |
@@ -35,6 +35,7 @@
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
 | 再現性 | `canonical_moe_order`・`stable_indexer_topk`・`inductor_deterministic` をすべて `true`：同一要求はbit一致で反復し、どの起動も同じ数値状態で計算する（[再現性のスイッチ](#再現性のスイッチ)） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
+| サーバー側のreasoning既定 | `api.default_reasoning_effort = "high"`：effortを指定しない要求を、チャットテンプレートのmaxではなくhighで処理する（[APIと診断](#apiと診断)） |
 | 資源 | コンテナ112 GiB、起動前空き108 GiB、実行中余裕3 GiB |
 | 実行期限 | `run_seconds=0`：時間による自動停止なし。メモリ監視は継続 |
 | 監視 | `stall_seconds=600`：rank 0は要求がrunningのまま `/metrics` の信号が600秒動かなければ停止（`engine-stall`）。`api.dev_endpoints=false` |
@@ -76,7 +77,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 1行目から2つの引数が従い、独立した設定ではありません。model引数が `/hf` 配下のMTP metadata viewではなく `/derived` になること（再パックしたcheckpointはBF16のdraft層を自分で宣言する）と、containerのlabelがprofileのfingerprintを持つこと（どのkeyでも変われば変わる）です。command・環境変数のそれ以外はどちらのrankでも同じです。
 
-2026-09-23に、仮値を参照対の値に置き換えたAXLの例は、`server freeze`・`server plan` と両rankの `server preflight` の全検査に合格しました。例外は `startup_memory` だけで、これは稼働中の対の横では成り立ちません。参照対が配信するprofileとの差は `validation.memory_probe` と `api.dev_endpoints`（配信profileでは切替後の検査のためon）、warmupの長文段（配信profileは65,536トークン、例は無し）、使われないLPAの仮値だけです。
+2026-09-23に、仮値を参照対の値に置き換えたAXLの例は、`server freeze`・`server plan` と両rankの `server preflight` の全検査に合格しました。例外は `startup_memory` だけで、これは稼働中の対の横では成り立ちません。参照対が配信するprofileとの差は `validation.memory_probe` と `api.dev_endpoints`（配信profileでは切替後の検査のためon）、warmupの長文段（配信profileは65,536トークン、例は無し）、使われないLPAの仮値と、キーができる前に起動した配信profileには無い `api.default_reasoning_effort` だけです。
 
 ## キーの解説
 
@@ -123,6 +124,8 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 ### APIと診断
 
 `api.prompt_tokens_details`（未指定は無効、テンプレートは `true`）は `--enable-prompt-tokens-details` を付け、`usage.prompt_tokens_details.cached_tokens` で復元prefix長を返します。無いとvLLMは `null` を返し、cacheが当たっていてもハーネスの表示は0のままです。
+
+`api.default_reasoning_effort`（`low`・`high`・`max`のいずれか。未指定は何も送らない。テンプレートは `"high"`）は両rankに `--default-chat-template-kwargs '{"reasoning_effort": …}'` を付けます。checkpointのチャットテンプレートは `low` と `high` だけを読み、それ以外（未指定を含む）を `max` として扱います。`max` の思考には実質的な上限がありません（[reasoning設定](harnesses.ja.md#受け入れ試験で使うreasoning設定)）。このキーが無ければ、effortを指定しないクライアントは `max` になります。固定したvLLMは、サーバーの既定を要求自身の値の下に置きます：トップレベルの `reasoning_effort` が `chat_template_kwargs.reasoning_effort` に優先し、それがサーバーの既定に優先するので、`low` を求めたクライアントは `low` のままです。Chat Completions・AnthropicのMessages・Responses・`/tokenize` は同じ経路で解決するので、LPA要求のtokenizeもchatと一致したままです。ランチャー自身の要求のうち、canaryの段・`server ask`・`tools/decode_check.py` はeffort（`low`）を指定するので変わりません。warmupのほかの段・`apc-history`・`tools/check_prefix_cache.py` は指定しないので、サーバーの既定で動きます。稼働中の対は起動時のeffortのままです。このキーはprofileのfingerprintを変えるので、切替先のprofileに書きます。
 
 `api.dev_endpoints`（未指定はfalse）は両rankに `VLLM_SERVER_DEV_MODE=1` を渡し、loopbackのAPIにvLLMのdev経路（`/reset_prefix_cache`・`/reset_mm_cache`・`/collective_rpc`・`/sleep`・`/wake_up`・`/server_info`）を載せます。LPA・component・expertのprofileは元からこのモードで動きます。このキーは、LPA offのprofileでもベンチやwarmupの後始末のために再起動なしでprefix cacheを消せるようにするためのものです。これらの経路は無認証です（[起動契約](launch-safety.ja.md#モデルapiクライアント)）。他のローカル利用者がいる機体では off のままにします。
 

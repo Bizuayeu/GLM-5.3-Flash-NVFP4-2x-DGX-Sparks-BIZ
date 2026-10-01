@@ -425,6 +425,34 @@ class ServerConfigTests(unittest.TestCase):
             config.serve_args(self.profile, 0, "/hf/model"),
         )
 
+    def test_default_reasoning_effort_is_optional_and_sent_as_template_kwargs(self):
+        # Both templates set high; the checkpoint's template resolves an omitted
+        # effort to max, so the server default is what an omitting client gets.
+        for name in ("server.example.toml", "server.axl.example.toml"):
+            template = config.load(ROOT / "examples" / name)
+            self.assertEqual(template["api"]["default_reasoning_effort"], "high")
+        for effort in ("low", "high", "max"):
+            self.profile["api"]["default_reasoning_effort"] = effort
+            config.validate(self.profile)
+            for rank in (0, 1):
+                args = config.serve_args(self.profile, rank, "/hf/model")
+                self.assertEqual(
+                    json.loads(args[args.index("--default-chat-template-kwargs") + 1]),
+                    {"reasoning_effort": effort},
+                )
+        # Absent: no flag, the checkpoint's template decides (max).
+        self.profile["api"].pop("default_reasoning_effort")
+        config.validate(self.profile)
+        self.assertNotIn(
+            "--default-chat-template-kwargs",
+            config.serve_args(self.profile, 0, "/hf/model"),
+        )
+        for bad in ("medium", "none", "", 1, True, None):
+            profile = copy.deepcopy(self.profile)
+            profile["api"]["default_reasoning_effort"] = bad
+            with self.assertRaises(ValueError):
+                config.validate(profile)
+
     def test_nccl_channels_is_optional_and_pins_both_bounds(self):
         # The template pins 8, measured against NCCL's own 64 on the reference pair.
         distributed = config.load(ROOT / "examples/server.example.toml")

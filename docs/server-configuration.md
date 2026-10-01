@@ -13,7 +13,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 | `cache` | KV bytes per rank, requested block size, prefix cache, checkpoint retention, memory utilization, fused unpack |
 | `mtp` | Enable MTP, draft depth, checkpoint metadata view |
 | `lpa` | Enable approximation, first layer, exact tail, break-even threshold, query omission, projector and checksum |
-| `api` | Loopback/rendezvous ports, served name and parsers, dev routes, cached-token usage |
+| `api` | Loopback/rendezvous ports, served name and parsers, the reasoning effort a request that names none gets, dev routes, cached-token usage |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout; warmup ladder |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline, stall detection |
 | `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set |
@@ -35,6 +35,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | NCCL | `nccl_channels = 8` on both ranks (NCCL alone chooses 64 on the reference pair) |
 | Repeatability | `canonical_moe_order`, `stable_indexer_topk` and `inductor_deterministic` all `true`: identical requests repeat bit for bit and every launch computes in the same numerical state ([repeatability switches](#repeatability-switches)) |
 | Generation | temperature=0, max_tokens=4096, reasoning_effort=low, clear_thinking=true |
+| Server reasoning default | `api.default_reasoning_effort = "high"`: a request that names no effort is served at high instead of the chat template's max ([API and diagnostics](#api-and-diagnostics)) |
 | Resources | Container 112 GiB, startup free 108 GiB, runtime reserve 3 GiB |
 | Lifetime | `run_seconds=0`: no time-based automatic stop; memory supervision remains active |
 | Supervision | `stall_seconds=600`: rank 0 also stops when requests are running but no `/metrics` signal moves for 600 s (`engine-stall`); `api.dev_endpoints=false` |
@@ -65,7 +66,7 @@ The two examples are one profile with five settings changed; [`tests/test_axl_ex
 
 Two arguments follow from the first row and are not settings of their own: the model argument becomes `/derived` instead of the MTP metadata view under `/hf` (the repacked checkpoint declares the BF16 draft layer itself), and the container label carries the profile's fingerprint, which changes with any key. Nothing else in the command or the environment differs, on either rank.
 
-On 2026-09-23 the AXL example, its placeholders replaced by the reference pair's values, passed `server freeze`, `server plan` and every `server preflight` check on both ranks except `startup_memory`, which cannot hold beside a running pair. It differs from the profile the reference pair serves only in `validation.memory_probe` and `api.dev_endpoints` (on in the served profile, for the checks after a switch), the warmup's long rung (65,536 tokens there, none in the example) and the unused LPA placeholders.
+On 2026-09-23 the AXL example, its placeholders replaced by the reference pair's values, passed `server freeze`, `server plan` and every `server preflight` check on both ranks except `startup_memory`, which cannot hold beside a running pair. It differs from the profile the reference pair serves only in `validation.memory_probe` and `api.dev_endpoints` (on in the served profile, for the checks after a switch), the warmup's long rung (65,536 tokens there, none in the example), the unused LPA placeholders and `api.default_reasoning_effort`, which the served profile, launched before the key existed, does not set.
 
 ## Key reference
 
@@ -112,6 +113,8 @@ These switches cover a request alone. With `max_num_seqs` of 2 or more a request
 ### API and diagnostics
 
 `api.prompt_tokens_details` (off when absent; template `true`) adds `--enable-prompt-tokens-details` so `usage.prompt_tokens_details.cached_tokens` reports the restored prefix; without it vLLM returns `null` and harness cache displays stay at zero even when the cache hits.
+
+`api.default_reasoning_effort` (`low`, `high` or `max`; absent = none sent; template `"high"`) adds `--default-chat-template-kwargs '{"reasoning_effort": …}'` on both ranks. The checkpoint's chat template reads `low` and `high` and resolves any other value, an omitted one included, to `max`, whose thinking has no practical bound ([reasoning profile](harnesses.md#reasoning-profile-for-acceptance)); without the key a client that names no effort gets `max`. The pinned vLLM places the server default under the request's own values: a top-level `reasoning_effort` wins over `chat_template_kwargs.reasoning_effort`, which wins over the server default, so a client that asks for `low` still gets `low`. Chat Completions, Anthropic Messages, Responses and `/tokenize` resolve it the same way, so a tokenized LPA request still matches its chat. Of the launcher's own requests, the canary rung, `server ask` and `tools/decode_check.py` name their effort (`low`) and are unchanged; the other warmup rungs, `apc-history` and `tools/check_prefix_cache.py` name none and run at the server default. A running pair keeps the effort it was launched with: the key changes the profile's fingerprint, so add it to the profile you switch to.
 
 `api.dev_endpoints` (false when absent) sets `VLLM_SERVER_DEV_MODE=1` on both ranks, which mounts vLLM's dev routes on the loopback API: `/reset_prefix_cache`, `/reset_mm_cache`, `/collective_rpc`, `/sleep`, `/wake_up` and `/server_info`. LPA, component and expert profiles already run in that mode; the key lets a profile with LPA off reset the prefix cache without a restart, for benchmarks and for the warmup ladder's cleanup. The routes have no authentication ([launch contracts](launch-safety.md#model-api-clients)); leave it off on a kit with other local users.
 
