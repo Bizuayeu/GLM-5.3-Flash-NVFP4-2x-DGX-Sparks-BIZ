@@ -128,7 +128,7 @@ reference imageは、2台のGB10ホストで45層の言語層すべてを、Marl
 
 ### prefix cacheの正しさの関門
 
-2026-10-02、参照機で1.25.0のimageを使い、TP=2の両profileで [`server prefix-gate`](server-configuration.ja.md#コマンド) を2つの長さで流しました。配布既定は両方とも合格です。coldもwarmも6問中6問正答で、warmの要求はどれも14,014 tokenのpromptのうち9,216 token、98,982 tokenのうち92,160 tokenをcacheから戻しました。公開した任意設定は両方の長さで判定不能（`cold_incorrect`）でした。coldもwarmも6問中5問正答で、外れはどちらの段でも同じ課題、同じ誤答です。外れた課題を、新しいsaltで1本だけ送り直す（要求1本、cached 0 token）と、同じ誤ったコードが返りました。cacheの不具合ではないので、配信のprefix cachingはonのままです。
+2026-10-02、参照機で1.25.0のimageを使い、TP=2の両profileで [`server prefix-gate`](server-configuration.ja.md#コマンド) を2つの長さで流しました。配布既定は両方とも合格です。coldもwarmも6問中6問正答で、warmの要求はどれも14,014 tokenのpromptのうち9,216 token、98,982 tokenのうち92,160 tokenをcacheから戻しました。公開した任意設定は両方の長さで判定不能（`cold_incorrect`）でした。coldもwarmも6問中5問正答で、外れはどちらの段でも同じ課題、同じ誤答です。外れた課題を、そのとき任意設定を配信していた対（1.24.0のcheckout、image `99e6cf7a…`、要求の本文は同じ）へ新しいsaltで1本だけ送り直す（要求1本、cached 0 token）と、同じ誤ったコードが返りました。cacheの不具合ではないので、配信のprefix cachingはonのままです。
 
 **長いcontextでの1つずれた読み取り。公開した任意設定だけで測った所見です。** 誤答はどれも、問われた記録の直前の記録のコードでした。98,982 tokenのログでRecord 03008を問うとRecord 03007のコード `LPDHS` を、14,013 tokenのログでRecord 00374を問うとRecord 00373の `GYCUK` を答えました。同じ課題で問うたもう一方の記録は、どちらも正答です。配布既定は同じログと課題で、両方の長さとも6問すべてに正答しました。原因は切り分けていません。任意設定はW4A16のattention射影と `lm_head` のほか、profileの他の設定（2系列、6 GiBのKV、pageの重複排除）でも配布既定と違います。attentionの再量子化が最も疑わしいというのは仮説にとどまります。
 

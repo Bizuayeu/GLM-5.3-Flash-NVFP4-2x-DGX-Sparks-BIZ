@@ -12,7 +12,7 @@
 
 ### Documentation
 
-- [検証](docs/validation.ja.md#prefix-cacheの正しさの関門)：参照機でのprefix cacheの関門（2026-10-02、1.25.0のimage）。配布既定は両方の長さで合格です（promptは14,014と98,982 token、warmの要求は9,216と92,160 tokenを戻した）。公開した任意設定は両方で判定不能（`cold_incorrect`）でした。外れた課題1問は、cold・warm・cached 0 tokenでの1本だけの送り直しのどれでも同じ答えだったので、cacheの不具合ではなく、prefix cachingはonのままです。誤答はどれも、問われた記録の直前の記録のコードでした（Record 03008にはRecord 03007の、00374には00373のコード）。長いcontextで1つずれた読み取りで、任意設定だけで測った所見です。配布既定は同じ課題に正答しました。原因は切り分けておらず、W4A16のattentionの再量子化は仮説です。READMEの任意設定の短所と状況の表からそこを指し、[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)に関門の実施を記しました。
+- [検証](docs/validation.ja.md#prefix-cacheの正しさの関門)：参照機でのprefix cacheの関門（2026-10-02、1.25.0のimage）。配布既定は両方の長さで合格です（promptは14,014と98,982 token、warmの要求は9,216と92,160 tokenを戻した）。公開した任意設定は両方で判定不能（`cold_incorrect`）でした。外れた課題1問は、cold・warm・cached 0 tokenでの1本だけの送り直し（そのとき配信していた対、image `99e6cf7a…`）のどれでも同じ答えだったので、cacheの不具合ではなく、prefix cachingはonのままです。誤答はどれも、問われた記録の直前の記録のコードでした（Record 03008にはRecord 03007の、00374には00373のコード）。長いcontextで1つずれた読み取りで、任意設定だけで測った所見です。配布既定は同じ課題に正答しました。原因は切り分けておらず、W4A16のattentionの再量子化は仮説です。READMEの任意設定の短所と状況の表からそこを指し、[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)に関門の実施を記しました。
 - [検証](docs/validation.ja.md#マルチバイト出力)：sampledの `server mojibake`（temperature 1.0、top_p 0.95、seed 42〜47）は、各profile 6本、計12本の回答に化け文字を見つけませんでした。UTF-8のガードはREADMEのNext Actionのきっかけのままです。#50843のガードが入った1.25.0のimageで、両profileは1.24.0のdecodeの確認のcompletionをbit単位で再現し、任意設定の `server agreement` は基準と完全に一致しました。
 - spinのキーを[起動設定](docs/server-configuration.ja.md#並列化と通信)に、測定を[ベンチマーク](docs/benchmarks.ja.md#1250での測定)に書き、施策台帳のP29と[全体像](docs/optimization-overview.ja.md)で候補から採用へ移しました。READMEの主要な測定値は、測った最新の版である1.25.0になりました。
 
