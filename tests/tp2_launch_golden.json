@@ -545,7 +545,7 @@
   }
  },
  "axl": {
-  "fingerprint": "397c50566ae87b51721cd53bb0a9b122262df4a66bceee735768e5eac5ccc8c0",
+  "fingerprint": "24c55b4c7c293896f47fcd943a052b40a8462ef79f37a923c6d4f8e5f96c98ac",
   "ranks": [
    {
     "site": {
@@ -658,7 +658,7 @@
      "--restart",
      "no",
      "--label",
-     "glm53.experiment.startup=397c50566ae87b51721cd53bb0a9b122262df4a66bceee735768e5eac5ccc8c0",
+     "glm53.experiment.startup=24c55b4c7c293896f47fcd943a052b40a8462ef79f37a923c6d4f8e5f96c98ac",
      "--label",
      "glm53.setup.rank=0",
      "--gpus",
@@ -933,7 +933,7 @@
      "--restart",
      "no",
      "--label",
-     "glm53.experiment.startup=397c50566ae87b51721cd53bb0a9b122262df4a66bceee735768e5eac5ccc8c0",
+     "glm53.experiment.startup=24c55b4c7c293896f47fcd943a052b40a8462ef79f37a923c6d4f8e5f96c98ac",
      "--label",
      "glm53.setup.rank=1",
      "--gpus",

@@ -4,6 +4,9 @@ tests/tp2_launch_golden.json was written by ``snapshot()`` at d2270d8 (1.21.0),
 before the launcher learned N nodes. Every two-node profile below must still give
 the same site, environment, vLLM arguments, docker command, image checks and
 fingerprint on both ranks; a difference here means a TP=2 launch moved.
+
+One deliberate change since (2026-10-01): the AXL profile's KDA overlay was revised (sha256
+27a532ce..., f_a/g_a copied before Marlin for TP=3), which moves only that profile's fingerprint.
 """
 
 import json
