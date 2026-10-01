@@ -395,9 +395,8 @@ def check_node_count(profile):
         ),
         # apc_worker refuses TP outside {1, 2} on every request; LPA was measured at TP=2.
         (profile["lpa"]["enabled"], "LPA"),
-        # The overlays split heads evenly by TP (overlays/kda-quant-split.py);
-        # the TP=3 option is plan Stage 6.
-        (derived_checkpoint(profile) is not None, "runtime.derived_checkpoint"),
+        # A derived checkpoint is allowed: the overlays split heads by TP with
+        # num_heads % tp_size, which the padded 66 heads satisfy (plan Stage 6).
     ):
         if refused:
             raise ValueError(f"{name} launches only on two nodes")

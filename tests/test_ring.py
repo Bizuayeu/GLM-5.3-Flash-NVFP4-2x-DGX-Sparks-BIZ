@@ -371,21 +371,6 @@ class RingExclusionTests(unittest.TestCase):
             "EP": lambda p: p["runtime"].update(expert_parallel=True),
             "EP observer": lambda p: p["validation"].update(expert_worker=True),
             "LPA": lambda p: p["lpa"].update(enabled=True),
-            "derived": lambda p: p["runtime"].update(
-                derived_checkpoint={
-                    "path": "/derived",
-                    "requant_target": "l",
-                    "overlays": [
-                        {
-                            "target": "kda.py",
-                            "source": "/overlays/kda.py",
-                            "sha256": "0" * 64,
-                            "base_sha256": "0" * 64,
-                            "marker": "m",
-                        }
-                    ],
-                }
-            ),
         }
         for name, change in cases.items():
             profile = ring()
@@ -399,6 +384,27 @@ class RingExclusionTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, "two nodes"),
             ):
                 config.validate(profile)
+
+    def test_a_derived_checkpoint_launches_on_three_nodes(self):
+        # Stage 6 (2026-10-01): the overlays split heads by TP with assert num_heads % tp_size,
+        # which holds at the padded 66 heads; the derived config is padded by the same knob.
+        profile = ring()
+        profile["runtime"]["derived_checkpoint"] = {
+            "path": "/derived",
+            "requant_target": "l",
+            "overlays": [
+                {
+                    "target": "kda.py",
+                    "source": "/overlays/kda.py",
+                    "sha256": "0" * 64,
+                    "base_sha256": "0" * 64,
+                    "marker": "m",
+                }
+            ],
+        }
+        config.validate(profile)
+        env = config.environment(profile, 2)
+        self.assertEqual(env["GLM53_TP_PAD_MULTIPLE"], "3")
 
     def test_the_tp2_kv_limit_does_not_apply_to_three_nodes(self):
         profile = ring()
