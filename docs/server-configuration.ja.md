@@ -2,12 +2,12 @@
 
 [English](server-configuration.md)
 
-[コメント付きTOML](../examples/server.example.toml)を `state/server.toml` にコピーし、両Linuxノードに同じ内容を置きます。このファイルをランチャーと専用送信コマンドが共通で読みます。公開した任意設定には専用の例 [server.axl.example.toml](../examples/server.axl.example.toml) があります：同じprofileに、再パックした重み（NVFP4 BIZ AXL）と同梱のoverlayの `runtime.derived_checkpoint` 表、`runtime.prefix_page_dedup`、同時2系列、rankあたり6 GiBのKVを足したものです。ランチャーは再パックしたcheckpointなしで3 GiBを超えるKVを拒みます：参照対では固定の重みがKV 3 GiBでheadに5.5 GiBを残し（保護は3 GiB）、再パックした重みは10.5 GiBを残します。
+[コメント付きTOML](../examples/server.example.toml)を `state/server.toml` にコピーし、すべてのLinuxノードに同じ内容を置きます。このファイルをランチャーと専用送信コマンドが共通で読みます。公開した任意設定には専用の例 [server.axl.example.toml](../examples/server.axl.example.toml) があります：同じprofileに、再パックした重み（NVFP4 BIZ AXL）と同梱のoverlayの `runtime.derived_checkpoint` 表、`runtime.prefix_page_dedup`、同時2系列、rankあたり6 GiBのKVを足したものです。QSFPリングでつないだ3台には [`server.tp3.example.toml`](../examples/server.tp3.example.toml) があります（[3ノード](#3ノード)）。2ノードでは、ランチャーは再パックしたcheckpointなしで3 GiBを超えるKVを拒みます：参照対では固定の重みがKV 3 GiBでheadに5.5 GiBを残し（保護は3 GiB）、再パックした重みは10.5 GiBを残します。3ノードでは、profileに明示した `cache.kv_cache_memory_bytes` だけが上限です。
 
 | カテゴリ | 管理するもの |
 |---|---|
 | `runtime` | 固定イメージID、eager／decode Graph実行、独立EP／PPと層境界、seed、画像入力の切替、再現性のスイッチ、derived checkpoint |
-| `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算 |
+| `context` | 入出力合計のコンテキスト長、同時シーケンス数、prefillのチャンク予算、要求ごとのprefill上限（任意） |
 | `profiling` | 診断用のTorch/CUDA traceの採取（必要なときだけ）。速度測定ではoff |
 | `validation` | CUDA・indexer用、またはexpert実配置用の独立観測worker、メモリ探針 |
 | `cache` | 各ランクのKV容量、要求ブロックサイズ、prefix cache、checkpoint保持、メモリ使用率、unpack融合 |
@@ -16,7 +16,7 @@
 | `api` | ローカルAPI・ランク間通信ポート、モデル名、パーサー、effortを指定しない要求に使うreasoning effort、dev経路、cache済みtokenの報告 |
 | `generation` | 送信コマンドの生成既定値：出力長、temperature、reasoning、タイムアウト。warmupの段 |
 | `resources` | コンテナ上限、起動前の空き条件、実行中のメモリ余裕、自動停止期限、停滞検知 |
-| `nodes` | 両ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定 |
+| `nodes` | 2ノード以上：各ランクの実測済みfabricアドレス、interface、HCA、GID。ホスト別Docker CPU setは任意指定。3台のリングでは、各ノードが他のノード1台につき `links` を1項目書く（`peer`・`hca`・`interface`・`local_ip`・`peer_ip`・`gid_index`）。ランチャーはリングが閉じていること、各 /30 の両端が食い違わないこと、ノードごとにGID indexが一つであることを確かめ、リンクのHCAをすべて `NCCL_IB_HCA` に並べる。ノードは `host_address`（他のランクが届く固定の /32）と `host_interface`（それを載せるinterface）を任意指定でき、Gloo・TCPStore・NCCL bootstrapがこれを使う（[`server.tp3.example.toml`](../examples/server.tp3.example.toml)）。Wi-Fiの `host_interface` は、そのノードが `host_interface_wifi_test = true` も書かない限り拒否する。これは**試験用の設定**で、socket（Gloo・TCPStore・NCCL bootstrap）だけを管理用Wi-Fiに載せ、データは直結リンクのまま。恒久策はホストごとの /32 を `host_address` にし、直結リンク越しの静的経路を張る形 |
 
 モデルID・revisionとビルドの基底イメージは [runtime.lock.json](../config/runtime.lock.json) が正典です。相対パスはTOML自身の位置が基準です。例外として `mtp.view` はHugging Faceキャッシュからの相対パスで、固定revisionを末尾に自動付加します。秘密鍵やトークンはこのファイルに入れません。
 
@@ -117,6 +117,28 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 `runtime.pipeline_parallel_size=1` はTP=2を維持し、2にすると同じ2台でTP=1／PP=2を選びます。`GLM53_PIPELINE_API=1` を持つイメージが必要です。`pipeline_split_layer` は前段stageの層数で、既定候補24なら24／21層に分け、この固定モデルでは各stageに21 MoE層ずつを置けます。容量を保証する値ではありません。両stageにMLAが必要なため、境界の許容範囲は4〜43です。範囲は1系列・eager・EP/MTP/LPA/fusion/APCなしで、PP2は測って不採用としました（[TPとPPの比較](performance-investigation.ja.md#tpとppの比較)）。TOML更新時は両キーを明示してください。
 
+### prefillの上限
+
+`context.long_prefill_token_threshold`（未指定または0は何も渡さない。exampleではコメントアウト）は、vLLMの `--long-prefill-token-threshold` を渡します。要求ごとのprefill chunkをstepあたりこの値までに抑えるので、長いprefillの横でdecodeする要求が、毎step chunk一つ分を待たなくなります。0から `max_model_len` までを受けます。2026-10-01に、公開した任意設定・TP=3・256Kで、約200K tokenのprefillと、その10秒後に送った短い要求で測りました：
+
+| 上限 | prefill中の短い要求のdecode | 長いprefill |
+|---|---|---|
+| なし | 1.18 tok/s | 1,326 tok/s |
+| 512 | 5.67 tok/s | 1,082 tok/s（−18%） |
+| 256 | 7.92 tok/s | 806 tok/s（−39%） |
+
+### 3ノード
+
+`[[nodes]]` が3つなら、スイッチなしのQSFPリング上でTP=3を動かします（[QSFP直結](qsfp-network.ja.md)）。モデルのattentionとKDAのhead 64、routed・shared expertの幅2,048、語彙は3で割り切れないので、ランチャーが全rankに `GLM53_TP_PAD_MULTIPLE=3` を設定し、imageがロード時にゼロで埋めます：headは66（rankあたり22）、幅は2,112（rankあたり704）、語彙は192の倍数（154,880から154,944）に、MTPのdraftも同じように埋めます。単一ホストのfixtureでは、埋めたheadは厳密にゼロ、本来のheadは前とbit単位で同じでした。`GLM53_TP_PAD_API=1` が必要です（[イメージの契約](#現行イメージの契約)）。2ノードではknobを設定せず、patchは何も変えません。3ノードではランチャーはさらに：
+
+- 疎MLAのdecodeを、rankあたり22 headを受ける参照attentionで処理します。SM120のFlashInferのdecode kernelが受けるのは8・16・32・64・128 headだけです。`runtime.fa2_attention` はTP=3のどの測定でもonでした
+- 視覚塔をdata parallelで動かします（`--mm-encoder-tp-mode data`）。16 headが3で割り切れないためです
+- `NCCL_IB_SUBNET_AWARE_ROUTING=1` を設定します
+- 2ノードでしか起動しないPP2・EP（とその観測worker）・LPAを拒み、derived checkpoint（公開した任意設定）は受けます。そのoverlayは埋めた66 headをTPで分けます
+- derived checkpointなしのKVを3 GiBまでとする2ノードの制限を適用しません
+
+`cluster switch` と `cluster resume` は、rank数の違う起動の間の切替を拒みます。対とリングの間を移るには、全rankを止めてからもう一方を起動します（[運用](operations.ja.md#3ノード)）。
+
 ### 画像入力
 
 `runtime.vision` は未指定でfalse、テンプレートは `true` です。`false` は `--language-model-only` を残し、視覚塔を読み込まずテキスト・ツール専用で動かします。`true` は両rankからこのフラグを外し、`--limit-mm-per-prompt '{"video": 0}'` を付けます。**`vision = true` でも動画入力は拒否し、受け付けるのは画像だけです。** 1 promptあたりの画像枚数はvLLMの既定のままです。Vision有効時は `cache.mm_processor_cache_gb`（未指定は0.1）が `--mm-processor-cache-gb` を決め、上限より大きい画像はキャッシュせずに処理し（警告のみ）、拒否はしません。動画を無効にする理由、キャッシュをvLLMの4 GiBでなく0.1 GiBにする理由、視覚塔の読み込み方は[設定を選んだ経緯](vision.ja.md#設定を選んだ経緯)に、実測とheadのメモリ余裕は[画像入力](vision.ja.md)にあります。検証fixtureはこのキーに関係なくテキスト専用で読み込みます。
@@ -165,14 +187,14 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server plan --rank 1
 ```
 
-各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・他のコンテナがGPUを使っていないこと・空きメモリを確認できます（[各検査の範囲](operations.ja.md#フルモデルの起動検査)）。動いていない対を起動するには、worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します。稼働中の対を置き換えるには[両rankの切替](launch-safety.ja.md#全レール検査と両rankの切替)を使います。
+各Linuxノードの `server preflight --rank N` でモデル・fabric・イメージID・他のコンテナがGPUを使っていないこと・空きメモリを確認できます（[各検査の範囲](operations.ja.md#フルモデルの起動検査)）。動いていない対を起動するには、worker側でrank 1を先に、head側でrank 0を後に、それぞれの端末で起動します（3ノードでは最も大きいrankから、headを最後に）。稼働中の対を置き換えるには[両rankの切替](launch-safety.ja.md#全レール検査と両rankの切替)を使います。
 
 ```sh
 python -m glm53_setup server start --rank 1
 python -m glm53_setup server start --rank 0
 ```
 
-起動コマンドは前面に残り、自分のコンテナを監視します。端末を維持してください。`resources.run_seconds` の期限には**モデルのロード時間も含まれます**。Ctrl+C・期限到達・空きメモリ不足でそのランクを停止します。分散実行に異常が出た場合は両ランクを停止します。コンテナと `records/` のログ・起動設定は残し、自動削除や自動再起動はしません。
+起動コマンドは前面に残り、自分のコンテナを監視します。端末を維持してください。`resources.run_seconds` の期限には**モデルのロード時間も含まれます**。Ctrl+C・期限到達・空きメモリ不足でそのランクを停止します。分散実行に異常が出た場合は全ランクを停止します。コンテナと `records/` のログ・起動設定は残し、自動削除や自動再起動はしません。
 
 APIが準備できたら、headの別端末から送信できます。
 
@@ -217,7 +239,11 @@ run_seconds = 0
 
 KVが不足すれば起動が拒否される場合があり、実行時は待ちやpreemption・再計算により性能が落ちることがあります。固定KV poolが勝手に必要量まで拡張されるわけではありません。KV以外の割当やRAM予算が不足すればOOMやガード停止も起こり得ます。[vLLMのpreemption説明](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
-起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。`GLM53_KPOOL_RING=1` を持つimageでは、IndexPool tail groupのblockがMTPの深さで変わります。MTPなしは4、k = 1〜4は8、k = 5は16です（それ以前のimageはどのkでも4）。実行中の要求1本につき1 blockです。起動行の `kv cache group sizes` に表れます。上の実測値はpatchのないimageのもので、整列したblockと要求1本あたりのblock数が一緒に動くかどうかは、起動から記録するfingerprintと同じく、作り直したimageの起動行で読みます。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。起動時のcache容量・最大並列度は計算上の目安として保存し、**意図する入出力長×同時数の実要求、preemption回数、両rankの空きメモリ最小値、OOM・ガード停止**を確認してから対応範囲を表明します。現行preflightの合格は、最大長×同時数の収容試験の代わりにはなりません。実測範囲は[標準batchingの独立評価](benchmarks.ja.md#標準batchingの独立評価)を参照してください。
+起動行 `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` は、このhybridモデル（MLA・IndexPool tail・KDA state群・MTP draftが一つのblock poolを共有し、整列した区間ごとにgroup別のidを使う）では `N = C × L` です。`N` は同時実行数をtoken単位で表した値で、prefix cacheが保持できる会話tokenの数ではありません。`server capacity` が分解を表示し、group種別が分かる場合は会話本数の推定も出します。測った画像入力構成の二つでは、KV 1 GiBに4,608 tokenのblockが28個入り、長さLの要求1本はそのうちceil(L / 4608) + 16個を使いました。204,800 tokenと2.5 GiBでは70個のうち61個、262,144と3 GiBでは84個のうち73個で、どちらも1.15倍です。256Kの値は切替前にこの数え方で見積もったものです。他の長さ・KV量・group構成では、それぞれの起動行を確かめてください。`GLM53_KPOOL_RING=1` を持つimageでは、IndexPool tail groupのblockがMTPの深さで変わります。MTPなしは4、k = 1〜4は8、k = 5は16です（それ以前のimageはどのkでも4）。実行中の要求1本につき1 blockです。起動行の `kv cache group sizes` に表れます。上の実測値はpatchのないimageのもので、整列したblockと要求1本あたりのblock数が一緒に動くかどうかは、起動から記録するfingerprintと同じく、作り直したimageの起動行で読みます。prefix cacheもblock単位で働くため、同じN tokenのpromptを繰り返したとき復元されるのは `(floor(N / block) - 1) x block` tokenで、2 block未満では一切復元されません。画像profileのscheduler block 4,608 tokenでの実測は、3,625 tokenで0、14,025 tokenで9,216、28,025 tokenで23,040でした。短い会話はこのprofileでは再利用の恩恵を受けません。
+
+3ノードでは整列したblockは3,072 token（2ノードは4,608）で、KV 1 GiBに約42 block入り、長さLの要求はceil(L / 3072) + 16 blockを使います。参照リングでMTP k=3の起動行（2026-09-29と10-01）は、配布既定の262,144 tokenで、3 GiBが126 blockに323,824 token（TP=2の3 GiBは301,645）、24 GiBが2,606,019、30 GiBが3,258,809（12.43倍）でした。10-01の公開した任意設定の30 GiBでは、524,288で3,555,065 token（6.78倍）、checkpointの `max_position_embeddings` である1,048,576で3,713,950（3.54倍）でした。これらは起動行の同時実行数です。TP=3で実際に同時に配信したのは、24 GiBでの約200K tokenの要求2本と3本で（2026-09-29）、preemptionなしにすべて答えました。
+
+起動時のcache容量・最大並列度は計算上の目安として保存し、**意図する入出力長×同時数の実要求、preemption回数、両rankの空きメモリ最小値、OOM・ガード停止**を確認してから対応範囲を表明します。現行preflightの合格は、最大長×同時数の収容試験の代わりにはなりません。実測範囲は[標準batchingの独立評価](benchmarks.ja.md#標準batchingの独立評価)を参照してください。
 
 ## 現行イメージの契約
 
@@ -242,6 +268,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
 | `GLM53_KPOOL_RING=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.19.0 |
 | `GLM53_LOAD_CLONE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.19.0 |
+| `GLM53_TP_PAD_API=1` | ヘッド・MoE幅・語彙をTPが割り切らない3ノード（`tp_padding_support`）。そのときランチャーが全rankに `GLM53_TP_PAD_MULTIPLE` を設定し、imageが読み込み時にzero-padする（`glm53_setup/runtime/patch_tp_padding.py`） | 1.24.0 |
 
 1.14.0から1.17.0までに作ったimageは、取り除いた `runtime.mla_decode_cpb` の `GLM53_MLA_DECODE_CPB_API=1` と、届かないpatchも持ちます。どの検査もそれを読まず、害はありません。
 
@@ -261,4 +288,4 @@ Graph経路では内部候補indexの範囲検査をGPU上で非同期に行い�
 
 LPAはリクエストごとの入力長が必要です。専用クライアントが実際のテンプレートでトークン数を求め、worker設定→生成→トークン数の一致確認→LPA解除まで行います。入力全体が `lpa.tail` に収まる短文は通常計算です。制御するクライアントは一つに限定してください。専用CLI同士はhead上のロックで直列化しますが、直接APIを呼ぶ他クライアントまでは調停しません。専用送信コマンドは非ストリーミングのテキスト・ツール会話用です。
 
-範囲はTP=2・Marlin W4A16・FP8 KV、テキスト・ツール呼び出し・画像です。LPAには同時1シーケンス・eager実行が必要で、LPAとprefix cacheの併用は上記のP22経路を使います。同時2系列以上を受け入れているのは、公開した任意設定の同時2系列profileだけです（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[LPA](lpa.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。
+範囲はTP=2と[3ノード](#3ノード)のTP=3・Marlin W4A16・FP8 KV、テキスト・ツール呼び出し・画像です。LPAには同時1シーケンス・eager実行が必要で、LPAとprefix cacheの併用は上記のP22経路を使います。同時2系列以上を受け入れているのは、公開した任意設定の同時2系列profileだけです（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。コンテキスト長・チャンク・キャッシュ量・cut・tailを変えた場合は再測定が必要で、設定検査の合格は品質や必要メモリの保証ではありません。[LPA](lpa.ja.md) と [MTP](speculative-decoding.ja.md) に検証範囲を記載しています。

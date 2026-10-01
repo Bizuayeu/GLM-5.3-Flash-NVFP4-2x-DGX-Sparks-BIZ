@@ -371,3 +371,94 @@ class CanaryGateTests(unittest.TestCase):
             backend.calls[-2:], [("stop", 0, "new-0"), ("stop", 1, "new-1")]
         )
         self.assertNotIn("install", [call[0] for call in backend.calls])
+
+
+class ThreeRankTests(unittest.TestCase):
+    """A ring launch: every rank stopped and started, workers first, head last."""
+
+    def test_workers_start_in_descending_rank_and_the_head_last(self):
+        backend = startable(Backend())
+        result = switch(backend, "new", save=lambda r: None, config="text", nodes=3)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(
+            [c for c in backend.calls if c[0] in ("stop", "start", "ready")],
+            [
+                ("stop", 0, "old-0"),
+                ("stop", 1, "old-1"),
+                ("stop", 2, "old-2"),
+                ("start", 2, "new-2"),
+                ("start", 1, "new-1"),
+                ("start", 0, "new-0"),
+                ("ready", ("new-2", "new-1", "new-0")),
+            ],
+        )
+        self.assertEqual([row["rank"] for row in result["config"]], [0, 1, 2])
+
+    def test_a_failed_launch_recovers_every_old_rank(self):
+        backend = Backend()
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(
+                backend,
+                "new",
+                save=lambda r: reports.append(copy.deepcopy(r)),
+                nodes=3,
+            )
+        self.assertEqual(
+            backend.calls[-7:],
+            [
+                ("stop", 0, "new-0"),
+                ("stop", 1, "new-1"),
+                ("stop", 2, "new-2"),
+                ("start", 2, "old-2"),
+                ("start", 1, "old-1"),
+                ("start", 0, "old-0"),
+                ("ready", ("old-2", "old-1", "old-0")),
+            ],
+        )
+        self.assertTrue(reports[-1]["recovered"])
+
+    def test_some_running_ranks_stop_nothing(self):
+        # A pair of another size leaves one host idle; the switch refuses before stopping.
+        backend = startable(Backend())
+        backend.current = lambda rank: None if rank == 2 else {"launch": "old"}
+        with self.assertRaisesRegex(ValueError, "Only some old ranks"):
+            switch(backend, "new", save=lambda r: None, nodes=3)
+        self.assertEqual(backend.calls, [])
+
+    def test_ranks_whose_assets_differ_stop_nothing(self):
+        backend = startable(Backend())
+        prepare = backend.prepare
+
+        def differ(rank, launch, *, recovery=False):
+            result = prepare(rank, launch, recovery=recovery)
+            return {**result, "common": "other"} if rank == 2 else result
+
+        backend.prepare = differ
+        with self.assertRaises(ValueError):
+            switch(backend, "new", save=lambda r: None, nodes=3)
+        self.assertEqual(backend.calls, [])
+
+    def test_resume_needs_every_rank_of_the_recorded_launch(self):
+        rows = [
+            {"rank": r, "identity": {"launch": "new", "name": f"new-{r}"}}
+            for r in (2, 1, 0)
+        ]
+        report = {
+            "status": READINESS_UNCONFIRMED,
+            "new": rows,
+            "assets": [{"rank": r} for r in (0, 1, 2)],
+            "failure": {"action": "poll"},
+            "error": "OperationFailure",
+            "recovery": [],
+        }
+        backend = startable(Backend())
+        backend.current = lambda rank: {"name": f"new-{rank}", "fingerprint": None}
+        backend.prepare = lambda rank, launch, **kw: {"rank": rank}
+        rows[0]["identity"]["fingerprint"] = rows[1]["identity"]["fingerprint"] = None
+        rows[2]["identity"]["fingerprint"] = None
+        result = resume(backend, copy.deepcopy(report))
+        self.assertEqual(result["status"], "complete")
+        partial = dict(report, new=rows[1:])
+        with self.assertRaisesRegex(ValueError, "every rank"):
+            resume(backend, partial)

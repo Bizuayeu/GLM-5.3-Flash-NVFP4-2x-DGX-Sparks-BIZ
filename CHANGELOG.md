@@ -2,6 +2,22 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.24.0 — 2026-10-01
+
+### Added
+
+- TP=3 on three GB10 hosts cabled as a switchless QSFP ring ([QSFP network](docs/qsfp-network.md), [server configuration](docs/server-configuration.md)). The heads (64), the routed and shared expert width (2,048) and the vocabulary do not divide by three, so the image zero-pads them at load time when the launcher sets `GLM53_TP_PAD_MULTIPLE` (heads to 66, expert width to 2,112, vocabulary to a multiple of 192; marker `GLM53_TP_PAD_API=1`, `glm53_setup/runtime/patch_tp_padding.py`). The patch changes nothing when the knob is unset: TP=2 launches keep their arguments, and a new image without the knob loaded the same weights as 1.19.0's, byte for byte. The launcher takes two or more `[[nodes]]`: a ring node lists one link per other node (HCA, interface, the two /30 addresses, GID index), and `host_address` with `host_interface` give each host one stable /32 that the others reach over static routes on the direct links, so Gloo, TCPStore and the NCCL bootstrap stay off the management network; with three nodes it sets `NCCL_IB_SUBNET_AWARE_ROUTING=1`, and `tools/nccl_probe.py` takes three ranks. A derived checkpoint (the published option) launches on three nodes; PP2, EP and LPA stay two-node only.
+- Measured on the reference ring (2026-09-29 and 10-01), MTP k=3, 30 GiB of KV per rank. Distributed defaults: 66.8 GiB of weights per rank, 3,258,809 tokens of KV (twelve 262,144-token requests), decode 41.04 / 26.47 / 34.99 tok/s on counting / prose / code (TP=2: 32.59 / 21.12 / 28.21), and teacher-forced NLL against TP=2 position by position within the spread of TP=2 launches that differ only in numerical state (argmax agreement 0.947). Published option: 63.69 GiB per rank, decode 51.00 / 30.10 / 39.48 tok/s, NLL against TP=2's published option within the same spread; at `max_model_len` 524,288 a 499,622-token prompt with passphrases at its start, middle and end answered all three (a repeat read 99% of the prompt from the prefix cache); at 1,048,576 a 1,038,423-token prompt answered all three in 1,058 s to the first token. The decode-check hashes of a TP=3 launch hold only with the same per-host Triton cache: a fresh cache can pick another kernel config and so another numerical state.
+- Optional `context.long_prefill_token_threshold` passes vLLM's `--long-prefill-token-threshold`, which caps each request's prefill chunk per step. With a ~200K-token prefill running, a short request on the published option on TP=3 decoded 1.18 tok/s without the cap and 5.67 / 7.92 tok/s at 512 / 256, while the long prefill slowed from 1,326 tok/s by 18 / 39%. Omitted or 0 sends nothing.
+
+### Changed
+
+- The published option's KDA overlay (`overlays/kda-quant-split.py`, SHA-256 `27a532ce…`) copies `f_a` and `g_a` into fresh storage before the `f_b_proj` and `g_b_proj` projections. At 22 heads per rank the split leaves them as views with a row stride of 278 that start 44 and 300 bytes into the row, which Marlin refuses; at TP=2 the views fit. The copy carries the same values: on TP=2 the published option with this overlay on the 1.24.0 image reproduced its decode-check hashes and teacher-forced log-probabilities bit for bit (2026-10-01). Profiles of the published option need the new SHA-256.
+
+### Documentation
+
+- TP=3 throughout: the ring in the [QSFP network guide](docs/qsfp-network.md#8-three-hosts-in-a-ring) (one /30 per link, a /32 per host with static routes), the three-rank [NCCL probe](docs/nccl-validation.md#three-hosts-in-a-ring), launch order and the switch's refusal of a rank-count change ([launch safety](docs/launch-safety.md#three-nodes)), the three-node settings, KV capacity and prefill cap ([server configuration](docs/server-configuration.md#three-nodes)), the per-host runtime cache ([operations](docs/operations.md#three-nodes)), [measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240), the [concurrency scope](docs/validation.md#concurrency-scope), SETUP and the README. [Catalog P28](docs/optimization-catalog.md#performance-initiatives) is done, with the measured capacity in place of the estimate.
+
 ## 1.23.1 — 2026-10-01
 
 ### Documentation

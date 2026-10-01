@@ -2,7 +2,7 @@
 
 [日本語](qsfp-network.ja.md) · [Full setup](../SETUP.md)
 
-Create a fixed IPv4 path between two hosts while retaining the management Wi-Fi default route. **Physical link, IP reachability, RoCE configuration and actual NCCL transport are separate checks. Completing this guide does not qualify TP=2.**
+Create a fixed IPv4 path between two hosts while retaining the management Wi-Fi default route. **Physical link, IP reachability, RoCE configuration and actual NCCL transport are separate checks. Completing this guide does not qualify TP=2.** For three hosts cabled as a ring (TP=3), set up each link this way, then follow [section 8](#8-three-hosts-in-a-ring).
 
 ## 1. Open management SSH and record the baseline
 
@@ -150,3 +150,29 @@ Replace angle-bracket placeholders with actual UUIDs. Omit the last command if n
 - [ ] Actual NCCL transport, bandwidth and TP=2 inference handed off as separate pending checks.
 
 Record steps, operator, timestamps/timezone, results, evidence paths and next actions privately in `records/<run-id>/REPORT.md`.
+
+## 8. Three hosts in a ring
+
+TP=3 cables three hosts as a switchless ring: each host's two QSFP ports go to the other two hosts, so every pair of hosts has one direct link. Set up each link with steps 2–6 as its own pair: one profile, one interface and one /30 per link (for example `10.53.1.0/30`, `10.53.2.0/30` and `10.53.3.0/30`). A host's two links must share one GID index, since NCCL takes one per rank; the reference ring uses index 3 on all six HCAs. Write every link under its node in `[[nodes]]` ([example](../examples/server.tp3.example.toml)); the launcher refuses a ring that misses a pair or whose two ends of a link do not name each other's addresses in one /30.
+
+A /30 address reaches only the host at the other end of that link, but Gloo, TCPStore and the NCCL bootstrap connect every rank to the address each other rank advertises. So give each host one stable /32 on a dummy interface, with /32 static routes to the other two hosts' /32 over the direct links, saved in NetworkManager. On the first host of the example (its /32 `10.40.0.1`, its links ending at `10.53.1.2` and `10.53.2.2`):
+
+```sh
+sudo nmcli connection add type dummy con-name glm53-host ifname glmhost \
+  ipv4.method manual ipv4.addresses 10.40.0.1/32 ipv6.method disabled
+sudo nmcli connection modify <LINK_TO_SECOND> +ipv4.routes "10.40.0.2/32 10.53.1.2"
+sudo nmcli connection modify <LINK_TO_THIRD> +ipv4.routes "10.40.0.3/32 10.53.2.2"
+sudo nmcli device reapply <INTERFACE_OF_EACH_LINK>
+```
+
+`device reapply` applies the saved routes without taking the link down. Repeat on the other two hosts with their own /32 and peers. Check from each host:
+
+```sh
+ip route get 10.40.0.2
+ping -I 10.40.0.1 -c 4 -W 2 10.40.0.2
+ping -I 10.40.0.1 -c 4 -W 2 10.40.0.3
+```
+
+The route must leave over the direct link to that host. On the reference ring the pings between the /32s took 0.47–1.05 ms (2026-09-29). Then set `host_address` (the /32) and `host_interface` (the dummy interface) on every node of the launch profile.
+
+This keeps the control traffic off the management network. Before the /32s existed, the reference ring's management Wi-Fi carried it and was unstable (2.9 s round trips and lost packets). A Wi-Fi `host_interface` is refused unless the node also sets `host_interface_wifi_test = true`, a test setting only.

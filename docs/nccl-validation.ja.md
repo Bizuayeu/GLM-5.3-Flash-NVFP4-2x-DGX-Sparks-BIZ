@@ -1,8 +1,8 @@
-# 2台でのNCCL通信検証
+# NCCL通信検証
 
 [English](nccl-validation.md) · [QSFP準備](qsfp-network.ja.md) · [検証範囲](validation.ja.md)
 
-[同梱の診断ツール](../tools/nccl_probe.py)は、2 rankで異なる値を持つテンソルを通信し、FP32・BF16のAllReduceを1 KiB／1 MiB／16 MiB／256 MiBで検査します。加えてFP32のAllGather・ReduceScatter・Broadcastも確認します。モデル重みはロードせず、フルモデルの合格証跡は生成しません。
+[同梱の診断ツール](../tools/nccl_probe.py)は、2または3 rank（`--world-size`、既定は2）で、rankごとに異なる値を持つテンソルを通信し、FP32・BF16のAllReduceを1 KiB／1 MiB／16 MiB／256 MiBで検査します。加えてFP32のAllGather・ReduceScatter・Broadcastも確認します。モデル重みはロードせず、フルモデルの合格証跡は生成しません。
 
 ## 実行の順序
 
@@ -56,6 +56,12 @@ Docker引数の`NCCL_IB_HCA==...`と`NCCL_SOCKET_IFNAME==...`は誤記ではあ�
 NVIDIAの[Spark移植ガイド](https://docs.nvidia.com/dgx/dgx-spark-porting-guide/porting/cuda.html)では、統合メモリの制約から従来のGPUDirect RDMAとnvidia-peermem／DMA-BUF／GDRCopyは非対応とされています。`NET/IB`と`GDR 0`が併記されても、それだけでRoCE失敗とは判断しません。表示を変えるためだけにkernel moduleをロードしたり、GDRを強制したりしません。
 
 参照の結果（GB10 2台、MTU 1500、NCCL実ランタイム2.30.7、fabricの転送終了後）：両rankとも11項目合格、全コンテナが終了コード0・OOMなし。256 MiB AllReduceは1.18〜1.21 GB/sで、別モデルのディスクchecksumが稼働中だったため無負荷ホストの測定ではありません。`NCCL_NET_GDR_LEVEL=SYS`を加えた比較も合格しましたが、GDRは有効にならず帯域も増えず、上の実行例には含めていません。
+
+## 3台のリング
+
+リング（[ネットワーク](qsfp-network.ja.md#8-3台をリングにつなぐ)）では、まず3台すべてで`--world-size 3`を指定し、起動と同じfabric環境、`--head`にheadのアドレスを与えて1回実行します。rank 2と1をrank 0より先に起動します。続いて各リンクを`--world-size 2`で単独に検査します。`server plan`は各rankのリンクを`link_probes`に出し、組のhead、診断でのrank、そのリンクだけを指定する環境変数を示します。3ノード以上ではランチャーが`NCCL_IB_SUBNET_AWARE_ROUTING=1`を設定し、NCCLは各peerへそのサブネットに届くリンクで送ります。
+
+合格条件は上と同じで、全rankに適用します。参照の結果（GB10 3台、NCCL実ランタイム2.30.7、2026-09-29）：3 rankで11項目すべて合格。NCCLは各機の2つのHCAを1つの仮想NICにまとめ、0→1→2のringを組み、全チャネルが`NET/IB`で、socketへのfallbackはありませんでした。AllReduceのbus bandwidthはFP32で16 MiB 7.87 GB/s、256 MiB 7.01 GB/s、BF16で8.56と6.94 GB/sです。これはbus bandwidthであり、診断ツールの1 rankあたり`payload_GB_per_s`ではありません。GPUDirect RDMAはpairと同じく無効のままでした。
 
 ## チャネル数
 

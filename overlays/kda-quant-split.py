@@ -340,10 +340,14 @@ class Glm5NextLinearAttention(GatedDeltaNetAttention):
         # / spec-verify steps then skip the _cast_sigmoid kernel and its fp32
         # intermediate entirely.
         beta = beta_raw.unsqueeze(0)
-        g1 = self.f_b_proj(f_a)[0]
+        # TP=3 (2026-10-01): with 22 heads per rank the split leaves f_a/g_a as views with a row
+        # stride of 278 (22+128+128) and start offsets of 44 and 300 bytes; Marlin needs
+        # A.stride(0) % 8 == 0 and a 16-byte aligned A. contiguous() is a no-op on a one-row view,
+        # so copy into fresh storage. Same values (TP=2's 288 and 64/320 bytes passed as views).
+        g1 = self.f_b_proj(f_a.clone(memory_format=torch.contiguous_format))[0]
         g1 = g1.reshape(1, -1, self.local_num_heads, self.head_dim)
 
-        g_proj_states = self.g_b_proj(g_a)[0]
+        g_proj_states = self.g_b_proj(g_a.clone(memory_format=torch.contiguous_format))[0]
         # Must stay 3D: rms_norm_gated reads H from g.shape[-2].
         g2 = g_proj_states.reshape(-1, self.local_num_heads, self.head_dim)
 

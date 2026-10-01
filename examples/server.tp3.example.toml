@@ -1,13 +1,14 @@
-# GLM server profile for the published option, NVFP4 BIZ AXL / 公開した任意設定（NVFP4 BIZ AXL）向けのGLM起動設定（両ノードに同じ内容を配置）
-# The distributed defaults are examples/server.example.toml. This profile serves the repacked checkpoint
-# (attention projections and lm_head in W4A16, KDA input projection split; docs/server-configuration.md,
-# runtime.derived_checkpoint) with prefix-page dedup, two active sequences and twice the KV: the repacked
-# weights load 4.4 GiB less per rank than the pinned ones, which is what pays for the second sequence.
-# Copy to state/server.toml. Paths are relative to THIS FILE, or absolute. Model/revision stay pinned by
-# config/runtime.lock.json. Supply image IDs, the checkpoint and overlay paths, MTP view, LPA projector/hash and nodes.
-# 配布既定は examples/server.example.toml。本profileは再パックしたcheckpoint（attention射影と lm_head をW4A16に、KDA入力射影は分割宣言）を
-# prefix pageの重複排除・同時2系列・2倍のKVで配信する。再パックした重みはrankあたり4.4 GiB軽く、それが2系列目の財布になる。
-# state/server.toml にコピー。相対パスはこのファイルの位置が基準。image ID・checkpointとoverlayのパス・MTP view・LPA補助器/hash・機体情報を準備する。
+# GLM server profile for three nodes, TP=3 over a QSFP ring / 3台（QSFPリング直結）TP=3向けのGLM起動設定（3ノードに同じ内容を配置）
+# The distributed defaults on a three-host ring (measured on the reference ring, docs/qsfp-network.md); the defaults are examples/server.example.toml;
+# this file differs from it in the nodes (three, each listing its direct links) and the KV note below.
+# The heads, MoE width and vocabulary are zero-padded at load time (GLM53_TP_PAD_MULTIPLE, set by the launcher).
+# 3台リングでの配布既定（参照機のリングで測定、docs/qsfp-network.ja.md）。配布既定は examples/server.example.toml で、違いはノード（3台、各自の直結リンク）とKVの注記だけ。
+# ヘッド・MoE幅・語彙は読み込み時に0詰めする（GLM53_TP_PAD_MULTIPLE、ランチャーが設定）。
+# Copy to state/server.toml. Paths are relative to THIS FILE, or absolute.
+# state/server.toml にコピー。相対パスはこのファイルの位置が基準。
+# Model/revision stay pinned by config/runtime.lock.json.
+# Supply image IDs, MTP view, LPA projector/hash and nodes.
+# image ID・MTP view・LPA補助器/hash・機体情報を準備する。
 schema_version = 1
 
 [runtime]
@@ -29,11 +30,10 @@ fa2_attention = true # NoPE attention calls of more than six query rows through 
 # Prefill of 38,962 tokens went from 572-577 to 1,242-1,272 tok/s on the reference pair and identical requests
 # still repeat bit for bit (docs/server-configuration.md). Excludes LPA. false or omitted = the reference path.
 # query行が6を超えるNoPE attentionの呼び出しをFlashInfer FA2へ、残りは参照経路。LPAとは排他。
-prefix_page_dedup = true # A page whose hash is already cached is not registered again; needs an image with GLM53_PREFIX_DEDUP_API=1
-# Under the draft every re-sent history added one block per KV cache group under an existing hash and pushed older
-# histories out (docs/server-configuration.md). false or omitted = the pinned pool. 同hashのpageを二重登録しない。
-# The derived checkpoint is the [runtime.derived_checkpoint] table at the end of this section.
-# 再パックしたcheckpointはこの節の末尾の [runtime.derived_checkpoint] 表。
+# Optional A/B of a locally requantized checkpoint; absent by default (docs/server-configuration.md).
+# 手元で再量子化したcheckpointのA/B用。既定では書かない。
+# [runtime.derived_checkpoint] goes after this table: path, requant_target and
+# overlays = [{target, source, sha256, base_sha256, marker}, ...]
 # Optional allocator override. Omit to preserve image/runtime defaults; "" clears it.
 # cuda_allocator_conf = "expandable_segments:True"
 nccl_channels = 8 # NCCL_MIN/MAX_NCHANNELS on both ranks; omitted = NCCL chooses (64 on the reference pair)
@@ -50,9 +50,9 @@ decode_graphs = false
 # 不採用（P06：本モデルではeagerより遅い）。trueには対応イメージ・同時1シーケンス・LPAなしが条件（MTP・prefix cacheは併用可）。
 index_checks = "async" # auto: sync in eager, async in Graphs; sync also allowed
 # 範囲検査は常に実施。asyncはdevice assertで失敗し得る。
-expert_parallel = false # Independent TP2/DP1 EP experiment; needs matching image
+expert_parallel = false # Two-node TP2/DP1 EP experiment only; refused with three nodes
 # EP単体比較用。MTP/LPA/fusion/Graphs/APCとの併用は別検収。
-pipeline_parallel_size = 1 # 1: TP2; 2: TP1/PP2, independent experiment only
+pipeline_parallel_size = 1 # 1: TP over every node (TP3 here); 2 (TP1/PP2) needs exactly two nodes
 pipeline_split_layer = 24 # PP2 stage0 layers [0,24), stage1 [24,45)
 # PP2は各stageにMLAが必要。24/21層は各21 MoE層を配置する候補で、容量保証ではない。
 seed = 42
@@ -62,31 +62,14 @@ vision = true # Loads the vision tower for IMAGE input; omitted = false (text/to
 # 視覚塔を読み込み画像入力を受ける。未指定はfalse（テキスト・ツール専用）。
 # trueでも動画入力は受けない（--limit-mm-per-prompt {"video": 0} を付ける）。
 # 256Kテキスト専用の代替：false、max_model_len 262144、KV 3 GiB。
-# Marlin W4A16, FP8 KV; TP2 by default, PP2 is experimental.
-# Marlin W4A16・FP8 KV、既定TP2・実験用PP2。
-
-# The repacked checkpoint (Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16 on Hugging Face, NVFP4 BIZ AXL) and the two
-# source overlays the repository ships in overlays/ (their hashes are fixed; only the paths are yours to set).
-# enabled = false serves the pinned checkpoint from this profile unchanged, which then needs KV back at 3 GiB.
-# 再パックしたcheckpoint（Hugging Faceの Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16、NVFP4 BIZ AXL）と、リポジトリの overlays/ にある
-# 2枚のsource overlay（hashは固定。設定するのはパスだけ）。enabled = false にすると固定のcheckpointを配信し、その時はKVを3 GiBに戻す。
-[runtime.derived_checkpoint]
-enabled = true
-path = "/srv/glm53/weights/GLM-5.3-Flash-NVFP4-l-split"
-requant_target = "l"
-overlays = [
-  { target = "kda.py", source = "/srv/glm53/source/overlays/kda-quant-split.py", sha256 = "27a532ced5011543eb17b1e538a61415fd51d8df8ff904245f04030f3985f30b", base_sha256 = "99cfc24678c0a99f2c813c20e3dcc30c8bfac4f55ec4299737689d5d51f472cd", marker = "kda-quant-overlay" },
-  { target = "model.py", source = "/srv/glm53/source/overlays/mla-quant-split.py", sha256 = "a9b1ea5ce05983973bc79954147809a17e0e5aa0f96eae47c6011306f51b533d", base_sha256 = "48f60a65afab1afd737b282d109c6c11f97d881d3ec774442e174fab09c2f525", marker = "mla-quant-overlay" },
-]
+# Marlin W4A16, FP8 KV; TP3 over the three nodes.
+# Marlin W4A16・FP8 KV、3ノードでTP3。
 
 [context]
 max_model_len = 262144 # Input + generated tokens / 入出力合計の上限
-max_num_seqs = 2 # Two active sequences; the KV below is sized for them on the repacked weights
-# Concurrency limit, not a reservation: the launcher does not check max_model_len * max_num_seqs. By the
-# engine's own count 6 GiB holds 606,881 tokens on the reference pair, 2.32 times a 256K request, so two
-# full-length requests fit; two concurrent requests were served on 2026-09-23 (docs/validation.md, concurrency scope).
-# 同時2系列。最大長×同時数のKV容量をランチャーは検査しない。engineの数えでは6 GiBは参照対で606,881トークン＝256K要求の2.32倍で、
-# 全長2本が入る。2026-09-23に同時2要求を配信した（docs/validation.ja.md）。
+max_num_seqs = 1
+# Concurrency limit, not a reservation for max_model_len * max_num_seqs tokens.
+# 最大長×同時数のKV容量を保証しない。入出力の合計長とKV予算を別途検証する。
 max_num_batched_tokens = 2048
 # long_prefill_token_threshold = 512 # Optional: cap each request's prefill chunk per step; omitted or 0 = no cap
 # 任意：要求ごとの1 stepのprefill chunkの上限。未指定・0は上限なし（長文のprefill中も並ぶ要求のdecodeを進める）
@@ -112,11 +95,12 @@ mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM
 # Head-only image preprocessing cache (API and engine processes each hold one).
 # runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
-kv_cache_memory_bytes = 6442450944 # 6 GiB per rank, twice the defaults; the launcher refuses this without the derived checkpoint
-# Fixed shared pool per rank, NOT per request; does not grow with context/batch. Measured on the reference pair:
-# the pinned weights leave the head 5.5 GiB at 3 GiB of KV, the repacked ones 10.5 GiB, and the reserve is 3 GiB.
-# 各rankで共有する固定KV枠（既定の2倍）。再パックしたcheckpointなしでは起動を拒む。context・同時数に合わせて自動増額しない。
-# 参照対の実測：固定の重みはKV 3 GiBでheadの空き5.5 GiB、再パックした重みは10.5 GiB、保護は3 GiB。
+kv_cache_memory_bytes = 3221225472 # 3 GiB per rank / 各ランク
+# On TP=3 the same 3 GiB holds 323,824 tokens (one full 262,144-token request); 30 GiB per rank holds 3,258,809
+# (twelve). The TP=2 limit on KV without a derived checkpoint does not apply here (docs/server-configuration.md).
+# TP=3では同じ3 GiBで323,824 token（256K 1本分）、30 GiBで3,258,809 token（12本分）。TP=2のKVの上限は掛からない。
+# Fixed shared pool per rank, NOT per request; does not grow with context/batch.
+# 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
 prefix_caching = true
 gpu_memory_utilization = 0.80
@@ -193,20 +177,40 @@ stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metric
 # rank 0 だけ。要求が running なのに /metrics の信号（生成・prompt token 計数、KV 使用率、running 数）がこの秒数動かなければ停止。
 # KV 使用率の変化は進行とみなすので長い prefill は停滞にならない。engine が固まっても /health は 200 のまま。
 
-[[nodes]]
-# Optional, per-host Docker CPU set. Determine suitable cores from this host's
-# topology; do not copy a core range from another GB10 system.
+# Three hosts cabled as a switchless QSFP ring: every pair of nodes has one direct link, a /30 of its own.
+# Each node lists its links, one per other node (peer = that node's rank); the two ends of a link name each
+# other's addresses, and a node's links share one GID index. NCCL_IB_HCA lists every link's HCA. The values below
+# are illustrative (each link a /30, two HCAs per host); replace them with yours.
+# スイッチなしのQSFPリング：各2台の間に直結リンク1本（/30）。各ノードは他ノードごとにリンクを1本書き（peerは相手のrank）、
+# 両端は互いのアドレスを名指し、1ノードのリンクはGID indexを共有する。以下は説明用の値（リンクごとに/30、1台にHCA 2つ）。
+#
+# Addresses the ranks advertise (Gloo, TCPStore, NCCL bootstrap): without host_address a rank reaches the head at
+# the head's end of their direct link and advertises its own end of its link to the head (the head: its link to
+# rank 1). A rank's link-to-head address is not reachable from the third node without routes, so set
+# host_address on every node: one stable /32 per host on its own interface (host_interface), with static routes
+# to the other two over the direct links. The reference ring runs this way (docs/qsfp-network.md).
+# 広告アドレス：host_addressがなければ各rankはheadとの直結リンクのhead側へ接続し、自分側を広告する（headはrank 1とのリンク）。
+# 3台目からは経路なしに届かないので、全ノードに host_address を書く（専用インタフェース上の/32と直結リンク越しの静的経路）。参照機のリングはこの形。
+#
+# Optional, per-host Docker CPU set; see examples/server.example.toml.
 # cpuset_cpus = "5-9,15-19"
-# Optional extra RoCE rails. All must use the primary rail's GID index.
-# additional_rails = [{ hca = "roce1", port = 1, interface = "fabric1", local_ip = "10.54.0.1", gid_index = 3 }]
-local_ip = "10.53.0.1" # Rank 0 / head (illustrative values)
-interface = "fabric0"
-hca = "roce0"
-gid_index = 3
 
-[[nodes]]
-# cpuset_cpus = "5-9,15-19" # Set independently for rank 1 after inspecting that host.
-local_ip = "10.53.0.2" # Rank 1 / worker; replace with measured values
-interface = "fabric0"
-hca = "roce0"
-gid_index = 3
+[[nodes]] # Rank 0 / head
+# host_address = "10.40.0.1" # Illustrative; with host_interface, once the host carries the /32
+# host_interface = "glmhost"
+links = [
+  { peer = 1, hca = "roce1", interface = "fabric1", local_ip = "10.53.1.1", peer_ip = "10.53.1.2", gid_index = 3 },
+  { peer = 2, hca = "roce0", interface = "fabric0", local_ip = "10.53.2.1", peer_ip = "10.53.2.2", gid_index = 3 },
+]
+
+[[nodes]] # Rank 1
+links = [
+  { peer = 0, hca = "roce0", interface = "fabric0", local_ip = "10.53.1.2", peer_ip = "10.53.1.1", gid_index = 3 },
+  { peer = 2, hca = "roce1", interface = "fabric1", local_ip = "10.53.3.1", peer_ip = "10.53.3.2", gid_index = 3 },
+]
+
+[[nodes]] # Rank 2
+links = [
+  { peer = 0, hca = "roce1", interface = "fabric1", local_ip = "10.53.2.2", peer_ip = "10.53.2.1", gid_index = 3 },
+  { peer = 1, hca = "roce0", interface = "fabric0", local_ip = "10.53.3.2", peer_ip = "10.53.3.1", gid_index = 3 },
+]

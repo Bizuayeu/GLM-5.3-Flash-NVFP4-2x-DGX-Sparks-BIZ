@@ -192,7 +192,11 @@ class MarkerTableTests(unittest.TestCase):
     def test_each_language_lists_every_marker_with_the_check_that_needs_it(self):
         dockerfile = (ROOT / "docker/Dockerfile.reference").read_text(encoding="utf-8")
         env = re.findall(r"^ENV (GLM53_\w+=\S+)$", dockerfile, re.MULTILINE)
-        profile = self.enabled_profile()
+        # TP=3 is the only shape that pads; the two-node profile cannot.
+        profiles = (
+            self.enabled_profile(),
+            config.load(ROOT / "examples/server.tp3.example.toml"),
+        )
         for name, header in zip(DOCS, self.HEADERS, strict=True):
             rows = {
                 marker.strip("`"): cell
@@ -204,6 +208,7 @@ class MarkerTableTests(unittest.TestCase):
                 without = [m for m in env if m != marker]
                 failing = [
                     check
+                    for profile in profiles
                     for check, ok in config.image_capability_checks(
                         profile, {"Config": {"Env": without}}
                     ).items()

@@ -19,7 +19,7 @@ checkoutの起動経路は `python -m glm53_setup server …` の一本です。
 | LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
-| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#warmup-ladder)が記録する |
+| runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`（[3ノード](#3ノード)では `tp3-runtime-cache/`）、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#warmup-ladder)が記録する |
 
 LPA添付物の展開後の構成は次のとおりです。`manifest.json`は[projector lock](../config/lpa-projector.lock.json)の写しです。ソースcheckoutのアーカイブに、このディレクトリは含まれません。
 
@@ -47,7 +47,7 @@ readlink -f /srv/glm53/source/state /srv/glm53/source/records
 
 絶対パスを使います。`-T` を付けると既存ディレクトリの中に `state/state` を作らず失敗で止まり、`readlink -f` は `/srv/glm53/state` と `/srv/glm53/records` を表示するはずです。`state/state` や `records/records` で終わるパスが出たら入れ子です。復旧用に旧checkoutを保持してください。認証情報や生の記録をソースアーカイブへ置きません。
 
-実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。両ホストのディスクに完全なcheckpointが必要です。TP=2が分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
+実験用の起動ランチャーは、ホスト既定のHugging Face cacheを読み、containerの `/hf` へ読み取り専用でmountします。選択したsnapshotまたはMTP viewは、そのmount内で解決します。モデルcache全体の `blobs`／`snapshots` の関係を保ってください。snapshotディレクトリだけを複製しても足りません。すべてのホストのディスクに完全なcheckpointが必要です。TPが分割するのはロード済みのtensorであり、ダウンロードしたファイルではありません。
 
 ダウンローダーはHugging Faceのcache環境設定に従いますが、現行のランチャーは既定のcache rootを前提とします。本リリースでは、これらの資材を取得する際に `HF_HOME`／`HF_HUB_CACHE` を設定せず、文書化した既定の場所を使ってください。任意のcacheへのダウンロードが成功しても、ランチャーがそれを見つけてmountできることの証明にはなりません。
 
@@ -106,7 +106,7 @@ python -c 'import json; from glm53_setup.config import STATE; s = json.loads((ST
 
 物理接続と永続的なIPv4設定は、[QSFPのハンズオン手順](qsfp-network.ja.md)に従います。
 
-各ホストで実測した値を、[起動設定TOML](server-configuration.ja.md)の `[nodes]` 節に記録します。同じファイルを両ホストに置きます。
+各ホストで実測した値を、[起動設定TOML](server-configuration.ja.md)の `[nodes]` 節に記録します。同じファイルをすべてのホストに置きます。
 
 - 自機のfabric IPv4、headのfabric IPv4
 - Ethernet interface、RDMAのHCA、そのinterfaceのRoCEv2 GID index
@@ -131,7 +131,17 @@ HCAとGIDの番号は、両ホストで一致している必要はありませ�
 
 preflightの合格は資材と設定の確認であり、品質や可用性の保証ではありません。通常運用の受け入れ項目と各項目の証拠の所在は[セットアップ手順](../SETUP.ja.md#6-フルモデルの検証)に、範囲別の現状はREADMEの状態表にあります。失敗した検査の緩和、attention候補の切り捨て、無断の精度変更で通過させないでください。
 
-rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
+rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します（[3ノード](#3ノード)では最も大きいrankから、headを最後に）。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
+
+## 3ノード
+
+`[[nodes]]` が3つのprofileは、QSFPリング上でTP=3を動かします（[3ノード](server-configuration.ja.md#3ノード)、[`server.tp3.example.toml`](../examples/server.tp3.example.toml)）。rankは大きいほうから起動し、head以外はheadlessで、headを最後にします。止めるときはheadからです。`cluster switch` と `cluster resume` は起動の全rankを扱いますが、rank数の違う起動への切替は拒みます。対とリングの間を移るには、全rankを止めてからもう一方を起動します。
+
+リングはTriton・Inductor・TileLangのcacheを各ホストの `state/tp3-runtime-cache/` に、対のcacheとは別に置きます。Tritonは一部のkernelの設定を時間で選ぶので、新しいcacheではあるrankが別の設定を選び、起動が別の数値状態になりえます。rankごとのheadは重ならないので、正しさには影響しません。TP=3の起動のdecode checkのhashは、ホストごとのcacheが同じときだけ保たれます。参照リングの配布既定では、counting `b00a842f`、prose `03184d52`、code `e9175d9b`（初出2026-09-29）で、どれも起動内ではbit単位で繰り返しました。cacheを消したり置き換えたりした後は読み直してください。
+
+derived checkpoint（公開した任意設定）とそのoverlayは、profileが指すパスにすべてのホストで置きます。`server preflight` は各rankでこれを確かめます。公開した任意設定のprofileには1.24.0のKDA overlay（SHA-256 `27a532ce…`）が要ります。rankあたり22 headでは、以前のものはMarlinが拒む入力を渡します。
+
+長いprefillは3台すべてに長時間の負荷をかけます。2026-10-01に、`max_model_len` 1,048,576で1,038,423 tokenのpromptは最初のtokenまで1,058秒、約17.6分の持続負荷でした。こうした要求の間はホストを冷ましてください（[GPUクロックの上限](#gpuクロックの上限)）。参照リングの `MemAvailable` の最小は、配布既定をKV 30 GiBで読み込む間が8.53 GiB、公開した任意設定を256Kで読み込む間が11.87 GiB、その1Mの要求の最中が5.75 GiB（保護余裕は4 GiB）でした。
 
 ## 監視・停滞検知・warmup
 
@@ -171,11 +181,11 @@ rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態にな�
 
 GB10機（DGX Sparkと互換機）は、持続したGPU負荷の下で電源ごと落ちることが広く報告されています（ログは残らず、電源ボタンを押すまで戻らない）。参照対のheadも2026-09-27に1度、約54分の長い入力の負荷のあと、261,573 tokenのprefillを間を空けずに続けた2本目で落ちました。熱の蓄積と、prefillの電力の山が重なったと見ていますが、温度と電力の記録が無く、確定ではありません。
 
-報告で効いている対処は、GPUクロックの上限を既定の約2,418 MHzから2,200 MHzに下げることです（`nvidia-smi -lgc 300,2200`。GB10では `-pl` による電力の上限は効きません）。参照対とその隣の機体は起動のたびにこれを入れ、温度・電力・クロックを2秒ごとに記録しています。**1.19.0の主要な測定値（[READMEの表](../README.ja.md#主要な測定値1220)）はこの上限の下で取ったものです**。上限の代価は、同じprofileで上限なしと比べてprefillが約2%遅く、長い入力が1〜5%長くなる程度で、decode・NLL・completion・正答は変わりませんでした（[測定](benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。上限の設定はホスト側のもので、本リポジトリのランチャーは入れません。長い要求を続けて流すベンチマークでは、要求の間に休みを入れてください。
+報告で効いている対処は、GPUクロックの上限を既定の約2,418 MHzから2,200 MHzに下げることです（`nvidia-smi -lgc 300,2200`。GB10では `-pl` による電力の上限は効きません）。参照対とその隣の機体は起動のたびにこれを入れ、温度・電力・クロックを2秒ごとに記録しています。**1.19.0の主要な測定値（[READMEの表](../README.ja.md#主要な測定値1240)）はこの上限の下で取ったものです**。上限の代価は、同じprofileで上限なしと比べてprefillが約2%遅く、長い入力が1〜5%長くなる程度で、decode・NLL・completion・正答は変わりませんでした（[測定](benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。上限の設定はホスト側のもので、本リポジトリのランチャーは入れません。長い要求を続けて流すベンチマークでは、要求の間に休みを入れてください。
 
 ## 復旧と記録
 
-スクリプトは、失敗したcontainerや重みを削除せず、再起動用のwatchdogも導入しません。`server stop` が停止するのは、このランチャーの所有ラベルを持つcontainerだけです。同じrank名を作り直す前に、ログを保存し、停止したcontainerの名前を変更してください。分散実行で障害が起きた後は、両rankをまとめて再初期化します。
+スクリプトは、失敗したcontainerや重みを削除せず、再起動用のwatchdogも導入しません。`server stop` が停止するのは、このランチャーの所有ラベルを持つcontainerだけです。同じrank名を作り直す前に、ログを保存し、停止したcontainerの名前を変更してください。分散実行で障害が起きた後は、全rankをまとめて再初期化します。
 
 `state/` は現在の取得状態とサイト設定を保持し、`records/` はrunごとの証跡を保持します。休止中の取得は意図的な停止です。検証の待機は終了コード2で終わり、ダウンロードを再開しません。ローカル移送の実行中に、新しい取得を開始しないでください。
 

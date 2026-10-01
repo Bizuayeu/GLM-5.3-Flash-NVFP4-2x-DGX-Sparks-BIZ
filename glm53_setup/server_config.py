@@ -15,6 +15,8 @@ from . import fabric
 from .config import MODEL_LAYERS, ROOT, load_lock
 from .runtime.apc_runtime import RuntimeSettings
 from .runtime.lpa import LPA_MTP_DEPTHS
+from .runtime.tp_padding import ENV as TP_PAD_ENV
+from .runtime.tp_padding import required_multiple
 
 # Where server.command mounts the LPA projector inside the container.
 LPA_PROJECTOR = "/lpa/projector.pt"
@@ -81,6 +83,7 @@ OPTIONAL_KEYS = {
             "inductor_deterministic",
         }
     ),
+    "server.context": frozenset({"long_prefill_token_threshold"}),
     "server.cache": frozenset(
         {"prefix_cache_retention_interval", "mm_processor_cache_gb"}
     ),
@@ -90,7 +93,15 @@ OPTIONAL_KEYS = {
     "server.validation": frozenset({"memory_probe"}),
     "server.resources": frozenset({"stall_seconds"}),
     "server.generation": frozenset({"warmup", "warmup_long_tokens"}),
-    "server.nodes[]": frozenset({"additional_rails", "cpuset_cpus"}),
+    "server.nodes[]": frozenset(
+        {
+            "additional_rails",
+            "cpuset_cpus",
+            "host_address",
+            "host_interface",
+            "host_interface_wifi_test",
+        }
+    ),
 }
 
 
@@ -104,6 +115,7 @@ OPTIONAL_DEFAULTS = {
         "prefix_page_dedup": False,
         "inductor_deterministic": False,
     },
+    "context": {"long_prefill_token_threshold": 0},
     "cache": {"prefix_cache_retention_interval": 0, "mm_processor_cache_gb": 0.1},
     "api": {"prompt_tokens_details": False, "dev_endpoints": False},
     "validation": {"memory_probe": False},
@@ -122,6 +134,16 @@ def optional_at(path):
     if path.startswith("server.nodes["):
         return OPTIONAL_KEYS["server.nodes[]"]
     return OPTIONAL_KEYS.get(path, frozenset())
+
+
+def node_schema(node, example):
+    """A node without links is shaped like the example's; one with links has only them.
+
+    fabric.validate_nodes checks the links, and the optional keys against the form.
+    """
+    if isinstance(node, dict) and "links" in node:
+        return {"links": []}
+    return example
 
 
 def check_schema(profile):
@@ -152,10 +174,14 @@ def check_schema(profile):
                 if key not in optional:
                     check(value[key], item, f"{path}.{key}")
         elif isinstance(expected, list):
-            if not isinstance(value, list) or len(value) != len(expected):
-                raise ValueError(f"Expected exactly two nodes in {path}")
-            for index, item in enumerate(value):
-                check(item, expected[index], f"{path}[{index}]")
+            if not isinstance(value, list):
+                raise ValueError(f"Invalid type in {path}")
+            if path == "server.nodes":
+                if len(value) < 2:
+                    raise ValueError(f"Expected two or more nodes in {path}")
+                for index, item in enumerate(value):
+                    check(item, node_schema(item, expected[0]), f"{path}[{index}]")
+            # A ring node's links are checked by fabric.validate_nodes.
         elif type(expected) is float:
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f"Expected finite number in {path}")
@@ -207,6 +233,14 @@ def check_optional_shapes(profile):
             raise ValueError(
                 "cache.mm_processor_cache_gb must be a finite nonnegative number"
             )
+    threshold = optional(profile, "context", "long_prefill_token_threshold")
+    if (
+        type(threshold) is not int
+        or not 0 <= threshold <= profile["context"]["max_model_len"]
+    ):
+        raise ValueError(
+            "context.long_prefill_token_threshold must be an integer from 0 to max_model_len"
+        )
     if type(optional(profile, "api", "dev_endpoints")) is not bool:
         raise ValueError("api.dev_endpoints must be true or false")
     effort = profile["api"].get("default_reasoning_effort", "max")
@@ -223,7 +257,7 @@ def check_optional_shapes(profile):
         value = optional(profile, section, key)
         if type(value) is not int or value < 0:
             raise ValueError(f"{section}.{key} must be a nonnegative integer")
-    for rank in (0, 1):
+    for rank in range(len(profile["nodes"])):
         cpuset_cpus(profile, rank)
 
 
@@ -337,6 +371,37 @@ def check_parallelism(profile):
         )
 
 
+def node_count(profile):
+    return len(profile["nodes"])
+
+
+def tensor_parallel_size(profile):
+    """TP spans every node, except PP2, which runs TP=1 on each of its two stages."""
+    return (
+        1 if profile["runtime"]["pipeline_parallel_size"] == 2 else node_count(profile)
+    )
+
+
+def check_node_count(profile):
+    """The experiments measured on the TP=2 pair launch only on two nodes."""
+    if node_count(profile) == 2:
+        return
+    for refused, name in (
+        (profile["runtime"]["pipeline_parallel_size"] == 2, "PP2"),
+        (
+            profile["runtime"]["expert_parallel"]
+            or profile["validation"]["expert_worker"],
+            "EP and its observer",
+        ),
+        # apc_worker refuses TP outside {1, 2} on every request; LPA was measured at TP=2.
+        (profile["lpa"]["enabled"], "LPA"),
+        # A derived checkpoint is allowed: the overlays split heads by TP with
+        # num_heads % tp_size, which the padded 66 heads satisfy (plan Stage 6).
+    ):
+        if refused:
+            raise ValueError(f"{name} launches only on two nodes")
+
+
 def check_worker_exclusivity(profile):
     """One worker extension class per launch, each with its own constraints."""
     if profile["validation"]["component_worker"] and (
@@ -429,8 +494,9 @@ def check_graph_scope(profile):
 
 
 def check_identifiers(profile):
-    """The two sites, and the names the API is served under."""
-    for rank in (0, 1):
+    """The nodes and every rank's site, and the names the API is served under."""
+    fabric.validate_nodes(profile["nodes"])
+    for rank in range(node_count(profile)):
         fabric.validate_site(site(profile, rank))
     for key in ("served_model_name", "reasoning_parser", "tool_call_parser"):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile["api"][key]):
@@ -446,6 +512,11 @@ KV_BYTES_WITHOUT_DERIVED = 3 * 2**30
 
 def check_kv_budget(profile):
     """More KV than the pinned weights leave room for needs the repacked checkpoint."""
+    if node_count(profile) != 2:
+        # cc-defer: no bound beyond the profile's explicit, positive
+        # kv_cache_memory_bytes; the 3 GiB above is TP=2's weights. Plan Stage 4
+        # reads the TP=3 boot line and sets the TP=3 budget (and this check).
+        return
     if profile["cache"]["kv_cache_memory_bytes"] > KV_BYTES_WITHOUT_DERIVED and (
         derived_checkpoint(profile) is None
     ):
@@ -465,6 +536,7 @@ VALIDATORS = (
     check_magnitudes,
     check_expert_observer,
     check_parallelism,
+    check_node_count,
     check_worker_exclusivity,
     check_generation,
     check_kv_budget,
@@ -536,14 +608,26 @@ def validate_derived(derived):
 
 
 def site(profile, rank):
-    if type(rank) is not int or rank not in (0, 1):
-        raise ValueError("rank must be 0 or 1")
-    return {
-        **profile["nodes"][rank],
-        "rank": rank,
-        "head_ip": profile["nodes"][0]["local_ip"],
+    """What one rank needs of the fabric: its node, rank, master and ports.
+
+    A node without links keeps the two-node site: the head's address is the master.
+    A node with links also carries the node count and, from fabric.addressing, its
+    master, advertised address and socket interface.
+    """
+    nodes = profile["nodes"]
+    fabric.check_rank(rank, len(nodes))
+    ports = {
         "api_port": profile["api"]["port"],
         "master_port": profile["api"]["master_port"],
+    }
+    if "links" not in nodes[rank]:
+        return {**nodes[rank], "rank": rank, "head_ip": nodes[0]["local_ip"], **ports}
+    return {
+        **nodes[rank],
+        "rank": rank,
+        "nnodes": len(nodes),
+        **fabric.addressing(nodes, rank),
+        **ports,
     }
 
 
@@ -638,7 +722,16 @@ def environment(profile, rank):
     if profile["runtime"]["pipeline_parallel_size"] == 2:
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
+    if padding(profile) > 1:
+        # 64 heads, the 2,048 MoE width and the vocabulary do not split evenly:
+        # the image zero-pads them at load time (runtime/tp_padding.py).
+        result[TP_PAD_ENV] = str(padding(profile))
     return result
+
+
+def padding(profile):
+    """The multiple the image pads the model to; 1 when TP divides its shapes."""
+    return required_multiple(tensor_parallel_size(profile))
 
 
 MOE_ORDER_MARKERS = ("GLM53_MOE_ORDER_API=1", "GLM53_MOE_ORDER_API=2")
@@ -703,6 +796,8 @@ def image_capability_checks(profile, image, *, recovery=False):
             "GLM53_FA2_ATTENTION_API=1",
             optional(profile, "runtime", "fa2_attention"),
         ),
+        # The reference attention above is what serves 22 heads per rank.
+        ("tp_padding_support", "GLM53_TP_PAD_API=1", padding(profile) > 1),
     ]
     env = image["Config"].get("Env") or []
     return {
@@ -783,7 +878,7 @@ def apply_scalar_settings(args, profile):
         **{
             "--" + key.replace("_", "-"): value
             for key, value in profile["context"].items()
-            if key != "chunked_prefill"
+            if key not in ("chunked_prefill", "long_prefill_token_threshold")
         },
     }
     for flag, value in values.items():
@@ -808,6 +903,21 @@ def apply_boolean_flags(args, profile):
                 args.append("--no-enable-chunked-prefill")
 
 
+def apply_long_prefill(args, profile):
+    """Cap each request's prefill chunk per step; absent or 0 passes nothing.
+
+    With chunked prefill a long prompt takes the whole step budget, so a request
+    decoding beside it waits for a full chunk every step (TP3 Stage 5 entry).
+    """
+    threshold = optional(profile, "context", "long_prefill_token_threshold")
+    if threshold:
+        args += ["--long-prefill-token-threshold", str(threshold)]
+
+
+# The vision tower's attention heads (the pinned checkpoint's vision_config).
+VISION_HEADS = 16
+
+
 def apply_vision(args, profile):
     """Accept image input, and bound what vLLM's startup profiling encodes."""
     if not optional(profile, "runtime", "vision"):
@@ -820,6 +930,9 @@ def apply_vision(args, profile):
     # processes; this host keeps about 1 GiB above the memory reserve.
     size = optional(profile, "cache", "mm_processor_cache_gb")
     args += ["--mm-processor-cache-gb", str(size)]
+    if VISION_HEADS % tensor_parallel_size(profile):
+        # The tower's heads do not split across the ranks: each rank encodes whole.
+        args += ["--mm-encoder-tp-mode", "data"]
 
 
 def apply_cache(args, profile):
@@ -964,9 +1077,9 @@ def serve_template(site, model_path):
         "--distributed-executor-backend",
         "mp",
         "--nnodes",
-        "2",
+        str(fabric.node_count(site)),
         "--tensor-parallel-size",
-        "2",
+        str(fabric.node_count(site)),
         "--node-rank",
         str(site["rank"]),
         "--master-addr",
@@ -997,7 +1110,7 @@ def serve_template(site, model_path):
         "glm47",
         "--enable-auto-tool-choice",
     ]
-    if site["rank"] == 1:
+    if site["rank"] != 0:
         args.append("--headless")
     return args
 
@@ -1007,6 +1120,7 @@ def serve_template(site, model_path):
 SERVE_STEPS = (
     apply_scalar_settings,
     apply_boolean_flags,
+    apply_long_prefill,
     apply_vision,
     apply_cache,
     apply_reasoning_default,

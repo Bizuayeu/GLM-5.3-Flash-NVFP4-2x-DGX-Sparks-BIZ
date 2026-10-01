@@ -26,7 +26,7 @@
 | `glm53_setup/server.py`、`server_config.py`、`capacity.py`、`warmup.py`、`mojibake.py`、`agreement.py` | 起動・監視・headへのクライアント。カテゴリ別のTOML設定と、そこから導くもの（vLLM引数の雛形、imageのcapability検査と警告、凍結した起動manifest、devモード）。KV起動行の分解、readiness後の要求ladder、日本語・韓国語の化け文字検査、参照runとのtoken単位の一致（`server agreement`） |
 | `glm53_setup/host.py` | ランチャーが共用するホスト側の補助：fabric検査、snapshot解決、メモリ標本、container検査、subprocess実行 |
 | `glm53_setup/download.py`、`verify_download.py`、`images.py`、`build_reference.py` | 資材の準備（固定checkpointの取得、downloaderを待つchecksum検証、base imageの確認とその合格規則、reference imageのbuild）と、ガード付きのローカル操作 |
-| `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 両rankの停止前検査、所有権つきの切替・復旧とその再開（resume）、読み取り専用の起動識別情報、サイト設定の検査・NCCL環境・RoCEレール検査（[起動契約](launch-safety.ja.md)） |
+| `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 全rankの停止前検査、所有権つきの切替・復旧とその再開（resume）、読み取り専用の起動識別情報、サイト設定の検査・リングのリンクとrankごとのアドレス・NCCL環境・RoCEレール検査（[起動契約](launch-safety.ja.md)） |
 | `glm53_setup/tool_gate/` | モデルAPIの前にloopbackの別ポートで立てる任意のtool引数ゲート：schemaによる検査（`check`、判断）、1回の作り直し（`repair`、組み立て）、streamingを含むHTTPの中継（`proxy`、入口と副作用） |
 | `glm53_setup/model_http.py`、`io.py` | モデルAPIに限定しredirectに従わないHTTP transport、ローカル状態の永続化helper |
 | `glm53_setup/runtime/pinned_patch.py`、`patch_*.py` | image buildが当てるsource固定のvLLM patch群。`pinned_patch` が共通部分（固定ファイルのhash検査、`--package`／`--check` コマンド、package脇に書くrecord）を持ち、各 `patch_*` moduleは対象・pin・anchorだけを、逸脱した・適用済みのsourceを拒む純粋関数 `patch_text(text)` として述べる（`patch_kpool_ring` は2ファイルを固定し、複数ファイル版の `prepare_files`／`main_files` を使う。`patch_apc_lpa` と `patch_nope_reference` は独自のflagを持つ） |
@@ -39,6 +39,8 @@
 | `glm53_setup/runtime/patch_kpool_seed.py` | source固定patch：kpoolのprefill seedがtailのblockをtailのstrideで番地付けする（vLLM #57477） |
 | `glm53_setup/runtime/patch_kpool_ring.py` | source固定patch：kpoolの生tailのringが投機draftの分まで広がり、大きさはMTPの深さで決まる（vLLM #58454）。`patch_kpool_seed` の後に当てる |
 | `glm53_setup/runtime/patch_load_clone.py` | source固定patch：safetensorsのtensorを、loaderがGPUへ送る前にcheckpointのfile mappingから匿名メモリへcloneする |
+| `glm53_setup/runtime/tp_padding.py` | tensor並列の数で割り切れないヘッド・MoEの幅・語彙を埋めた形を、`GLM53_TP_PAD_MULTIPLE`（未設定なら無効）の純粋関数として持つ。3ならヘッド66・幅2,112・語彙は192の倍数。loaderがrankの分を取る前に掛けるゼロ拡張も持つ |
+| `glm53_setup/runtime/patch_tp_padding.py` | その埋め方をロード時に組み込むsource固定patch。text config、column・row・shardedのparameter loader、FusedMoEのloader、語彙のembeddingに当て、checkpointは公開されたままにする。`patch_load_clone` の後に当てる（[3ノード](server-configuration.ja.md#3ノード)） |
 | `glm53_setup/runtime/inductor_pin.py`、`inductor_pin_pth.txt` | Dynamo の状態復元が最初の compile の後に切ってしまう Inductor の決定性モードを保つ（`runtime.inductor_deterministic`）。テキストファイルを image の site ディレクトリに `glm53-inductor-pin.pth` として mount し、インタプリタ起動時に読み込ませる |
 | `glm53_setup/runtime/lpa.py`、`lpa_query.py` | LPAのworker制御、Attention入力の近似、要求単位のquery省略 |
 | `glm53_setup/runtime/apc_policy.py`、`apc_runtime.py`、`apc_worker.py`、`patch_apc_lpa.py` | APC優先LPAの適用判定、通常計算由来のprefixだけを共有登録する境界、workerへの伝達（[設計契約](apc-lpa-design.ja.md)） |
@@ -55,13 +57,13 @@
 | `glm53_setup/validation/kpool_ring_repro.py` | 参照imageでのkpool tail ringのGPU再現：pool完成のdraftが棄却されたときの結果をprefill側の書き込みと比べる。1 pool分のringとMTP 3のring（[検証](validation.ja.md#kpool-tail-ringの再現)） |
 | `glm53_setup/validation/fused_nope.py`、`fused_nope_dot.py`、`indexer_candidates.py`、`indexer_reindex.py`、`indexer_shared_pool.py` | 再現のために残す退役した試作。呼ぶのはそれぞれのベンチとテストだけ：融合NoPE attention（[部品検証](component-validation.ja.md)）とindexer候補の再利用（[Indexer再利用](indexer-reuse.ja.md)） |
 | `config/` | モデル・imageの固定値と`lpa-projector.lock.json`（Release URL、checksum、教師・学習来歴）。認証情報や実測したサイト設定は持たない |
-| `examples/` | 二つの起動設定 `server.example.toml`（配布既定）と `server.axl.example.toml`（公開した任意設定）、MTP投機設定のテンプレート。値はすべて例示 |
+| `examples/` | 二つの起動設定 `server.example.toml`（配布既定）と `server.axl.example.toml`（公開した任意設定）。値は例示。`server.tp3.example.toml`（3ノードのリングで配布既定、TP=3、リンクの値は例示）。MTP投機設定のテンプレート |
 | `examples/zcode-hooks/` | ZCodeの既存ファイルガードhookと導入手順（[ハーネス](harnesses.ja.md)） |
 | `overlays/` | 公開した任意設定のcheckpointが要するvLLM source overlay 2件と、その台帳（[overlays/README.md](../overlays/README.md)） |
 | `docker/` | imageの構築。base digestはビルドコマンドがロックから渡す |
 | `requirements/` | ホスト側ツールの固定した依存 |
 | `tests/` | CPU契約 |
-| `tools/` | `check_publication.py`（公開監査）、`release_notes.py`（tagが公開するChangelogの節）、`kernel_hashes.py`（indexerのkernelを両配信workerの中でhash）、`assess_benchmark.py`、`check_prefix_cache.py`、`decode_check.py`・`decode_divergence.py`・`weight_digest.py`（切替の後のdecode検査と重みのdigest、[起動契約](launch-safety.ja.md#切替の後のdecode検査)）、`nccl_probe.py`、`prepare_mtp_view.py` |
+| `tools/` | `check_publication.py`（公開監査）、`release_notes.py`（tagが公開するChangelogの節）、`kernel_hashes.py`（indexerのkernelを各配信workerの中でhash）、`assess_benchmark.py`、`check_prefix_cache.py`、`decode_check.py`・`decode_divergence.py`・`weight_digest.py`（切替の後のdecode検査と重みのdigest、[起動契約](launch-safety.ja.md#切替の後のdecode検査)）、`nccl_probe.py`（2 rankまたは3 rank）、`prepare_mtp_view.py` |
 | `.github/workflows/` | CI（LinuxとWindowsでのCPUテスト・Ruff・公開監査）と、tagで起動するGitHub Release |
 | `LICENSES/` | 上流ライセンス原文の保持 |
 | `state/`、`records/` | ローカルの可変状態と実験の証跡。配布対象外 |
@@ -82,4 +84,4 @@ reference imageのbuild時patchは、変更する固定vLLMファイルの完全
 
 ## 検証の境界
 
-ダウンロードの完了、checksumの合格、GPUスモーク、設定の解釈、Attentionの一致、fixtureの統合、フルモデルTP=2の検収は、それぞれ別種の証拠です。ある水準の結果を、別の水準の代わりにはできません。とくに、GPU 1台のfixtureは2 rankの証拠の代わりになりません。
+ダウンロードの完了、checksumの合格、GPUスモーク、設定の解釈、Attentionの一致、fixtureの統合、TPの数ごとのフルモデルの検収は、それぞれ別種の証拠です。ある水準の結果を、別の水準の代わりにはできません。とくに、GPU 1台のfixtureは複数rankの証拠の代わりにならず、TP=2の証拠はTP=3の代わりになりません。
