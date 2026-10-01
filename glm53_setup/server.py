@@ -1,5 +1,5 @@
-"""The launcher of the TP=2 serving pair: plan and start a rank, supervise it,
-and query or check the running head (docs/server-configuration.md)."""
+"""The launcher of the TP=2 serving pair and the TP=3 ring: plan and start a rank,
+supervise it, and query or check the running head (docs/server-configuration.md)."""
 
 import argparse
 import contextlib
@@ -298,7 +298,7 @@ def preflight(profile, config_path, rank, *, check_memory=True, recovery=False):
     )[0]
     checks["image_id"] = image["Id"] == settings.selected_image(profile)
     checks.update(settings.image_capability_checks(profile, image, recovery=recovery))
-    # Any pair of this launcher carries LABEL, including the old pair that is
+    # Any launch of this launcher carries LABEL, including the old one that is
     # still running while cluster switch prepares the new profile.
     foreign = host.foreign_gpu_containers(host.running_containers(), LABEL)
     checks["exclusive_gpu"] = not foreign
@@ -666,7 +666,7 @@ def act_plan(cli, args, profile):
 
 
 def act_freeze(cli, args, profile):
-    """Write the shared launch manifest both ranks will be started from."""
+    """Write the shared launch manifest every rank will be started from."""
     if not args.output or args.launch:
         cli.error("freeze requires --output and a TOML --config")
     manifest = settings.freeze(profile)
@@ -893,7 +893,7 @@ def parser():
     cli.add_argument(
         "--recovery",
         action="store_true",
-        help="Restart a pair as it was launched: the coordinator passes this when a "
+        help="Restart a launch as it was launched: the coordinator passes this when a "
         "switch restores the previous profile. A new launch does not use it",
     )
     return cli
@@ -918,7 +918,7 @@ def main(argv=None):
         and "PYTORCH_CUDA_ALLOC_CONF" in os.environ
     ):
         cli.error(
-            "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to both ranks"
+            "Freeze the launch-origin allocator once with server freeze and pass the same --launch JSON to every rank"
         )
     if args.recovery and not action.launch_path:
         cli.error("--recovery belongs to assets, preflight and start")

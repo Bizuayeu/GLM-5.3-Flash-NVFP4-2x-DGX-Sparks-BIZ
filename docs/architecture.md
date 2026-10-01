@@ -39,7 +39,8 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/runtime/patch_kpool_seed.py` | Source-pinned patch: the kpool prefill seed addresses tail blocks by the tail's strides (vLLM #57477) |
 | `glm53_setup/runtime/patch_kpool_ring.py` | Source-pinned patch: the kpool raw-tail ring spans the speculative drafts, sized by the MTP depth (vLLM #58454); applies after `patch_kpool_seed` |
 | `glm53_setup/runtime/patch_load_clone.py` | Source-pinned patch: each safetensors tensor is cloned off the checkpoint's file mapping before the loader copies it to the GPU |
-| `glm53_setup/runtime/tp_padding.py`, `patch_tp_padding.py` | Zero-padding of heads, MoE width and vocabulary for tensor-parallel sizes that do not divide them (`GLM53_TP_PAD_MULTIPLE`, off when unset) and its source-pinned patch of the config and the weight loaders; applies after `patch_load_clone` |
+| `glm53_setup/runtime/tp_padding.py` | The padded geometry for tensor-parallel sizes that do not divide the heads, MoE width and vocabulary, as pure functions of `GLM53_TP_PAD_MULTIPLE` (off when unset): 66 heads, width 2,112 and a vocabulary multiple of 192 at 3, and the zero-extension a loader applies before it takes a rank's shard |
+| `glm53_setup/runtime/patch_tp_padding.py` | Source-pinned patch that installs that padding at load time in the text config, the column, row and sharded parameter loaders, the FusedMoE loaders and the vocabulary embedding, so the checkpoint stays as published; applies after `patch_load_clone` ([three nodes](server-configuration.md#three-nodes)) |
 | `glm53_setup/runtime/inductor_pin.py`, `inductor_pin_pth.txt` | Keeps Inductor's deterministic mode on through Dynamo's state restore, which turns it off after the first compiled frame (`runtime.inductor_deterministic`); the text file, mounted as `glm53-inductor-pin.pth` in the image's site directory, runs it at interpreter start |
 | `glm53_setup/runtime/lpa.py`, `lpa_query.py` | LPA worker control, attention-input approximation and request-scoped query omission |
 | `glm53_setup/runtime/apc_policy.py`, `apc_runtime.py`, `apc_worker.py`, `patch_apc_lpa.py` | APC-first LPA admission, exact-only prefix publication and worker dispatch ([design contract](apc-lpa-design.md)) |
@@ -56,13 +57,13 @@ Order is part of the contract in two places. `VALIDATORS` runs the profile rules
 | `glm53_setup/validation/kpool_ring_repro.py` | GPU repro of the kpool tail ring on the reference image: a rejected pool-completing draft against the prefill writer, with a one-pool ring and the MTP-3 ring ([validation](validation.md#kpool-tail-ring-repro)) |
 | `glm53_setup/validation/fused_nope.py`, `fused_nope_dot.py`, `indexer_candidates.py`, `indexer_reindex.py`, `indexer_shared_pool.py` | Retired prototypes kept for reproduction and reached only from their benchmarks and tests: fused NoPE attention ([component validation](component-validation.md)) and indexer candidate reuse ([indexer reuse](indexer-reuse.md)) |
 | `config/` | Model/image pins and `lpa-projector.lock.json` (Release URL, checksum, teacher and training provenance); no credentials or measured site configuration |
-| `examples/` | The two server profiles, `server.example.toml` (the distributed defaults) and `server.axl.example.toml` (the published option), with illustrative values only; `server.tp3.example.toml` (the defaults on a three-node ring, TP=3 under construction, with the reference ring's links); and the MTP speculative templates |
+| `examples/` | The two server profiles, `server.example.toml` (the distributed defaults) and `server.axl.example.toml` (the published option), with illustrative values only; `server.tp3.example.toml` (the defaults on a three-node ring, TP=3, with illustrative links); and the MTP speculative templates |
 | `examples/zcode-hooks/` | ZCode existing-file guard hook and its setup ([harnesses](harnesses.md)) |
 | `overlays/` | The two vLLM source overlays that the published option's checkpoint needs, with their manifest ([overlays/README.md](../overlays/README.md)) |
 | `docker/` | Image construction; base digest supplied from the lock by the build command |
 | `requirements/` | Fixed host-tool dependencies |
 | `tests/` | CPU contracts |
-| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `kernel_hashes.py` (the indexer's kernels hashed inside both serving workers), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py`, `decode_divergence.py` and `weight_digest.py` (the decode check and the weight digest after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py`, `prepare_mtp_view.py` |
+| `tools/` | `check_publication.py` (publication audit), `release_notes.py` (the Changelog section a tag publishes), `kernel_hashes.py` (the indexer's kernels hashed inside every serving worker), `assess_benchmark.py`, `check_prefix_cache.py`, `decode_check.py`, `decode_divergence.py` and `weight_digest.py` (the decode check and the weight digest after a switch, [launch contracts](launch-safety.md#after-a-switch-the-decode-check)), `nccl_probe.py` (two or three ranks), `prepare_mtp_view.py` |
 | `.github/workflows/` | CI (CPU tests, Ruff, publication audit on Linux and Windows) and the tag-driven GitHub Release |
 | `LICENSES/` | Preserved upstream license texts |
 | `state/`, `records/` | Local mutable state and experiment evidence, excluded from distribution |
@@ -83,4 +84,4 @@ Every build-time patch of the reference image checks the full SHA-256 of the pin
 
 ## Validation boundaries
 
-Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model TP=2 qualification are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot stand in for two-rank evidence.
+Download completion, checksum success, GPU smoke, config interpretation, attention parity, fixture integration and full-model qualification at each TP size are different evidence types. A result from one level cannot substitute for another. In particular, the one-GPU fixture cannot stand in for multi-rank evidence, and TP=2 evidence does not stand in for TP=3.

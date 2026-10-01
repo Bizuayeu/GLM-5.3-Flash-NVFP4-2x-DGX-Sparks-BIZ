@@ -6,7 +6,7 @@ The launcher and its client read [one server TOML](docs/server-configuration.md)
 
 **Routine use is accepted within a declared scope: both profiles for one active sequence (2026-09-22), and the published option's two-sequence profile for two (2026-09-23).** [Step 6](#6-qualify-the-full-model) records what each acceptance rests on; other hardware, more sequences than those and video input are outside it, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).
 
-This is the ordered runbook for a human or an AI operator, for the two-host TP=2 deployment this release serves; three hosts at TP=3 is not covered yet ([P28](docs/optimization-catalog.md#performance-initiatives)). Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
+This is the ordered runbook for a human or an AI operator, for the two-host TP=2 deployment; three hosts at TP=3 on a QSFP ring follow the same steps with the additions in [Three hosts at TP=3](#three-hosts-at-tp3). Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
 ## Shortest path to a smoke test
 
@@ -171,6 +171,15 @@ Start rank 1 first and then rank 0 with `server start`, as described in [server 
 Run the [harness acceptance matrix](docs/harnesses.md) for **the accepted route, the npm ZCode CLI**. The official ZCode Desktop stays BLOCKED and Claude Code is skipped by decision (2026-09-22, both recorded in that document), so neither is a required target. Basic API success alone does not close a client case. Keep client versions, non-secret settings and separate case results. Review [artifact-specific licensing](docs/licensing.md) before distributing a deployment.
 
 Keep this service on a trusted network. The host-network containers expose distributed control ports to reachable peers; loopback API binding alone does not protect rendezvous. Public exposure, authentication/TLS, firewall policy and business availability requirements need their own deployment design. The “BIZ” suffix in the project name states a business-use intent; it is not a production certification or a support commitment.
+
+## Three hosts at TP=3
+
+Three GB10 hosts cabled as a switchless QSFP ring serve TP=3 ([measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240)). The steps above apply on all three hosts, with these additions:
+
+- **Network (step 5).** Set up each of the three links as its own pair, then give each host one stable /32 on a dummy interface with static routes to the other two over the direct links ([QSFP network, section 8](docs/qsfp-network.md#8-three-hosts-in-a-ring)). Probe the three ranks together and each link alone ([NCCL diagnostics](docs/nccl-validation.md#three-hosts-in-a-ring)).
+- **Profile.** Start from [`examples/server.tp3.example.toml`](examples/server.tp3.example.toml): every node lists its links and sets `host_address` and `host_interface` ([server configuration](docs/server-configuration.md)). The image is the same reference image; the launcher sets the padding knob for three nodes. 30 GiB of KV per rank holds twelve 262,144-token requests (3,258,809 tokens), and `max_model_len` may go to 1,048,576.
+- **Launch and switch.** Ranks start from the highest, the head last. Moving between the pair and the ring means stopping every rank first: `cluster switch` refuses a change of rank count ([launch safety](docs/launch-safety.md#three-nodes)).
+- **Acceptance (step 6).** The same checks, with the TP=3 decode-check hashes taken per launch and kept with each host's runtime cache, and teacher-forced NLL compared with a TP=2 record position by position ([validation](docs/validation.md)).
 
 ## Completion checklist and AI handoff
 

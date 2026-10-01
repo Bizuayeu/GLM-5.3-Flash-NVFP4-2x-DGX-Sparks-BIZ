@@ -2,12 +2,12 @@
 
 [日本語](server-configuration.ja.md)
 
-Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml` and put the same file on both Linux hosts. This controls the launcher and its serial chat client. The published option has its own example, [server.axl.example.toml](../examples/server.axl.example.toml): the same profile with the `runtime.derived_checkpoint` table for the repacked weights (NVFP4 BIZ AXL) and the shipped overlays, `runtime.prefix_page_dedup`, two active sequences and 6 GiB of KV per rank. The launcher refuses more than 3 GiB of KV without the derived checkpoint: on the reference pair the pinned weights leave the head 5.5 GiB at 3 GiB of KV against a 3 GiB reserve, the repacked ones 10.5 GiB.
+Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml` and put the same file on every Linux host. This controls the launcher and its serial chat client. The published option has its own example, [server.axl.example.toml](../examples/server.axl.example.toml): the same profile with the `runtime.derived_checkpoint` table for the repacked weights (NVFP4 BIZ AXL) and the shipped overlays, `runtime.prefix_page_dedup`, two active sequences and 6 GiB of KV per rank. Three hosts on a QSFP ring have [`server.tp3.example.toml`](../examples/server.tp3.example.toml) ([three nodes](#three-nodes)). On two nodes the launcher refuses more than 3 GiB of KV without the derived checkpoint: on the reference pair the pinned weights leave the head 5.5 GiB at 3 GiB of KV against a 3 GiB reserve, the repacked ones 10.5 GiB. On three nodes only the profile's explicit `cache.kv_cache_memory_bytes` bounds it.
 
 | Category | Controls |
 |---|---|
 | `runtime` | Immutable image IDs, eager/decode Graph execution, independent EP/PP and stage boundary, seed, image-input switch, repeatability switches, derived checkpoint |
-| `context` | Total input/output context, active sequences, prefill chunk budget |
+| `context` | Total input/output context, active sequences, prefill chunk budget, optional per-request prefill cap |
 | `profiling` | On-demand Torch/CUDA trace collection for a diagnostic run; off for timing measurements |
 | `validation` | Separate CUDA/indexer or expert-placement observer workers, memory probe |
 | `cache` | KV bytes per rank, requested block size, prefix cache, checkpoint retention, memory utilization, fused unpack |
@@ -16,7 +16,7 @@ Copy [the commented TOML](../examples/server.example.toml) to `state/server.toml
 | `api` | Loopback/rendezvous ports, served name and parsers, the reasoning effort a request that names none gets, dev routes, cached-token usage |
 | `generation` | Client defaults: output tokens, temperature, reasoning and timeout; warmup ladder |
 | `resources` | Container limit, startup/free-memory reserve, total run deadline, stall detection |
-| `nodes` | Both ranks' measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set. Three or more nodes (TP=3, under construction) list per node their direct `links` to every other node and may name a `host_address`/`host_interface` ([`server.tp3.example.toml`](../examples/server.tp3.example.toml)). A Wi-Fi `host_interface` is refused unless that node also sets `host_interface_wifi_test = true`: a **test setting** that puts only the sockets (Gloo, TCPStore, NCCL bootstrap) on the management Wi-Fi while the data stays on the links. Its permanent replacement is a per-host /32 as `host_address` with static routes over the direct links |
+| `nodes` | Two or more nodes: each rank's measured fabric addresses, interfaces, HCAs and GIDs; optional per-host Docker CPU set. On a ring of three, each node lists one entry of `links` per other node (`peer`, `hca`, `interface`, `local_ip`, `peer_ip`, `gid_index`); the launcher checks that the ring is complete, that both ends of each /30 agree and that a node uses one GID index, and lists every link HCA in `NCCL_IB_HCA`. A node may name `host_address` (a stable /32 the other ranks reach) and `host_interface` (the interface that carries it) for Gloo, TCPStore and the NCCL bootstrap ([`server.tp3.example.toml`](../examples/server.tp3.example.toml)). A Wi-Fi `host_interface` is refused unless that node also sets `host_interface_wifi_test = true`: a **test setting** that puts only the sockets (Gloo, TCPStore, NCCL bootstrap) on the management Wi-Fi while the data stays on the links. Its permanent replacement is a per-host /32 as `host_address` with static routes over the direct links |
 
 The model/revision and build base stay in [runtime.lock.json](../config/runtime.lock.json). Paths are relative to the TOML file; `mtp.view` is relative to the Hugging Face cache, with the pinned revision appended automatically. Keep credentials out of this file.
 
@@ -106,6 +106,28 @@ These switches cover a request alone. With `max_num_seqs` of 2 or more a request
 
 `runtime.pipeline_parallel_size=1` retains TP=2. Setting it to 2 selects TP=1/PP=2 on the same two nodes and requires `GLM53_PIPELINE_API=1`. `pipeline_split_layer` sets the first stage's layer count; the default candidate 24 produces stages 24/21, each with 21 MoE layers in this pinned model. It is not a memory-fit guarantee. Both stages must contain MLA, so this checkpoint accepts boundaries 4–43. Scope is one sequence, eager and no EP/MTP/LPA/fusion/APC; PP2 was measured and not adopted ([TP versus PP](performance-investigation.md#tp-versus-pp)). Include both keys explicitly when updating a TOML.
 
+### Prefill cap
+
+`context.long_prefill_token_threshold` (absent or 0 = nothing sent; commented out in the examples) passes vLLM's `--long-prefill-token-threshold`, which caps each request's prefill chunk per step, so a request decoding beside a long prefill no longer waits for a whole chunk every step. It accepts 0 to `max_model_len`. Measured on 2026-10-01 with the published option on TP=3 at 256K, a ~200K-token prefill and a short request sent 10 s later:
+
+| Cap | Short request's decode during the prefill | Long prefill |
+|---|---|---|
+| none | 1.18 tok/s | 1,326 tok/s |
+| 512 | 5.67 tok/s | 1,082 tok/s (−18%) |
+| 256 | 7.92 tok/s | 806 tok/s (−39%) |
+
+### Three nodes
+
+Three `[[nodes]]` run TP=3 on a switchless QSFP ring ([QSFP network](qsfp-network.md)). The model's 64 attention and KDA heads, its routed and shared expert width of 2,048 and its vocabulary do not divide by three, so the launcher sets `GLM53_TP_PAD_MULTIPLE=3` on every rank and the image zero-pads them at load time: 66 heads (22 per rank), width 2,112 (704 per rank) and the vocabulary to a multiple of 192 (154,880 to 154,944), the MTP draft the same way. On a single-host fixture the padded heads came out exactly zero and the real heads bit for bit as before. This needs `GLM53_TP_PAD_API=1` ([image contract](#current-image-contract)); on two nodes the knob is unset and the patch changes nothing. With three nodes the launcher also:
+
+- serves sparse-MLA decode on the reference attention, which takes 22 heads per rank; the SM120 FlashInfer decode kernel accepts only 8, 16, 32, 64 or 128. `runtime.fa2_attention` was on in every TP=3 measurement;
+- runs the vision tower data-parallel (`--mm-encoder-tp-mode data`), because its 16 heads do not divide by three;
+- sets `NCCL_IB_SUBNET_AWARE_ROUTING=1`;
+- refuses PP2, EP (and its observer) and LPA, which launch only on two nodes, and accepts a derived checkpoint (the published option): its overlays split the padded 66 heads by TP;
+- does not apply the two-node 3 GiB KV limit without a derived checkpoint.
+
+`cluster switch` and `cluster resume` refuse a switch between launches of different rank counts; to move between the pair and the ring, stop every rank and start the other launch ([operations](operations.md#three-nodes)).
+
 ### Image input
 
 `runtime.vision` is false when absent; the template sets `true`. `false` keeps `--language-model-only`, so the vision tower is not loaded and requests stay text/tools only. `true` removes that flag on both ranks and adds `--limit-mm-per-prompt '{"video": 0}'`: **video input is rejected even with `vision = true`; only images are accepted**, and the image count per prompt keeps the vLLM default. With vision on, `cache.mm_processor_cache_gb` (0.1 when absent) sets `--mm-processor-cache-gb`; a processed image larger than the budget is served uncached (with a warning) rather than rejected. Why video is off, why the cache is 0.1 GiB instead of vLLM's 4, and how the tower loads are in [how the settings were chosen](vision.md#how-the-settings-were-chosen); measurements and the head's memory margin in [image input](vision.md). Validation fixtures load text-only regardless of this key.
@@ -154,14 +176,14 @@ python -m glm53_setup server plan --rank 0
 python -m glm53_setup server plan --rank 1
 ```
 
-On each Linux host, `server preflight --rank N` checks assets, fabric, image identity, that no other container holds the GPU, and available memory ([what each check covers](operations.md#full-model-launch-checks)). To start a pair that is not running, start rank 1 first, then rank 0, in separate terminals on their respective hosts; to replace a running pair, use the [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch):
+On each Linux host, `server preflight --rank N` checks assets, fabric, image identity, that no other container holds the GPU, and available memory ([what each check covers](operations.md#full-model-launch-checks)). To start a pair that is not running, start rank 1 first, then rank 0, in separate terminals on their respective hosts (on three nodes, the highest rank first and the head last); to replace a running pair, use the [two-rank switch](launch-safety.md#all-rail-checks-and-two-rank-switch):
 
 ```sh
 python -m glm53_setup server start --rank 1
 python -m glm53_setup server start --rank 0
 ```
 
-The commands stay in the foreground supervising their own containers; keep the terminals running. `resources.run_seconds` **includes model loading**. Ctrl+C, deadline or low memory stops that rank. Stop both ranks after a distributed failure. Containers and `records/` logs/configuration snapshots are retained; no automatic deletion or restart occurs.
+The commands stay in the foreground supervising their own containers; keep the terminals running. `resources.run_seconds` **includes model loading**. Ctrl+C, deadline or low memory stops that rank. Stop every rank after a distributed failure. Containers and `records/` logs/configuration snapshots are retained; no automatic deletion or restart occurs.
 
 When the API is ready, from another head terminal:
 
@@ -206,7 +228,11 @@ On each node, weights, KV/cache state, activation/indexer workspaces, MTP/Graph 
 
 Insufficient KV can cause startup rejection or runtime waiting, preemption and recomputation. The fixed pool does not automatically expand to meet demand. Other allocations or an insufficient RAM budget can still cause OOM or guard stops. [vLLM preemption](https://docs.vllm.ai/en/latest/configuration/optimization/#preemption)
 
-The boot line `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` is `N = C × L` for this hybrid model (MLA, IndexPool tail, KDA state groups and the MTP draft share one block pool with one id per group per aligned segment). `N` is therefore a concurrency figure in token units, not the number of conversation tokens the prefix cache can hold; `server capacity` prints the decomposition and, where the group kinds are known, the conversation estimate. In both measured image-profile configurations a GiB of KV held 28 blocks of 4,608 tokens and a full-length request of L tokens took ceil(L / 4608) + 16 of them: 61 of 70 at 204,800 tokens with 2.5 GiB and 73 of 84 at 262,144 with 3 GiB, 1.15× both times. The 256K figures were predicted this way before the switch; other lengths, KV sizes or group layouts need their own boot line. The IndexPool tail group's block depends on the MTP depth on images with `GLM53_KPOOL_RING=1`: 4 without MTP, 8 for k = 1 to 4 and 16 for k = 5 (earlier images: 4 for every k), one block per running request. The boot line `kv cache group sizes` shows it; the measured figures above come from images without the patch, and whether the aligned block and the blocks per request move with it is to be read from the rebuilt image's boot line, as is every fingerprint recorded from a boot. Prefix caching also works in whole blocks, so a repeated N-token prompt restores `(floor(N / block) - 1) x block` tokens and nothing at all below two blocks. Measured on the image profile's 4,608-token scheduler block: 3,625 tokens restored none, 14,025 restored 9,216, and 28,025 restored 23,040. Short conversations get no reuse on this profile whatever the hit rate suggests. Retain the runtime's reported capacity/concurrency estimates, then test the intended input-plus-output length × concurrency while observing preemption, both ranks' minimum free memory, OOM and guard stops. A current preflight pass does not replace this maximum-capacity test. See the [independent batching measurements](benchmarks.md#independent-active-batching) for actual coverage.
+The boot line `GPU KV cache size: N tokens, Maximum concurrency for L tokens per request: Cx` is `N = C × L` for this hybrid model (MLA, IndexPool tail, KDA state groups and the MTP draft share one block pool with one id per group per aligned segment). `N` is therefore a concurrency figure in token units, not the number of conversation tokens the prefix cache can hold; `server capacity` prints the decomposition and, where the group kinds are known, the conversation estimate. In both measured image-profile configurations a GiB of KV held 28 blocks of 4,608 tokens and a full-length request of L tokens took ceil(L / 4608) + 16 of them: 61 of 70 at 204,800 tokens with 2.5 GiB and 73 of 84 at 262,144 with 3 GiB, 1.15× both times. The 256K figures were predicted this way before the switch; other lengths, KV sizes or group layouts need their own boot line. The IndexPool tail group's block depends on the MTP depth on images with `GLM53_KPOOL_RING=1`: 4 without MTP, 8 for k = 1 to 4 and 16 for k = 5 (earlier images: 4 for every k), one block per running request. The boot line `kv cache group sizes` shows it; the measured figures above come from images without the patch, and whether the aligned block and the blocks per request move with it is to be read from the rebuilt image's boot line, as is every fingerprint recorded from a boot. Prefix caching also works in whole blocks, so a repeated N-token prompt restores `(floor(N / block) - 1) x block` tokens and nothing at all below two blocks. Measured on the image profile's 4,608-token scheduler block: 3,625 tokens restored none, 14,025 restored 9,216, and 28,025 restored 23,040. Short conversations get no reuse on this profile whatever the hit rate suggests.
+
+On three nodes the aligned block is 3,072 tokens (two nodes: 4,608), a GiB of KV holds about 42 blocks and a request of L tokens takes ceil(L / 3072) + 16. Boot lines on the reference ring with MTP k=3, 2026-09-29 and 10-01: the distributed defaults at 262,144 tokens held 323,824 tokens in 126 blocks at 3 GiB (TP=2 at 3 GiB: 301,645), 2,606,019 at 24 GiB and 3,258,809 at 30 GiB (12.43×); on 10-01 the published option at 30 GiB held 3,555,065 tokens at 524,288 (6.78×) and 3,713,950 at 1,048,576, the checkpoint's `max_position_embeddings` (3.54×). These are boot-line concurrency figures; the requests actually served together at TP=3 are two and three ~200K-token ones at 24 GiB (2026-09-29), all answered without preemption.
+
+Retain the runtime's reported capacity/concurrency estimates, then test the intended input-plus-output length × concurrency while observing preemption, both ranks' minimum free memory, OOM and guard stops. A current preflight pass does not replace this maximum-capacity test. See the [independent batching measurements](benchmarks.md#independent-active-batching) for actual coverage.
 
 ## Current image contract
 
@@ -251,4 +277,4 @@ Set `mtp.enabled` and `lpa.enabled` independently. MTP selects the view prepared
 
 LPA needs per-request prompt length. The client tokenizes the actual template, configures LPA, generates, checks token-count agreement and resets LPA to off. Prompts fully covered by `lpa.tail` run normally. Use one controlling client only; a host lock serializes this CLI's requests, but does not coordinate arbitrary direct API clients. This convenience client handles non-streaming text/tool chat.
 
-Scope: TP=2, Marlin W4A16, FP8 KV; text, tool calls and images. LPA requires one active sequence and eager execution; prefix caching with LPA uses the P22 path above. More than one active sequence is accepted only for the published option's two-sequence profile ([concurrency scope](validation.md#concurrency-scope)). Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](lpa.md) and [MTP](speculative-decoding.md) for evidence.
+Scope: TP=2, and TP=3 on [three nodes](#three-nodes), Marlin W4A16, FP8 KV; text, tool calls and images. LPA requires one active sequence and eager execution; prefix caching with LPA uses the P22 path above. More than one active sequence is accepted only for the published option's two-sequence profile ([concurrency scope](validation.md#concurrency-scope)). Changing context, chunks, cache sizes, cut or tail needs new workload measurements; a schema-valid setting does not certify quality or resource fit. See [LPA](lpa.md) and [MTP](speculative-decoding.md) for evidence.

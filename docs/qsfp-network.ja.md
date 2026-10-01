@@ -2,7 +2,7 @@
 
 [English](qsfp-network.md) · [セットアップ全体](../SETUP.ja.md)
 
-目的は、2台間の固定IPv4経路を作り、管理用Wi-Fiの既定経路を維持することです。**物理リンク、IP疎通、RoCE設定、NCCL実通信は別々に確認します。この手順の完了はTP=2合格ではありません。**
+目的は、2台間の固定IPv4経路を作り、管理用Wi-Fiの既定経路を維持することです。**物理リンク、IP疎通、RoCE設定、NCCL実通信は別々に確認します。この手順の完了はTP=2合格ではありません。**3台をリングにつなぐ場合（TP=3）は、各リンクをこの手順で設定してから[8節](#8-3台をリングにつなぐ)に進みます。
 
 ## 1. 作業前に記録する
 
@@ -152,3 +152,29 @@ sudo nmcli connection up uuid <PREVIOUS_UUID>
 - [ ] NCCL実通信・帯域・TP=2推論は別の未完了項目として引き継いだ。
 
 結果は非公開の`records/<run-id>/REPORT.md`へ、工程、実行者、時刻・タイムゾーン、結果、証跡パス、次の操作を記録します。
+
+## 8. 3台をリングにつなぐ
+
+TP=3では3台をスイッチなしのリングにつなぎます。各機の2つのQSFPポートを残り2台へ1本ずつつなぐので、どの2台の間にも直結リンクが1本あります。各リンクを手順2〜6の1対として設定し、リンクごとにprofile・interface・/30を1つずつ持たせます（例：`10.53.1.0/30`、`10.53.2.0/30`、`10.53.3.0/30`）。NCCLはrankごとにGID indexを1つ取るため、1台の2リンクは同じGID indexにそろえます。参照機のリングでは6つのHCAすべてでindex 3です。各リンクは起動設定の`[[nodes]]`に自ノードの分を書きます（[例](../examples/server.tp3.example.toml)）。ランチャーは、欠けた組のあるリングや、リンクの両端が互いのアドレスを同じ/30で名指さない設定を拒否します。
+
+/30のアドレスはそのリンクの相手にしか届きません。一方でGloo・TCPStore・NCCLのbootstrapは、各rankが広告するアドレスへ全rankから接続します。そこで各機にdummy interface上の固定/32を1つ置き、残り2台の/32への/32静的経路を直結リンク経由で張って、NetworkManagerに保存します。例の1台目（/32が`10.40.0.1`、リンクの相手側が`10.53.1.2`と`10.53.2.2`）では次のとおりです。
+
+```sh
+sudo nmcli connection add type dummy con-name glm53-host ifname glmhost \
+  ipv4.method manual ipv4.addresses 10.40.0.1/32 ipv6.method disabled
+sudo nmcli connection modify <LINK_TO_SECOND> +ipv4.routes "10.40.0.2/32 10.53.1.2"
+sudo nmcli connection modify <LINK_TO_THIRD> +ipv4.routes "10.40.0.3/32 10.53.2.2"
+sudo nmcli device reapply <INTERFACE_OF_EACH_LINK>
+```
+
+`device reapply`は保存した経路を、リンクを落とさずに反映します。残り2台でも、それぞれの/32と相手で同じ操作をします。各機から確認します。
+
+```sh
+ip route get 10.40.0.2
+ping -I 10.40.0.1 -c 4 -W 2 10.40.0.2
+ping -I 10.40.0.1 -c 4 -W 2 10.40.0.3
+```
+
+経路はその相手との直結リンクから出ることが条件です。参照機のリングでは/32間のpingが0.47〜1.05 msでした（2026-09-29）。そのうえで、起動設定の全ノードに`host_address`（/32）と`host_interface`（dummy interface）を書きます。
+
+これで制御用の通信が管理用ネットワークに乗らなくなります。/32を置く前の参照機のリングでは管理用Wi-Fiがこれを運び、不安定でした（往復2.9秒、パケット損失）。Wi-Fiの`host_interface`は、そのノードに試験用の`host_interface_wifi_test = true`を書いた場合だけ受け付けます。

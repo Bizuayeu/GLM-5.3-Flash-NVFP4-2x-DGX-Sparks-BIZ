@@ -21,6 +21,7 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.15.0](#measurements-on-1150) | 2026-09-26 | CPU placement on the reference pair |
 | [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
 | [1.22.0](#measurements-on-1220) | 2026-09-29 | tool-eval-bench on the model API and through the tool-argument gate |
+| [1.24.0](#measurements-on-1240) | 2026-09-29, 2026-10-01 | Three hosts at TP=3: both profiles, NLL position by position, 500K and 1M input, the prefill cap |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -896,6 +897,35 @@ On 2026-09-29 (09:01 to 12:42, Asia/Tokyo) the reference pair served the publish
 | Gate, 1.22.0 reply wording | **90/100 (124/138)** | TC-21, TC-61 | **Passed** | 184 passed, 1 repaired |
 
 The gate intervened once per run, on TC-43 (the user asks to "just call web_search" with nothing to search for): the model's `web_search {"query": ""}` was answered inside the gate and the model asked again. The other 68 scenarios reached the model unchanged and were judged exactly as on the model API, as the repeatable serving profile predicts for identical requests. With the first wording, which said only that the call was not executed, the repaired answer said the call had failed and offered to search a topic, which the benchmark scores partial; with the 1.22.0 wording, which also says to ask the user for a missing value, the answer asked what to look up (pass). TC-21 and TC-61 are not argument-schema failures and stay outside the gate. The Safety Gate result belongs to the model with the gate, not to the model alone.
+
+## Measurements on 1.24.0
+
+### Three hosts at TP=3 (2026-09-29 and 10-01)
+
+Three GB10 hosts cabled as a switchless QSFP ring ([network](qsfp-network.md#8-three-hosts-in-a-ring)) served TP=3 with the padding of 1.24.0: heads 64 → 66 (22 per rank), routed and shared expert width 2,048 → 2,112, vocabulary to a multiple of 192. Control traffic ran over one /32 per host with static routes on the direct links (from 2026-10-01; on 2026-09-29 over the management Wi-Fi as a test setting). Every profile: MTP k=3, FA2 prefill, the fixed expert order, settled indexer ties, deterministic Inductor configs, image input on, `cpuset_cpus = "5-9,15-19"` on all three hosts. Decode is three samples of 512 tokens after a fixed ~2,048-token prompt (median tok/s, mean acceptance length).
+
+| Measure | Distributed defaults, TP=3 | Published option, TP=3 | Distributed defaults, TP=2 (1.19.0) |
+|---|---|---|---|
+| Weights per rank | 66.8 GiB | 63.69 GiB | about 91 GiB |
+| KV at 30 GiB per rank, `max_model_len` 262,144 | 3,258,809 tokens (12.43 requests) | 3,258,809 tokens | — |
+| Lowest available memory during load at 30 GiB (hosts 1 / 2 / 3) | 8.53 / 10.94 / 10.77 GiB | 11.87 / 13.31 / 13.41 GiB | — |
+| Decode: counting / prose / code (tok/s) | 41.04 (3.62) / 26.47 (2.22) / 34.99 (3.07) | 51.00 (3.84) / 30.10 (2.24) / 39.48 (2.94) | 32.59 / 21.12 / 28.21 |
+| NLL: Japanese / English / code / mathematics | 1.6250 / 2.0395 / 0.9316 / 0.5843 | 1.6388 / 2.0137 / 0.9803 / 0.6355 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
+| ~200K passphrase (199,652 tokens), first token | 157.96 s, correct | 150.5 s, correct | about 178 s, correct |
+
+At 3 GiB per rank the distributed defaults held 323,824 tokens (TP=2: 301,645) in blocks of 3,072 tokens (TP=2: 4,608), about 42 blocks per GiB with ceil(L / 3,072) + 16 blocks per request; at 24 GiB, 2,606,019 tokens. Loading took about 120 s for the main weights and 102 s for the MTP draft on two hosts, 150 s and 105 s on the third, whose page cache was colder. Within each launch the three samples of each task gave one completion; a second launch of the distributed defaults on the same per-host runtime cache repeated the first launch's decode completions and its teacher-forced record bit for bit.
+
+**NLL against TP=2, position by position.** The distributed defaults' record was compared with the TP=2 record of the same weights token by token: argmax agreement 0.947, and the mean move of the actual token's log-probability 0.61–1.30 times that between TP=2 launches of the same weights that differ only in numerical state (their argmax agreement 0.948–0.956), with the moves spread evenly up and down; changing the weights moves it about twice as much. The published option against TP=2's published option: argmax agreement 0.947 and moves the size of those between its own TP=2 launches (0.936–0.963, NLL up to +0.043). The tolerance for TP=3 is argmax agreement of at least 0.93 and a mean move within 1.5 times that between same-weight TP=2 launches; both profiles are inside it.
+
+**Long input, published option.** At `max_model_len` 524,288 (KV 3,555,065 tokens) a 299,975-token prompt with passphrases at its start, middle and end returned all three, first token at 233.0 s (1,287 tok/s), and a 499,622-token prompt all three at 420.9 s (1,187 tok/s), with no CUDA error; the same 499,622-token prompt again read 494,592 tokens from the prefix cache and answered in 5.84 s. At 1,048,576, the checkpoint's `max_position_embeddings` (KV 3,713,950 tokens), a 1,038,423-token prompt returned all three passphrases with the first token at 1,058 s (981 tok/s). That request was about 17.6 minutes of sustained load; the lowest available memory on the head was 5.75 GiB against a 4 GiB reserve. Prefill speed falls with length: 1,326, 1,287, 1,187 and 981 tok/s at 200K, 300K, 500K and 1M.
+
+**Concurrent long input, distributed defaults at 24 GiB.** Two and three ~200K requests sent together all answered correctly without preemption, at 1,328 tok/s of prefill in total.
+
+**Prefill cap.** With a ~200K-token prefill running on the published option, a short request sent 10 s later decoded 1.18 tok/s while it waited for the long request's 2,048-token chunks. With `context.long_prefill_token_threshold` 512 it decoded 5.67 tok/s and the long prefill fell from 1,326 to 1,082 tok/s (−18%); at 256, 7.92 tok/s and 806 tok/s (−39%). Every request answered correctly. The cap splits the decode check's ~2,048-token prompt too, so a profile with it has its own decode-check hashes.
+
+**NCCL.** Three ranks passed all 11 checks of `tools/nccl_probe.py`; AllReduce bus bandwidth was 7.87 GB/s at 16 MiB and 7.01 GB/s at 256 MiB in FP32 ([NCCL diagnostics](nccl-validation.md#three-hosts-in-a-ring)).
+
+Not measured: the distributed defaults at 524,288 or 1,048,576; twelve 262,144-token requests or three 1,048,576-token requests at once (the boot lines give the capacity); the published option on TP=2 with the 1.24.0 KDA overlay.
 
 ## Records of earlier profiles
 

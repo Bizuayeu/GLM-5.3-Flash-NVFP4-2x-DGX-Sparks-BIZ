@@ -48,6 +48,10 @@ python -m glm53_setup cluster switch --config state/server.toml \
 
 所有する2台での実機検査では、projector hashを故意に不一致にしても稼働中の両rankが維持されました（`pre-stop-failure-v69`）。続いて新profileの起動前空き条件を999 GiBにした試験では、静的検査の後に旧rankを停止し、新しい起動はメモリ条件で失敗、その後に旧profileの両rankがAPI準備完了まで復帰しました（`rollback-fault-v72`、`recovered=true`）。先行する`v70`の復旧確認失敗も残し、復旧側の通信確認を修正する根拠にしています。制御した起動・復旧試験であり、長時間の可用性保証ではありません。単一レールの実検査とallocatorの3状態伝達も両hostで通過しました。複数レール実通信と外部KV connectorは未検収です。
 
+### 3ノード
+
+Nノードの起動は、rankの大きい方から順に起こし、headを最後にします。workerは `--headless` で走ります。`cluster switch` と `cluster resume` はrankごとに `--hosts` を1つ（headが先頭）取り、起動の全rankを扱います。稼働中の起動と新しい起動のrank数が違う切替は拒否します（`Rank N runs a launch of 3 nodes and this switch addresses 2 hosts; stop that launch first`）。一部のrankだけ止めると残りの起動が壊れたまま残り、復旧もそのhostでは起動し直せないためです。対とリングを行き来するときは、稼働中の起動の全rankを止めてから、もう一方の起動を始めます。3ノードではprofileがPP2、EP（とその観測器）、LPAを拒否します。これらは対でしか測っていません。派生checkpoint（公開した選択肢）は起動できます。
+
 ### 切替の後のdecode検査
 
 新しい起動は仮定せずに確かめます。1.12.0までは、対の起動が三つの数値状態のどれかに落ちていました（[1.9.0での測定](benchmarks.ja.md#新imageの6起動5回は同じcompletion1回は違うcompletion)。原因と修正は[検証](validation.ja.md#再現性)）。`runtime.inductor_deterministic` がその原因を取り除き、新しい原因が出ればこの定型がそれを示します。切替のたびに、rank 0で `tools/decode_check.py` を課題ごとに `TOKENS_OUT` 付きで走らせ、次の切替が消す前に両rankのcontainer logを保存します：
@@ -60,7 +64,7 @@ done
 docker logs <rank0のcontainer> 2>&1 | gzip > records/<run>/logs-rank0.txt.gz   # rank 1も同様に、そのhostで
 ```
 
-decode検査は他の要求が走っていない時に取ります。同時2系列のprofileでは、他の要求とstepを共有する要求は別のcompletionになり、回ごとにも変わります（[1.10.2での測定](benchmarks.ja.md#1102での測定)）。起動の中では3標本が一致すること（`distinct_completions` が1）。起動を跨いでは `completion_sha256` を同じprofileの前の起動と比べます。違ったら記録を残す：`tools/decode_divergence.py` が二つの `tokens-*.json` の最初に分岐したtokenを出し（本文の後ろでの一回の同点割れか、早くからの系統的なずれか）、二つのlogが起動ごとの唯一の証拠です。速さと採択長がそのprofileのいつもの幅の中なら、違いは同点であって故障ではありません。
+decode検査は他の要求が走っていない時に取ります。同時2系列のprofileでは、他の要求とstepを共有する要求は別のcompletionになり、回ごとにも変わります（[1.10.2での測定](benchmarks.ja.md#1102での測定)）。起動の中では3標本が一致すること（`distinct_completions` が1）。起動を跨いでは `completion_sha256` を同じprofileの前の起動と比べます。違ったら記録を残す：`tools/decode_divergence.py` が二つの `tokens-*.json` の最初に分岐したtokenを出し（本文の後ろでの一回の同点割れか、早くからの系統的なずれか）、二つのlogが起動ごとの唯一の証拠です。速さと採択長がそのprofileのいつもの幅の中なら、違いは同点であって故障ではありません。TP=3では、hashはホストごとのruntime（Triton）cacheが同じ場合にだけ一致します。新しいcacheではrankが別のkernel configを選び、別の数値状態になり得ます（rankどうしのheadは重ならないので正しさには影響しません）。ランチャーはノード数ごとにcacheを分けるので（リングは `state/tp3-runtime-cache`）、リングの起動は同じcacheを使った前の起動とだけ比べます。
 
 **新しい image を載せた後。** 別の Spark 2台のレシピは、image を作り直した直後の最初の起動だけ decode が 10〜20% 遅く（採択は変わらず）、素の再起動一回で戻ると報告しています（MiaAI-Lab issue #284。JIT cache は原因から外れ、build・load 後のホストのメモリ状態は外れていない）。この対の記録には見えていません。6つの image で、同じ profile・同じ文種の最初の起動は後の起動の中央値の 0.965〜1.019 倍で、採択と completion も同じでした（後の起動どうしの差は 0.9〜1.7%）。そのため、手順に再起動を一回足すことはしません。載せた後の最初の起動がそのprofileのいつもの幅より遅く、採択が変わらないときは、image を疑う前に対を一回再起動して decode 検査を取り直してください。image ごとの最初の起動は一回ずつなので、ときどきしか起きない現象までは否定できません。
 

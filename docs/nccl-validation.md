@@ -1,10 +1,10 @@
-# Two-host NCCL diagnostics
+# NCCL diagnostics
 
 [日本語](nccl-validation.ja.md) · [Network preparation](qsfp-network.md) · [Validation limits](validation.md)
 
-The repository supplies a small [PyTorch/NCCL probe](../tools/nccl_probe.py). It checks two ranks with rank-dependent patterns: FP32/BF16 AllReduce at 1 KiB, 1 MiB, 16 MiB and 256 MiB per rank, plus FP32 AllGather, ReduceScatter and Broadcast. It does not load model weights or generate a full-model qualification receipt.
+The repository supplies a small [PyTorch/NCCL probe](../tools/nccl_probe.py). It checks two or three ranks (`--world-size`, default 2) with rank-dependent patterns: FP32/BF16 AllReduce at 1 KiB, 1 MiB, 16 MiB and 256 MiB per rank, plus FP32 AllGather, ReduceScatter and Broadcast. It does not load model weights or generate a full-model qualification receipt.
 
-## Run on both hosts
+## Run on two hosts
 
 First verify fixed IPv4, HCA, RoCEv2 GID and peer routing. Inventory **host processes and active transfers**, not only Docker containers. Pause or wait for authorized competing work before claiming isolated bandwidth. Never stop an unrelated transfer automatically.
 
@@ -54,6 +54,12 @@ The doubled equals signs in the Docker arguments are intentional: the environmen
 DGX Spark's unified-memory platform does not support conventional GPUDirect RDMA via `nvidia-peermem`, DMA-BUF or GDRCopy according to [NVIDIA's porting guide](https://docs.nvidia.com/dgx/dgx-spark-porting-guide/porting/cuda.html). Therefore `NET/IB` with `GDR 0` is not by itself a failed RoCE test. Do not load a kernel module or force GDR merely to change that log field.
 
 Reference result (two GB10 hosts, MTU 1500, NCCL runtime 2.30.7, after fabric transfers had ended): both ranks passed all 11 checks and all containers exited zero without OOM; 256 MiB AllReduce measured 1.18–1.21 GB/s with an unrelated disk-checksum job still active, so this is not an idle-host benchmark. A separate `NCCL_NET_GDR_LEVEL=SYS` comparison also passed without enabling GDR or adding bandwidth, and is not part of the command above.
+
+## Three hosts in a ring
+
+On a ring ([network](qsfp-network.md#8-three-hosts-in-a-ring)), run the probe once on all three hosts with `--world-size 3`, the fabric environment of the launch and the head's address as `--head`, starting ranks 2 and 1 before rank 0. Then probe each link alone with `--world-size 2`: `server plan` prints each rank's links under `link_probes`, each with the pair's head, the probe rank and an environment that names only that link. With three or more nodes the launcher sets `NCCL_IB_SUBNET_AWARE_ROUTING=1`, so NCCL sends to each peer over the link whose subnet reaches it.
+
+Accept as above on every rank. Reference result (three GB10 hosts, NCCL runtime 2.30.7, 2026-09-29): all 11 checks passed on three ranks; NCCL merged each host's two HCAs into one virtual NIC, built the ring 0→1→2 and ran every channel over `NET/IB`, with no fallback to sockets. AllReduce bus bandwidth was 7.87 GB/s at 16 MiB and 7.01 GB/s at 256 MiB in FP32, 8.56 and 6.94 GB/s in BF16; these are bus bandwidths, not the probe's per-rank `payload_GB_per_s`. GPUDirect RDMA stayed off, as on the pair.
 
 ## Channel count
 

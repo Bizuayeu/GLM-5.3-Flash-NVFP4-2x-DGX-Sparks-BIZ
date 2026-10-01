@@ -6,7 +6,7 @@
 
 **通常運用は宣言した範囲で受け入れ済みです：両profileとも同時1系列で（2026-09-22）、公開した任意設定の同時2系列profileは同時2系列で（2026-09-23）。** それぞれの受け入れが何に拠るかは[手順6](#6-フルモデルの検証)が記録します。他のハードウェア、それを超える同時数、動画入力はその範囲の外で、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。
 
-人とAIの両方が使う、順序付きの作業手順書です。対象は本リリースが配信する2台・TP=2の構成で、3台のTP=3はまだ扱いません（[P28](docs/optimization-catalog.ja.md#性能施策一覧)）。固定バージョンは[ランタイムロック](config/runtime.lock.json)、コマンドの挙動と復旧は[運用文書](docs/operations.ja.md)、試験コマンドと根拠は[検証文書](docs/validation.ja.md)を正典とします。実行前に併読してください。配布構成はテキスト・ツール・画像を受け付け、動画は拒否します。テキスト・ツールを先に検収し、その後に[画像入力](docs/vision.ja.md)を検収します。
+人とAIの両方が使う、順序付きの作業手順書です。対象は2台・TP=2の構成で、QSFPリングでつないだ3台のTP=3は同じ手順に[3台のTP=3](#3台のtp3)の追加を足して進めます。固定バージョンは[ランタイムロック](config/runtime.lock.json)、コマンドの挙動と復旧は[運用文書](docs/operations.ja.md)、試験コマンドと根拠は[検証文書](docs/validation.ja.md)を正典とします。実行前に併読してください。配布構成はテキスト・ツール・画像を受け付け、動画は拒否します。テキスト・ツールを先に検収し、その後に[画像入力](docs/vision.ja.md)を検収します。
 
 ## 最短経路でsmokeまで
 
@@ -171,6 +171,15 @@ python -m glm53_setup server preflight --rank 0
 **受け入れた経路であるnpm版ZCode CLI**で[ハーネス受け入れ一覧](docs/harnesses.ja.md)を実施します。公式ZCode DesktopはBLOCKEDのまま、Claude Codeは判断で見送り（2026-09-22。いずれも同文書に記録）で、どちらも必須対象ではありません。基礎APIだけの成功でクライアントのケースを閉じず、クライアント版、設定の非秘密部分、各ケースの結果を別々に記録してください。配布する場合は[対象別のライセンス条件](docs/licensing.ja.md)も確認します。
 
 信頼できるネットワーク内で運用します。host networkのコンテナでは分散制御ポートが到達可能な相手へ露出するため、APIのloopback bindだけでrendezvousまで保護されるわけではありません。外部公開、認証・TLS、firewall、事業用の可用性は別途設計します。名称の「BIZ」は業務利用の意図であり、本番認証やサポートの約束を意味しません。
+
+## 3台のTP=3
+
+スイッチなしのQSFPリングでつないだ3台のGB10でTP=3を配信します（[1.24.0での測定](docs/benchmarks.ja.md#1240での測定)）。上の手順を3台すべてで進め、次を足します。
+
+- **ネットワーク（手順5）。** 3本のリンクをそれぞれ一組として設定し、各ホストにdummyインタフェース上の安定した/32を一つ持たせ、他の2台へは直結リンク越しの静的経路で届くようにします（[QSFPネットワークの8節](docs/qsfp-network.ja.md#8-3台をリングにつなぐ)）。3 rankをまとめて、またリンクごとに一本ずつprobeします（[NCCL診断](docs/nccl-validation.ja.md#3台のリング)）。
+- **profile。** [`examples/server.tp3.example.toml`](examples/server.tp3.example.toml) から始めます。各ノードは自分のリンクを書き、`host_address` と `host_interface` を設定します（[起動設定](docs/server-configuration.ja.md)）。imageは同じ参照imageで、3台ではランチャーが詰めのknobを設定します。各rank 30 GiBのKVで262,144 tokenの要求12本分（3,258,809 token）、`max_model_len` は1,048,576まで上げられます。
+- **起動と切替。** rankは番号の大きい方から起動し、headが最後です。2台と3台の間の移動は、先に全rankを止めます。`cluster switch` はrank数が変わる切替を拒みます（[起動の安全](docs/launch-safety.ja.md#3ノード)）。
+- **受け入れ（手順6）。** 同じ検査に加え、TP=3のdecode検査のhashは起動ごとに取り各ホストのruntime cacheと組で保管し、教師強制のNLLはTP=2の記録と位置ごとに比べます（[検証](docs/validation.ja.md)）。
 
 ## 完了確認とAIへの引き継ぎ
 

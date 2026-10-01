@@ -6,9 +6,9 @@ The pinned vLLM shards 64 attention and KDA heads, a 2,048-wide MoE intermediate
 for m=3) and the smallest MoE width of at least 2,048 whose per-rank share (width / m)
 is a multiple of 64 (2,112, 704 per rank), and the vocabulary pads to ``lcm(64, m)``
 (192). The patched loaders zero-extend a checkpoint tensor before they take a rank's
-shard, so padded heads, rows and columns are exactly zero; Stage 0 of the TP=3 plan
-measured that as exact for KDA, MLA, shared experts and the vocabulary, and within the
-sharding's own error for the Marlin NVFP4 MoE (records/20260929-tp3-stage0). The knob is
+shard, so padded heads, rows and columns are exactly zero; a single-GPU fixture measured
+that as exact for KDA, MLA, shared experts and the vocabulary, and within the sharding's
+own error for the Marlin NVFP4 MoE (2026-09-29). The knob is
 independent of the tensor-parallel size: TP=1 with m=3 reads the padded model on one
 GPU. Unset (or 1) every patched path is the pinned code: the config is unchanged and the
 loaders run the pinned narrow. ``patch_tp_padding`` installs the call sites. The
@@ -20,9 +20,8 @@ FlyCockpit's MIT recipe for TP=3 on three DGX Sparks; no code is taken from it.
 # flashinfer_mla_sparse.py) takes its reorder-batch threshold from a table keyed
 # by heads per rank, {8, 16, 32: 128, 64: 256, 128: 1024}, default 1024. 22 heads
 # (TP=3) and 66 (TP=1 with m=3) fall to 1024, so steps of up to 1024 query tokens
-# count as decodes (TP=2's 32 heads: 128). Left as pinned; decide in Stage 4 from
-# the TP=3 decode/prefill measurements, or earlier if a fixture difference is
-# traced to that split.
+# count as decodes (TP=2's 32 heads: 128). Left as pinned: the TP=3 measurements of
+# 1.24.0 ran with it. Revisit if a decode/prefill difference is traced to that split.
 
 import math
 import os

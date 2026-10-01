@@ -19,7 +19,7 @@ This section owns deployment storage paths. The model ID, revision and base-imag
 | LPA projector, required when `lpa.enabled = true` (off in the template) | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`; selected by `[lpa].projector` relative to the [server TOML](server-configuration.md) or absolute | Separate Release asset, outside the NVIDIA snapshot and source archive. [Download and verify](lpa.md#download-the-trained-projector) on both hosts, or train a matching projector; [enabling](lpa.md#enable-lpa-in-the-server-profile) is a separate profile edit and switch. Plain inference and batching do not require it |
 | Docker base/reference images | Docker-managed storage | Pull the fixed base and build the reference image from this source. Source checkout, image and checkpoint are separate artifacts |
 | Local configuration and acquisition state | `<checkout>/state/` | The server TOML and `download-status.json`; the latter records the actual acquired `snapshot` path |
-| Runtime/JIT cache and evidence | `<checkout>/state/tp2-runtime-cache/`, `<checkout>/records/` | Regenerable runtime data and private execution records; not model weights or distribution inputs. Distributed startup points the Triton, TileLang and TorchInductor caches and the CUDA driver's JIT cache (`CUDA_CACHE_PATH=/root/.cache/nv`, otherwise `~/.nv/ComputeCache` inside the container) into the runtime cache so compiled kernels survive restarts; the [warmup ladder](#warmup-ladder) records what still compiles |
+| Runtime/JIT cache and evidence | `<checkout>/state/tp2-runtime-cache/` (`tp3-runtime-cache/` for [three nodes](#three-nodes)), `<checkout>/records/` | Regenerable runtime data and private execution records; not model weights or distribution inputs. Distributed startup points the Triton, TileLang and TorchInductor caches and the CUDA driver's JIT cache (`CUDA_CACHE_PATH=/root/.cache/nv`, otherwise `~/.nv/ComputeCache` inside the container) into the runtime cache so compiled kernels survive restarts; the [warmup ladder](#warmup-ladder) records what still compiles |
 
 The LPA asset expands as follows. `manifest.json` is a copy of the [projector lock](../config/lpa-projector.lock.json); source checkout archives do not include this directory.
 
@@ -47,7 +47,7 @@ readlink -f /srv/glm53/source/state /srv/glm53/source/records
 
 Use absolute host paths; `-T` makes `ln` fail instead of nesting `state/state` inside an existing directory, and `readlink -f` must print `/srv/glm53/state` and `/srv/glm53/records`, not paths ending in `state/state` or `records/records`. Retain the old checkout for recovery, and never place credentials or raw records in the source archive.
 
-The server launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Both hosts need the complete checkpoint on disk; TP=2 partitions loaded tensors, not the downloaded files.
+The server launcher reads the default host Hugging Face cache and mounts it read-only at `/hf` in the container. It resolves the selected snapshot or MTP view within that mount. Preserve the entire model cache's `blobs`/`snapshots` relationship; copying a snapshot directory alone is insufficient. Every host needs the complete checkpoint on disk; TP partitions loaded tensors, not the downloaded files.
 
 The downloader follows Hugging Face cache environment settings, but the current launcher assumes the default cache root. For this release, leave `HF_HOME`/`HF_HUB_CACHE` unset when acquiring these assets and use the documented default. A successful custom-cache download does not establish that the launcher can find or mount it.
 
@@ -106,7 +106,7 @@ A separate report with the same error, on MS-C931 systems running an Ubuntu gene
 
 For physical connection and persistent IPv4 configuration, use the [QSFP hands-on guide](qsfp-network.md).
 
-Record each host's measured values in the `[nodes]` section of the [server TOML](server-configuration.md), which is the same file on both hosts:
+Record each host's measured values in the `[nodes]` section of the [server TOML](server-configuration.md), which is the same file on every host:
 
 - local fabric IPv4 and head fabric IPv4;
 - Ethernet interface, RDMA HCA and that interface's RoCEv2 GID index;
@@ -131,7 +131,17 @@ Three build patches fix upstream vLLM bugs and are removed when the pinned vLLM 
 
 A passing preflight certifies assets and configuration, not quality or availability: the acceptance items for routine use and where their evidence is recorded are listed in [the setup runbook](../SETUP.md#6-qualify-the-full-model), and the current status per scope is in the README status table. Do not relax a failing check, truncate attention candidates or silently substitute precision to get past it.
 
-Rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous. The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
+Rank 1 starts headless first, followed by rank 0 once the worker is waiting for rendezvous ([three nodes](#three-nodes): the highest rank first, the head last). The API binds to the head's loopback address; use an SSH tunnel for a remote client. Internal rendezvous uses the fabric IP. Exposing it as a business service requires a separately reviewed authentication/TLS/access-control layer; this repository does not claim to supply one.
+
+## Three nodes
+
+A profile with three `[[nodes]]` runs TP=3 on a QSFP ring ([three nodes](server-configuration.md#three-nodes), [`server.tp3.example.toml`](../examples/server.tp3.example.toml)). Start the ranks from the highest down, every rank but the head headless, and the head last; stop from the head. `cluster switch` and `cluster resume` handle every rank of a launch but refuse a switch to a launch of another rank count: to move between the pair and the ring, stop every rank and then start the other launch.
+
+The ring keeps its Triton, Inductor and TileLang caches in `state/tp3-runtime-cache/` on each host, apart from the pair's. Triton picks some kernel configs by timing, so a fresh cache can give a rank another config and the launch another numerical state; the heads of different ranks do not overlap, so this does not affect correctness. The decode-check hashes of a TP=3 launch hold only with the same per-host cache: on the reference ring with the distributed defaults, counting `b00a842f`, prose `03184d52` and code `e9175d9b` (first recorded 2026-09-29), each repeating bit for bit within a launch. Read them again after a cache is cleared or replaced.
+
+A derived checkpoint (the published option) and its overlays must be present on every host at the paths the profile names; `server preflight` checks them on each rank. Profiles of the published option need the KDA overlay of 1.24.0 (SHA-256 `27a532ce…`): at 22 heads per rank the earlier one hands Marlin inputs it refuses.
+
+Long prefills load all three hosts for long stretches. On 2026-10-01 a 1,038,423-token prompt at `max_model_len` 1,048,576 took 1,058 s to the first token, about 17.6 minutes of sustained load; let the hosts cool between such requests ([GPU clock cap](#gpu-clock-cap)). The lowest `MemAvailable` on the reference ring was 8.53 GiB while loading the distributed defaults with 30 GiB of KV, 11.87 GiB while loading the published option at 256K, and 5.75 GiB during that 1M request, against a 4 GiB reserve.
 
 ## Supervision, stall detection and warmup
 
@@ -171,11 +181,11 @@ The long rung pays a full prefill on every start (measured before FA2 prefill, 1
 
 GB10 machines (DGX Spark and compatibles) are widely reported to power off under sustained GPU load, leaving no log and staying off until the power button is pressed. The reference pair's head did so once, on 2026-09-27, on the second of two back-to-back 261,573-token prefills after about 54 minutes of long-input load. Accumulated heat and the power peak of prefill are the likely causes; with no temperature or power record from that moment, this is not certain.
 
-The mitigation that works in those reports is capping the GPU clock at 2,200 MHz instead of the default of about 2,418 MHz (`nvidia-smi -lgc 300,2200`; a power limit through `-pl` has no effect on GB10). The reference pair and its neighbor apply it at every boot and record temperatures, power and clock every two seconds. **The 1.19.0 main measurements ([the README table](../README.md#headline-measurements-1220)) were taken under this cap.** Against the same profile without the cap, prefill was about 2% slower and long inputs took 1–5% longer, while decode, NLL, completions and correctness did not change ([measurements](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)). The cap is a host setting; this repository's launcher does not apply it. Benchmarks that send long requests one after another should rest between them.
+The mitigation that works in those reports is capping the GPU clock at 2,200 MHz instead of the default of about 2,418 MHz (`nvidia-smi -lgc 300,2200`; a power limit through `-pl` has no effect on GB10). The reference pair and its neighbor apply it at every boot and record temperatures, power and clock every two seconds. **The 1.19.0 main measurements ([the README table](../README.md#headline-measurements-1240)) were taken under this cap.** Against the same profile without the cap, prefill was about 2% slower and long inputs took 1–5% longer, while decode, NLL, completions and correctness did not change ([measurements](benchmarks.md#both-profiles-in-one-window-with-a-gpu-clock-cap-2026-09-28)). The cap is a host setting; this repository's launcher does not apply it. Benchmarks that send long requests one after another should rest between them.
 
 ## Recovery and records
 
-The scripts do not delete failed containers or weights and do not install a restart watchdog. `server stop` stops only a container carrying this launcher's ownership label. Save its logs and rename a stopped container before recreating the same rank name. Reinitialize both ranks together after a distributed failure.
+The scripts do not delete failed containers or weights and do not install a restart watchdog. `server stop` stops only a container carrying this launcher's ownership label. Save its logs and rename a stopped container before recreating the same rank name. Reinitialize every rank together after a distributed failure.
 
 `state/` holds current acquisition/site state. `records/` holds per-run evidence. A paused acquisition is an intentional stop: verification waiting exits with code 2 and does not restart the download. Do not start a new acquisition while a local transfer is in progress.
 
