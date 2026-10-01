@@ -927,6 +927,27 @@ At 3 GiB per rank the distributed defaults held 323,824 tokens (TP=2: 301,645) i
 
 Not measured: the distributed defaults at 524,288 or 1,048,576; twelve 262,144-token requests or three 1,048,576-token requests at once (the boot lines give the capacity); the published option on TP=2 with the 1.24.0 KDA overlay.
 
+## Measurements on 1.25.0
+
+### Reader spin on the reference pair (2026-10-02)
+
+The published option's two-sequence profile on the reference pair, 1.25.0 checkout and image `b9ae6459…` (with the samplers' vocabulary bound), GPU clock capped at 2,200 MHz (2,190 MHz in every arm), three arms in one window: A1 without `runtime.shm_spin_seconds` (vLLM's 1 s), B with 0.002, A2 as A1. Each arm ran the decode check (three samples of each task; median tok/s, range in brackets). On both hosts `top` every 15 s, per process and per thread, three py-spy dumps of each vLLM process, and the host telemetry's SoC temperature over the load.
+
+| Measure | A1 (1 s) | B (0.002 s) | A2 (1 s) |
+|---|---|---|---|
+| Decode-check completions | one per task, the 1.24.0 hashes | the same | the same |
+| Decode: counting (tok/s) | 44.94 (44.94–45.03) | **44.31 (43.98–44.40)** | 44.91 (44.52–44.94) |
+| Decode: prose (tok/s) | 29.17 (29.07–29.22) | 29.10 (28.85–29.12) | 29.08 (29.01–29.17) |
+| Decode: code (tok/s) | 37.90 (37.85–38.05) | 37.91 (37.44–37.95) | 37.90 (37.86–37.98) |
+| Head EngineCore CPU | 97.9% | **5.3%** | 98.0% |
+| Worker CPU, head / peer | 201.2% / 201.3% | 201.1% / 200.8% | 201.0% / 201.0% |
+| Head SoC, mean / maximum | 84.65 / 91.8 °C | **81.55 / 89.3 °C** | 83.76 / 88.8 °C |
+| Peer SoC, mean / maximum (control) | 78.79 / 82.1 °C | 80.64 / 83.9 °C | 79.69 / 83.5 °C |
+
+Only the head's EngineCore spun: every dump of arms A1 and A2 found it in `sched_yield` under `SpinCondition.wait`, every dump of arm B in the zmq poll. Worker 0 was computing in every dump and both workers' CPU (about two busy threads each) did not move with the arm; the peer was never seen spinning in nine dumps. With 0.002 s the head's SoC averaged 2.2–3.1 °C below the A arms while the peer, the control, ran 0.95–1.85 °C warmer. Counting decode fell 1.4%, outside the A1–A2 spread (their ranges do not overlap B's); prose and code stayed inside it. The lead suspect is the wake-up from the zmq poll; why only counting shows it was not checked.
+
+The adoption line written before the window, cooler without slower decode, was missed on counting. The 1.26.0 templates set 0.002 s anyway, because the head's temperature matters under concurrent load; the TP=3 template carries it by extension ([server configuration](server-configuration.md#parallelism-and-transport)). Not measured: the distributed defaults with the key, TP=3, two requests in flight.
+
 ## Records of earlier profiles
 
 These were measured with the 204,800-token (200K) setting. The current defaults and the published option serve 262,144 tokens (256K), so these values do not describe the current profiles. The headings keep their wording so that links to them still resolve. The chunk budget on the 200K image profile is the measured basis of the current default `max_num_batched_tokens = 2048`.

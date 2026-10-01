@@ -52,6 +52,7 @@ flowchart LR
 | P06 CUDA Graphs | Capture/replay for decode only | Not adopted (2026-09-21): slower per step than eager on the full model; the option stays for a later runtime | off (`runtime.decode_graphs=false`) | [Graph fixture](component-validation.md#independent-decode-graph-fixture) / [full model](benchmarks.md#decode-graphs-on-the-full-model) |
 | P23 repacked weights | The attention projections and `lm_head` repacked to W4A16 NVFP4 (route l), served through `runtime.derived_checkpoint` | Adopted as the published option; not lossless, so not in the defaults | off; on in the published option | [Catalog](optimization-catalog.md#performance-initiatives) / [serving profile](benchmarks.md#the-reference-pairs-serving-profile-attention-and-lm_head-repacked-depth-3) |
 | P26 per-sequence decode split | Take the sparse-MLA decode's split from the tokens of one sequence instead of the whole step | Retired (1.16.0): never reached in serving, where the reference attention returns before the patched decode call | — (key removed in 1.18.0; refused if present) | [Reachability](benchmarks.md#reachability-in-serving-2026-09-26) |
+| P29 shared-memory reader spin | The head's EngineCore spins 2 ms instead of 1 s after each read of worker 0's replies before it sleeps on a zmq poll | Adopted in the templates (1.26.0) for the head's temperature: head CPU and SoC down, counting decode 1.4% slower on the TP=2 pair; TP=3 by extension, unmeasured | 0.002 (`runtime.shm_spin_seconds`) | [1.25.0](benchmarks.md#measurements-on-1250) |
 
 ### Parallelism and throughput
 
@@ -144,7 +145,6 @@ Larger batches may improve expert-compute efficiency or pipeline utilization, wh
 
 - P24 Per-request prefix-cache no-store: measured need, not started ([catalog](optimization-catalog.md#performance-initiatives))
 - P28 TP=3 on three GB10 hosts for full-length requests, six at once: the next minor's candidate, an estimate so far ([catalog](optimization-catalog.md#performance-initiatives))
-- P29 Reader spin of the shared-memory broadcast: a one-value change aimed at SoC temperature, unmeasured ([catalog](optimization-catalog.md#performance-initiatives))
 - Euryale, a draft-proposer project outside this repository ([README](../README.md#related-research-outside-this-repository))
 - P09 FP8 versus BF16 KV A/B, P20 indexer workspace, contexts beyond 256K and broader long-context coverage, multiple sequences with LPA
 - The pinned vLLM: the source-pinned patches ([architecture](architecture.md)) go when a newer pin carries the upstream fixes; that move requalifies every measure above

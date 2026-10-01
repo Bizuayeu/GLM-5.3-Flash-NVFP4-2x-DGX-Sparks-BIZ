@@ -33,6 +33,7 @@ The distributed TOML selects the serial optimized profile with [image input at 2
 | Speculation/approximation | MTP k=3 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)); LPA off (cut32/tail512/B128 with unused MLA queries skipped when enabled) |
 | Checks/parallelism | Async index checks, EP off, no PP split |
 | NCCL | `nccl_channels = 8` on both ranks (NCCL alone chooses 64 on the reference pair) |
+| Shared-memory reader spin | `shm_spin_seconds = 0.002` (vLLM's 1 s when absent; [P29](#parallelism-and-transport)) |
 | Repeatability | `canonical_moe_order`, `stable_indexer_topk` and `inductor_deterministic` all `true`: identical requests repeat bit for bit and every launch computes in the same numerical state ([repeatability switches](#repeatability-switches)) |
 | Generation | temperature=0, max_tokens=4096, reasoning_effort=low, clear_thinking=true |
 | Server reasoning default | `api.default_reasoning_effort = "high"`: a request that names no effort is served at high instead of the chat template's max ([API and diagnostics](#api-and-diagnostics)) |
@@ -101,6 +102,8 @@ These switches cover a request alone. With `max_num_seqs` of 2 or more a request
 ### Parallelism and transport
 
 `runtime.nccl_channels` (absent = NCCL chooses; template 8) sets `NCCL_MIN_NCHANNELS` and `NCCL_MAX_NCHANNELS` to the same positive integer on both ranks. On the reference pair NCCL 2.30.7 chooses 64 channels by itself; at 8 channels and MTU 1500 the full model's lowest free memory rose by 2.8 GiB on the head and 3.0 GiB on the peer, while prefill did not slow ([channel-count measurements](nccl-validation.md#channel-count)). A profile written before 1.3.1 has no key and keeps NCCL's choice; add the key to adopt the template value. Informed by Mia PR #200.
+
+`runtime.shm_spin_seconds` (absent = vLLM's 1 s; all three templates set 0.002 from 1.26.0, P29) sets how long a reader of vLLM's shared-memory broadcast loops on `sched_yield()` after its last read before it sleeps on a zmq poll. The launcher mounts `glm53_setup/runtime/shm_spin.py` and a one-line `.pth` from the checkout and sets `GLM53_SHM_SPIN_SECONDS` on every rank; no image support is needed, values outside 0.002 to 1 are refused, and a profile without the key launches as in 1.25.0. With one GPU per host the pinned vLLM has its shared-memory readers on the head only, at TP=3 as at TP=2: the EngineCore reading worker 0's replies and worker 0 reading the scheduler's broadcast; the other ranks read both over zmq. On the reference pair only the EngineCore was seen spinning, and 0.002 s took its CPU from about 98% to 5% and cooled the head's SoC, for 1.4% of counting decode ([measurements on 1.25.0](benchmarks.md#measurements-on-1250)). The TP=3 template carries the value by extension; its effect at TP=3 is not measured.
 
 `runtime.expert_parallel=false` is the default. The opt-in adds `--enable-expert-parallel` on both ranks while retaining TP=2/DP=1, the current precision and fixed KV budget, and requires `GLM53_EXPERT_PARALLEL_API=1`. Its scope is eager, one/two sequences and no MTP/LPA/fusion/APC. It was measured on the full model and not adopted ([Expert Parallel](performance-investigation.md#expert-parallel-p21)). Existing TOMLs must include the key explicitly; there is no missing-key fallback.
 

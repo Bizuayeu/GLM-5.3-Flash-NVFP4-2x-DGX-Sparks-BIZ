@@ -33,6 +33,7 @@
 | 投機・近似 | MTP k=3（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）。LPA無効（有効時はcut32／tail512／B128、未使用MLA query省略） |
 | 検査・並列 | 非同期index検査、EP無効、PP分割なし |
 | NCCL | 両rankで `nccl_channels = 8`（NCCLに任せると参照機では64） |
+| 共有メモリの読み手のspin | `shm_spin_seconds = 0.002`（未指定はvLLMの1秒。[P29](#並列化と通信)） |
 | 再現性 | `canonical_moe_order`・`stable_indexer_topk`・`inductor_deterministic` をすべて `true`：同一要求はbit一致で反復し、どの起動も同じ数値状態で計算する（[再現性のスイッチ](#再現性のスイッチ)） |
 | 生成 | temperature=0、max_tokens=4096、reasoning_effort=low、clear_thinking=true |
 | サーバー側のreasoning既定 | `api.default_reasoning_effort = "high"`：effortを指定しない要求を、チャットテンプレートのmaxではなくhighで処理する（[APIと診断](#apiと診断)） |
@@ -112,6 +113,8 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 ### 並列化と通信
 
 `runtime.nccl_channels`（未指定はNCCLに任せる、テンプレートは8）は、両rankの `NCCL_MIN_NCHANNELS` と `NCCL_MAX_NCHANNELS` に同じ正の整数を渡します。参照機ではNCCL 2.30.7に任せると64本になります。MTU 1500で8本にすると、実モデルの最小空きメモリがheadで2.8 GiB、peerで3.0 GiB増え、prefillは遅くなりませんでした（[チャネル数の測定](nccl-validation.ja.md#チャネル数)）。1.3.1より前に書いたprofileにはキーが無く、NCCLの選択をそのまま保ちます。テンプレートの値を使うにはキーを足します。Mia PR #200を参考にしました。
+
+`runtime.shm_spin_seconds`（未指定はvLLMの1秒。1.26.0から3つのテンプレートとも0.002、P29）は、vLLMの共有メモリbroadcastの読み手が、最後に読んでから `sched_yield()` で回り続ける時間を決めます。過ぎるとzmqのpollで眠ります。ランチャーはcheckoutから `glm53_setup/runtime/shm_spin.py` と1行の `.pth` をmountし、全rankに `GLM53_SHM_SPIN_SECONDS` を渡します。imageの対応は要りません。0.002〜1の外の値は拒否し、キーの無いprofileは1.25.0と同じに起動します。hostあたりGPU 1基では、固定vLLMの共有メモリの読み手はheadにしかいません（TP=2でもTP=3でも同じ）。worker 0の返答を読むEngineCoreと、schedulerのbroadcastを読むworker 0です。ほかのrankはどちらもzmqで読みます。参照機でspinしていたのはEngineCoreだけで、0.002秒にするとそのCPUは約98%から5%に下がり、headのSoCは冷え、countingのdecodeは1.4%遅くなりました（[1.25.0での測定](benchmarks.ja.md#1250での測定)）。TP=3のテンプレートの値は延長での適用で、TP=3での効果は測っていません。
 
 `runtime.expert_parallel=false` が既定です。有効にすると両rankへ `--enable-expert-parallel` を追加し、TP=2／DP=1、精度、固定KV予算を維持します。`GLM53_EXPERT_PARALLEL_API=1` が必要です。範囲はeager・1／2系列・MTP/LPA/fusion/APCなしです。全モデルで測って不採用としました（[Expert Parallel](performance-investigation.ja.md#expert-parallelp21)）。既存TOMLにもキーを明示し、欠落時のfallbackは設けません。
 

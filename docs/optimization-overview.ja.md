@@ -52,6 +52,7 @@ flowchart LR
 | P06 CUDA Graphs | decodeのみcapture／replay | 不採用（2026-09-21）：全モデルでeagerより1 stepあたり遅い。選択肢としては残し、後のruntimeで測り直す | off（`runtime.decode_graphs=false`） | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価)／[全モデル](benchmarks.ja.md#全モデルでのdecode-graphs) |
 | P23 再パックした重み | attention projectionと `lm_head` をW4A16 NVFP4に再パック（route l）し、`runtime.derived_checkpoint` で配信 | 公開した任意設定として採用。losslessではないので配布既定には入れない | off。公開した任意設定ではon | [台帳](optimization-catalog.ja.md#性能施策一覧)／[配信profile](benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3) |
 | P26 系列ごとのdecode分割 | sparse MLA decodeの分け方を、step全体ではなく1系列のtoken数から決める | 退役（1.16.0）：servingでは届かない。参照attentionがpatchしたdecodeの呼び出しより前にreturnする | —（1.18.0でkeyを撤去。残っていれば拒否） | [到達性](benchmarks.ja.md#servingでの到達性2026-09-26) |
+| P29 共有メモリの読み手のspin | headのEngineCoreがworker 0の返答を読んだ後、zmqのpollで眠る前のspinを1秒から2 msに | テンプレートで採用（1.26.0）、headの温度のため：TP=2の対でheadのCPUとSoCが下がり、countingのdecodeは1.4%遅い。TP=3は延長での適用で未測定 | 0.002（`runtime.shm_spin_seconds`） | [1.25.0](benchmarks.ja.md#1250での測定) |
 
 ### 並列・throughput
 
@@ -144,7 +145,6 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 
 - P24 要求単位のprefix cache無登録：必要性は実測済み、未着手（[台帳](optimization-catalog.ja.md#性能施策一覧)）
 - P28 GB10 3台でのTP=3（全長の要求を6本同時に）：次のminorの候補で、今は見積もりのみ（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）
-- P29 共有メモリbroadcastの読み手のspin：SoCの温度を狙う値一つの変更、未測定（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）
 - Euryale：本リポジトリ外の投機draft研究（[README](../README.ja.md#本リポジトリ外の関連研究)）
 - P09 FP8／BF16 KVのA/B、P20 indexer workspace、256Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA
 - 固定版vLLM：source-pinnedのpatch（[構成](architecture.ja.md)）は、上流の修正を含む新しい固定版へ移る時に外す。その移行は上の施策すべての再検収を伴う

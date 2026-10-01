@@ -124,9 +124,19 @@ reference imageは、2台のGB10ホストで45層の言語層すべてを、Marl
 
 [vLLM公式の合成ベンチマーク](benchmarks.ja.md)は、計画した計測要求をすべて完了しました。MTPはテンプレートに入る前に、k=1とk=3で同じベンチとAPIのケースに合格しました。別のメタデータviewは、元のcheckpointを保ったまま、そのBF16 MTP層を全体のNVFP4から除外します。深さ1〜5と3の選定は[投機的デコーディング](speculative-decoding.ja.md)にあります。これらの確認はどれも、単体ではアプリケーションの品質を示しません。宣言した範囲での通常運用は、[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)に記録した受け入れに拠ります。
 
+1.25.0のimageには、samplerの語彙の範囲のガード（vLLM #50843）が入っています。有限のlogitsの行には何もしません。2026-10-02、このimageで両profileのdecodeの確認は1.24.0のcompletionとbit単位で同じになり、公開した任意設定の `server agreement` は基準の記録と完全に一致しました（argmaxの一致1.0、log確率の動きなし）。
+
+### prefix cacheの正しさの関門
+
+2026-10-02、参照機で1.25.0のimageを使い、TP=2の両profileで [`server prefix-gate`](server-configuration.ja.md#コマンド) を2つの長さで流しました。配布既定は両方とも合格です。coldもwarmも6問中6問正答で、warmの要求はどれも14,014 tokenのpromptのうち9,216 token、98,982 tokenのうち92,160 tokenをcacheから戻しました。公開した任意設定は両方の長さで判定不能（`cold_incorrect`）でした。coldもwarmも6問中5問正答で、外れはどちらの段でも同じ課題、同じ誤答です。外れた課題を、新しいsaltで1本だけ送り直す（要求1本、cached 0 token）と、同じ誤ったコードが返りました。cacheの不具合ではないので、配信のprefix cachingはonのままです。
+
+**長いcontextでの1つずれた読み取り。公開した任意設定だけで測った所見です。** 誤答はどれも、問われた記録の直前の記録のコードでした。98,982 tokenのログでRecord 03008を問うとRecord 03007のコード `LPDHS` を、14,013 tokenのログでRecord 00374を問うとRecord 00373の `GYCUK` を答えました。同じ課題で問うたもう一方の記録は、どちらも正答です。配布既定は同じログと課題で、両方の長さとも6問すべてに正答しました。原因は切り分けていません。任意設定はW4A16のattention射影と `lm_head` のほか、profileの他の設定（2系列、6 GiBのKV、pageの重複排除）でも配布既定と違います。attentionの再量子化が最も疑わしいというのは仮説にとどまります。
+
+関門は6本の要求を1つのsaltで並列に送るため、coldの段でもcacheを使わずにprefixを計算するのは最初に届いた1本だけで、残りはそれが書いたものを読むことがあります。cacheを使わない計算の証拠は、上の1本ずつの送り直しです。
+
 ### マルチバイト出力
 
-gate射影とup射影のglobal scaleが食い違うModelOpt NVFP4 checkpointでは、多バイト文字が化けると報告されています（[vLLM #54150](https://github.com/vllm-project/vllm/issues/54150)）。固定したNVIDIAのcheckpointは該当しません。フルモデルのどのログにも `w1_weight_scale_2 must match` の警告は出ておらず、4層fixtureのlayer 3ではexpert 288個すべてでgateとupのscaleが一致しています。それでも rank 0 の `server mojibake` で監視します。日本語と韓国語で400文字以上の回答をtemperature 0で3回ずつ求め、回答とreasoningの両方でU+FFFD・孤立サロゲート・改行とタブ以外の制御文字を数えます。短い回答、別の言語の回答、空の回答、形の壊れた応答、失敗した要求は判定不能とし、合格にはしません。回答の全文は `records/<stamp>-mojibake-r0/result.json` に残ります。配布用1.3.1のprofile（2026-09-17）では6回すべて合格しました：852〜1,024文字、対象言語の文字が93〜95%、該当文字なし、すべて `stop` で終了。reasoningはprofileのlow effortで空だったため、reasoningの文字列は検査できていません。同じモデルの別のlauncherは、化けの原因を別に読んでいます。tonyd2wildのcheckpoint guard（commit `abb38bb`、2026-09-24、コードは採用しない）は、attentionを量子化したModelOptのbuildを化ける側として拒否します。BIZ AXLはattention射影を量子化している（W4A16、ModelOptではなく本リポジトリでのrepack）ので、そのguardが拒否する形に当たります。AXLのprofileでは `server mojibake` が2026-09-21と2026-09-25に合格しました（後者は `runtime.inductor_deterministic` 付きの2系列profile：日本語1,154文字・韓国語1,309文字、対象言語の文字が93〜94%、該当文字なし、すべて `stop` で終了）。temperature 0の6回答では、二つの読みのどちらが正しいかは決まりません。
+gate射影とup射影のglobal scaleが食い違うModelOpt NVFP4 checkpointでは、多バイト文字が化けると報告されています（[vLLM #54150](https://github.com/vllm-project/vllm/issues/54150)）。固定したNVIDIAのcheckpointは該当しません。フルモデルのどのログにも `w1_weight_scale_2 must match` の警告は出ておらず、4層fixtureのlayer 3ではexpert 288個すべてでgateとupのscaleが一致しています。それでも rank 0 の `server mojibake` で監視します。日本語と韓国語で400文字以上の回答をtemperature 0で3回ずつ求め、回答とreasoningの両方でU+FFFD・孤立サロゲート・改行とタブ以外の制御文字を数えます。短い回答、別の言語の回答、空の回答、形の壊れた応答、失敗した要求は判定不能とし、合格にはしません。回答の全文は `records/<stamp>-mojibake-r0/result.json` に残ります。配布用1.3.1のprofile（2026-09-17）では6回すべて合格しました：852〜1,024文字、対象言語の文字が93〜95%、該当文字なし、すべて `stop` で終了。reasoningはprofileのlow effortで空だったため、reasoningの文字列は検査できていません。同じモデルの別のlauncherは、化けの原因を別に読んでいます。tonyd2wildのcheckpoint guard（commit `abb38bb`、2026-09-24、コードは採用しない）は、attentionを量子化したModelOptのbuildを化ける側として拒否します。BIZ AXLはattention射影を量子化している（W4A16、ModelOptではなく本リポジトリでのrepack）ので、そのguardが拒否する形に当たります。AXLのprofileでは `server mojibake` が2026-09-21と2026-09-25に合格しました（後者は `runtime.inductor_deterministic` 付きの2系列profile：日本語1,154文字・韓国語1,309文字、対象言語の文字が93〜94%、該当文字なし、すべて `stop` で終了）。temperature 0の6回答では、二つの読みのどちらが正しいかは決まりません。sampledの形（`--temperature 1.0 --top-p 0.95`、seed 42〜47）は、2026-10-02に1.25.0で両profileに流しました。各profileで日本語3本・韓国語3本、計12本のどの回答にも化け文字はありませんでした。
 
 ### 再現性
 

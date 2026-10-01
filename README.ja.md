@@ -95,9 +95,9 @@ python -m glm53_setup build-reference
 
 **配布既定は、画像入力を受ける256K（262,144 token）・KV各3 GiB・保護3 GiB・時間制限なしの直列最適化構成です（動画入力は拒否）。** この既定の裏付けは[画像入力](docs/vision.ja.md)と[1.6.0での測定](docs/benchmarks.ja.md#160での測定)、テキスト専用の代替は[256Kの実入力確認](docs/benchmarks.ja.md#256kでの実入力確認)が保持しています。
 
-### 主要な測定値（1.24.0）
+### 主要な測定値（1.25.0）
 
-TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)です。**両列とも2026-09-28に1.19.0で、同じ枠で測りました**：配信中の任意設定→配布既定→任意設定の同時1系列（反復性のため）→配信中の任意設定の順に切り替え、同じdriverを使い、両profileとも両rankを高性能コアに置きました（[1.19.0での測定](docs/benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。tool引数ゲートの行だけは2026-09-29に1.22.0で測りました。1.20.0〜1.22.0は配信の経路を変えていません。1.24.0では、KDAのoverlayを改版した任意設定が1.19.0のdecode検査のhashと教師強制のlog確率をbit単位で再現しました（2026-10-01）。**3台ともGPUクロックを2,200 MHzに制限した状態で測り**、各段の前に温度が下がるのを待ちました。GB10は持続負荷の下で電源ごと落ちることがあるためで、上限の代価はprefillで約2%、長い入力で1〜5%です（[GPUクロックの上限](docs/operations.ja.md#gpuクロックの上限)）。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)です。**両列とも2026-09-28に1.19.0で、同じ枠で測りました**：配信中の任意設定→配布既定→任意設定の同時1系列（反復性のため）→配信中の任意設定の順に切り替え、同じdriverを使い、両profileとも両rankを高性能コアに置きました（[1.19.0での測定](docs/benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。tool引数ゲートの行だけは2026-09-29に1.22.0で測りました。1.20.0〜1.22.0は配信の経路を変えていません。1.24.0では、KDAのoverlayを改版した任意設定が1.19.0のdecode検査のhashと教師強制のlog確率をbit単位で再現しました（2026-10-01）。1.25.0のimageでは、両profileが1.24.0のdecode検査のcompletionをbit単位で再現しました（2026-10-02）。1.26.0のテンプレートが設定する共有メモリの読み手のspinで、任意設定のcountingのdecodeはその検査で1.4%遅くなります（[1.25.0での測定](docs/benchmarks.ja.md#1250での測定)）。**3台ともGPUクロックを2,200 MHzに制限した状態で測り**、各段の前に温度が下がるのを待ちました。GB10は持続負荷の下で電源ごと落ちることがあるためで、上限の代価はprefillで約2%、長い入力で1〜5%です（[GPUクロックの上限](docs/operations.ja.md#gpuクロックの上限)）。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile） |
 |---|---|---|---|
@@ -119,7 +119,7 @@ TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
 | **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decodeは上の表の数え上げ・散文・コードで既定の約1.4倍。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
-| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る |
+| **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る。長いcontextの照会で、問われた記録の直前の記録を2回読んだ（配布既定は正答。[prefix cacheの関門](docs/validation.ja.md#prefix-cacheの正しさの関門)） |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
 MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まります。上の表では、どちらのprofileでも数え上げが散文のおよそ1.5倍速く出ます。下書きのうち受理される長さが違うためです。受理長は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)に、選定は[用途別の構成](docs/optimization-overview.ja.md#用途別の構成)にあります。decodeの数値はすべて両rankのworkerが高性能コアにいるときのもので、どちらかのrankが高効率コアにいるとdecodeは約3分の1に落ちます。これは[`nodes[].cpuset_cpus`](docs/server-configuration.ja.md#cpu配置の任意指定)で防げます（[1.15.0での測定](docs/benchmarks.ja.md#1150での測定)）。
@@ -140,14 +140,15 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
 | 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ（両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)による）。切替後の起動は今も毎回確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上が処理中の間は反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
 | 全モデル | 256Kでの画像入力（Vision） | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。1.19.0では両profileで回帰7項が合格し、1枚7,776 tokenまでの大きな画像と8枚までの画像にも順番どおり正答。ハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
-| 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
+| 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。sampledの回答12件（両profile、1.25.0）も同じ。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
 | 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。この範囲では反復を主張しない（他の要求とstepを共有した要求は違うcompletionになりうる）。反復が要るなら `max_num_seqs = 1` で配信する。それを超える同時数はrankを増やす：スイッチなしのQSFPリングで組む3台のTP=3は、各rank 30 GiBのKVで262,144 tokenの要求12本を持ち、2026-10-01に約200Kの要求3本の同時まで、1本ずつなら1,038,423 tokenまでで受け入れた。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11は、受け入れた経路であるnpm版ZCode CLI 3.14.1・262,144 tokenで全件PASS（2026-09-28）。公式ZCode Desktopは**BLOCKED**、Claude Codeは**判断で見送り**。理由とケース別の状態は[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、1系列のdecodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 10入力で、再量子化したcheckpointでは深さ1〜5を、固定のcheckpointでは1・3・4を測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
-| テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
+| テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)。cold／warmの正しさの関門は配布既定で合格、任意設定でもcacheの不具合は見つからなかった。[関門](docs/validation.ja.md#prefix-cacheの正しさの関門) |
 | テンプレートで有効 | checkpoint保持 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | テンプレートで有効 | unpack融合・非同期index検査 | それぞれ独立に実測して有効化。[全体像](docs/optimization-overview.ja.md) |
+| テンプレートで有効 | 共有メモリの読み手のspin 0.002秒（`runtime.shm_spin_seconds`、P29） | 1.26.0でheadの温度のために採用。TP=2の対でheadのCPUとSoCの温度が下がり、countingのdecodeは1.4%遅い。TP=3は延長での適用で未測定。[測定](docs/benchmarks.ja.md#1250での測定) |
 | 任意・既定off | 再量子化したattention projectionと `lm_head`（`runtime.derived_checkpoint`、P23） | 上の公開した任意設定。shared expertsを足す変種は測って不採用。[実測](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)／[施策台帳](docs/optimization-catalog.ja.md) |
 | 任意・既定off | APC優先LPA（P22） | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。バッチ用opt-in。[契約](docs/apc-lpa-design.ja.md) |
 | 測って不採用 | Expert Parallel、PP2、decodeのCUDA Graphs、採択履歴による深さ、draftの確信度の関門、draft側の設定二つ | それぞれ全モデルで測り、数値は所有文書にある。[全体像](docs/optimization-overview.ja.md)、[投機デコード](docs/speculative-decoding.ja.md#固定の深さの先2026-09-21) |
