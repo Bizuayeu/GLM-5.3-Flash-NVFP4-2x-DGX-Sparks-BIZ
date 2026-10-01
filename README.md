@@ -172,7 +172,7 @@ Completed measurements and remaining gates are identified above and in the linke
 
 ### Other GLM-5.3-Flash recipes for DGX Spark systems
 
-Several public recipes serve the same model on the same class of hardware with different engines, quantization and trade-offs. They are worth comparing before choosing one. This table owns their links, their licenses as read on 2026-09-18 (0xSero on 2026-09-20, FlyCockpit on 2026-09-29; knapcio, kindlingai, jetnet, tonyd2wild, tenhkspark and sfxnz on 2026-10-01) and what this repository took from each; other documents cite them by name and pull request only. Code that was adapted carries its notice in [third-party notices](THIRD_PARTY_NOTICES.md).
+Several public recipes serve the same model on the same class of hardware with different engines, quantization and trade-offs. They are worth comparing before choosing one. This table owns their links, their licenses as read on 2026-09-18 (0xSero on 2026-09-20, FlyCockpit on 2026-09-29; knapcio, kindlingai, jetnet, coolbho3k, tonyd2wild, tenhkspark and sfxnz on 2026-10-01) and what this repository took from each; other documents cite them by name and pull request only. Code that was adapted carries its notice in [third-party notices](THIRD_PARTY_NOTICES.md).
 
 | Recipe | License | What this repository took from it |
 |---|---|---|
@@ -187,6 +187,7 @@ Several public recipes serve the same model on the same class of hardware with d
 | [knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4](https://github.com/knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4) | MIT for repository-owned material; the Tony-origin material its NOTICE lists is excluded | No code. Its prefix-cache correctness scan (`bench/prefix_scan.py`), cold against warm, as the reference for a prefix-cache gate, a candidate under [catalog P19](docs/optimization-catalog.md#performance-initiatives). Its analysis of KDA checkpoints misaligned with the scheduler's chunk ends (issue #2), which this stack does not meet: the serving logs set the attention block to 4,608 tokens, and the pinned vLLM's align mode gives the KDA state the same block (`block_size` = `mamba_block_size`) |
 | [kindlingai/glm-5.3-flash-gx10](https://github.com/kindlingai/glm-5.3-flash-gx10) | none (no license file; some files carry Apache-2.0 headers) | No code. Mechanisms and measurements: the motivation and measurements for RecoverSSM (one KDA recurrent state per request), the shm_broadcast spin-wait observation, a three-host measurement at 1M tokens (issue #52), and the long-prefill threshold at a multiple of the KDA block for TP=3 |
 | [jetnet/glm53-flash-nvfp4-tp3](https://github.com/jetnet/glm53-flash-nvfp4-tp3) | MIT | No code. Its TP=3 configuration for NVIDIA's checkpoint and its measured KV bytes per token and rank, as a reference for [catalog P28](docs/optimization-catalog.md#performance-initiatives) |
+| [coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | none | No code. Its decode context parallelism (DCP2: the MLA KV split along the sequence, about 4.6–4.7M logical tokens reported) as the alternative to KV held on every rank under [catalog P28](docs/optimization-catalog.md#performance-initiatives) |
 
 ## Disclaimer
 

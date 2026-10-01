@@ -172,7 +172,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
-同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29、knapcio・kindlingai・jetnet・tonyd2wild・tenhkspark・sfxnzは2026-10-01）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
+同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29、knapcio・kindlingai・jetnet・coolbho3k・tonyd2wild・tenhkspark・sfxnzは2026-10-01）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
 
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
@@ -187,6 +187,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 | [knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4](https://github.com/knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4) | リポジトリ自身の素材はMIT。NOTICEが挙げるTony由来の素材は除く | コードは採用しない。prefix cacheの正しさをcoldとwarmで比べる走査（`bench/prefix_scan.py`）を、prefix cacheの関門の参照として（[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)の候補）。KDAのcheckpointがschedulerのchunkの終わりとずれる解析（issue #2）。本stackは該当しない：配信のログはattentionのblockを4,608 tokenにしており、固定vLLMのalignモードはKDAの状態にも同じblockを与える（`block_size` = `mamba_block_size`） |
 | [kindlingai/glm-5.3-flash-gx10](https://github.com/kindlingai/glm-5.3-flash-gx10) | なし（ライセンスファイルなし。一部のファイルにApache-2.0のヘッダ） | コードは採用しない。機構と測定：RecoverSSM（要求ごとにKDAの再帰状態を1本）の動機と測定、shm_broadcastのspin待ちの観察、3台で1M tokenを通した測定（issue #52）、TP=3で長いprefillの閾値をKDAのblockの倍数にすること |
 | [jetnet/glm53-flash-nvfp4-tp3](https://github.com/jetnet/glm53-flash-nvfp4-tp3) | MIT | コードは採用しない。NVIDIAのcheckpointでのTP=3の設定と、token・rankあたりのKVのbyte数の実測を[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照として |
+| [coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。decode context parallel（DCP2：MLAのKVを系列方向に分ける。論理約4.6〜4.7M tokenと報告）を、KVを全rankに持つ形の代わりとして[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照に |
 
 ## 免責事項
 
