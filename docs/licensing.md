@@ -10,12 +10,12 @@
 |---|---|---|---|---|
 | Original setup code and docs | Permitted | Permitted; no general source-publication requirement | Permitted in source or object form | Apache text, applicable notices, prominent modified-file notices |
 | vLLM and adapted files | Permitted under Apache-2.0 | Same | Conditional permission | Preserve upstream notices and mark changes |
-| MIT portions from kingjones | Permitted | Permitted; no publication requirement | Permitted, including sale/sublicensing | Retain copyright and permission notice in copies/substantial portions |
+| MIT portions from kingjones and knapcio | Permitted | Permitted; no publication requirement | Permitted, including sale/sublicensing | Retain copyright and permission notice in copies/substantial portions |
 | Pinned NVIDIA GLM NVFP4 weights | Model card explicitly permits commercial/non-commercial use under MIT | MIT permits modification, including further training/conversion | Permitted subject to MIT notices | Preserve model card and upstream copyright/MIT notice; identify provenance |
 | Complete image containing CUDA and other dependencies | Subject to each component's terms | Do not treat SDK modification rights as Apache | **No blanket clearance for the image** | Review the actual component inventory, versions, redistributables and notices |
 | ZCode / Claude Code binaries | Subject to their product/service terms | No modification rights granted by this repository | No redistribution rights granted by this repository | Install separately from official sources; do not bundle credentials |
 
-Sources: [Apache sections 2–4 and 6–9](../LICENSE), [MIT text](../LICENSES/kingjones-MIT.txt), [pinned NVIDIA model card](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md).
+Sources: [Apache sections 2–4 and 6–9](../LICENSE), MIT texts ([kingjones](../LICENSES/kingjones-MIT.txt), [knapcio](../LICENSES/knapcio-MIT.txt)), [pinned NVIDIA model card](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md).
 
 ## MIT and Apache-2.0 compared
 

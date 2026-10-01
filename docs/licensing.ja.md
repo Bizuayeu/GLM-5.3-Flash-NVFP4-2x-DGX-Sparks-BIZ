@@ -10,12 +10,12 @@
 |---|---|---|---|---|
 | 独自のセットアップコード・文書 | 可 | 可。変更ソースの一般公開義務なし | 可。ソース・実行形式とも可能 | Apache全文、適用するNOTICE等を保持し、変更したファイルに変更通知を付ける |
 | vLLMとその改変箇所 | Apache-2.0に従い可 | 可。同上 | 同ライセンスの条件付きで可 | vLLMの著作権等の通知を保持し、改変を明示 |
-| kingjones由来のMIT部分 | 可 | 可。公開義務なし | 可。販売・再許諾も可能 | 著作権表示とMIT許諾文をコピー・実質的部分に保持 |
+| kingjonesとknapcio由来のMIT部分 | 可 | 可。公開義務なし | 可。販売・再許諾も可能 | 著作権表示とMIT許諾文をコピー・実質的部分に保持 |
 | 固定NVIDIA GLM NVFP4重み | モデルカードは商用・非商用利用可、MITと明記 | MITの範囲で改変・追加学習・再量子化が可能 | MITの通知保持条件で可能 | 固定モデルカード、上流著作権・MIT文を保持し、配布物の由来を明示 |
 | CUDA等を含む完成Dockerイメージ | 各同梱物の条件に従う | SDK等の変更許諾までApache扱いしない | **全体を一括して許可済みとは扱わない** | 実イメージの構成物・版・配布可能部分・通知を確認 |
 | ZCode／Claude Code本体 | 各サービス・製品の契約に従う | 本リポジトリから改造権は付与されない | 本リポジトリから再配布権は付与されない | 公式配布元から別途導入。本体やログイン情報は同梱しない |
 
-根拠: [Apache原文・第2〜4、6〜9条](../LICENSE)、[MIT原文](../LICENSES/kingjones-MIT.txt)、[NVIDIA固定モデルカード](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md)。
+根拠: [Apache原文・第2〜4、6〜9条](../LICENSE)、MIT原文（[kingjones](../LICENSES/kingjones-MIT.txt)、[knapcio](../LICENSES/knapcio-MIT.txt)）、[NVIDIA固定モデルカード](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/blob/423acf37583782c51c142d145aef733d72943d93/README.md)。
 
 ## MITとApache-2.0の違い
 

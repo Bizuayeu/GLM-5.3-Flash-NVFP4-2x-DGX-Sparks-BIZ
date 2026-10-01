@@ -10,11 +10,21 @@ import re
 import signal
 import subprocess
 import time
+import uuid
 from collections import namedtuple
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agreement, capacity, fabric, host, model_http, mojibake, warmup
+from . import (
+    agreement,
+    capacity,
+    fabric,
+    host,
+    model_http,
+    mojibake,
+    prefix_gate,
+    warmup,
+)
 from . import server_config as settings
 from .config import (
     DEFAULT_PROFILE,
@@ -512,12 +522,69 @@ def warmup_running(profile):
     )
 
 
-def mojibake_running(profile):
-    """Japanese/Korean broken-character check on the running rank 0; recorded."""
+def mojibake_running(profile, sampling=None, repeats=None):
+    """Japanese/Korean broken-character check on the running rank 0; recorded.
+
+    ``sampling`` ({temperature, top_p}) draws sampled answers seeded from the
+    profile's seed; without it the check runs at temperature 0 as it always has.
+    """
+    options = {} if repeats is None else {"repeats": repeats}
+    if sampling is not None:
+        options["sampling"] = {**sampling, "seed": profile["runtime"]["seed"]}
     return recorded_on_head(
         profile,
         "mojibake",
-        lambda state: mojibake.run(lambda request: ask(profile, request)),
+        lambda state: mojibake.run(lambda request: ask(profile, request), **options),
+    )
+
+
+def prefix_gate_running(profile, length="long"):
+    """Cold/warm prefix-cache correctness gate on the running rank 0; recorded.
+
+    The prompt is counted as ``ask`` counts LPA prompts: ``/tokenize`` over the
+    chat messages with the profile's template options, the served prompt length.
+    """
+    limit = prefix_gate.LENGTHS[length]
+    # A profile the gate cannot judge is refused before the head is read.
+    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
+        raise ValueError(
+            "prefix-gate requires LPA off or APC-first; native LPA publishes no shared prefix"
+        )
+    if not profile["cache"]["prefix_caching"]:
+        raise ValueError("prefix-gate requires cache.prefix_caching")
+    if not settings.optional(profile, "api", "prompt_tokens_details"):
+        raise ValueError(
+            "prefix-gate requires api.prompt_tokens_details; without it no cached tokens are reported"
+        )
+    if (
+        limit + profile["generation"]["max_tokens"]
+        > profile["context"]["max_model_len"]
+    ):
+        raise ValueError(f"A {length} prefix plus max_tokens exceeds max_model_len")
+
+    def count_tokens(request):
+        body = settings.request_body(profile, request)
+        return post(
+            profile,
+            "/tokenize",
+            {
+                "model": body["model"],
+                "messages": body["messages"],
+                "add_generation_prompt": True,
+                "chat_template_kwargs": body["chat_template_kwargs"],
+            },
+        )["count"]
+
+    salt = "prefix-gate-" + uuid.uuid4().hex
+    return recorded_on_head(
+        profile,
+        "prefix-gate",
+        lambda state: prefix_gate.run(
+            lambda request: ask(profile, request),
+            count_tokens,
+            max_prompt_tokens=limit,
+            salt=salt,
+        ),
     )
 
 
@@ -738,12 +805,20 @@ def act_warmup(cli, args, profile):
 
 def act_mojibake(cli, args, profile):
     """Check the running head for Japanese/Korean broken characters."""
-    result = mojibake_running(profile)
+    sampling = None
+    if args.temperature is not None:
+        sampling = {"temperature": args.temperature, "top_p": args.top_p}
+    result = mojibake_running(profile, sampling, args.repeats)
     # The answers stay in the record; the terminal gets the verdicts.
     for row in result["runs"]:
         row.pop("content", None)
         row.pop("reasoning", None)
     report_verdict(result)
+
+
+def act_prefix_gate(cli, args, profile):
+    """Check that a warm prefix-cache hit answers as the cold computation did."""
+    report_verdict(prefix_gate_running(profile, args.prefix_length or "long"))
 
 
 def act_agreement(cli, args, profile):
@@ -855,6 +930,14 @@ ACTIONS = {
     "warmup": entry(act_warmup, rank0=True),
     "mojibake": entry(act_mojibake, rank0=True),
     "agreement": entry(act_agreement, rank0=True),
+    "prefix-gate": entry(act_prefix_gate, rank0=True),
+}
+# Options read by one action only; any other action refuses them.
+ACTION_OPTIONS = {
+    "temperature": "mojibake",
+    "top_p": "mojibake",
+    "repeats": "mojibake",
+    "prefix_length": "prefix-gate",
 }
 
 
@@ -891,6 +974,20 @@ def parser():
     )
     cli.add_argument("--output", type=Path, help="New output file for server freeze")
     cli.add_argument(
+        "--temperature",
+        type=float,
+        help="mojibake: count broken characters in sampled answers at this temperature",
+    )
+    cli.add_argument("--top-p", type=float, help="mojibake: top_p of the sampled mode")
+    cli.add_argument(
+        "--repeats", type=int, help="mojibake: answers per language (default 3)"
+    )
+    cli.add_argument(
+        "--prefix-length",
+        choices=list(prefix_gate.LENGTHS),
+        help="prefix-gate: prompt length bound, long (default) or short",
+    )
+    cli.add_argument(
         "--recovery",
         action="store_true",
         help="Restart a launch as it was launched: the coordinator passes this when a "
@@ -904,6 +1001,11 @@ def main(argv=None):
     args = cli.parse_args(argv)
     args.config = args.config.resolve()
     action = ACTIONS[args.action]
+    for option, owner in ACTION_OPTIONS.items():
+        if getattr(args, option) is not None and args.action != owner:
+            cli.error(f"--{option.replace('_', '-')} belongs to server {owner}")
+    if (args.temperature is None) != (args.top_p is None):
+        cli.error("The sampled mojibake mode takes --temperature and --top-p together")
     # Recovery must work even if the operator has just mistyped the TOML.
     if not action.needs_profile:
         return action.handler(cli, args, None)

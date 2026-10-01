@@ -1755,6 +1755,7 @@ class RecordedHeadRunTests(unittest.TestCase):
         "warmup": ("warmup_report", server.warmup_running),
         "mojibake": ("mojibake", server.mojibake_running),
         "agreement": ("agreement", server.agreement_running),
+        "prefix-gate": ("prefix_gate", server.prefix_gate_running),
     }
 
     def setUp(self):
@@ -1799,7 +1800,7 @@ class RecordedHeadRunTests(unittest.TestCase):
         """Replace what the action runs; the replacement records the lock state."""
         name, _ = self.RUNNERS[action]
 
-        def run(*args):
+        def run(*args, **kwargs):
             self.assertEqual(self.locked, [True])
             return {"passed": True}
 
@@ -1853,6 +1854,98 @@ class RecordedHeadRunTests(unittest.TestCase):
         ):
             server.agreement_running(self.profile)
         head.assert_not_called()
+        self.assertEqual(self.locked, [])
+
+    def test_mojibake_draws_sampled_runs_from_the_profile_seed(self):
+        sent = []
+        with (
+            self.head(),
+            patch.object(server.mojibake, "run", return_value={"passed": True}) as run,
+        ):
+            server.mojibake_running(self.profile)
+            sent.append(run.call_args)
+            server.mojibake_running(
+                self.profile, sampling={"temperature": 1.0, "top_p": 0.95}, repeats=40
+            )
+            sent.append(run.call_args)
+        # The temperature-0 call is the one it has always been.
+        self.assertEqual(sent[0].kwargs, {})
+        self.assertEqual(
+            sent[1].kwargs,
+            {
+                "repeats": 40,
+                "sampling": {
+                    "temperature": 1.0,
+                    "top_p": 0.95,
+                    "seed": self.profile["runtime"]["seed"],
+                },
+            },
+        )
+
+    def test_prefix_gate_sizes_by_chat_tokenization_under_a_fresh_salt(self):
+        calls, posted = [], []
+
+        def run(ask, count_tokens, **kwargs):
+            calls.append(kwargs)
+            count_tokens({"messages": [{"role": "user", "content": "x"}]})
+            return {"passed": True}
+
+        def post(profile, path, body):
+            posted.append((path, body))
+            return {"count": 5}
+
+        with (
+            self.head(),
+            patch.object(server.prefix_gate, "run", side_effect=run),
+            patch.object(server, "post", side_effect=post),
+        ):
+            server.prefix_gate_running(self.profile)
+            server.prefix_gate_running(self.profile, "short")
+        self.assertEqual(
+            [c["max_prompt_tokens"] for c in calls],
+            [server.prefix_gate.LENGTHS["long"], server.prefix_gate.LENGTHS["short"]],
+        )
+        self.assertNotEqual(calls[0]["salt"], calls[1]["salt"])
+        path, body = posted[0]
+        self.assertEqual(path, "/tokenize")
+        self.assertIs(body["add_generation_prompt"], True)
+        self.assertEqual(body["messages"], [{"role": "user", "content": "x"}])
+        self.assertEqual(
+            body["chat_template_kwargs"],
+            config.request_body(self.profile, {"messages": body["messages"]})[
+                "chat_template_kwargs"
+            ],
+        )
+
+    def test_prefix_gate_refuses_a_profile_it_cannot_judge_before_the_head(self):
+        def native_lpa(p):
+            p["lpa"]["enabled"] = True
+            p["cache"]["prefix_caching"] = False
+
+        def no_caching(p):
+            p["cache"]["prefix_caching"] = False
+
+        def no_details(p):
+            p["api"]["prompt_tokens_details"] = False
+
+        def short_context(p):
+            p["context"]["max_model_len"] = server.prefix_gate.LENGTHS["long"]
+
+        for change, message in (
+            (native_lpa, "native LPA"),
+            (no_caching, "cache.prefix_caching"),
+            (no_details, "api.prompt_tokens_details"),
+            (short_context, "max_model_len"),
+        ):
+            profile = copy.deepcopy(self.profile)
+            change(profile)
+            with (
+                self.subTest(message=message),
+                patch.object(server, "running_head") as head,
+                self.assertRaisesRegex(ValueError, message),
+            ):
+                server.prefix_gate_running(profile)
+            head.assert_not_called()
         self.assertEqual(self.locked, [])
 
 

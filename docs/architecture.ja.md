@@ -23,7 +23,7 @@
 |---|---|
 | `glm53_setup/__main__.py` | 固定したコマンド振り分け。利用者が指定するモジュールの動的読込は行わない |
 | `glm53_setup/config.py` | checkout内のパスと、検査済みの固定設定 |
-| `glm53_setup/server.py`、`server_config.py`、`capacity.py`、`warmup.py`、`mojibake.py`、`agreement.py` | 起動・監視・headへのクライアント。カテゴリ別のTOML設定と、そこから導くもの（vLLM引数の雛形、imageのcapability検査と警告、凍結した起動manifest、devモード）。KV起動行の分解、readiness後の要求ladder、日本語・韓国語の化け文字検査、参照runとのtoken単位の一致（`server agreement`） |
+| `glm53_setup/server.py`、`server_config.py`、`capacity.py`、`warmup.py`、`mojibake.py`、`agreement.py`、`prefix_gate.py` | 起動・監視・headへのクライアント。カテゴリ別のTOML設定と、そこから導くもの（vLLM引数の雛形、imageのcapability検査と警告、凍結した起動manifest、devモード）。KV起動行の分解、readiness後の要求ladder、日本語・韓国語の化け文字検査、参照runとのtoken単位の一致（`server agreement`）、cold／warmのprefix cache正しさ関門（`server prefix-gate`） |
 | `glm53_setup/host.py` | ランチャーが共用するホスト側の補助：fabric検査、snapshot解決、メモリ標本、container検査、subprocess実行 |
 | `glm53_setup/download.py`、`verify_download.py`、`images.py`、`build_reference.py` | 資材の準備（固定checkpointの取得、downloaderを待つchecksum検証、base imageの確認とその合格規則、reference imageのbuild）と、ガード付きのローカル操作 |
 | `glm53_setup/cluster.py`、`switch.py`、`launch_assets.py`、`fabric.py` | 全rankの停止前検査、所有権つきの切替・復旧とその再開（resume）、読み取り専用の起動識別情報、サイト設定の検査・リングのリンクとrankごとのアドレス・NCCL環境・RoCEレール検査（[起動契約](launch-safety.ja.md)） |

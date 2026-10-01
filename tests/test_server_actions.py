@@ -92,7 +92,9 @@ class ActionTableTests(unittest.TestCase):
         # ``ask`` also needs rank 0 but refuses with its own message, because it
         # additionally requires the container to be Running.
         scoped = {n for n, e in server.ACTIONS.items() if e.rank0}
-        self.assertEqual(scoped, {"capacity", "warmup", "mojibake", "agreement"})
+        self.assertEqual(
+            scoped, {"capacity", "warmup", "mojibake", "agreement", "prefix-gate"}
+        )
 
     def test_stop_is_the_only_action_that_runs_before_the_profile_loads(self):
         detached = {n for n, e in server.ACTIONS.items() if not e.needs_profile}
@@ -172,6 +174,26 @@ class ActionGuardTests(unittest.TestCase):
             with self.subTest(action=action):
                 with self.assertRaises(SystemExit):
                     dispatch(action, "--rank", "1")
+
+    def test_check_options_belong_to_their_own_action(self):
+        dispatch(
+            "mojibake", "--temperature", "1", "--top-p", "0.95"
+        ).assert_called_once()
+        dispatch("prefix-gate", "--prefix-length", "short").assert_called_once()
+        for action, extra in (
+            ("warmup", ("--temperature", "1")),
+            ("ask", ("--top-p", "0.9")),
+            ("agreement", ("--repeats", "2")),
+            ("mojibake", ("--prefix-length", "short")),
+            ("mojibake", ("--top-p", "0.95")),
+            ("mojibake", ("--temperature", "1")),
+        ):
+            with self.subTest(action=action, extra=extra):
+                with (
+                    self.assertRaises(SystemExit),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    dispatch(action, *extra)
 
     def test_stop_never_reads_the_operators_settings(self):
         handler = MagicMock()

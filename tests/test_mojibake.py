@@ -118,5 +118,53 @@ class MojibakeTests(unittest.TestCase):
         self.assertEqual(record["runs"][0]["error"], "TimeoutError")
 
 
+class SampledMojibakeTests(unittest.TestCase):
+    SAMPLING = {"temperature": 1.0, "top_p": 0.95, "seed": 100}
+
+    @staticmethod
+    def clean(request):
+        return response(
+            JAPANESE if "日本" in request["messages"][0]["content"] else KOREAN
+        )
+
+    def test_each_run_draws_its_own_seed_and_the_record_names_the_settings(self):
+        requests = []
+
+        def ask(request):
+            requests.append(request)
+            return self.clean(request)
+
+        record = mojibake.run(ask, repeats=2, sampling=self.SAMPLING)
+        self.assertEqual(len(requests), 4)
+        self.assertEqual({r["temperature"] for r in requests}, {1.0})
+        self.assertEqual({r["top_p"] for r in requests}, {0.95})
+        self.assertEqual([r["seed"] for r in requests], [100, 101, 102, 103])
+        self.assertEqual([row["seed"] for row in record["runs"]], [100, 101, 102, 103])
+        self.assertEqual(
+            record["sampling"],
+            {"temperature": 1.0, "top_p": 0.95, "seed": 100, "repeats": 2},
+        )
+        self.assertEqual(record["verdict"], "pass")
+
+    def test_the_default_record_is_unchanged(self):
+        record = mojibake.run(self.clean, repeats=1)
+        self.assertEqual(list(record), ["runs", "verdict", "passed"])
+        self.assertTrue(all("seed" not in row for row in record["runs"]))
+
+    def test_sampling_outside_its_range_is_refused_before_any_request(self):
+        def ask(request):
+            raise AssertionError("no request expected")
+
+        for bad in (
+            {"temperature": 0, "top_p": 0.95, "seed": 1},
+            {"temperature": 1.0, "top_p": 0, "seed": 1},
+            {"temperature": 1.0, "top_p": 1.5, "seed": 1},
+            {"temperature": 1.0, "top_p": 0.95},
+        ):
+            with self.subTest(sampling=bad):
+                with self.assertRaises(ValueError):
+                    mojibake.run(ask, sampling=bad)
+
+
 if __name__ == "__main__":
     unittest.main()

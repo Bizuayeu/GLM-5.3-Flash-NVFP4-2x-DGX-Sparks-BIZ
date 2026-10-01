@@ -76,8 +76,19 @@ def judge(language, result):
     return row
 
 
-def run(ask, repeats=3):
-    """Ask each prompt repeats times at temperature 0; never raise."""
+def run(ask, repeats=3, sampling=None):
+    """Ask each prompt repeats times at temperature 0; never raise on answers.
+
+    ``sampling`` ({temperature, top_p, seed}) counts broken characters in
+    sampled answers instead: run i draws with seed + i, so repeats are distinct
+    draws, and the record names the settings.
+    """
+    if sampling is not None and not (
+        sampling.get("temperature", 0) > 0
+        and 0 < sampling.get("top_p", 0) <= 1
+        and isinstance(sampling.get("seed"), int)
+    ):
+        raise ValueError("Sampling needs temperature > 0, 0 < top_p <= 1 and a seed")
     rows = []
     for language, prompt in PROMPTS.items():
         for _ in range(repeats):
@@ -85,10 +96,18 @@ def run(ask, repeats=3):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
             }
+            if sampling is not None:
+                request.update(
+                    temperature=sampling["temperature"],
+                    top_p=sampling["top_p"],
+                    seed=sampling["seed"] + len(rows),
+                )
             try:
                 row = judge(language, ask(request))
             except Exception as error:  # noqa: BLE001 - a failed or malformed answer is recorded, not a pass
                 row = judge(language, error)
+            if sampling is not None:
+                row["seed"] = request["seed"]
             rows.append(row)
     verdicts = {row["verdict"] for row in rows}
     verdict = (
@@ -98,4 +117,7 @@ def run(ask, repeats=3):
         if verdicts == {"pass"}
         else "inconclusive"
     )
-    return {"runs": rows, "verdict": verdict, "passed": verdict == "pass"}
+    result = {"runs": rows, "verdict": verdict, "passed": verdict == "pass"}
+    if sampling is not None:
+        result["sampling"] = {**sampling, "repeats": repeats}
+    return result

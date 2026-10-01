@@ -205,13 +205,18 @@ python -m glm53_setup server status --rank 0
 python -m glm53_setup server capacity
 python -m glm53_setup server warmup
 python -m glm53_setup server mojibake
+python -m glm53_setup server mojibake --temperature 1.0 --top-p 0.95
 python -m glm53_setup server agreement
+python -m glm53_setup server prefix-gate
+python -m glm53_setup server prefix-gate --prefix-length short
 python -m glm53_setup server stop --rank 0
 ```
 
 `agreement` は自作の4文（日本語・英語・コード・数理）を request lock の下で `/v1/completions` に `prompt_logprobs` 付きで2回ずつ送り、実際の次tokenの順位とlog確率を `records/<stamp>-agreement-r0/result.json` に書きます。`--reference <result.json>` を付けると、その過去の実行に対するargmax一致・top-5の重なり・log確率の移動を加えます。`self_agreement` は実行内の差を持ちます。再現性のスイッチが有効なら同じ文の2回はbit一致し、`runtime.canonical_moe_order` 以前はargmax一致が約96%で、log確率が8 nat動いた位置もありました。記録は、全要求が検査した形で返れば合格とします。文ごとの平均負log確率が、実行間で安定した読みです。実行内の一致は、起動を跨いだ一致の証拠ではありません（[候補の比較](validation.ja.md#候補と無改変対照の比較)）。
 
 `capacity` は稼働中headの起動ログと `/metrics` を読み、KV poolをそのまま表示します。stockの `GPU KV cache size` 行を `num_gpu_blocks`・最大長要求1本あたりのblock数・group別block幅に分解します。会話の保持本数の推定（16K・64K・`max_model_len` でのblock数と本数）は、LPA worker extensionを載せたprofileでだけ表示します。`apc_cache_layout` RPCが各groupのspec種別を返すためで、それ以外では推測せず withheld と表示します。`warmup` は要求ロックの下でladderを流し、`records/<stamp>-warmup-r0/result.json` に記録します。段が失敗すると非ゼロで終了します。`mojibake` は同じロックの下で稼働中のheadに日本語と韓国語の長い回答を求め、回答とreasoningの化け文字を数えて `records/<stamp>-mojibake-r0/result.json` に記録し、全回答が合格でなければ非ゼロで終了します（[検査の内容](validation.ja.md#フルモデルtp2の実験範囲)）。
+
+`--temperature` と `--top-p` を付けると、`mojibake` はsampledの回答で化け文字を数えます。i回目はprofileの `runtime.seed` にiを足したseedで引き、`--repeats` で言語ごとの回答数を決め（既定3）、記録には設定が `sampling` に、各回の `seed` が加わります。付けなければ検査も記録も従来のままです。`prefix-gate` は、prefix cacheのhitがcoldの計算と同じ状態を戻すかを確かめます。seedで正答が決まる合成ログ1本に短い課題6本を、新しい `cache_salt` で並列に投げ（cold）、同じsaltでもう一度投げ（warm）、全回答をログと照合します。ログの長さは `/tokenize` で数えてprompt 99,000 token以下、`--prefix-length short` で14,025 token以下にします。coldで正しくwarmで誤った課題があれば不合格（`prefix_cache_corruption`）です。warmの回答がcached tokenを報告しない（`no_cache_hit`）、coldの回答が誤る（`cold_incorrect`）、要求が失敗する（`request_error`）ときは判定不能とし、合格にはしません。記録 `records/<stamp>-prefix-gate-r0/result.json` には各phaseの正答率・cached token・誤った課題と返答が残ります。`cache.prefix_caching`・`api.prompt_tokens_details`・LPAのoffまたはAPC-firstが要ります。`tools/check_prefix_cache.py` が見るのはhitの有無だけです。
 
 workerの状態確認・停止はworker上で `--rank 1` を使います。全コマンドで `--config 設定ファイル.toml` を指定できます。設定を編集したら両ランクを停止・再起動してください。送信時には起動中の設定との一致を検査します。`generation` は専用送信コマンドの既定値で、他のAPIクライアントの生成設定はそのクライアント側で指定します。
 
