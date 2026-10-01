@@ -14,7 +14,7 @@
 
 ### Changed
 
-- 公開した任意設定のKDAのoverlay（`overlays/kda-quant-split.py`、SHA-256 `27a532ce…`）は、`f_a` と `g_a` を新しい領域へ写してから `f_b_proj`・`g_b_proj` へ渡します。1 rank 22ヘッドでは分割したviewの行の間隔が278、行の先頭からのずれが44・300 byteになり、Marlinが受け付けません。TP=2ではviewのままで収まっていました。写すのは同じ値です。公開した任意設定のprofileには新しいSHA-256が要ります。
+- 公開した任意設定のKDAのoverlay（`overlays/kda-quant-split.py`、SHA-256 `27a532ce…`）は、`f_a` と `g_a` を新しい領域へ写してから `f_b_proj`・`g_b_proj` へ渡します。1 rank 22ヘッドでは分割したviewの行の間隔が278、行の先頭からのずれが44・300 byteになり、Marlinが受け付けません。TP=2ではviewのままで収まっていました。写すのは同じ値です。TP=2では、このoverlayと1.24.0のimageで公開した任意設定のdecode検査のhashと教師強制のlog確率がbit単位で同じでした（2026-10-01）。公開した任意設定のprofileには新しいSHA-256が要ります。
 
 ### Documentation
 

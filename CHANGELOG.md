@@ -12,7 +12,7 @@
 
 ### Changed
 
-- The published option's KDA overlay (`overlays/kda-quant-split.py`, SHA-256 `27a532ce…`) copies `f_a` and `g_a` into fresh storage before the `f_b_proj` and `g_b_proj` projections. At 22 heads per rank the split leaves them as views with a row stride of 278 that start 44 and 300 bytes into the row, which Marlin refuses; at TP=2 the views fit. The copy carries the same values. Profiles of the published option need the new SHA-256.
+- The published option's KDA overlay (`overlays/kda-quant-split.py`, SHA-256 `27a532ce…`) copies `f_a` and `g_a` into fresh storage before the `f_b_proj` and `g_b_proj` projections. At 22 heads per rank the split leaves them as views with a row stride of 278 that start 44 and 300 bytes into the row, which Marlin refuses; at TP=2 the views fit. The copy carries the same values: on TP=2 the published option with this overlay on the 1.24.0 image reproduced its decode-check hashes and teacher-forced log-probabilities bit for bit (2026-10-01). Profiles of the published option need the new SHA-256.
 
 ### Documentation
 
