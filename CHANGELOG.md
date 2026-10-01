@@ -2,6 +2,18 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.23.0 — 2026-10-01
+
+### Changed
+
+- New optional key `api.default_reasoning_effort` (`low`, `high` or `max`) passes vLLM's `--default-chat-template-kwargs` on both ranks, and both server templates set it to `high` ([server configuration](docs/server-configuration.md#api-and-diagnostics)). The checkpoint's chat template resolves an omitted effort to `max`, whose thinking has no practical bound, so a client that named none spent most of its output budget thinking. In the pinned vLLM the server default sits under the request's own values: a client that sends `low`, at the top level or in `chat_template_kwargs`, still gets `low`. Without the key nothing is sent and the template's `max` stays. A running pair keeps the effort it was launched with: the key changes the profile's fingerprint, so it takes effect when the operator switches to a profile that sets it. The canary rung, `server ask` and `tools/decode_check.py` name their effort (`low`), so the decode check's reference hashes stand; the other warmup rungs, `apc-history` and `tools/check_prefix_cache.py` name none and run at the server default.
+
+### Documentation
+
+- The README's table of other recipes gains knapcio (its cold/warm prefix-cache scan as the reference for a candidate gate, and its analysis of misaligned KDA checkpoints, which this stack does not meet at a 4,608-token block), kindlingai (RecoverSSM, the shm_broadcast spin wait, a three-host run at 1M tokens, the KDA-block prefill threshold) and jetnet (TP=3 on NVIDIA's checkpoint and its KV bytes per token); no code is adopted from any of them. tenhkspark's checkpoint is linked under its new name, GLM-5.3-Flash-NVFP4-h (named Wabi until 2026-10-01, same weight files); sfxnz's launch guard is credited to its PR #12, which closed unmerged; tonyd2wild's row records its TP=2 port of knapcio's stack and the third-party TP=3 measurement in its issue #26. Licenses as read on 2026-10-01.
+- [Catalog](docs/optimization-catalog.md#performance-initiatives): RecoverSSM as a candidate under P13 (the pinned vLLM carries upstream's implementation for Kimi-K3), a cold/warm correctness gate under P19, the workspace sizes of a vLLM fork and of upstream #55222 under P20, and under P28 an audit of 32-bit row offsets before a pool of about 4M rows per rank, decode context parallelism as an alternative to KV held on every rank, and third-party TP=3 comparison points. New P29: the shm_broadcast reader spin, 1 s in the pinned vLLM, as a temperature candidate. All unmeasured.
+- README Next Action: a draft KV cache group whose block is smaller than the KDA block → re-check that prefix-cache hits stay aligned with the KDA checkpoints (knapcio issue #2).
+
 ## 1.22.0 — 2026-09-29
 
 ### Added

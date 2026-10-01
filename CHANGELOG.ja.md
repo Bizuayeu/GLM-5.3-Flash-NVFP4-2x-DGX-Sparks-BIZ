@@ -4,6 +4,18 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.23.0 — 2026-10-01
+
+### Changed
+
+- 任意のキー `api.default_reasoning_effort`（`low`・`high`・`max`）を加えました。両rankにvLLMの `--default-chat-template-kwargs` を渡し、両方のサーバーテンプレートは `high` にしています（[起動設定](docs/server-configuration.ja.md#apiと診断)）。checkpointのチャットテンプレートは指定のないeffortを `max` として扱い、`max` の思考には実質的な上限がないため、effortを指定しないクライアントは出力の予算の大半を思考に使っていました。固定したvLLMではサーバーの既定は要求自身の値の下に置かれるので、`low` を送るクライアントは、トップレベルでも `chat_template_kwargs` でも `low` のままです。キーが無ければ何も送らず、テンプレートの `max` のままです。稼働中の対は起動時のeffortのままです。このキーはprofileのfingerprintを変えるので、運用者がこのキーを書いたprofileへ切り替えたときに効きます。canaryの段・`server ask`・`tools/decode_check.py` はeffort（`low`）を指定するので、decode検査の基準hashはそのまま使えます。warmupのほかの段・`apc-history`・`tools/check_prefix_cache.py` は指定しないので、サーバーの既定で動きます。
+
+### Documentation
+
+- READMEの他のレシピの表に、knapcio（cold／warmのprefix cacheの走査を候補の関門の参照に。KDAのcheckpointのずれの解析は、4,608 tokenのblockの本stackには該当しない）、kindlingai（RecoverSSM、shm_broadcastのspin待ち、3台で1M tokenの実行、KDAのblockに合わせたprefillの閾値）、jetnet（NVIDIAのcheckpointでのTP=3と、tokenあたりのKVのbyte数）を加えました。どれからもコードは採用していません。tenhksparkのcheckpointは新しい名前のGLM-5.3-Flash-NVFP4-h（2026-10-01まではWabi、重みのファイルは同じ）でリンクし、sfxnzの起動ガードは、mergeされずにcloseしたPR #12の提案と明記し、tonyd2wildの行にはknapcioのstackのTP=2への移植と、issue #26にある第三者のTP=3の測定を記しました。ライセンスは2026-10-01に確認したものです。
+- [施策台帳](docs/optimization-catalog.ja.md#性能施策一覧)：P13にRecoverSSMを候補として（固定vLLMにはKimi-K3向けの上流の実装がある）、P19にcold／warmの正しさの関門を、P20にvLLMのforkと上流 #55222 のworkspaceの大きさを、P28に、rankあたり約4M行のpoolの前の32 bitの行offsetの監査、全rankにKVを持つ代わりのdecode context parallel、第三者のTP=3の比較点を加えました。新しいP29は、shm_broadcastの読み手のspin（固定vLLMでは1秒）を温度の候補とするものです。いずれも未測定です。
+- READMEのNext Action：KDAのblockより小さいblockのdraftのKV cache groupが加わる → prefix cacheのhitがKDAのcheckpointと揃ったままかを確かめる（knapcioのissue #2）。
+
 ## 1.22.0 — 2026-09-29
 
 ### Added
