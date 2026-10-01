@@ -242,7 +242,7 @@ KVが不足すれば起動が拒否される場合があり、実行時は待ち
 | `GLM53_KPOOL_SEED_STRIDE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.13.0 |
 | `GLM53_KPOOL_RING=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.19.0 |
 | `GLM53_LOAD_CLONE=1` | 要求しない（[運用手順](operations.ja.md#フルモデルの起動検査)） | 1.19.0 |
-| `GLM53_TP_PAD_API=1` | ヘッド・MoE幅・語彙をTPが割り切らない3ノード（`tp_padding_support`）。そのときランチャーが全rankに `GLM53_TP_PAD_MULTIPLE` を設定し、imageが読み込み時にzero-padする（`glm53_setup/runtime/patch_tp_padding.py`） | 1.22.0 |
+| `GLM53_TP_PAD_API=1` | ヘッド・MoE幅・語彙をTPが割り切らない3ノード（`tp_padding_support`）。そのときランチャーが全rankに `GLM53_TP_PAD_MULTIPLE` を設定し、imageが読み込み時にzero-padする（`glm53_setup/runtime/patch_tp_padding.py`） | 1.24.0 |
 
 1.14.0から1.17.0までに作ったimageは、取り除いた `runtime.mla_decode_cpb` の `GLM53_MLA_DECODE_CPB_API=1` と、届かないpatchも持ちます。どの検査もそれを読まず、害はありません。
 

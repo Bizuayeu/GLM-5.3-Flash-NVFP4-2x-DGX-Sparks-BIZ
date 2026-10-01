@@ -77,9 +77,9 @@ class RingExampleTests(unittest.TestCase):
         profile = ring()
         expected = {
             # rank: (master address, advertised address, socket interface)
-            0: ("10.41.12.1", "10.41.12.1", "enp1s0f1np1"),
-            1: ("10.41.12.1", "10.41.12.2", "enp1s0f0np0"),
-            2: ("10.41.13.1", "10.41.13.2", "enp1s0f1np1"),
+            0: ("10.53.1.1", "10.53.1.1", "fabric1"),
+            1: ("10.53.1.1", "10.53.1.2", "fabric0"),
+            2: ("10.53.2.1", "10.53.2.2", "fabric1"),
         }
         for rank, (master, own, interface) in expected.items():
             with self.subTest(rank=rank):
@@ -109,10 +109,10 @@ class RingExampleTests(unittest.TestCase):
         config.validate(profile)
         self.assertEqual(
             value(config.serve_args(profile, 1, "/model"), "--master-addr"),
-            "10.41.12.1",
+            "10.53.1.1",
         )
         self.assertEqual(config.environment(profile, 1)["VLLM_HOST_IP"], "10.40.0.2")
-        self.assertEqual(config.environment(profile, 2)["VLLM_HOST_IP"], "10.41.13.2")
+        self.assertEqual(config.environment(profile, 2)["VLLM_HOST_IP"], "10.53.2.2")
         # Only the head carries one: every rank meets it there.
         profile = with_host_addresses(ring(), ranks=(0,))
         config.validate(profile)
@@ -121,7 +121,7 @@ class RingExampleTests(unittest.TestCase):
                 value(config.serve_args(profile, rank, "/model"), "--master-addr"),
                 "10.40.0.1",
             )
-        self.assertEqual(config.environment(profile, 1)["VLLM_HOST_IP"], "10.41.12.2")
+        self.assertEqual(config.environment(profile, 1)["VLLM_HOST_IP"], "10.53.1.2")
 
     def test_nccl_uses_every_link_of_the_rank_and_the_subnet_aware_routing(self):
         profile = ring()
@@ -136,7 +136,7 @@ class RingExampleTests(unittest.TestCase):
                 self.assertEqual(env["NCCL_IB_SUBNET_AWARE_ROUTING"], "1")
                 self.assertEqual(env["GLM53_TP_PAD_MULTIPLE"], "3")
         self.assertEqual(
-            config.environment(profile, 0)["NCCL_IB_HCA"], "=rocep1s0f1:1,rocep1s0f0:1"
+            config.environment(profile, 0)["NCCL_IB_HCA"], "=roce1:1,roce0:1"
         )
 
     def test_two_node_launches_set_neither_knob(self):
@@ -215,10 +215,10 @@ class RingValidationTests(unittest.TestCase):
 
     def test_mismatched_ends_of_a_link_are_refused(self):
         for rank, peer, key, address in (
-            (1, 2, "peer_ip", "10.41.23.3"),
-            (2, 1, "local_ip", "10.41.23.3"),
+            (1, 2, "peer_ip", "10.53.3.3"),
+            (2, 1, "local_ip", "10.53.3.3"),
             # Consistent on both sides, but not one /30.
-            (0, 2, "local_ip", "10.41.13.5"),
+            (0, 2, "local_ip", "10.53.2.5"),
         ):
             profile = ring()
             link(profile, rank, peer)[key] = address
@@ -262,16 +262,16 @@ class RingValidationTests(unittest.TestCase):
         self.refused(profile, "one direct link per pair")
         profile = ring()
         profile["nodes"][2] = {
-            "local_ip": "10.41.13.2",
-            "interface": "enp1s0f1np1",
-            "hca": "rocep1s0f1",
+            "local_ip": "10.53.2.2",
+            "interface": "fabric1",
+            "hca": "roce1",
             "gid_index": 3,
         }
         self.refused(profile, "Every node lists its links, or none does")
 
     def test_a_node_with_links_carries_no_single_rail_keys(self):
         profile = ring()
-        profile["nodes"][0]["local_ip"] = "10.41.12.1"
+        profile["nodes"][0]["local_ip"] = "10.53.1.1"
         self.refused(profile, r"Unknown/missing settings in server\.nodes\[0\]")
         profile = ring()
         profile["nodes"][0]["additional_rails"] = []
@@ -285,7 +285,7 @@ class RingValidationTests(unittest.TestCase):
         profile["nodes"][2]["host_address"] = "10.40.0.1"
         self.refused(profile, "host_address")
         profile = with_host_addresses(ring())
-        profile["nodes"][2]["host_address"] = "10.41.13.2"
+        profile["nodes"][2]["host_address"] = "10.53.2.2"
         self.refused(profile, "host_address")
         profile = with_host_addresses(ring())
         profile["nodes"][2]["host_interface"] = "wlP9s9"
@@ -317,7 +317,7 @@ class RingValidationTests(unittest.TestCase):
         self.assertEqual(env["NCCL_SOCKET_IFNAME"], "=wlP9s9")
         self.assertEqual(env["GLOO_SOCKET_IFNAME"], "wlP9s9")
         self.assertEqual(env["VLLM_HOST_IP"], "192.168.68.57")
-        self.assertEqual(env["NCCL_IB_HCA"], "=rocep1s0f1:1,rocep1s0f0:1")
+        self.assertEqual(env["NCCL_IB_HCA"], "=roce1:1,roce0:1")
         # One node without the key refuses the profile.
         profile = wifi(True)
         del profile["nodes"][1]["host_interface_wifi_test"]
@@ -505,13 +505,13 @@ class RingPlanTests(unittest.TestCase):
         probes = {probe["peer"]: probe for probe in plan["link_probes"]}
         self.assertEqual(sorted(probes), [0, 1])
         # The lower rank of the pair is the probe's head, on that link's address.
-        self.assertEqual(probes[0]["head"], "10.41.13.1")
+        self.assertEqual(probes[0]["head"], "10.53.2.1")
         self.assertEqual(probes[0]["probe_rank"], 1)
-        self.assertEqual(probes[1]["head"], "10.41.23.1")
+        self.assertEqual(probes[1]["head"], "10.53.3.1")
         env = probes[1]["environment"]
-        self.assertEqual(env["NCCL_IB_HCA"], "=rocep1s0f0:1")
-        self.assertEqual(env["NCCL_SOCKET_IFNAME"], "=enp1s0f0np0")
-        self.assertEqual(env["GLOO_SOCKET_IFNAME"], "enp1s0f0np0")
+        self.assertEqual(env["NCCL_IB_HCA"], "=roce0:1")
+        self.assertEqual(env["NCCL_SOCKET_IFNAME"], "=fabric0")
+        self.assertEqual(env["GLOO_SOCKET_IFNAME"], "fabric0")
         self.assertEqual(env["NCCL_IB_GID_INDEX"], "3")
 
     def test_a_two_node_plan_is_unchanged(self):

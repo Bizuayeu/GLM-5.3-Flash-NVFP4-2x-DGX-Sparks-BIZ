@@ -1,8 +1,8 @@
 # GLM server profile for three nodes, TP=3 over a QSFP ring / 3台（QSFPリング直結）TP=3向けのGLM起動設定（3ノードに同じ内容を配置）
-# Not yet launched: TP=3 is under construction (1.22.0). The distributed defaults are examples/server.example.toml;
+# The distributed defaults on a three-host ring (measured on the reference ring, docs/qsfp-network.md); the defaults are examples/server.example.toml;
 # this file differs from it in the nodes (three, each listing its direct links) and the KV note below.
 # The heads, MoE width and vocabulary are zero-padded at load time (GLM53_TP_PAD_MULTIPLE, set by the launcher).
-# 未起動：TP=3は作業中（1.22.0）。配布既定は examples/server.example.toml で、違いはノード（3台、各自の直結リンク）とKVの注記だけ。
+# 3台リングでの配布既定（参照機のリングで測定、docs/qsfp-network.ja.md）。配布既定は examples/server.example.toml で、違いはノード（3台、各自の直結リンク）とKVの注記だけ。
 # ヘッド・MoE幅・語彙は読み込み時に0詰めする（GLM53_TP_PAD_MULTIPLE、ランチャーが設定）。
 # Copy to state/server.toml. Paths are relative to THIS FILE, or absolute.
 # state/server.toml にコピー。相対パスはこのファイルの位置が基準。
@@ -96,8 +96,9 @@ mm_processor_cache_gb = 0.1 # Used only with runtime.vision; omitted = 0.1 (vLLM
 # runtime.vision有効時のみ。head側の画像前処理キャッシュ上限。未指定は0.1（vLLM既定は4）。
 fused_unpack = true # Exact FP8->FP32 unpack fusion; needs matching image
 kv_cache_memory_bytes = 3221225472 # 3 GiB per rank / 各ランク
-# Placeholder: the TP=2 value. The TP=3 budget is decided from the TP=3 boot line (plan Stage 4); the launcher
-# applies no TP=2 limit to it. 仮置き：TP=2の値。TP=3の予算はTP=3の起動行から決める（計画Stage 4）。TP=2の上限は掛けない。
+# On TP=3 the same 3 GiB holds 323,824 tokens (one full 262,144-token request); 30 GiB per rank holds 3,258,809
+# (twelve). The TP=2 limit on KV without a derived checkpoint does not apply here (docs/server-configuration.md).
+# TP=3では同じ3 GiBで323,824 token（256K 1本分）、30 GiBで3,258,809 token（12本分）。TP=2のKVの上限は掛からない。
 # Fixed shared pool per rank, NOT per request; does not grow with context/batch.
 # 各rankで共有する固定KV枠。context・同時数に合わせて自動増額しない。
 block_size = 256 # Requested size; runtime may align it / 実行時に整列される
@@ -178,18 +179,18 @@ stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metric
 
 # Three hosts cabled as a switchless QSFP ring: every pair of nodes has one direct link, a /30 of its own.
 # Each node lists its links, one per other node (peer = that node's rank); the two ends of a link name each
-# other's addresses, and a node's links share one GID index. NCCL_IB_HCA lists every link's HCA. These are the
-# reference ring's enp1s0* links (the enP2p1s0* half of each port is not used); replace them with yours.
+# other's addresses, and a node's links share one GID index. NCCL_IB_HCA lists every link's HCA. The values below
+# are illustrative (each link a /30, two HCAs per host); replace them with yours.
 # スイッチなしのQSFPリング：各2台の間に直結リンク1本（/30）。各ノードは他ノードごとにリンクを1本書き（peerは相手のrank）、
-# 両端は互いのアドレスを名指し、1ノードのリンクはGID indexを共有する。参照機のenp1s0*側の値（enP2p1s0*側は使わない）。
+# 両端は互いのアドレスを名指し、1ノードのリンクはGID indexを共有する。以下は説明用の値（リンクごとに/30、1台にHCA 2つ）。
 #
 # Addresses the ranks advertise (Gloo, TCPStore, NCCL bootstrap): without host_address a rank reaches the head at
 # the head's end of their direct link and advertises its own end of its link to the head (the head: its link to
-# rank 1). A rank's link-to-head address is not reachable from the third node without routes, so this fallback
-# is provisional. The candidate is one stable address per host: host_address, a /32 on its own interface
-# (host_interface) with static routes over the direct links; set it on every node once the hosts carry it.
+# rank 1). A rank's link-to-head address is not reachable from the third node without routes, so set
+# host_address on every node: one stable /32 per host on its own interface (host_interface), with static routes
+# to the other two over the direct links. The reference ring runs this way (docs/qsfp-network.md).
 # 広告アドレス：host_addressがなければ各rankはheadとの直結リンクのhead側へ接続し、自分側を広告する（headはrank 1とのリンク）。
-# 3台目からは経路なしに届かないので暫定。本命はホストごとの安定アドレス（専用インタフェース上の/32と直結リンク越しの静的経路）。
+# 3台目からは経路なしに届かないので、全ノードに host_address を書く（専用インタフェース上の/32と直結リンク越しの静的経路）。参照機のリングはこの形。
 #
 # Optional, per-host Docker CPU set; see examples/server.example.toml.
 # cpuset_cpus = "5-9,15-19"
@@ -198,18 +199,18 @@ stall_seconds = 600 # Rank 0 only: stop when requests are running but no /metric
 # host_address = "10.40.0.1" # Illustrative; with host_interface, once the host carries the /32
 # host_interface = "glmhost"
 links = [
-  { peer = 1, hca = "rocep1s0f1", interface = "enp1s0f1np1", local_ip = "10.41.12.1", peer_ip = "10.41.12.2", gid_index = 3 },
-  { peer = 2, hca = "rocep1s0f0", interface = "enp1s0f0np0", local_ip = "10.41.13.1", peer_ip = "10.41.13.2", gid_index = 3 },
+  { peer = 1, hca = "roce1", interface = "fabric1", local_ip = "10.53.1.1", peer_ip = "10.53.1.2", gid_index = 3 },
+  { peer = 2, hca = "roce0", interface = "fabric0", local_ip = "10.53.2.1", peer_ip = "10.53.2.2", gid_index = 3 },
 ]
 
 [[nodes]] # Rank 1
 links = [
-  { peer = 0, hca = "rocep1s0f0", interface = "enp1s0f0np0", local_ip = "10.41.12.2", peer_ip = "10.41.12.1", gid_index = 3 },
-  { peer = 2, hca = "rocep1s0f1", interface = "enp1s0f1np1", local_ip = "10.41.23.1", peer_ip = "10.41.23.2", gid_index = 3 },
+  { peer = 0, hca = "roce0", interface = "fabric0", local_ip = "10.53.1.2", peer_ip = "10.53.1.1", gid_index = 3 },
+  { peer = 2, hca = "roce1", interface = "fabric1", local_ip = "10.53.3.1", peer_ip = "10.53.3.2", gid_index = 3 },
 ]
 
 [[nodes]] # Rank 2
 links = [
-  { peer = 0, hca = "rocep1s0f1", interface = "enp1s0f1np1", local_ip = "10.41.13.2", peer_ip = "10.41.13.1", gid_index = 3 },
-  { peer = 1, hca = "rocep1s0f0", interface = "enp1s0f0np0", local_ip = "10.41.23.2", peer_ip = "10.41.23.1", gid_index = 3 },
+  { peer = 0, hca = "roce1", interface = "fabric1", local_ip = "10.53.2.2", peer_ip = "10.53.2.1", gid_index = 3 },
+  { peer = 1, hca = "roce0", interface = "fabric0", local_ip = "10.53.3.2", peer_ip = "10.53.3.1", gid_index = 3 },
 ]
