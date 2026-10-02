@@ -905,7 +905,7 @@ The README's main measurements are this window's values. On the 1.19.0 image (`s
 
 ### LPA split (P27, 2026-09-26)
 
-On the reference pair, with the 1.19.0 image (`99e6cf7a…`) and a measurement profile, the experimental `split-self` mode reproduced the normal computation bit for bit. With the distributed cut-32 projector `split` passed 6 of 15 long-reference checks (the current LPA 14 of 15). Refitted linear projectors (full rank; cuts 36, 40) still left 44–62% of the input energy unexplained at layers 43 and 44 on validation data. A cut-40 projector kept quality (15 of 15, tail-512 NLL within 0–12% of the current LPA), and skipping the late layers before a 16-token exact tail left the written state unchanged, but prefill was only 0.8–2.4% faster than off, against 14–20% for the current LPA at cut 32. Decision: [catalog P27](optimization-catalog.md#performance-initiatives).
+On the reference pair, with the 1.19.0 image (`99e6cf7a…`) and a measurement profile, the experimental `split-self` mode reproduced the normal computation bit for bit. With the distributed cut-32 projector `split` passed 6 of 15 long-reference checks (the current LPA 14 of 15). Refitted linear projectors (full rank; cuts 36, 40) still left 44.5–62.4% of the input energy unexplained at layers 43 and 44 on validation data. A cut-40 projector kept quality (15 of 15, tail-512 NLL within 0–12% of the current LPA), and skipping the late layers before a 16-token exact tail left the written state unchanged, but prefill was only 0.8–2.4% faster than off, against 14–20% for the current LPA at cut 32. Decision: [catalog P27](optimization-catalog.md#performance-initiatives).
 
 ## Measurements on 1.22.0
 

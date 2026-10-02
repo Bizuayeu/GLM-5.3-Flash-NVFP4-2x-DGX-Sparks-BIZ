@@ -191,6 +191,7 @@ class CaseFileTests(unittest.TestCase):
                 ),
                 patch.object(server, "request_lock", contextlib.nullcontext),
                 patch.object(server, "ask", side_effect=ask),
+                contextlib.redirect_stdout(io.StringIO()),
             ):
                 freedombench.main(
                     [
@@ -220,8 +221,10 @@ class CaseFileTests(unittest.TestCase):
         self.assertTrue(record["summary"]["valid_complete_run"])
 
     def test_the_pinned_suite_and_a_case_file_are_exclusive(self):
-        with self.assertRaises(SystemExit):
+        stderr = io.StringIO()
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(stderr):
             freedombench.main(["--benchmark-dir", "b", "--cases", "c", "--output", "o"])
+        self.assertIn("Give either --benchmark-dir or --cases", stderr.getvalue())
 
 
 _UPSTREAM = [
@@ -405,6 +408,7 @@ class PinnedSuiteTests(unittest.TestCase):
                 ),
                 patch.object(server, "request_lock", contextlib.nullcontext),
                 patch.object(server, "ask", side_effect=ask),
+                contextlib.redirect_stdout(io.StringIO()),
             ):
                 freedombench.main(
                     [

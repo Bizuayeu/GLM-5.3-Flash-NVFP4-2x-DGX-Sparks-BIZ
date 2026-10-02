@@ -21,7 +21,8 @@ and `Edit` share one permission, and deletion goes through `Bash`.
 1. Copy `exists-guard.cjs` outside this repository, for example into the
    client's `hooks` directory next to its configuration.
 2. Merge `config.hooks.example.json` into the client configuration
-   (`config.json`), with `hooks.enabled` set to true, and let the entry inherit
+   (`~/.zcode/cli/setting.json` from npm 3.14.1, `config.json` before), with
+   `hooks.enabled` set to true, and let the entry inherit
    the top-level `hooks.timeoutMs`. Keep a copy of the working file first: a
    schema-rejected entry invalidates the whole configuration and surfaces as an
    unrelated error such as a missing model configuration.

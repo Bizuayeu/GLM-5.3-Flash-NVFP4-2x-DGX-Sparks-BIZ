@@ -38,7 +38,7 @@ API側の認証を設定している場合は、そのローカルサービス�
 
 **受け入れ試験中は、ハーネス自身の設定ディレクトリへの書き込みを拒否します**（ユーザープロファイル直下の`.zcode`）。build権限で動くハーネスは、依頼に応じて自分の設定を編集し、成功と報告したうえで次回起動に失敗することがあります。クライアント側のスキーマ拒否は、モデル設定が無いといった無関係なエラーとして現れます。ツールの拒否リストでそのパスを指定し、動作していた設定の複製を残します。`yolo`ではその拒否リストは参照されず、代わりに[既存ファイルガード](#zcodeの権限モードモデル上限既存ファイルガード)が同ディレクトリを守ります。
 
-npm版CLI 3.11.2の設定ファイルは`~/.zcode/cli/config.json`です。3.14.1ではproviderを`~/.zcode/v2/provider_config.json`、クライアント設定を`~/.zcode/cli/setting.json`に持ち、context上限の項目名は`contextWindow`です。OpenAI互換のproviderを`baseURL` `http://127.0.0.1:8893/v1`、model ID `glm-5.3-flash-nvidia`（項目は`provider.<id>.models.<model>`）で追加し、実際の要求パスで`/v1`が二重にならないことを確認します。ローカルAPIが認証を要求するなら一致する鍵を使い、無認証loopbackへ非空の値が要る場合だけ秘密でない試験用値を使います。それは認証保護にはなりません。
+npm版CLI 3.11.2の設定ファイルは`~/.zcode/cli/config.json`です。3.14.1ではproviderを`~/.zcode/v2/provider_config.json`、hooksを含むクライアント設定を`~/.zcode/cli/setting.json`に持ち、`config.json`は初回起動時に一度取り込むだけで以後は読まず、context上限の項目名は`contextWindow`です。OpenAI互換のproviderを`baseURL` `http://127.0.0.1:8893/v1`、model ID `glm-5.3-flash-nvidia`（項目は`provider.<id>.models.<model>`）で追加し、実際の要求パスで`/v1`が二重にならないことを確認します。ローカルAPIが認証を要求するなら一致する鍵を使い、無認証loopbackへ非空の値が要る場合だけ秘密でない試験用値を使います。それは認証保護にはなりません。
 
 入力はサーバに合わせてテキスト・ツール・画像を宣言し（どのテンプレートも `runtime.vision = true`。ZCodeでは `modalities.input = ["text", "image"]`）、サーバが拒否する動画は宣言しません。cloud providerへのfallback、外部連携、追加エージェントは既定にしません。通常モデルと補助（lite）モデルの両方をローカルのserved IDへ向けます。モデルのcontext上限（3.11.2では`limit.context`、3.14.1では`contextWindow`）をサーバの`max_model_len`に合わせ、`limit.output`は32000に留め、`modelStream.idleTimeoutMs`を想定する最長のprefillより大きくします（[モデル上限](#zcodeの権限モードモデル上限既存ファイルガード)を参照）。選択モデルと実際の接続先を確認します。UIロケールはクライアントが文書化している値だけを受け付け（`zcode --help`に一覧）、非対応の値は設定ファイル全体を無効にします。
 
@@ -66,7 +66,7 @@ ssh -N -L 127.0.0.1:8894:127.0.0.1:8894 node-a
 
 ## ZCodeの権限モード・モデル上限・既存ファイルガード
 
-以下はDesktop同梱runtime（`resources/glm/zcode.cjs`、Desktop 3.11.2、runtime 0.16.5、2026-09-14）の静的読解に基づきます。npm配布が同梱するruntimeも同じ版（0.16.5）です。版に束縛された事実であり、クライアント更新後は再確認します。受け入れケースを閉じるものではありません。
+以下はDesktop同梱runtime（`resources/glm/zcode.cjs`、Desktop 3.11.2、runtime 0.16.5、2026-09-14）の静的読解に基づきます。npm配布が同梱するruntimeも同じ版（0.16.5）です。2026-10-03に確かめたnpm `zcode-app-cli` 3.14.1-27（runtime 0.16.9）も、モードのenum、riskとhookの識別子、下の既定値（context 200000、output 32000、圧縮の定数21000と13000、streamのidle 600000）をそのまま持っていました。判定の順序は辿り直していません。版に束縛された事実であり、クライアント更新後は再確認します。受け入れケースを閉じるものではありません。
 
 **モード。** 設定の列挙は`plan`／`build`／`edit`／`yolo`／`auto`です。Claude Code名を写す正規化関数は二つあり、セッション側は`bypassPermissions`／`dontAsk`を`yolo`、`acceptEdits`を`edit`へ、automation側は`acceptEdits`／`autoEdit`／`default`／`auto`を`build`へ写します。`auto`は予約のみで未実装であり、全ツールを拒否します。したがって`permission.allowMediumRiskInAuto`は効きません。headlessの`--prompt`は既定で`yolo`です。
 
@@ -92,6 +92,7 @@ ssh -N -L 127.0.0.1:8894:127.0.0.1:8894 node-a
 
 | 配布形態（確認した版） | モデル実行のtrace | その他の外向き通信 | 停止手段 |
 |---|---|---|---|
+| npm `zcode-app-cli`（3.14.1-27、runtime 0.16.9。受け入れた経路） | 環境変数`OTEL_EXPORTER_OTLP_ENDPOINT`または`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`がある時だけ送信。共有moduleがAliyun RUMの送信先の定数を書き出しているが、CLIの中にそれを参照する箇所はない | npmの更新確認、`cdn-zcode.z.ai`配下の公式plugin marketplace、z.aiのproviderを使うときだけのz.ai OAuthサインイン。hostedモデルカタログ更新は見つからない | `ZCODE_MODEL_TELEMETRY_ENABLED=0`（`false`／`off`／`disabled`も可）、`ZCODE_DISABLE_UPDATE_CHECK=1`または`NO_UPDATE_NOTIFIER=1`、`setting.json`の`plugins.enabled=false` |
 | npm `zcode-app-cli`（3.11.2-24、runtime 0.16.5） | 環境変数`OTEL_EXPORTER_OTLP_ENDPOINT`または`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`がある時だけ送信。送信先の直書きなし | 更新確認、hostedモデルカタログ更新、公式plugin marketplaceの取得 | `ZCODE_MODEL_TELEMETRY_ENABLED=0`（`false`／`off`／`disabled`も可）、`ZCODE_DISABLE_UPDATE_CHECK=1`、`ZCODE_DISABLE_MODEL_CATALOG_REFRESH=1`、クライアント設定の`plugins.enabled=false` |
 | 公式Desktop（3.11.2） | `*.cn-beijing.log.aliyuncs.com`配下のOTLP trace収集先と、`zcode.z.ai/api/v1/`配下のイベント報告先が直書き。継承した`OTEL_*`と`ZCODE_MODEL_TELEMETRY_ENABLED`を子プロセスの環境から削除してから直書き値を注入する | `cdn-zcode.z.ai`配下の更新フィード | 設定画面・環境変数のいずれにも見つからない。止めるにはDesktopを使わないか、ネットワーク側で該当ホストを遮断する。後者は本リポジトリの範囲外の運用者判断 |
 

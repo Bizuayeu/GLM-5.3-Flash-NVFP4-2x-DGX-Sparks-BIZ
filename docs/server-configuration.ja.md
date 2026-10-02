@@ -65,7 +65,7 @@ CPU配置を固定する場合は、各rankの`nodes[].cpuset_cpus`にDockerのC
 
 ## 公開した任意設定と配布既定の差
 
-配布既定とAXLの例は、一つのprofileの5設定を変えたものです。[`tests/test_axl_example.py`](../tests/test_axl_example.py)が両方のdocker commandと環境変数をrankごとに同じimageを与えて組み立て、差を次の行とその帰結2点に固定します。
+配布既定とAXLの例は、一つのprofileの下の6設定を変えたものです。[`tests/test_axl_example.py`](../tests/test_axl_example.py)が両方のdocker commandと環境変数をrankごとに同じimageを与えて組み立て、差を次の行とその帰結2点に固定します。
 
 | AXLの例の設定 | 起動に加わるもの |
 |---|---|

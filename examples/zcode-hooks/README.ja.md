@@ -17,7 +17,7 @@ ZCodeは `yolo` をプロジェクトの権限規則より先に、`disallowedTo
 ## 導入
 
 1. `exists-guard.cjs` をこのリポジトリの外、たとえばクライアントの設定の隣の `hooks` ディレクトリへ複写します。
-2. `config.hooks.example.json` をクライアントの設定（`config.json`）へ併合し、`hooks.enabled` をtrueにします。
+2. `config.hooks.example.json` をクライアントの設定（npm 3.14.1からは `~/.zcode/cli/setting.json`、それより前は `config.json`）へ併合し、`hooks.enabled` をtrueにします。
    項目のtimeoutは上位の `hooks.timeoutMs` に委ねます。先に動いている設定の控えを取ってください。スキーマに合わない項目は設定全体を無効にし、
    モデル設定が無いといった無関係な誤りとして表面化します。
 3. `command` には絶対パスのインタプリタを書きます。ランチャーから起動したデスクトップ版は

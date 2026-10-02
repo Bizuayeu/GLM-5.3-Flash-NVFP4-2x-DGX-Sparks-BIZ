@@ -54,7 +54,7 @@ The lifetime is fixed at launch. Apply a changed `run_seconds` to running superv
 
 ## The published option against the defaults
 
-The defaults and AXL examples are one profile with five settings changed; [`tests/test_axl_example.py`](../tests/test_axl_example.py) assembles both docker commands and both environments for each rank with the same image supplied and keeps the difference to these rows and their two consequences.
+The defaults and AXL examples are one profile with the six settings below changed; [`tests/test_axl_example.py`](../tests/test_axl_example.py) assembles both docker commands and both environments for each rank with the same image supplied and keeps the difference to these rows and their two consequences.
 
 | Setting in the AXL example | What it adds to the launch |
 |---|---|
