@@ -247,7 +247,9 @@ class ProxyTests(unittest.TestCase):
         # DELETE used to relay the refused request and answer a second time.
         for method in ("POST", "DELETE"):
             with self.subTest(method=method), patch.object(proxy, "MAX_BODY", 8):
-                status, _ = self.raw_request(method, "/v1/x", "9", b"123456789")
+                # The refusal is read from the header alone; a body left unread when
+                # the gate closes turns the close into a reset on Windows.
+                status, _ = self.raw_request(method, "/v1/x", "9")
                 self.assertEqual(status, 413)
         time.sleep(
             0.3
