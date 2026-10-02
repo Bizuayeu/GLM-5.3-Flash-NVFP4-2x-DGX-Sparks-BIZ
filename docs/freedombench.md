@@ -9,7 +9,7 @@ The suite in Japanese is `ja-1`: all 60 questions translated and reviewed by the
 | Profile | Result |
 |---|---|
 | Published option, served at two sequences (image `99e6cf7a…`; run `axl-ja1`, 2026-09-30) | **60 correct of 60 planned**, every question on the first attempt, zero upstream `refused`, zero errors; no question answered differently from the English suite |
-| Distribution defaults | <!-- PENDING: FB-04 default --> |
+| Distribution defaults (image `99e6cf7a…`; run `default-ja1`, 2026-10-01) | **60 correct of 60 planned**, every question on the first attempt, zero upstream `refused`, zero errors; no question answered differently from the English suite |
 
 ## Opposed framings and evidence placement, FB-05 (2026-09-29 and 2026-09-30)
 

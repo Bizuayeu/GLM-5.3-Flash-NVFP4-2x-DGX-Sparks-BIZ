@@ -16,11 +16,13 @@ Questions, answers and grades are private records marked `teacher_excluded`. The
 | Set | Profile | Answered (stopped with an extractable answer) | Correct among the stopped answers: Opus 5.5 low / Sonnet 5 |
 |---|---|---|---|
 | Text | Distribution defaults (2026-09-28 to 09-30) | **61 of 100** | **9 / 10 of 62** (4 by exact match; the judges disagree on 1) |
-| Text | Published option | <!-- PENDING: HLE text × AXL --> | |
-| Image | Published option | <!-- PENDING: HLE image × AXL --> | |
-| Image | Distribution defaults | <!-- PENDING: HLE image × default --> | |
+| Text | Published option (2026-09-30) | **59 of 100** | **8 / 8 of 59** (4 by exact match; the judges agree) |
+| Image | Published option (2026-09-30 to 10-01) | **73 of 100** | **12 / 12 of 73** (3 by exact match; the judges agree) |
+| Image | Distribution defaults (2026-10-01 to 10-03) | **79 of 100** | **14 / 15 of 79** (3 by exact match; the judges disagree on 1) |
 
 Text on the distribution defaults (1.19.0 image `99e6cf7a…`, run `c-default-text`): 62 answers stopped and 38 reached the budget; one stopped answer had no extractable answer line. No question reached the 1,200 s client timeout; the longest took 921 s.
+
+The other three sets ran on the same image; the published option was the pair's served profile at two sequences. Text on the published option: 59 stopped, 41 reached the budget, longest 682 s. Image on the published option: 73 stopped, 25 reached the budget and 2 were refused; image on the defaults: 79 stopped, 19 reached the budget and the same 2 were refused (HTTP 400, images of 7,950 and 7,980 tokens; see [how it was run](#how-it-was-run)), longest 725 s and 940 s. Every stopped answer had an extractable answer line. Each set is one run of 100 questions, so the binomial spread is about ±10 points: the differences between the profiles (2 points on text, 6 on images) are inside it and their direction is not read. Images were answered more often than text on both profiles.
 
 ## How it was run
 
