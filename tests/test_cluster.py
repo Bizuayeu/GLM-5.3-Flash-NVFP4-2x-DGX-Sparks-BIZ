@@ -415,6 +415,47 @@ class ProfileInstallTests(unittest.TestCase):
             cluster.rpc("install", 0, {"identity": identity, "text": text})
             self.assertEqual(config.read_bytes(), text.encode())
 
+    def test_install_writes_only_to_an_absolute_toml_path(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        for path in ("relative/server.toml", "/srv/glm53/state/server.json"):
+            with (
+                self.subTest(path=path),
+                tempfile.TemporaryDirectory() as tmp,
+                rooted(Path(tmp)),
+            ):
+                config, identity = self.running(tmp, text)
+                identity["launch"]["config_path"] = path
+                cluster.write_json(Path(identity["record"]) / "identity.json", identity)
+                with self.assertRaisesRegex(ValueError, "absolute .toml path"):
+                    cluster.rpc("install", 0, {"identity": identity, "text": text})
+                self.assertFalse(config.exists())
+
+    def test_install_refuses_an_identity_that_changed_after_reservation(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            rooted(Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            changed = {**identity, "name": "someone-else"}
+            with self.assertRaisesRegex(ValueError, "Attempt identity changed"):
+                cluster.rpc("install", 0, {"identity": changed, "text": text})
+            self.assertFalse(config.exists())
+
+    def test_an_attempt_record_outside_this_checkout_is_refused(self):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            tempfile.TemporaryDirectory() as elsewhere,
+            rooted(Path(tmp)),
+        ):
+            config, identity = self.running(tmp, text)
+            moved = {**identity, "record": elsewhere}
+            cluster.write_json(Path(elsewhere) / "identity.json", moved)
+            with self.assertRaisesRegex(ValueError, "belong to this checkout"):
+                cluster.rpc("install", 0, {"identity": moved, "text": text})
+            self.assertFalse(config.exists())
+
     def test_install_needs_the_attempt_to_be_the_running_rank(self):
         text = EXAMPLE.read_text(encoding="utf-8")
         with (
@@ -607,6 +648,88 @@ class AttemptStopTests(unittest.TestCase):
             kill.assert_called_once()
             self.assertEqual(sleep.call_count, 60)
             inspect.assert_not_called()
+
+    def test_a_supervisor_already_gone_is_not_signalled_and_docker_is_read(self):
+        with self.supervised() as (identity, proc, kill, sleep, inspect):
+            proc.unlink()
+            self.assertEqual(cluster.rpc("stop", 0, identity), {"stopped": True})
+            kill.assert_not_called()
+            sleep.assert_not_called()
+            inspect.assert_called_once_with(identity)
+            self.assertTrue((Path(identity["record"]) / "cancel.json").exists())
+
+    def test_a_stop_without_a_record_stops_only_the_named_container(self):
+        # A recovery stops a launch it did not reserve: it has a name, no record.
+        identity = {"name": "glm53-old", "fingerprint": "f"}
+        for running, stops in ((True, 1), (False, 0)):
+            with (
+                self.subTest(running=running),
+                patch.object(
+                    cluster,
+                    "inspect_attempt",
+                    return_value={"State": {"Running": running}},
+                ),
+                patch.object(cluster.host, "run") as run,
+                patch.object(cluster.os, "kill") as kill,
+            ):
+                self.assertEqual(cluster.rpc("stop", 0, identity), {"stopped": True})
+                self.assertEqual(run.call_count, stops)
+                kill.assert_not_called()
+
+
+class AttemptInspectionTests(unittest.TestCase):
+    """An attempt is inspected only once Docker's inventory lists its name."""
+
+    def test_a_listed_container_is_inspected_and_an_unlisted_one_is_absent(self):
+        identity = {"name": "glm53-a", "fingerprint": "f"}
+        for names, inspected in (("other\nglm53-a\n", True), ("other\n", False)):
+            with (
+                self.subTest(names=names),
+                patch.object(cluster.host, "run", return_value=names) as run,
+                patch.object(
+                    server, "inspect_owned", return_value={"State": {}}
+                ) as inspect,
+            ):
+                result = cluster.inspect_attempt(identity)
+                run.assert_called_once_with(
+                    "docker", "ps", "-a", "--format", "{{.Names}}"
+                )
+                if inspected:
+                    self.assertEqual(result, {"State": {}})
+                    inspect.assert_called_once_with("glm53-a", "f")
+                else:
+                    self.assertIsNone(result)
+                    inspect.assert_not_called()
+
+
+class BackendOperationTests(unittest.TestCase):
+    """Each backend operation sends its own RPC action with the value it names."""
+
+    def test_each_operation_names_its_action_and_value(self):
+        backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
+        launch, identity = {"manifest": {}}, {"name": "n"}
+        rows = [
+            {"rank": 1, "identity": {"name": "w"}},
+            {"rank": 0, "identity": identity},
+        ]
+        for call, expected in (
+            (lambda: backend.reserve(1, launch), ("reserve", 1, launch)),
+            (
+                lambda: backend.reserve(1, launch, recovery=True),
+                ("reserve", 1, {**launch, "recovery": True}),
+            ),
+            (lambda: backend.start(1, identity), ("start", 1, identity)),
+            (lambda: backend.stop(1, identity), ("stop", 1, identity)),
+            (
+                lambda: backend.install(1, identity, "text"),
+                ("install", 1, {"identity": identity, "text": "text"}),
+            ),
+            # The warmup runs on the head, whatever order the rows come in.
+            (lambda: backend.warmup(rows), ("warmup", 0, identity)),
+        ):
+            with self.subTest(expected[0]), patch.object(backend, "call") as sent:
+                call()
+                sent.assert_called_once_with(*expected)
 
 
 class AttemptPollTests(unittest.TestCase):

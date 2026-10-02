@@ -232,15 +232,15 @@ def resumed_assets(report):
 
 
 def resume(backend, report, *, config=None, save=lambda report: None):
-    recovering = report["status"] == RECOVERY_READINESS_UNCONFIRMED
-    rows = report["recovery"] if recovering else report["new"]
-    if report["status"] not in (
+    if report.get("status") not in (
         READINESS_UNCONFIRMED,
         RECOVERY_READINESS_UNCONFIRMED,
     ):
         raise ValueError(
             "Only a recorded, unconfirmed readiness observation can resume"
         )
+    recovering = report["status"] == RECOVERY_READINESS_UNCONFIRMED
+    rows = report["recovery"] if recovering else report["new"]
     assets = resumed_assets(report)
     if len(assets) < 2 or {r["rank"] for r in rows} != set(range(len(assets))):
         raise ValueError("A resumed launch needs every rank it recorded")
