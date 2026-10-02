@@ -88,11 +88,24 @@ class ActionTableTests(unittest.TestCase):
                 "--output",
                 str(Path(tmp) / "out"),
             ]
-            with self.assertRaises(SystemExit):
+            stderr = io.StringIO()
+            with (
+                contextlib.redirect_stderr(stderr),
+                self.assertRaises(SystemExit) as raised,
+            ):
                 cluster.main(args)
+            self.assertEqual(raised.exception.code, 2)
+            self.assertIn(
+                "Remote paths must be absolute Linux paths", stderr.getvalue()
+            )
+            self.assertFalse((Path(tmp) / "out").exists())
 
     def test_a_nonpositive_readiness_timeout_is_refused(self):
-        with self.assertRaises(SystemExit):
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            self.assertRaises(SystemExit) as raised,
+        ):
             cluster.main(
                 [
                     "resume",
@@ -107,6 +120,11 @@ class ActionTableTests(unittest.TestCase):
                     "0",
                 ]
             )
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn(
+            "resume requires --output, --hosts, --checkout and a positive timeout",
+            stderr.getvalue(),
+        )
 
     def test_resume_needs_one_host_per_recorded_rank(self):
         # A three-rank record resumed with two hosts used to reach rank 2 and
@@ -144,6 +162,109 @@ class ActionTableTests(unittest.TestCase):
                     stderr.getvalue(),
                 )
                 resume.assert_not_called()
+
+
+class ActionOutcomeTests(unittest.TestCase):
+    """What each action leaves on disk and prints once its work returns or raises."""
+
+    def test_resume_saves_the_carried_record_and_prints_its_status(self):
+        for source in (None, ROOT / "examples/server.example.toml"):
+            with (
+                self.subTest(config=source),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                out = Path(tmp)
+                recorded = {"status": "readiness-unconfirmed", "assets": [{}, {}]}
+                server.write_json(out / "result.json", recorded)
+                seen = []
+
+                def resume(backend, report, *, config, save):
+                    seen.append((backend.hosts, report, config))
+                    save({**report, "status": "saved-midway"})
+                    seen.append(server.read_json(out / "result.json")["status"])
+                    return {**report, "status": "complete"}
+
+                printed = io.StringIO()
+                with (
+                    patch.object(cluster, "resume", resume),
+                    contextlib.redirect_stdout(printed),
+                ):
+                    cluster.main(
+                        [
+                            "resume",
+                            "--output",
+                            str(out),
+                            "--hosts",
+                            "a",
+                            "b",
+                            "--checkout",
+                            "/srv/glm53",
+                            *(["--config", str(source)] if source else []),
+                        ]
+                    )
+                text = source.read_text(encoding="utf-8") if source else None
+                self.assertEqual(seen, [(["a", "b"], recorded, text), "saved-midway"])
+                self.assertEqual(
+                    server.read_json(out / "result.json"),
+                    {**recorded, "status": "complete"},
+                )
+                self.assertEqual(
+                    json.loads(printed.getvalue()),
+                    {"status": "complete", "recovered": False, "output": str(out)},
+                )
+
+    def test_a_supervisor_whose_launch_raises_records_the_failure(self):
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            identity = cluster.rpc(
+                "reserve",
+                1,
+                {"manifest": {"fingerprint": "f"}, "config_path": "/srv/s.toml"},
+            )
+            record = Path(identity["record"])
+            with (
+                patch.object(server, "main", side_effect=RuntimeError("oom")),
+                self.assertRaisesRegex(RuntimeError, "oom"),
+            ):
+                cluster.main(["job", "--record", str(record)])
+            self.assertEqual(
+                server.read_json(record / "finished.json"),
+                {"status": "failed", "error": "RuntimeError"},
+            )
+            self.assertIn("pid", server.read_json(record / "job.json"))
+
+    def test_a_failed_switch_leaves_its_failure_beside_the_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            printed = io.StringIO()
+            with (
+                patch.object(
+                    cluster, "switch", side_effect=ValueError("assets differ")
+                ),
+                contextlib.redirect_stdout(printed),
+                self.assertRaisesRegex(ValueError, "assets differ"),
+            ):
+                cluster.main(
+                    [
+                        "switch",
+                        "--config",
+                        str(ROOT / "examples/server.example.toml"),
+                        "--remote-config",
+                        "/srv/glm53/state/server.toml",
+                        "--hosts",
+                        "a",
+                        "b",
+                        "--checkout",
+                        "/srv/glm53",
+                        "--output",
+                        str(out),
+                    ]
+                )
+            self.assertEqual(
+                server.read_json(out / "failure.json"),
+                {"error": "ValueError", "message": "assets differ"},
+            )
+            self.assertTrue((out / "launch.json").exists())
+            self.assertEqual(printed.getvalue(), "")
 
 
 class RemoteProcedureGapTests(unittest.TestCase):

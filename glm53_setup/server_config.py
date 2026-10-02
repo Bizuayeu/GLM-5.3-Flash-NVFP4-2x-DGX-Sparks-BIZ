@@ -50,11 +50,13 @@ def decode_graphs(profile):
     if "decode_graphs" in runtime:
         if type(runtime["decode_graphs"]) is not bool:
             raise ValueError("runtime.decode_graphs must be true or false")
-        if (
-            "enforce_eager" in runtime
-            and runtime["enforce_eager"] == runtime["decode_graphs"]
-        ):
-            raise ValueError("runtime.decode_graphs contradicts runtime.enforce_eager")
+        if "enforce_eager" in runtime:
+            if type(runtime["enforce_eager"]) is not bool:
+                raise ValueError("runtime.enforce_eager must be true or false")
+            if runtime["enforce_eager"] == runtime["decode_graphs"]:
+                raise ValueError(
+                    "runtime.decode_graphs contradicts runtime.enforce_eager"
+                )
         return runtime["decode_graphs"]
     if type(runtime.get("enforce_eager", True)) is not bool:
         raise ValueError("runtime.enforce_eager must be true or false")

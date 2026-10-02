@@ -1,7 +1,11 @@
 import contextlib
 import io
+import json
+import tempfile
 import unittest
 import urllib.error
+from pathlib import Path
+from unittest.mock import patch
 
 from glm53_setup import model_http
 from glm53_setup.validation import run_components
@@ -130,6 +134,48 @@ class ReadinessTests(unittest.TestCase):
     def test_the_deadline_ends_the_wait(self):
         with self.assertRaisesRegex(TimeoutError, "readiness deadline"):
             self.wait([TimeoutError()] * 5, clock=[0, 10, 20, 30, 40, 50])
+
+
+class MainTests(unittest.TestCase):
+    def profile(self, component_worker):
+        return {"validation": {"component_worker": component_worker}}
+
+    def run_main(self, output, profile):
+        argv = ["--config", "c.toml", "--corpus", "d.jsonl", "--output", str(output)]
+        with patch.object(run_components.server_config, "load", return_value=profile):
+            run_components.main(argv)
+
+    def test_a_profile_without_the_component_worker_is_refused_before_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "out"
+            with (
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                self.run_main(output, self.profile(False))
+            self.assertEqual(caught.exception.code, 2)
+            self.assertFalse(output.exists())
+
+    def test_an_existing_output_directory_is_never_reused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileExistsError):
+                self.run_main(Path(tmp), self.profile(True))
+            self.assertFalse((Path(tmp) / "result.json").exists())
+
+    def test_a_failure_before_measuring_is_recorded_and_reraised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "out"
+            with (
+                patch.object(
+                    run_components, "wait_ready", side_effect=TimeoutError("late")
+                ),
+                self.assertRaises(TimeoutError),
+            ):
+                self.run_main(output, self.profile(True))
+            report = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["error"], "TimeoutError('late')")
+        self.assertEqual(report["profile"], self.profile(True))
 
 
 if __name__ == "__main__":

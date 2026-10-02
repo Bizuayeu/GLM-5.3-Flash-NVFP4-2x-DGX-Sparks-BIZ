@@ -102,6 +102,16 @@ class ActionTableTests(unittest.TestCase):
 
 
 class ActionGuardTests(unittest.TestCase):
+    def assertUsageError(self, call, message):
+        stderr = io.StringIO()
+        with (
+            self.assertRaises(SystemExit) as caught,
+            contextlib.redirect_stderr(stderr),
+        ):
+            call()
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("error: " + message, stderr.getvalue())
+
     def test_each_action_reaches_its_own_handler(self):
         for action in server.ACTIONS:
             with self.subTest(action=action):
@@ -113,13 +123,16 @@ class ActionGuardTests(unittest.TestCase):
             if entry.windows or not entry.needs_profile:
                 continue
             with self.subTest(action=action):
-                with self.assertRaises(SystemExit):
-                    dispatch(action, name="nt")
+                self.assertUsageError(
+                    lambda: dispatch(action, name="nt"),
+                    "Run this action on the Linux model host; plan works on Windows",
+                )
 
     def test_stop_refuses_windows_with_its_own_recovery_message(self):
         with on_host("nt"):
-            with self.assertRaises(SystemExit):
-                server.main(["stop"])
+            self.assertUsageError(
+                lambda: server.main(["stop"]), "Run stop on the Linux model host"
+            )
 
     def test_planning_still_runs_on_windows(self):
         dispatch("plan", name="nt").assert_called_once()
@@ -144,8 +157,10 @@ class ActionGuardTests(unittest.TestCase):
             if not entry.needs_profile or not entry.launch_path:
                 continue
             with self.subTest(action=action):
-                with self.assertRaises(SystemExit):
-                    dispatch(action, environ=INHERITED_ALLOCATOR)
+                self.assertUsageError(
+                    lambda: dispatch(action, environ=INHERITED_ALLOCATOR),
+                    "Freeze the launch-origin allocator once with server freeze",
+                )
 
     def test_actions_off_the_launch_path_ignore_the_hosts_allocator(self):
         for action, entry in server.ACTIONS.items():
@@ -172,8 +187,10 @@ class ActionGuardTests(unittest.TestCase):
             if not entry.rank0:
                 continue
             with self.subTest(action=action):
-                with self.assertRaises(SystemExit):
-                    dispatch(action, "--rank", "1")
+                self.assertUsageError(
+                    lambda: dispatch(action, "--rank", "1"),
+                    f"{action} requires rank 0",
+                )
 
     def test_check_options_belong_to_their_own_action(self):
         dispatch(

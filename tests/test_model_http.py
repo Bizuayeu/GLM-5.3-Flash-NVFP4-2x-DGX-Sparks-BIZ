@@ -2,7 +2,7 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from glm53_setup import model_http, server
 
@@ -140,3 +140,31 @@ class ModelHTTPTests(unittest.TestCase):
             )
         self.assertNotIn("secret", str(caught.exception))
         self.assertFalse(self.requests)
+
+
+class UnreachableModelTests(unittest.TestCase):
+    def test_transport_failures_carry_no_code_so_the_cluster_reads_not_ready(self):
+        errors = (
+            model_http.urllib.error.URLError("refused"),
+            TimeoutError(),
+            ConnectionRefusedError(),
+            ConnectionResetError(),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                opener = MagicMock()
+                opener.open.side_effect = error
+                with (
+                    patch.object(
+                        model_http.urllib.request,
+                        "build_opener",
+                        return_value=opener,
+                    ),
+                    self.assertRaises(model_http.ModelHTTPError) as caught,
+                ):
+                    model_http.open_response(
+                        "http://127.0.0.1:1", "/health", environ={}
+                    )
+                self.assertIsNone(caught.exception.code)
+                self.assertNotIn("(HTTP", str(caught.exception))
+                self.assertIsNone(caught.exception.__cause__)

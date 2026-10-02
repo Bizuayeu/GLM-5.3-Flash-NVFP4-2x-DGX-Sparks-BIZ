@@ -1,6 +1,8 @@
+import io
 import unittest
 
 from glm53_setup.validation.lpa_corpus import (
+    BoundedReader,
     accepted_code_license,
     document_key,
     split_for,
@@ -25,6 +27,26 @@ class CorpusSplitTests(unittest.TestCase):
         self.assertEqual(split_for("00000008"), "validation")
         self.assertEqual(split_for("00000009"), "test")
         self.assertEqual(split_for("00000000"), "train")
+
+
+class BoundedReaderTests(unittest.TestCase):
+    def test_a_read_is_clipped_at_the_limit(self):
+        reader = BoundedReader(io.BytesIO(b"abcdefgh"), 5)
+        self.assertEqual(reader.read(3), b"abc")
+        self.assertEqual(reader.read(10), b"de")
+        self.assertEqual(reader.consumed, 5)
+
+    def test_an_unsized_read_takes_at_most_the_limit(self):
+        reader = BoundedReader(io.BytesIO(b"abcdefgh"), 5)
+        self.assertEqual(reader.read(), b"abcde")
+
+    def test_a_read_after_the_budget_is_spent_is_refused(self):
+        reader = BoundedReader(io.BytesIO(b"abcdefgh"), 5)
+        reader.read()
+        with self.assertRaisesRegex(
+            ValueError, "^Pilot compressed-byte budget exhausted$"
+        ):
+            reader.read(1)
 
 
 if __name__ == "__main__":

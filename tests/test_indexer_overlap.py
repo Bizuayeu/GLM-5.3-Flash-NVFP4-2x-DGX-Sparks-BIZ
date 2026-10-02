@@ -1,6 +1,11 @@
+import contextlib
+import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from glm53_setup.validation.indexer_overlap import compare_candidates
+from glm53_setup.validation.indexer_overlap import compare_candidates, main
 
 
 class IndexerOverlapTests(unittest.TestCase):
@@ -46,3 +51,33 @@ class IndexerOverlapTests(unittest.TestCase):
                 self.row([1], coordinate_space="physical_slots"),
                 self.row([1], coordinate_space="physical_slots"),
             )
+
+
+class MainTests(unittest.TestCase):
+    row = IndexerOverlapTests.row
+
+    def run_main(self, pairs):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "capture.json"
+            path.write_text(json.dumps({"pairs": pairs}), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                main([str(path)])
+        return out.getvalue()
+
+    def test_each_aligned_pair_is_compared_in_order(self):
+        pairs = [
+            {"source": self.row([1, 2]), "target": self.row([2, 3])},
+            {"source": self.row([4]), "target": self.row([4])},
+        ]
+        result = json.loads(self.run_main(pairs))
+        self.assertEqual([r["jaccard"] for r in result], [1 / 3, 1])
+        self.assertEqual(json.loads(self.run_main([])), [])
+
+    def test_one_unaligned_pair_fails_the_whole_capture(self):
+        pairs = [
+            {"source": self.row([1]), "target": self.row([1])},
+            {"source": self.row([1]), "target": self.row([1], request_id="two")},
+        ]
+        with self.assertRaises(ValueError):
+            self.run_main(pairs)

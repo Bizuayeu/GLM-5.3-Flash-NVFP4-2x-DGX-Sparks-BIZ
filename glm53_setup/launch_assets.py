@@ -44,8 +44,10 @@ def inspect(profile, config_path, rank, *, recovery=False):
         ):
             raise ValueError("Invalid model shard filename")
         path = model / name
+        if not path.is_file():
+            raise ValueError("Missing or empty model shard")
         stat = path.stat()
-        if not path.is_file() or stat.st_size <= 0:
+        if stat.st_size <= 0:
             raise ValueError("Missing or empty model shard")
         weights[name] = stat.st_size
         # Local evidence catches replacement between preflight and stop; mtimes
