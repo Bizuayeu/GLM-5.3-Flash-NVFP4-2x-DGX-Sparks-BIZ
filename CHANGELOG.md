@@ -2,6 +2,12 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.27.1 — 2026-10-03
+
+### Documentation
+
+- The README's table of other recipes adds [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold) (Apache-2.0, read on 2026-10-03), which serves this model on TensorFold. No code is taken from it.
+
 ## 1.27.0 — 2026-10-03
 
 ### Added

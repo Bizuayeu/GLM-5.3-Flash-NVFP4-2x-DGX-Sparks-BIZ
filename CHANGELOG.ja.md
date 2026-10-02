@@ -4,6 +4,12 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.27.1 — 2026-10-03
+
+### Documentation
+
+- READMEの他のレシピの表に、このモデルをTensorFoldで配信する[MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold)（Apache-2.0、2026-10-03に確認）を加えた。コードは取り込んでいない。
+
 ## 1.27.0 — 2026-10-03
 
 ### Added
