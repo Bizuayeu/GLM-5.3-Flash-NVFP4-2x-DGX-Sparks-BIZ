@@ -2,6 +2,18 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.27.3 — 2026-10-03
+
+### Documentation
+
+- [Benchmarks](docs/benchmarks.md#lpa-split-p27-2026-09-26), P27: the share of input energy the refitted full-rank projectors left unexplained at layers 43 and 44 is 44.5–62.4%, as recorded (normalized MSE 0.445 to 0.624 on the validation documents), not 44–62%.
+- [Server configuration](docs/server-configuration.md#the-published-option-against-the-defaults): the AXL example changes six settings, the rows of its table; the two overlays are separate keys.
+- [Harnesses](docs/harnesses.md): the npm ZCode CLI 3.14.1 reads hooks and the other client settings from `~/.zcode/cli/setting.json` and imports `config.json` only once. A static read of `zcode-app-cli` 3.14.1-27 (runtime 0.16.9), the accepted route, joins the outbound-traffic table: traces still need an OTEL endpoint, an Aliyun RUM endpoint constant is exported but never referenced, the other outbound traffic is the npm update check, the official plugin marketplace and z.ai sign-in for the z.ai provider, and the model-catalog switch is gone with the refresh. The modes, the risk and hook identifiers and the defaults the page states were found unchanged there. The [guard hook's install step](examples/zcode-hooks/README.md#install) names `setting.json` from 3.14.1.
+
+### Fixed
+
+- Two FreedomBench tests printed per-question lines and one printed argparse usage while the suite ran; their output is captured now, and the usage test checks the message it expects.
+
 ## 1.27.2 — 2026-10-03
 
 ### Fixed

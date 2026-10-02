@@ -4,6 +4,18 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.27.3 — 2026-10-03
+
+### Documentation
+
+- [ベンチマーク](docs/benchmarks.ja.md#lpaのsplitp272026-09-26)のP27：full rankで学習し直したprojectorが層43・44で説明できずに残した入力エネルギーの割合は、記録どおり44.5〜62.4%（検証文書での正規化MSE 0.445〜0.624）で、44〜62%ではありません。
+- [起動設定](docs/server-configuration.ja.md#公開した任意設定と配布既定の差)：AXLの例が変える設定は、表の行と同じ6つです。overlay 2つは別のキーです。
+- [ハーネス](docs/harnesses.ja.md)：npm版ZCode CLI 3.14.1は、hooksを含むクライアント設定を `~/.zcode/cli/setting.json` から読み、`config.json` は一度だけ取り込みます。受け入れた経路である `zcode-app-cli` 3.14.1-27（runtime 0.16.9）の静的読解を外向き通信の表に加えました：traceは今もOTELの送信先の指定が要る、Aliyun RUMの送信先の定数は書き出されているがどこからも参照されない、その他の外向きはnpmの更新確認・公式plugin marketplace・z.aiのproviderを使うときのz.aiサインインで、モデルカタログの更新とそのスイッチは無くなった。文書が述べるモード、riskとhookの識別子、既定値は変わっていませんでした。[ガードhookの導入手順](examples/zcode-hooks/README.ja.md#導入)は3.14.1からの `setting.json` を挙げます。
+
+### Fixed
+
+- FreedomBenchのテスト2本が問ごとの行を、1本がargparseのusageを、スイートの実行中に出力していました。出力は捕まえるようにし、usageのテストは期待するメッセージを確かめます。
+
 ## 1.27.2 — 2026-10-03
 
 ### Fixed
