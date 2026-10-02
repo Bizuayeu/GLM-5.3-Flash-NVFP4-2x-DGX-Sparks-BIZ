@@ -9,11 +9,11 @@
 ## 要約
 
 - **何であるか。** NVIDIAのGLM-5.3-Flash NVFP4 checkpointを、**DGX SparkおよびGB10を搭載する互換機**で、reference imageに組み込んだ固定版vLLMにより配信するコミュニティ製のセットアップ・検証ツールです。2台をQSFP/RoCE越しにTP=2で分割して配信するか、スイッチなしのリングで結ぶ3台のTP=3で配信します（1.24.0から、[測定](docs/benchmarks.ja.md#1240での測定)）。掲載した実測はMSI EdgeXpert（MS-C931）のもので、TP=2は2台、TP=3は3台です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を軸にします。
-- **状態。** **通常運用として受け入れ済み**：両profileは2026-09-22から同時1系列で、公開した任意設定の同時2系列profileは2026-09-23から同時2系列・1要求あたり約200K tokenまでです。それぞれの受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、それを超える同時数、動画入力は受け入れた範囲の外です（[範囲ごとの状態](#範囲ごとの状態)）。
+- **状態。** **通常運用として受け入れ済み**：2台のTP=2では、両profileは2026-09-22から同時1系列で、公開した任意設定の同時2系列profileは2026-09-23から同時2系列・1要求あたり約200K tokenまで。3台のTP=3では両profileが2026-10-01からです。それぞれの受け入れが何に拠るかは[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が記録し、ハーネスの受け入れはケース別に[ハーネス](docs/harnesses.ja.md#受け入れ試験一覧と実施状態)に記録しています。他の機体、それを超える同時数、動画入力は受け入れた範囲の外です（[範囲ごとの状態](#範囲ごとの状態)）。
 - **配信する二つのprofile。** **配布既定**はNVIDIA配布の固定の重みをそのまま配信します。**公開した任意設定（NVFP4 BIZ AXL）**はattention projectionと `lm_head` をW4A16に再パックしたもので、decodeが速い代わりに実測した品質の費用があり、運用者が有効にします。[確認した範囲](#確認した範囲)が両者を比較し、範囲ごとの状態を並べています。
 - **精度。** 配信はGB10上のMarlin W4A16で動きます。NVIDIAのモデルカードは別のrecipe・別の機体でcheckpointを評価しているため、その精度表はこのスタックを記述しません。どの数値がこの配信を記述するかは[検証範囲](docs/validation.ja.md#証拠であり本番認定ではない)にあります。
 - **ライセンス。** コードはApache-2.0、重みは運用者が取得するMITで同梱しません。資産ごとに条件が異なります（[ライセンスの早見表](#ライセンスの早見表)）。
-- **未検証。** 公開した任意設定の同時2系列を超える同時実行の配信、動画入力、アプリケーション全体の品質、本番の信頼性、最大性能（[範囲ごとの状態](#範囲ごとの状態)）。
+- **未検証。** 受け入れた範囲（対の2系列、リングの約200K 3本）を超える同時実行の配信、動画入力、アプリケーション全体の品質、本番の信頼性、最大性能（[範囲ごとの状態](#範囲ごとの状態)）。
 
 ## 導入するものと対応機体
 
@@ -27,7 +27,7 @@
 | 機体 | 1台あたりGB10・128 GB級統合メモリ、Linux ARM64、NVIDIA GPU対応Dockerを備える機体。TP=2なら2台でモデルを分割しQSFP/RoCEで接続する。TP=3なら3台をスイッチなしのQSFPリングで結ぶ（[セットアップ](SETUP.ja.md#3台のtp3)） |
 | 検証範囲 | MSI EdgeXpertでの結果を掲載。他のDGX Spark互換機も機種名だけで対応済みとはせず、ドライバー・GPU・メモリ・通信を[導入手順](SETUP.ja.md#1-必要情報を集め2台とも現状確認する)で検収する。Windowsは管理・CPU検査用で、推論はLinux実機上で行う |
 | 保管と容量 | 重みは各Linux機のHugging Face cacheに置く。各台に約205 GBのディスク容量と、別途イメージ・作業領域が必要。テンソル並列でも各台には完全なcheckpointを置き、ロード時に分割する。[保管場所と確認方法](docs/operations.ja.md#資材の保管場所とパス) |
-| 起動設定 | [一つの起動設定TOML](docs/server-configuration.ja.md)に、コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定をまとめ、ランチャーと専用クライアントから使う。配布用テンプレートは固定の重みで直列最適化構成を有効にする。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定) |
+| 起動設定 | [一つの起動設定TOML](docs/server-configuration.ja.md)に、コンテキスト長・キャッシュ・MTP・LPA・生成既定値・ノード設定をまとめ、ランチャーと専用クライアントから使う。配布用テンプレートは固定の重みで直列最適化構成を有効にし、公開した任意設定のテンプレートは再パックした重みを同時2系列で、3ノードのテンプレートは既定をリングで配信する。[既定値と必要な資材](docs/server-configuration.ja.md#配布用の既定設定) |
 
 ソースcheckoutにはコード・固定参照・ビルド手順を含みます。本体checkpointと完成Dockerイメージは利用者の環境で取得・構築します。MTPはcheckpoint内の重みを別メタデータviewで利用し、LPAの学習済み補助器は独立した[GitHub Release添付物](docs/lpa.ja.md#学習済みprojectorの取得)として提供します。[資材の区別・配布ファイル構成・配置](docs/operations.ja.md#資材の保管場所とパス)を確認してください。
 
@@ -54,7 +54,7 @@ NVFP4は取得する重みの形式です。検証済みの参照構成はMarlin
 
 - ツール用にPython 3.11以上。CPU検査はWindows・Linuxで実行可能。
 - GPU検証にはLinux ARM64、NVIDIA GPU対応Docker、GB10。
-- 本リリースが配信するTP=2には、2台の実機と検証済みのQSFP/RoCE接続。
+- 検証済みのQSFP/RoCE接続を持つ2台（TP=2）、またはスイッチなしのQSFPリングでつないだ3台（TP=3。[3台のTP=3](SETUP.ja.md#3台のtp3)）。
 - ホストカーネル：実測は `6.17.0-1032-nvidia`。現在の DGX OS の更新で入る `7.0.0-1019-nvidia` は、既定設定のままだと2台間のRoCEが失敗することがあるため、旧カーネルを使い続けるか `kho=off` で起動する。[ホストカーネルと複数ノードRoCE](docs/operations.ja.md#ホストカーネルと複数ノードroce)を参照。
 - 各配置先に約205 GBの重み、加えてイメージ・cache・任意のfixtureを保存できる容量。全checkpointは128 GBの1台には収まりません。
 
@@ -83,7 +83,7 @@ python -m glm53_setup build-reference
 
 既存のHugging Face cacheを再利用します。取得処理はprocess lockで重複を防ぎ、状態をatomicに更新します。休止中の取得を検証待ちが勝手に再開することはありません。これらは実際に処理を開始するコマンドなので、同じcacheを転送中に別の取得処理を開始しないでください。
 
-モデルrevision・base image digest・ローカル参照タグは [config/runtime.lock.json](config/runtime.lock.json) が正典です。イメージのbuildは推論開始でも、TP=2合格でもありません。[sparse候補の順序正規化](docs/candidate-order.ja.md)をはじめruntimeへのpatchはimageの中にあり、source更新後は再ビルドが必要です。導入先で再ビルドしたruntimeも検収が必要です。
+モデルrevision・base image digest・ローカル参照タグは [config/runtime.lock.json](config/runtime.lock.json) が正典です。イメージのbuildは推論開始でも、構成の合格でもありません。[sparse候補の順序正規化](docs/candidate-order.ja.md)をはじめruntimeへのpatchはimageの中にあり、source更新後は再ビルドが必要です。導入先で再ビルドしたruntimeも検収が必要です。
 
 ### 推論の前に検証する
 
@@ -97,7 +97,7 @@ python -m glm53_setup build-reference
 
 ### 主要な測定値（1.25.0）
 
-TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)です。**両列とも2026-09-28に1.19.0で、同じ枠で測りました**：配信中の任意設定→配布既定→任意設定の同時1系列（反復性のため）→配信中の任意設定の順に切り替え、同じdriverを使い、両profileとも両rankを高性能コアに置きました（[1.19.0での測定](docs/benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。tool引数ゲートの行だけは2026-09-29に1.22.0で測りました。1.20.0〜1.22.0は配信の経路を変えていません。1.24.0では、KDAのoverlayを改版した任意設定が1.19.0のdecode検査のhashと教師強制のlog確率をbit単位で再現しました（2026-10-01）。1.25.0のimageでは、両profileが1.24.0のdecode検査のcompletionをbit単位で再現しました（2026-10-02）。1.26.0のテンプレートが設定する共有メモリの読み手のspinで、任意設定のcountingのdecodeはその検査で1.4%遅くなります（[1.25.0での測定](docs/benchmarks.ja.md#1250での測定)）。**3台ともGPUクロックを2,200 MHzに制限した状態で測り**、各段の前に温度が下がるのを待ちました。GB10は持続負荷の下で電源ごと落ちることがあるためで、上限の代価はprefillで約2%、長い入力で1〜5%です（[GPUクロックの上限](docs/operations.ja.md#gpuクロックの上限)）。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
+TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。GB10×2、TP=2、prefillはFA2、expert内のtoken順を固定、indexerのtop-kの同点を決定、MTP k=3。二つのprofile：**配布既定**（固定のNVIDIA重み。テンプレートが配信するもの）と、**公開した任意設定**（attention projectionと `lm_head` をW4A16 NVFP4に再パックし、KDAのinput projectionを分割して宣言した `runtime.derived_checkpoint` で配信。重みは[Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)）。任意設定の列は参照対が配信するprofile＝[同時2系列のAXL profile](examples/server.axl.example.toml)です。**両列とも2026-09-28に1.19.0で、同じ枠で測りました**：配信中の任意設定→配布既定→任意設定の同時1系列（反復性のため）→配信中の任意設定の順に切り替え、同じdriverを使い、両profileとも両rankを高性能コアに置きました（[1.19.0での測定](docs/benchmarks.ja.md#両profileを同じ枠でgpuクロックの上限つきで2026-09-28)）。tool引数ゲートの行だけは2026-09-29に1.22.0で測りました。1.20.0〜1.22.0は配信の経路を変えていません。後の版のimageは両profileのdecode検査のcompletionをbit単位で再現しました（[1.24.0での測定](docs/benchmarks.ja.md#1240での測定)と[1.25.0での測定](docs/benchmarks.ja.md#1250での測定)）。どのテンプレートも設定する共有メモリの読み手のspinで、任意設定のcountingのdecodeは1.4%遅くなります。**対と隣の機体はGPUクロックを2,200 MHzに制限した状態で測り**、各段の前に温度が下がるのを待ちました。GB10は持続負荷の下で電源ごと落ちることがあるためで、上限の代価はprefillで約2%、長い入力で1〜5%です（[GPUクロックの上限](docs/operations.ja.md#gpuクロックの上限)）。3回または9回の中央値で、幅・条件・旧版はすべて[ベンチマーク](docs/benchmarks.ja.md)にあります。文種は常に 数え上げ／散文／コード の順に並べます。
 
 | 分類 | 測定 | 配布既定（固定の重みでのNVFP4 BIZ） | 公開した任意設定（NVFP4 BIZ AXL、配信中の同時2系列profile） |
 |---|---|---|---|
@@ -118,7 +118,7 @@ TP=2の行は1.19.0〜1.22.0での測定で、TP=3は表の後にあります。
 
 | | 配布既定 | 公開した任意設定 |
 |---|---|---|
-| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decodeは上の表の数え上げ・散文・コードで既定の約1.4倍。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれ、256Kでheadの空きが約4 GiB多く残る |
+| **長所** | 固定のNVIDIA重みに対してlossless。テンプレートに入っており、追加の取得が要らない | decodeは上の表の数え上げ・散文・コードで既定の約1.4倍。prefillも同じ枠の既定より2%速い（projectionの分割で以前の代価が消えた）。`max_num_seqs = 1` で配信すれば同一要求のbit一致の反復は保たれる。同じKV 3 GiB・同時1系列では、256Kでheadの空きが約4 GiB多く残った（[1.7.0](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)） |
 | **短所** | どの文種でも二つのうち遅い方 | losslessではない：NLLが4文のうち3文で1〜6%上がる。テンプレートの外で、二つ目のcheckpointを取得・配置する必要がある。約250K tokenを超える要求には、1.7.0以降でbuildしたimageが持つslot-mapping guardが要る。長いcontextの照会で、問われた記録の直前の記録を2回読んだ（配布既定は正答。[prefix cacheの関門](docs/validation.ja.md#prefix-cacheの正しさの関門)） |
 | **向く用途** | コード・ツール利用と、固定の重みと一致させたい用途全般 | 日本語散文をはじめ、NLLの代価を許せる生成主体の直列用途 |
 
@@ -136,19 +136,22 @@ MTPのdecodeの速さは、文がどれだけ予測しやすいかで決まり�
 | fixture | 候補tokenを削らないNoPE参照attention | GPU検証済み |
 | fixture | Marlin W4A16による4層・GPU 1台のfixture | 生成・状態比較を通過。8,705-token入力も確認。[検証範囲](docs/validation.ja.md) |
 | fixture | 固定SM120 sparse MLAでのbatch-invariant mode | 非対応 |
-| 全モデル | 固定ベースによる2台のNCCL collective | RoCE経路で試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
+| 全モデル | 固定ベースによる2 rank・3 rankのNCCL collective | 対と3台のリングで、RoCE経路の試験パターン合格。[実測条件と制約](docs/nccl-validation.ja.md) |
 | 全モデル | 45層TP=2の参照profile | ロード・基礎APIのテキスト／ツールを確認。[ベンチマーク](docs/benchmarks.ja.md) |
-| 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ（両テンプレートでonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)による）。切替後の起動は今も毎回確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上が処理中の間は反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
+| 全モデル | スイッチなしのQSFPリングでつないだ3台のTP=3 | 2026-10-01から[SETUP手順6](SETUP.ja.md#6-フルモデルの検証)の範囲で通常運用として受け入れ済み。[1.24.0での測定](docs/benchmarks.ja.md#1240での測定) |
+| 全モデル | temperature 0での同一要求 | `max_num_seqs = 1` の配信では、同じ起動の中でbit一致で反復し、1.12.0からは起動を跨いでも同じ（どのテンプレートでもonの[再現性のスイッチ](docs/server-configuration.ja.md#再現性のスイッチ)による）。切替後の起動は今も毎回確かめる（重みのdigest、decode検査、kernel hash）。同時2系列以上が処理中の間は反復を主張しない（[同時実行の範囲](docs/validation.ja.md#同時実行の範囲)）。[それぞれの原因を見つけた経緯](docs/validation.ja.md#再現性) |
 | 全モデル | 256Kでの画像入力（Vision） | 合成画像1枚に正答、テキスト・ツールの回帰は合格、動画は拒否。1.19.0では両profileで回帰7項が合格し、1枚7,776 tokenまでの大きな画像と8枚までの画像にも順番どおり正答。ハーネス画面への直接添付は未確認。[実測と限界](docs/vision.ja.md) |
-| 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。sampledの回答12件（両profile、1.25.0）も同じ。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#フルモデルtp2の実験範囲) |
-| 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。この範囲では反復を主張しない（他の要求とstepを共有した要求は違うcompletionになりうる）。反復が要るなら `max_num_seqs = 1` で配信する。それを超える同時数はrankを増やす：スイッチなしのQSFPリングで組む3台のTP=3は、各rank 30 GiBのKVで262,144 tokenの要求12本を持ち、2026-10-01に約200Kの要求3本の同時まで、1本ずつなら1,038,423 tokenまでで受け入れた。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
+| 全モデル | 日本語・韓国語の長い出力 | 852〜1,024文字の回答6件で化け文字なし。sampledの回答12件（両profile、1.25.0）とTP=3の両profileも同じ。reasoningの文字列は未検査。[検査と限界](docs/validation.ja.md#マルチバイト出力) |
+| 同時実行 | 同時2系列以上 | 配布既定では**非対応**（`max_num_seqs = 1`。要求は順番待ち）。公開した任意設定の例はrankあたり6 GiBから同時2系列を配信し、1要求あたり約200K tokenまでの同時2系列で**2026-09-23から通常運用として受け入れ済み**。この範囲では反復を主張しない（他の要求とstepを共有した要求は違うcompletionになりうる）。反復が要るなら `max_num_seqs = 1` で配信する。それを超える同時数はrankを増やす：TP=3は上の行。[同時実行の範囲](docs/validation.ja.md#同時実行の範囲) |
+| 評価 | FreedomBench：英語原版、日本語訳（FB-04）、言い回しと証拠配置（FB-05） | 英語原版と日本語訳は両profileで実施。FB-05は公開した任意設定で実施。そのLPAの部分は未実施。[結果と限界](docs/freedombench.ja.md) |
+| 評価 | HLE、テキストと画像の100問の部分集合を両profileで、予算を限って | 2026-09-28〜10-03に実施。公開されたHLEの値とは比べられない。[結果と限界](docs/hle.ja.md) |
 | ハーネス | ZCode／Claude Codeの連携 | 基礎API群は合格。共通群H-01〜H-11は、受け入れた経路であるnpm版ZCode CLI 3.14.1・262,144 tokenで全件PASS（2026-09-28）。公式ZCode Desktopは**BLOCKED**、Claude Codeは**判断で見送り**。理由とケース別の状態は[受け入れ試験一覧](docs/harnesses.ja.md#受け入れ試験一覧と実施状態) |
 | テンプレートで有効 | prefillのFA2（`runtime.fa2_attention`） | 採用。prefillは1.5.0の2.2倍、1系列のdecodeは参照経路のまま、LPAとは排他。[測定](docs/benchmarks.ja.md#160での測定) |
 | テンプレートで有効 | BF16 draftのMTP k=3 | 10入力で、再量子化したcheckpointでは深さ1〜5を、固定のcheckpointでは1・3・4を測定。k=3を両方に採用。[投機デコード](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21) |
 | テンプレートで有効 | Prefix caching（APC） | 実測した直列の長文prefix再利用の実験用途で受入。[実測](docs/benchmarks.ja.md#全モデルのprefix-caching独立評価p19)。cold／warmの正しさの関門は配布既定で合格、任意設定でもcacheの不具合は見つからなかった。[関門](docs/validation.ja.md#prefix-cacheの正しさの関門) |
 | テンプレートで有効 | checkpoint保持 | 履歴試験とA/B/Aを経て、通常priming済みの途中編集用途で採用（実測は標準の間隔4,352。block幅に依存しない`dense`は実測した配置で同等、最終併用の検収は別）。[契約](docs/launch-safety.ja.md) |
 | テンプレートで有効 | unpack融合・非同期index検査 | それぞれ独立に実測して有効化。[全体像](docs/optimization-overview.ja.md) |
-| テンプレートで有効 | 共有メモリの読み手のspin 0.002秒（`runtime.shm_spin_seconds`、P29） | 1.26.0でheadの温度のために採用。TP=2の対でheadのCPUとSoCの温度が下がり、countingのdecodeは1.4%遅い。TP=3は延長での適用で未測定。[測定](docs/benchmarks.ja.md#1250での測定) |
+| テンプレートで有効 | 共有メモリの読み手のspin 0.002秒（`runtime.shm_spin_seconds`、P29） | 1.26.0でheadの温度のために採用。代価はdecodeのわずかな低下で、TP=2の対で測定。TP=3は延長での適用で未測定。[測定](docs/benchmarks.ja.md#1250での測定) |
 | 任意・既定off | 再量子化したattention projectionと `lm_head`（`runtime.derived_checkpoint`、P23） | 上の公開した任意設定。shared expertsを足す変種は測って不採用。[実測](docs/benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3)／[施策台帳](docs/optimization-catalog.ja.md) |
 | 任意・既定off | APC優先LPA（P22） | 校正・MTP／融合／非同期検査との併用・held-out文書での確認まで完了。バッチ用opt-in。[契約](docs/apc-lpa-design.ja.md) |
 | 測って不採用 | Expert Parallel、PP2、decodeのCUDA Graphs、採択履歴による深さ、draftの確信度の関門、draft側の設定二つ | それぞれ全モデルで測り、数値は所有文書にある。[全体像](docs/optimization-overview.ja.md)、[投機デコード](docs/speculative-decoding.ja.md#固定の深さの先2026-09-21) |
@@ -162,7 +165,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 本プロジェクトは、**`nvidia/GLM-5.3-Flash-NVFP4`をDGX Spark相当の機体で、業務で評価・改造・運用しやすくすること**を目的としています。次の三点を一体として整備します。
 
 - **ライセンスと出所の選択：** 商用利用できるMIT/Apache系の構成要素を優先し、採用元・版・通知を固定します。コード・重み・コンテナ・ハーネスそれぞれの条件は[ライセンス整理](docs/licensing.ja.md)に示します。
-- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。1.19.0では両profileで2026-09-28に完了しています（固定の英語原版60問がどちらも初回で60問正解・拒否ゼロ、長文付きpilotが6問中6問）。その後、確認済みの日本語訳と、対立的な言い回し・証拠配置の追加試験を配信profileで実施しました。結果と限界は同じ文書にあります。
+- **政治的な偏りと資料への忠実さの検証：** [FreedomBenchと業務文脈の追加試験](docs/freedombench.ja.md)で、政治的な問いへの回答・拒否・資料にない主張の挿入を調べます。対象範囲と失敗も示し、スコアだけで普遍的な思想的中立性を証明したとは扱いません。結果と、実施していないことは同じ文書にあります。
 - **実測に基づく性能調整：** MTP・LPA・prefix caching・CUDA融合・batching・並列方式を、タスク品質・メモリ・復旧と併せて検証します。[推論最適化の全体像](docs/optimization-overview.ja.md)に各施策が効く段階と用途別の構成を、[性能・品質施策台帳](docs/optimization-catalog.ja.md)に候補・証拠・保留理由をまとめ、次のGLMでも振り返れる比較基準を残します。
 
 速度改善には、外部draftモデルを追加せず、**checkpoint同梱の標準MTPを使い、先読みトークン数は3（k=3）を選定**し、両方のcheckpointに共通の深さとしました。理由は[両方のcheckpointで深さ3](docs/speculative-decoding.ja.md#両方のcheckpointで深さ32026-09-21)にあります。
@@ -171,24 +174,24 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 
 ## 本リポジトリ外の関連研究
 
-**Euryale**は、凍結したモデルの中間表現から複数のdraft tokenを提案する独立した非公開の研究プロジェクトで、GLM-5.3-Flash／GB10 2台を最初の対象としています。本配布物には含まれず、この研究から生まれた[候補順序の正規化](docs/candidate-order.ja.md)を除いて本リポジトリのcheckpoint・runtime・既定値を変更しません。最初の設計である軽い補助器は、全モデルから採取した教師データで3方式を学習し、checkpoint同梱の標準MTPと同じ条件で比べました。どの候補も測ったすべての条件でMTP k=3より遅く、採用していません。現在は、targetの特徴をkey・valueとして読む自前の層を持つDFlash型のdraftへ移っており、保存した特徴からのpilot学習までの段階です。既定の投機経路をMTP k=3からEuryaleのdraftへ切り替えるのは、同条件比較で品質・性能・メモリ・復旧のゲートを通し、[施策台帳の区別](docs/optimization-catalog.ja.md#機能受入と既定設定)（機能受入・性能採用・既定値・併用検収）で判定した場合に限ります。それまではMTP k=3が実測済みの候補です。
+**Euryale**は、凍結したモデルの中間表現から複数のdraft tokenを提案する独立した非公開の研究プロジェクトで、GLM-5.3-Flash／GB10 2台を最初の対象としています。本配布物には含まれず、この研究から生まれた[候補順序の正規化](docs/candidate-order.ja.md)を除いて本リポジトリのcheckpoint・runtime・既定値を変更しません。最初の設計である軽い補助器は、全モデルから採取した教師データで3方式を学習し、checkpoint同梱の標準MTPと同じ条件で比べました。どの候補も測ったすべての条件でMTP k=3より遅く、採用していません。現在は、targetの特徴をkey・valueとして読む自前の層を持つDFlash型のdraftへ移っており、保存した特徴からのpilot学習までの段階です。Euryaleのdraftが[施策台帳の受け入れの関門](docs/optimization-catalog.ja.md#機能受入と既定設定)の下で同条件比較を通すまで、既定の投機経路はMTP k=3です。
 
 ### DGX Spark向けの他のGLM-5.3-Flashレシピ
 
-同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18時点（0xSeroは2026-09-20、FlyCockpitは2026-09-29、knapcio・kindlingai・jetnet・coolbho3k・tonyd2wild・tenhkspark・sfxnzは2026-10-01）で確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
+同じモデルを同じ級の機体で動かす公開レシピが複数あり、エンジン・量子化・割り切りがそれぞれ違います。選ぶ前に比べる価値があります。各レシピのリンク、2026-09-18〜10-01に確認したライセンス、本リポジトリが取り込んだものは、この表が正典です。他の文書は名前とPR番号だけで引用します。コードを取り込んだものの表示は[第三者表示](THIRD_PARTY_NOTICES.md)にあります。
 
 | レシピ | ライセンス | 本リポジトリが取り込んだもの |
 |---|---|---|
 | [amasu/glm53-flash-cluster](https://github.com/amasu/glm53-flash-cluster)（kingjones30のレシピを保持） | Apache-2.0／MIT | **コードを改変して採用：** NoPEゼロ埋めpatchの構造とレシピ |
-| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[GLM-5.3-Flash-NVFP4-h checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-h)（2026-10-01まではWabiという名前。重みのファイルは同じ） | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
-| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder とその出力の関門（#268）、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、RoCE GID のずれ（#277）、現場の手順記録。1 rank 22ヘッドではKDAの `f_b`/`g_b` を量子化するとMarlinを通らないという注記（公開した任意設定がTP=3でこれに当たり、1.24.0で入力を写して直した） |
+| [tenhkspark/glm53-flash-nvfp4-2node](https://github.com/tenhkspark/glm53-flash-nvfp4-2node)と[GLM-5.3-Flash-NVFP4-h checkpoint](https://huggingface.co/tenhkspark/GLM-5.3-Flash-NVFP4-h)（旧名Wabi） | Apache-2.0（コード）、MIT（重み） | コードも重みも採用しない。BF16のattention射影をW4A16 NVFP4へ再量子化する方式をP23として評価し、上の公開した任意設定（attentionと `lm_head`）へ育てた。測定は[施策台帳](docs/optimization-catalog.ja.md) |
+| [MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks) | AGPL-3.0 | コードは採用しない。機構と測定：warmup ladder とその出力の関門（#268）、停滞検知、KV容量の読み取り、NCCLチャネル設定、起動安全の要件、RoCE GID のずれ（#277）、現場の手順記録。1 rank 22ヘッドではKDAの `f_b`/`g_b` を量子化するとMarlinを通らないという注記（公開した任意設定がTP=3でこれに当たり、本stackは入力を先に写す） |
 | [sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark](https://github.com/sfxnz/GLM-5.3-Flash-NVFP4-vLLM-2x-DGX-Spark) | MIT | コードは採用しない。SM90 attention経路と、PR #12（mergeされずにclose）で提案された他container検出の起動ガードを参照点として |
 | [drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated](https://github.com/drowzeys/keys-vLLm.0.27.1-GLM-5.3-Flash-NVFP4-NVFP4KV-1M-Context-Abliterated) | Apache-2.0 | コードは採用しない。zero-RoPE shimと `index_topk` 削減をattention検証の比較対象として |
 | [tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。測定と現場報告：GB10のメモリ挙動、checksum中の電源断、平均採択長、同時実行の結果。2026-09-20のattention／MLP射影の量子化の記録は、P23と同じテンソル集合に独立に到達している（TP=4、品質は未測定、[施策台帳](docs/optimization-catalog.ja.md)）。2026-09-29からの既定はknapcioのstackをTP=2へ移したもの。issue #26 には、NVIDIAのcheckpointを三角形に配線した3台で動かした第三者のTP=3の測定があり、[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照点とする |
 | [FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks](https://github.com/FlyCockpit/GLM-5.3-Flash-3x-DGX-Sparks) | MIT | コードは採用しない。vLLM・NVFP4の重みでのTP=3の幾何（attentionとKDAのhead、expertの幅、語彙を0で埋め、tensor parallelのまま）を、1.24.0で本stackが自前で書いた読み込み時の詰めの参照点として（[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)）。測定は別のcheckpointとimageによる |
 | [0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark](https://github.com/0xSero/GLM-5.3-Flash-EXL3-1x-DGX-Spark)と[EXL3 Spark mosaic](https://huggingface.co/0xSero/GLM-5.3-Flash-EXL3-Spark) | MIT（リポジトリのコード）、MIT（別配布の重みのmodel card表記） | コード・重みは未採用。mosaicの品質パネル、cold／warm計測、overlayが実際に読み込まれたことの確認を参照。単機mcgのMTPレシピとmul1のmosaicは配布物・runtimeが異なり、速度・品質・MTP結果を合算しない |
-| [knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4](https://github.com/knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4) | リポジトリ自身の素材はMIT。NOTICEが挙げるTony由来の素材は除く | **コードを翻案：** prefix cacheの正しさをcoldとwarmで比べる走査（`bench/prefix_scan.py`）の記録の書式、参照と引用の課題とその解析を [`server prefix-gate`](docs/server-configuration.ja.md#コマンド) に（[施策台帳P19](docs/optimization-catalog.ja.md#性能施策一覧)の関門、未実施）。KDAのcheckpointがschedulerのchunkの終わりとずれる解析（issue #2）。本stackは該当しない：配信のログはattentionのblockを4,608 tokenにしており、固定vLLMのalignモードはKDAの状態にも同じblockを与える（`block_size` = `mamba_block_size`） |
-| [kindlingai/glm-5.3-flash-gx10](https://github.com/kindlingai/glm-5.3-flash-gx10) | なし（ライセンスファイルなし。一部のファイルにApache-2.0のヘッダ） | コードは採用しない。機構と測定：RecoverSSM（要求ごとにKDAの再帰状態を1本）の動機と測定、shm_broadcastのspin待ちの観察、3台で1M tokenを通した測定（issue #52）、TP=3で長いprefillの閾値をKDAのblockの倍数にすること |
+| [knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4](https://github.com/knapcio/GLM-5.3-Flash-4x-DGX-Spark-TP4) | リポジトリ自身の素材はMIT。NOTICEが挙げるTony由来の素材は除く | **コードを翻案：** prefix cacheの正しさをcoldとwarmで比べる走査（`bench/prefix_scan.py`）の記録の書式、参照と引用の課題とその解析を [`server prefix-gate`](docs/server-configuration.ja.md#コマンド) に（[関門の結果](docs/validation.ja.md#prefix-cacheの正しさの関門)、施策台帳P19）。KDAのcheckpointがschedulerのchunkの終わりとずれる解析（issue #2）。本stackは該当しない：固定vLLMのalignモードはKDAの状態にattentionのblockを与える（`block_size` = `mamba_block_size`。Next Actionを参照） |
+| [kindlingai/glm-5.3-flash-gx10](https://github.com/kindlingai/glm-5.3-flash-gx10) | なし（ライセンスファイルなし。一部のファイルにApache-2.0のヘッダ） | コードは採用しない。機構と測定：RecoverSSM（要求ごとにKDAの再帰状態を1本、[施策台帳P30](docs/optimization-catalog.ja.md#性能施策一覧)）の動機と測定、shm_broadcastのspin待ちの観察、3台で1M tokenを通した測定（issue #52）、TP=3で長いprefillの閾値をKDAのblockの倍数にすること |
 | [jetnet/glm53-flash-nvfp4-tp3](https://github.com/jetnet/glm53-flash-nvfp4-tp3) | MIT | コードは採用しない。NVIDIAのcheckpointでのTP=3の設定と、token・rankあたりのKVのbyte数の実測を[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照として |
 | [coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/coolbho3k/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark) | なし | コードは採用しない。decode context parallel（DCP2：MLAのKVを系列方向に分ける。論理約4.6〜4.7M tokenと報告）を、KVを全rankに持つ形の代わりとして[施策台帳P28](docs/optimization-catalog.ja.md#性能施策一覧)の参照に |
 
@@ -198,7 +201,7 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - **kpool tail ringの修正は部分的です。** [vLLM #58454](https://github.com/vllm-project/vllm/pull/58454) の移植（`patch_kpool_ring`）は上流自身が部分的な修正としており、続く変更が予定されています（[運用手順](docs/operations.ja.md#フルモデルの起動検査)）。
 - **tail ringはMTPの深さで変わります。** blockはMTPなしで4 slot、深さ1〜4で8、深さ5で16です。そのため、KV容量の分解と起動から記録する値は深さによって変わります（[KV容量](docs/server-configuration.ja.md#kv容量とramの条件)）。
 - **文脈が2,048 tokenを超えるdecodeの再現性の基準値は、1.19.0で取り直しました。** indexerの `index_topk`（2,048）を超えると、ringの修正はMTPありのdecode中に作られるpoolの圧縮keyを変え得るため、以前のimageで記録した基準hashは基準になりません。promptで超える要求は、両profileのdecode検査のhashが基準です（[1.19.0での測定](docs/benchmarks.ja.md#1190での測定)）。出力で2,048を超える要求の基準値は取っていません。
-- **`runtime.stable_indexer_topk = false` にすると、[vLLM #58785](https://github.com/vllm-project/vllm/pull/58785) が直す不具合の影響を受けます。** このpull requestは上流でまだopenで、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（両テンプレートとも有効）。
+- **`runtime.stable_indexer_topk = false` にすると、[vLLM #58785](https://github.com/vllm-project/vllm/pull/58785) が直す不具合の影響を受けます。** このpull requestは上流でまだopenで、persistent top-kがoverflow時に候補を失い得ます。このkeyは有効のままにしてください（どのテンプレートでも有効）。
 
 ## Next Action
 
@@ -207,15 +210,15 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - #58454に続く [vLLM #56868](https://github.com/vllm-project/vllm/issues/56868)／[#56605](https://github.com/vllm-project/vllm/issues/56605) の修正がmergeされる → source固定patchとして移植する。
 - [vLLM #57161](https://github.com/vllm-project/vllm/pull/57161)（kpool compressの作り直し）がmergeされる → `patch_kpool_seed` と `patch_kpool_ring` を読み直す。
 - #58785と同等の修正が固定しているvLLMに入る → そのときに初めて `runtime.stable_indexer_topk = false` を認める。[vLLM #55122](https://github.com/vllm-project/vllm/pull/55122) がmergeされたら、手元の安定sortをそのkernelに置き換えることを検討する。
-- [vLLM #58979](https://github.com/vllm-project/vllm/pull/58979)（indexerのkeyの正規化をrankごとのcompile済みkernelから外す、[#58636](https://github.com/vllm-project/vllm/issues/58636)向け）か同等の修正が固定しているvLLMに入る → 両profileで `runtime.inductor_deterministic` を無効にして起動状態を確かめ、rank間が一致しcompletionが反復したときだけテンプレートからこのkeyを外す。このdraftは2026-09-28にその確認を通過しています（[再現性](docs/validation.ja.md#再現性)）。
+- [vLLM #58979](https://github.com/vllm-project/vllm/pull/58979)（indexerのkeyの正規化をrankごとのcompile済みkernelから外す、[#58636](https://github.com/vllm-project/vllm/issues/58636)向け）か同等の修正が固定しているvLLMに入る → 両profileで `runtime.inductor_deterministic` を無効にして起動状態を確かめ、rank間が一致しcompletionが反復したときだけテンプレートからこのkeyを外す（draftでの確認は[再現性](docs/validation.ja.md#再現性)が記録）。
 - #58454とその後続を含むvLLMのreleaseが出る → 固定をそこへ移すことを単独のminor releaseとして行い、kpoolのpatchを外す。この移行で [#55736](https://github.com/vllm-project/vllm/pull/55736)（decodeの改善）、[#55353](https://github.com/vllm-project/vllm/pull/55353)（retentionのCLI flag化）、[#53007](https://github.com/vllm-project/vllm/pull/53007)（KV LCMの変更）も入るので、それぞれ測り直す。KDAのprefillのkernelも変わります。固定のvLLMは常にTritonのkernelを使いますが、新しいvLLMはGB10を含むSM 9.x・10.x・12.xでFlashKDAを選び、このcheckpointのKDA層（head次元128、下限つきのgate）はその条件を満たします。releaseが [#58846](https://github.com/vllm-project/vllm/pull/58846)（FlashKDAが再帰状態をfp32で保つ修正。v0.30.0には入っていない）を含むことを確かめるか、`additional_config.kda_prefill_backend = "triton"` でTritonのkernelを保ち、どちらの場合もdecodeのhashを取り直す。
 - [vLLM #57128](https://github.com/vllm-project/vllm/pull/57128)（Mambaのprefix cacheの一致が投機の余白を無視する、[#53912](https://github.com/vllm-project/vllm/issues/53912)）がmergeされる → source固定patchとして移植する。配信profileは報告の条件（prefix caching、MTP k=3、Mamba cache mode `align`）に当たります。別の構成での現場報告に、ある要求の内容が別の要求の応答に現れたというものがありますが、ここでは観測していません。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
 - [vLLM #50843](https://github.com/vllm-project/vllm/pull/50843) がmergeされ固定に入る → samplerの語彙の範囲のガード（`patch_sampler_nonfinite`）を外す。
-- [vLLM #59565](https://github.com/vllm-project/vllm/pull/59565)（画像のencoder cacheをtoken数の上限ちょうどに合わせる修正、[#59539](https://github.com/vllm-project/vllm/issues/59539) 向け）がmergeされる → source-pinned patchとして取り込み、[画像入力](docs/vision.ja.md)の画像の大きさの上限の記述を見直す（今の記述は7,921 tokenのcacheの内側で測ったもの）。2026-10-02に参照対で検証済み：cacheは8,000 tokenになり、断られていた7,931〜8,000 tokenの画像に答え、decode検査のcompletionは変わらなかった。
-- [vLLM #48032](https://github.com/vllm-project/vllm/pull/48032)（Marlin MoEのrouteの整列を決定的にする、[#52525](https://github.com/vllm-project/vllm/issues/52525) 向け）がmergeされ固定に入る → 手元のexpert内のtoken順（`runtime.canonical_moe_order`、`patch_moe_order`）をこれに置き換えるかを検討する。2026-10-02の8層fixtureでは、手元の並べ替えと同じく反復で変わらず、順はslot単位で一致し、手元の並べ替えが約1%かかるdecodeの時間を測れるほどには増やさなかった。
+- [vLLM #59565](https://github.com/vllm-project/vllm/pull/59565)（画像のencoder cacheをtoken数の上限ちょうどに合わせる修正、[#59539](https://github.com/vllm-project/vllm/issues/59539) 向け）がmergeされる → source-pinned patchとして取り込み、[画像入力](docs/vision.ja.md#限界と未解決の事項)の画像の大きさの上限の記述を見直す（参照対での確認はそこに記録）。
+- [vLLM #48032](https://github.com/vllm-project/vllm/pull/48032)（Marlin MoEのrouteの整列を決定的にする、[#52525](https://github.com/vllm-project/vllm/issues/52525) 向け）がmergeされ固定に入る → 手元のexpert内のtoken順（`runtime.canonical_moe_order`、`patch_moe_order`）をこれに置き換えるかを検討する（fixtureでの比較は[再現性](docs/validation.ja.md#再現性)が記録）。
 - sampledの `server mojibake`（`--temperature`・`--top-p`）で化け文字が見つかる → UTF-8のガードを別の計画で作る。
-- warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。1.19.0で利用者の最初の要求がコンパイルした `_topp_sb_*` の3つは、temperature 0 で送るladderの段では通りませんでした。temperatureを送らない要求はcheckpointの1.0・top_p 0.95になり、これらをコンパイルするので、その設定の段を足しました。1.18.0で見た `_gumbel_sample_kernel` も同じで、2026-09-28 に配布既定を起動したとき、この段の中で `_topp_sb_*` の3つと一緒にコンパイルされ、その後の同じ設定の要求53件ではサンプリングのkernelは一つもコンパイルされませんでした。
+- warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。利用者の最初の要求がコンパイルしていたkernelのために、checkpointのサンプリング（temperature 1.0・top_p 0.95）の段を足したのと同じ形（[warmup ladder](docs/operations.ja.md#warmup-ladder)）。
 - KDAのblockより小さいblockのdraftのKV cache groupが加わる（独自の層を持つDFlash型のdraftなど） → prefix cacheとともに配信する前に、prefix cacheのhitがKDAのcheckpointと揃ったままかを確かめる（起動ログの `kv cache group sizes` と、workerの `Setting attention block size` の行。knapcioのissue #2）。固定vLLMはprefix cacheに載るgroupのうち最小のblockをschedulerのblockにするので、今はどちらも4,608 token（TP=3では3,072）で揃っています。`mamba_block_size` は `/metrics` から読まないでください：engineのプロセスはalignモードの大きさの変更を適用しないので、workerがKDAの状態を4,608 tokenごとに書いていても、要求した256を報告します。
 - TP=3で測ったrankあたり3.7M tokenより大きいKVのpool → 先に本stackが通すkernelの32 bitの行offsetを監査する（[施策台帳のP28](docs/optimization-catalog.ja.md#性能施策一覧)）。1,048,576 tokenの要求6本の同時は3台では届かない。
 

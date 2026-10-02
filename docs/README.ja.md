@@ -8,7 +8,7 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| README | 要約、導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ） | [EN](../README.md) | [JA](../README.ja.md) |
+| README | 要約、導入するもの、対応機体、始め方、配信する二つのprofileの主要な比較、範囲ごとの状態、業務利用の目的（BIZ）、他の公開レシピ、免責事項、Next Action | [EN](../README.md) | [JA](../README.ja.md) |
 | セットアップ手順書 | 機体確認から受け入れまでの順序付きゲート | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU検査、公開監査、貢献の規則 | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | 変更履歴と版ごとの検証状態 | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) |
@@ -19,11 +19,11 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| 運用手順 | 資材の保管場所、取得、機体準備、起動検査、監視とwarmup ladder、GPUクロックの上限、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
-| 起動設定 | カテゴリ別の起動TOML、公開した任意設定と配布既定の差、全任意キー、KV／RAM条件、imageのmarker、機能の制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
-| QSFPネットワーク | QSFP直結とNetworkManagerの永続profile | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
-| NCCL検証 | 2台のcollective診断とその限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
-| 起動契約 | APIクライアント認証、allocator伝達、全レール検査、両rank切替と復旧、APC履歴検証 | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
+| 運用手順 | 資材の保管場所、取得、機体準備、起動検査、3ノード、監視とwarmup ladder、GPUクロックの上限と共有メモリの読み手のspin、復旧 | [EN](operations.md) | [JA](operations.ja.md) |
+| 起動設定 | カテゴリ別の起動TOMLとテンプレート3つ、公開した任意設定と配布既定の差、3ノード、全任意キー、KV／RAM条件、imageのmarker、機能の制約 | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
+| QSFPネットワーク | 対と3台のリングのQSFP直結、NetworkManagerの永続profile、ホストごとの/32アドレス | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
+| NCCL検証 | 2 rank・3 rankのcollective診断、動くGID index、チャネル数、限界 | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
+| 起動契約 | APIクライアント認証、allocator伝達、全レール検査、rank数によらない切替と復旧、3ノードの起動順とruntime cache、decode検査、APC履歴検証 | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
 | 構成 | パッケージ配置（`glm53_setup/` と `tools/` の全モジュールに行がある）と検証境界 | [EN](architecture.md) | [JA](architecture.ja.md) |
 | overlayの台帳 | 公開した任意設定が要するvLLM source overlay 2件：対象、SHA-256、base hash、marker、配置 | [EN](../overlays/README.md) | — |
 
@@ -31,13 +31,13 @@
 
 | 文書 | 役割 | EN | JA |
 |---|---|---|---|
-| 検証範囲 | 証拠と本番認定の区別、GPU 1台のfixture、残る検収ゲート | [EN](validation.md) | [JA](validation.ja.md) |
+| 検証範囲 | 証拠と本番認定の区別、GPU 1台のfixture、評価と未解決の事項、フルモデルの範囲と再現性 | [EN](validation.md) | [JA](validation.ja.md) |
 | 部品検証 | CUDA／indexer部品、Graph fixture、PP／EP／APCのfixture、履歴fixture | [EN](component-validation.md) | [JA](component-validation.ja.md) |
-| ベンチマーク | TP=2ベンチの方法、施策ごとの全モデル独立評価、版ごとの測定 | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| ベンチマーク | ベンチの方法、施策ごとの全モデル独立評価、版ごとの測定（1.24.0からTP=3を含む） | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | 画像入力 | 256KでのVision：設定、選定の経緯、実測、限界 | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | 政治的文脈の評価：配信profileでの完了、以前の実行、日本語訳と言い回しの追加試験、未実施のもの | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | HLE | HLEの100問の部分集合二つを両profileで：結果、実行方法、公開の値と比べられない理由 | [EN](hle.md) | [JA](hle.ja.md) |
-| ハーネス | 受け入れたハーネス経路（npmのZCode CLI）、接続設定、受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| ハーネス | 受け入れたハーネス経路（npmのZCode CLI）、接続設定、tool引数ゲート、受け入れ試験一覧 | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCodeガードhook | PreToolUseの既存ファイルガードの導入：hookである理由、導入、確認、限界 | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | ライセンス整理 | 対象別の商用利用・改造・再配布の可否 | [EN](licensing.md) | [JA](licensing.ja.md) |
 
@@ -47,7 +47,7 @@
 |---|---|---|---|
 | 推論最適化の全体像 | 各施策が効く段階、採用した構成、用途別の構成 | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
 | 施策台帳 | 施策ID（P系列・E系列）、採否、再評価条件、比較記録の共通項目 | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
-| 性能調査 | 計測手順：launch・同期、タスクbatch、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
+| 性能調査 | 計測手順：launch・同期、unpack融合の部品、EP、TP対PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | 投機的デコーディング | MTPのメタデータview、深さ1〜5の実測、テンプレートがk=3のままである理由 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | 後段Prefill近似：projector取得・モデルカード、起動profileでの有効化、仕組み、使用範囲、再現、証拠 | [EN](lpa.md) | [JA](lpa.ja.md) |
 | APC優先LPAの設計 | prefix cachingとLPAを併用する共有cacheの契約（P22） | [EN](apc-lpa-design.md) | [JA](apc-lpa-design.ja.md) |
@@ -59,15 +59,17 @@
 | 事実 | 正典 |
 |---|---|
 | モデルID、固定revision、base image digest、ローカル参照タグ、固定vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
-| 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)（配布既定）と [examples/server.axl.example.toml](../examples/server.axl.example.toml)（公開した任意設定：再パックした重み・同時2系列・KV 6 GiB）。説明は[起動設定](server-configuration.ja.md) |
+| 起動設定のスキーマと全キー | [examples/server.example.toml](../examples/server.example.toml)（配布既定）、[examples/server.axl.example.toml](../examples/server.axl.example.toml)（公開した任意設定：再パックした重み・同時2系列・KV 6 GiB）、[examples/server.tp3.example.toml](../examples/server.tp3.example.toml)（3ノード）。説明は[起動設定](server-configuration.ja.md) |
 | MTPの投機設定（ランチャーは `mtp.*` から組み立てる。ファイルは手で再現するときの形を示す） | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json)、[speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBenchの設問・正答の固定 | [config/freedombench.lock.json](../config/freedombench.lock.json)。確認済みの日本語訳は[config/freedombench-ja.lock.json](../config/freedombench-ja.lock.json) |
 | 施策ID、採否、再評価条件 | [施策台帳](optimization-catalog.ja.md) |
-| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md)、[HLE](hle.ja.md) |
+| 実測値とその条件 | [ベンチマーク](benchmarks.ja.md)、[画像入力](vision.ja.md)、[投機的デコーディング](speculative-decoding.ja.md)、[LPA](lpa.ja.md)、[部品検証](component-validation.ja.md)、[候補順序](candidate-order.ja.md)、[Indexer再利用](indexer-reuse.ja.md)、[NCCL検証](nccl-validation.ja.md)、[FreedomBench](freedombench.ja.md)、[HLE](hle.ja.md)、[検証範囲](validation.ja.md)（prefix cacheの関門、マルチバイト出力、再現性） |
 | APC／LPAの共有状態契約（N・H・T・R・B） | [APC優先LPAの設計](apc-lpa-design.ja.md) |
 | クライアント認証、allocator、レール、切替・復旧の契約 | [起動契約](launch-safety.ja.md) |
+| 3ノードの起動順、rank数の変更の拒否、ホストごとのruntime cache | [起動契約](launch-safety.ja.md#3ノード) |
+| 動くGID index：診断と直し方 | [NCCL検証](nccl-validation.ja.md#gid-indexが動く) |
 | 切替の後のdecode検査：その定型と道具2件 | [起動契約](launch-safety.ja.md#切替の後のdecode検査)。`tools/decode_check.py`、`tools/decode_divergence.py` |
-| 配信profileの通常運用の受け入れ：その範囲と各項目の証拠の所在 | [セットアップ手順書の手順6](../SETUP.ja.md#6-フルモデルの検証)。READMEの状態表と[検証範囲](validation.ja.md#フルモデルtp2の実験範囲)はそこを指す |
+| 配信profileの通常運用の受け入れ：その範囲と各項目の証拠の所在 | [セットアップ手順書の手順6](../SETUP.ja.md#6-フルモデルの検証)。READMEの状態表と[検証範囲](validation.ja.md#フルモデルの範囲)はそこを指す |
 | checkpoint・MTP view・projector・image・stateの保管場所 | [運用手順](operations.ja.md#資材の保管場所とパス) |
 | 配布LPA projectorのURL、hash、形式、教師・学習来歴 | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json)。配布ファイル構成は[運用手順](operations.ja.md#資材の保管場所とパス) |
 | `server preflight` が起動前に検査すること、保証しないこと | [運用手順](operations.ja.md#フルモデルの起動検査) |
@@ -76,7 +78,7 @@
 | 対象別のライセンス許諾と義務 | [ライセンス整理](licensing.ja.md)、[THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | ハーネス受け入れ試験と実施状態 | [ハーネス](harnesses.ja.md) |
 | ZCodeの権限モード、モデル上限と圧縮予算の規則、既存ファイルガードのhook | [ハーネス](harnesses.ja.md#zcodeの権限モードモデル上限既存ファイルガード)、スクリプトは [examples/zcode-hooks/](../examples/zcode-hooks/) |
-| 検証範囲と残る検収ゲート | [検証範囲](validation.ja.md) |
+| 検証範囲と未解決の事項 | [検証範囲](validation.ja.md#評価と未解決の事項) |
 | 生応答、trace、全反復、失敗、実機固有の値 | 非公開の `records/<run-id>/`。配布せず、公開文書には検証した要約を置く |
 | このモデルの他の公開レシピ：リンク・ライセンス・取り込んだもの | [README](../README.ja.md#dgx-spark向けの他のglm-53-flashレシピ)。他の文書は名前とPR番号だけで引用し、リンクとライセンスは書かない（`tools/check_publication.py` が検査） |
 | 本プロジェクトが主張しないこと、上流を契機とする予定作業（契機 → 対応） | READMEの[免責事項](../README.ja.md#免責事項)と[Next Action](../README.ja.md#next-action) |

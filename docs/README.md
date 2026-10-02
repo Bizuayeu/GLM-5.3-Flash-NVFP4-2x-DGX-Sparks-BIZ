@@ -8,7 +8,7 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| README | Summary, what is deployed, supported hardware, how to start, the headline comparison of the two served profiles, status by scope, business-use objectives (BIZ) | [EN](../README.md) | [JA](../README.ja.md) |
+| README | Summary, what is deployed, supported hardware, how to start, the headline comparison of the two served profiles, status by scope, business-use objectives (BIZ), other public recipes, disclaimer, Next Action | [EN](../README.md) | [JA](../README.ja.md) |
 | Setup runbook | Ordered deployment gates from host inspection to acceptance | [EN](../SETUP.md) | [JA](../SETUP.ja.md) |
 | Contributing | CPU checks, publication audit, contribution rules | [EN](../CONTRIBUTING.md) | [JA](../CONTRIBUTING.ja.md) |
 | Changelog | Change history and validation status by release | [EN](../CHANGELOG.md) | [JA](../CHANGELOG.ja.md) |
@@ -19,11 +19,11 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| Operations | Artifact storage paths, acquisition, host preparation, launch checks, supervision and the warmup ladder, GPU clock cap, recovery | [EN](operations.md) | [JA](operations.ja.md) |
-| Server configuration | The categorized server TOML, the published option against the defaults, every optional key, KV/RAM conditions, image markers, feature limits | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
-| QSFP network | Direct QSFP connection and persistent NetworkManager profiles | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
-| NCCL validation | Two-host collective diagnostic and its limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
-| Launch contracts | API client authentication, allocator propagation, all-rail checks, two-rank switch and recovery, APC history qualification | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
+| Operations | Artifact storage paths, acquisition, host preparation, launch checks, three nodes, supervision and the warmup ladder, GPU clock cap and the shared-memory reader spin, recovery | [EN](operations.md) | [JA](operations.ja.md) |
+| Server configuration | The categorized server TOML and its three templates, the published option against the defaults, three nodes, every optional key, KV/RAM conditions, image markers, feature limits | [EN](server-configuration.md) | [JA](server-configuration.ja.md) |
+| QSFP network | Direct QSFP connection for the pair and the three-host ring, persistent NetworkManager profiles, per-host /32 addresses | [EN](qsfp-network.md) | [JA](qsfp-network.ja.md) |
+| NCCL validation | Two- and three-rank collective diagnostic, a moving GID index, channel count, limits | [EN](nccl-validation.md) | [JA](nccl-validation.ja.md) |
+| Launch contracts | API client authentication, allocator propagation, all-rail checks, switch and recovery for any rank count, three-node launch order and runtime cache, the decode check, APC history qualification | [EN](launch-safety.md) | [JA](launch-safety.ja.md) |
 | Architecture | Package layout (every module of `glm53_setup/` and `tools/` has a row) and validation boundaries | [EN](architecture.md) | [JA](architecture.ja.md) |
 | Overlay manifest | The two vLLM source overlays the published option needs: targets, SHA-256, base hashes, markers, placement | [EN](../overlays/README.md) | — |
 
@@ -31,13 +31,13 @@ Every document has one role; other documents link to it instead of repeating its
 
 | Document | Role | EN | JA |
 |---|---|---|---|
-| Validation | Evidence versus production qualification, single-GPU fixture, remaining gates | [EN](validation.md) | [JA](validation.ja.md) |
+| Validation | Evidence versus production qualification, single-GPU fixture, evaluations and open items, full-model scope and repeatability | [EN](validation.md) | [JA](validation.ja.md) |
 | Component validation | CUDA/indexer components, Graph fixture, PP/EP/APC fixtures, history fixtures | [EN](component-validation.md) | [JA](component-validation.ja.md) |
-| Benchmarks | TP=2 benchmark method, the independent full-model runs of each initiative, and the measurements of each release | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
+| Benchmarks | Benchmark method, the independent full-model runs of each initiative, and the measurements of each release (TP=3 from 1.24.0) | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | Image input | Vision at 256K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
 | FreedomBench | Political-context evaluation: the closure on the serving profile, earlier runs, the Japanese translation and the framing extension, and what was not run | [EN](freedombench.md) | [JA](freedombench.ja.md) |
 | HLE | Two 100-question HLE subsets on both profiles: results, how they were run, and why they are not comparable with published values | [EN](hle.md) | [JA](hle.ja.md) |
-| Harnesses | The accepted harness route (npm ZCode CLI), connection settings and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
+| Harnesses | The accepted harness route (npm ZCode CLI), connection settings, the tool-argument gate and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCode guard hook | Setup of the PreToolUse existing-file guard: why a hook, install, verify, limits | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | Licensing guide | Commercial use, modification and redistribution by artifact | [EN](licensing.md) | [JA](licensing.ja.md) |
 
@@ -47,7 +47,7 @@ Every document has one role; other documents link to it instead of repeating its
 |---|---|---|---|
 | Optimization overview | Where each measure acts, adopted stack, profiles by workload | [EN](optimization-overview.md) | [JA](optimization-overview.ja.md) |
 | Optimization catalog | Initiative IDs (the P and E series), decisions, reevaluation criteria, comparison record fields | [EN](optimization-catalog.md) | [JA](optimization-catalog.ja.md) |
-| Performance investigation | Measurement procedures: launches and synchronization, task grouping, EP, TP versus PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
+| Performance investigation | Measurement procedures: launches and synchronization, fused-unpack component, EP, TP versus PP | [EN](performance-investigation.md) | [JA](performance-investigation.ja.md) |
 | Speculative decoding | MTP metadata view, depths one to five, why the template keeps k=3 | [EN](speculative-decoding.md) | [JA](speculative-decoding.ja.md) |
 | LPA | Late-prefill approximation: projector download/model card, enabling it in the server profile, mechanism, scope, reproduction, evidence | [EN](lpa.md) | [JA](lpa.ja.md) |
 | APC-first LPA design | Shared-cache contract for combining prefix caching with LPA (P22) | [EN](apc-lpa-design.md) | [JA](apc-lpa-design.ja.md) |
@@ -60,15 +60,17 @@ Every document has one role; other documents link to it instead of repeating its
 |---|---|
 | Model ID, pinned revision, base-image digest, local reference tag, pinned vLLM source commit | [config/runtime.lock.json](../config/runtime.lock.json) |
 | Distributed LPA projector URL, file hash, format, teacher and training provenance | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json); package layout in [operations](operations.md#artifact-storage-and-paths) |
-| Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml) (the distributed defaults) and [examples/server.axl.example.toml](../examples/server.axl.example.toml) (the published option: repacked weights, two sequences, 6 GiB KV), explained in [server configuration](server-configuration.md) |
+| Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml) (the distributed defaults) , [examples/server.axl.example.toml](../examples/server.axl.example.toml) (the published option: repacked weights, two sequences, 6 GiB KV) and [examples/server.tp3.example.toml](../examples/server.tp3.example.toml) (three nodes), explained in [server configuration](server-configuration.md) |
 | MTP speculative configuration (the launcher builds it from `mtp.*`; the files show it for a manual reproduction) | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
 | FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json); the reviewed Japanese translation in [config/freedombench-ja.lock.json](../config/freedombench-ja.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |
-| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md), [HLE](hle.md) |
+| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md), [HLE](hle.md), [validation](validation.md) (the prefix-cache gate, multibyte output, repeatability) |
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
+| Launch order, rank-count refusal and the per-host runtime cache at three nodes | [Launch contracts](launch-safety.md#three-nodes) |
+| A GID index that moves: diagnosis and remedies | [NCCL validation](nccl-validation.md#a-gid-index-that-moves) |
 | The decode check after a switch: its routine and the two tools | [Launch contracts](launch-safety.md#after-a-switch-the-decode-check); `tools/decode_check.py`, `tools/decode_divergence.py` |
-| Routine-use acceptance of the serving profile: its scope and where each item's evidence is recorded | [Setup runbook step 6](../SETUP.md#6-qualify-the-full-model); the README status table and [validation](validation.md#full-model-tp2-experimental-scope) point there |
+| Routine-use acceptance of the serving profile: its scope and where each item's evidence is recorded | [Setup runbook step 6](../SETUP.md#6-qualify-the-full-model); the README status table and [validation](validation.md#full-model-scope) point there |
 | Storage paths for checkpoint, MTP view, projector, images, state | [Operations](operations.md#artifact-storage-and-paths) |
 | What `server preflight` checks before a start, and what it does not certify | [Operations](operations.md#full-model-launch-checks) |
 | Image capability markers: which setting requires each, and from which version images carry it | [Server configuration](server-configuration.md#current-image-contract) |
@@ -76,7 +78,7 @@ Every document has one role; other documents link to it instead of repeating its
 | License permissions and obligations by artifact | [Licensing guide](licensing.md), [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) |
 | Harness acceptance cases and their run status | [Harnesses](harnesses.md) |
 | ZCode permission-mode facts, model limit and compaction budget rules, and the existing-file guard hook | [Harnesses](harnesses.md#zcode-permission-modes-model-limits-and-the-existing-file-guard), script in [examples/zcode-hooks/](../examples/zcode-hooks/) |
-| Validation scope and remaining qualification gates | [Validation](validation.md) |
+| Validation scope and open items | [Validation](validation.md#evaluations-and-open-items) |
 | Raw responses, traces, all repetitions, failures, host-specific values | Private `records/<run-id>/`, never distributed; public documents carry reviewed summaries |
 | Other public recipes for this model: links, licenses and what was taken from each | [README](../README.md#other-glm-53-flash-recipes-for-dgx-spark-systems); other documents cite by name and pull request, without links or licenses (`tools/check_publication.py` enforces this) |
 | What the project does not claim, and upstream-triggered work (trigger → action) | [README disclaimer](../README.md#disclaimer) and [next action](../README.md#next-action) |
