@@ -4,6 +4,22 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.27.0 — 2026-10-03
+
+### Added
+
+- `python -m glm53_setup freedombench --translation` は、確認済みの日本語訳（FB-04）から固定の60問を、日本語のsystem promptと指示行で尋ねます。尋ねる前に、新しい `config/freedombench-ja.lock.json`（hash、版、固定した設問のhash）、上流のIDと順、英語本文のbyte一致、回答行を照合し、同じseedのshuffleをかけるので、選択肢と正答の文字は英語と同じになります。記録は英語原版とは別に採点し、英語のpromptと正答は変わりません（[FreedomBench](docs/freedombench.ja.md)）。
+- `python -m glm53_setup hle` は、固定したHLEの答えが一つに決まる設問を配信APIから1問ずつ尋ね、回答を1件ずつ保存し、答えた問を送り直さずに再開します。サーバーがHTTPのclient error（401と403以外の4xx）で拒否した問は `rejected` として保存して次へ進み、認証・サーバーのエラー、timeout、接続断では従来どおり止まります。回答の書式はcenterforaisafety/hle（MIT、表示は `LICENSES/hle-MIT.txt`）から取り、設問は `config/hle.lock.json` で固定して配布しません（[HLE](docs/hle.ja.md)）。
+
+### Documentation
+
+- [HLE](docs/hle.ja.md)：テキストと画像の100問の部分集合を両profileで（2026-09-28〜10-03）、16,384 tokenの予算と2つのjudgeで。公開されたHLEの値と比べられない理由も書きました。[FreedomBench](docs/freedombench.ja.md)：日本語訳は両profileで60問中60問、言い回しと証拠配置の追加試験（FB-05）は公開した任意設定で実施。そのLPAの部分は未実施のままです。
+- [SETUP手順6](SETUP.ja.md#6-フルモデルの検証)が、3台のTP=3の2026-10-01からの受け入れを、専用の証拠表と判定で記録します：両profile、配布既定で約200Kの要求を同時3本まで、公開した任意設定で1本ずつ1,048,576 tokenまで。キャンセル、ツール利用、障害からの復旧はTP=3では未実施です。すでにTP=3を受け入れ済みと書いていたREADMEと検証範囲は、そこを指します。
+- [検証範囲](docs/validation.ja.md#フルモデルの範囲)：範囲の節を構成に依らない形にし、TP=2とTP=3を並べました。「残る検収項目」は[評価と未解決の事項](docs/validation.ja.md#評価と未解決の事項)になり、未解決の一覧を持ちます。マルチバイト出力は方法と実施の表（TP=3を含む）に、再現性は解決済みの経緯を外して結論を残し、#48032のfixtureでの比較を記録します。[画像入力](docs/vision.ja.md#限界と未解決の事項)がencoder cacheの数値（#59539、#59565）とTP=3の画像の確認を持ちます。
+- 1.24.0の後の事実を持ち主一つに：起動順、rank数の変更の拒否、ホストごとのruntime cacheは[起動契約](docs/launch-safety.ja.md#3ノード)、リングのschemaと `host_address` は[起動設定](docs/server-configuration.ja.md#3ノード)、動くGID indexは[NCCL検証](docs/nccl-validation.ja.md#gid-indexが動く)、CX7のhotplugの罠は[QSFPの手順](docs/qsfp-network.ja.md#8-3台をリングにつなぐ)へ。TP=3の容量、prefillの上限の表、読み手のspinの数値、NCCLの帯域は持ち主に残し、他の文書はリンクします。指示は「両方」でなく「全rank・全ホスト」と書きます。
+- [ベンチマーク](docs/benchmarks.ja.md)は中身どおりの題（TP=3を含む）になり、版の表に1.25.0を足し、版の節の外にある実施の索引を加えました。施策台帳にしか無かった実測はベンチマークか[部品検証](docs/component-validation.ja.md)へ移し（P06、P10、P24、P26、P27）、台帳は採否とリンクを持ちます。RecoverSSMは[施策台帳P30](docs/optimization-catalog.ja.md#性能施策一覧)になり、P28は完了を一度だけ書きます。[全体像](docs/optimization-overview.ja.md)の問答はTP=3に合わせ、次の候補の一覧は台帳を指します。[性能調査](docs/performance-investigation.ja.md)は今も使う手順だけを残します。
+- READMEはTP=3の受け入れと状態を書き、状態表にFreedomBenchとHLEを加え、数値の持ち主が他にあるところは状態とリンクだけにしました。[文書一覧](docs/README.ja.md)は各文書の範囲を書き直し、3ノードの起動規則と動くGID indexの持ち主の行を加えました。
+
 ## 1.26.1 — 2026-10-02
 
 ### Documentation
