@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import time
 import urllib.error
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 from .. import server, server_config
 from ..config import DEFAULT_PROFILE, load_lock
 from ..io import read_json, write_json
+from ..model_http import ModelHTTPError
 from .freedombench import REASONING_BUDGET
 from .hle_scoring import SYSTEM_PROMPT, extract, final_content
 
@@ -68,6 +70,7 @@ def summarize(rows, output):
         "answered": len(done),
         "parsed": len(parsed),
         "truncated": sum(d.get("finish_reason") == "length" for d in done),
+        "rejected": sum(d.get("finish_reason") == "rejected" for d in done),
         "complete": len(done) == len(rows),
     }
 
@@ -146,6 +149,39 @@ def answer_record(row, response, label, elapsed):
         "confidence": confidence,
         "usage": response.get("usage"),
         "teacher_excluded": True,
+    }
+
+
+def rejected_by_server(error):
+    """A client error the server returns for this request itself: asking again
+    cannot help, so the question is recorded as missing and the run goes on.
+    Auth (401, 403), request timeout (408) and rate limit (429) are not about the
+    request, and a retry can succeed, so they still end the run."""
+    code = getattr(error, "code", None)
+    return (
+        isinstance(error, ModelHTTPError)
+        and code is not None
+        and 400 <= code < 500
+        and code not in (401, 403, 408, 429)
+    )
+
+
+def rejected_record(row, code, label, elapsed):
+    """An answer record with nothing answered: missing data, never a wrong answer."""
+    return {
+        "id": row["id"],
+        "category": row["category"],
+        "has_image": bool(row["image"]),
+        "label": label,
+        "elapsed_seconds": elapsed,
+        "finish_reason": "rejected",
+        "content": None,
+        "reasoning": None,
+        "answer": None,
+        "confidence": None,
+        "usage": None,
+        "teacher_excluded": True,
+        "http_status": code,
     }
 
 
@@ -241,6 +277,22 @@ def main(argv=None):
                         },
                     )
                 except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                    if rejected_by_server(error):
+                        write_json(
+                            target,
+                            rejected_record(
+                                row, error.code, args.label, time.monotonic() - began
+                            ),
+                        )
+                        answered_now += 1
+                        print(
+                            row["id"],
+                            "rejected",
+                            error.code,
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        continue
                     write_json(
                         args.output / "errors" / f"{row['id']}-{int(time.time())}.json",
                         {

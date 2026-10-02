@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from glm53_setup.model_http import ModelHTTPError
 from glm53_setup.validation import hle
 from glm53_setup.validation.hle_scoring import exact, extract, normalize
 
@@ -158,6 +159,42 @@ class DecisionTests(unittest.TestCase):
         )
         self.assertFalse(record["has_image"])
 
+    def test_a_rejected_record_keeps_the_answer_keys_and_adds_the_status(self):
+        row = {"id": "q1", "category": "Math", "image": "data:image/png;base64,AA"}
+        record = hle.rejected_record(row, 400, "default", 0.5)
+        self.assertEqual(
+            list(record),
+            list(hle.answer_record(row, reply("x"), "default", 0.5)) + ["http_status"],
+        )
+        self.assertEqual(
+            {k: record[k] for k in ("finish_reason", "content", "usage", "answer")},
+            {
+                "finish_reason": "rejected",
+                "content": None,
+                "usage": None,
+                "answer": None,
+            },
+        )
+        self.assertEqual(record["http_status"], 400)
+        self.assertTrue(record["has_image"])
+        self.assertNotIn(row["image"], json.dumps(record))
+
+    def test_only_a_non_auth_client_error_is_a_rejection(self):
+        rejected = hle.rejected_by_server
+        self.assertTrue(rejected(ModelHTTPError(400)))
+        self.assertTrue(rejected(ModelHTTPError(422)))
+        for error in (
+            ModelHTTPError(401),
+            ModelHTTPError(403),
+            ModelHTTPError(408),
+            ModelHTTPError(429),
+            ModelHTTPError(500),
+            ModelHTTPError(),
+            TimeoutError(),
+            ConnectionError(),
+        ):
+            self.assertFalse(rejected(error), error)
+
 
 class BudgetTests(unittest.TestCase):
     def test_the_answer_budget_is_freedombenchs(self):
@@ -206,6 +243,7 @@ class RunnerTests(unittest.TestCase):
             patch.object(server, "request_lock", contextlib.nullcontext),
             patch.object(server, "ask", side_effect=ask),
             contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
         ):
             hle.main(
                 [
@@ -347,6 +385,106 @@ class RunnerTests(unittest.TestCase):
             status = json.loads((out / "status.json").read_text(encoding="utf-8"))
         self.assertEqual(status["summary"]["truncated"], 2)
         self.assertEqual(status["summary"]["parsed"], 0)
+
+    def test_a_rejected_question_is_recorded_and_the_run_completes(self):
+        # 2026-10-01: the server refused an image over its encoder cache (HTTP 400).
+        calls = []
+
+        def ask(profile, body):
+            calls.append(body)
+            if len(calls) == 1:
+                raise ModelHTTPError(400)
+            return reply("Exact Answer: 1\nConfidence: 10%")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = self.run_main(tmp, ask)
+            saved = json.loads(
+                (out / "answers" / "t1.json").read_text(encoding="utf-8")
+            )
+            status = json.loads((out / "status.json").read_text(encoding="utf-8"))
+            errors = out / "errors"
+            self.assertFalse(errors.exists())
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            (saved["finish_reason"], saved["http_status"], saved["content"]),
+            ("rejected", 400, None),
+        )
+        self.assertEqual(status["status"], "complete")
+        self.assertEqual(
+            status["summary"],
+            {
+                "planned": 2,
+                "answered": 2,
+                "parsed": 1,
+                "truncated": 0,
+                "rejected": 1,
+                "complete": True,
+            },
+        )
+
+    def test_auth_server_and_transport_errors_still_abort_the_run(self):
+        for error in (
+            ModelHTTPError(401),
+            ModelHTTPError(403),
+            ModelHTTPError(408),
+            ModelHTTPError(429),
+            ModelHTTPError(500),
+            ModelHTTPError(),
+            TimeoutError("slow"),
+            ConnectionError("gone"),
+        ):
+
+            def ask(profile, body, error=error):
+                raise error
+
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(type(error)):
+                    self.run_main(tmp, ask)
+                out = Path(tmp) / "out"
+                status = json.loads((out / "status.json").read_text(encoding="utf-8"))
+                self.assertEqual(status["status"], "failed")
+                self.assertEqual(status["summary"]["answered"], 0)
+                self.assertFalse((out / "answers").exists())
+
+    def test_a_rejection_uses_a_max_new_slot(self):
+        calls = []
+
+        def ask(profile, body):
+            calls.append(body)
+            if len(calls) == 1:
+                raise ModelHTTPError(400)
+            return reply("Exact Answer: 1\nConfidence: 10%")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = self.run_main(tmp, ask, extra=["--max-new", "1"])
+            status = json.loads((out / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(status["status"], "paused")
+        self.assertEqual(status["summary"]["rejected"], 1)
+
+    def test_a_failed_run_resumes_without_resending_saved_or_rejected_answers(self):
+        calls = []
+
+        def refuse(profile, body):
+            raise ModelHTTPError(400)
+
+        def ask(profile, body):
+            calls.append(body)
+            return reply("Exact Answer: 1\nConfidence: 10%")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self.run_main(tmp, refuse, extra=["--max-new", "1"])
+            (first / "status.json").write_text(
+                json.dumps({"status": "failed", "error": "ModelHTTPError(400)"}),
+                encoding="utf-8",
+            )
+            out = self.run_main(tmp, ask)
+            status = json.loads((out / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(calls), 1)  # only i1; the rejected t1 is not resent
+        self.assertEqual(calls[0]["messages"][1]["content"][1]["text"], "Q2?")
+        self.assertEqual(status["status"], "complete")
+        self.assertNotIn("error", status)
+        self.assertEqual(status["summary"]["rejected"], 1)
 
 
 if __name__ == "__main__":

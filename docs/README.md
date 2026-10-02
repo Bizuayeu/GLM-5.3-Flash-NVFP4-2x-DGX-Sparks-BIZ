@@ -35,7 +35,8 @@ Every document has one role; other documents link to it instead of repeating its
 | Component validation | CUDA/indexer components, Graph fixture, PP/EP/APC fixtures, history fixtures | [EN](component-validation.md) | [JA](component-validation.ja.md) |
 | Benchmarks | TP=2 benchmark method, the independent full-model runs of each initiative, and the measurements of each release | [EN](benchmarks.md) | [JA](benchmarks.ja.md) |
 | Image input | Vision at 256K: settings, how they were chosen, measurements, limits | [EN](vision.md) | [JA](vision.ja.md) |
-| FreedomBench | Political-context evaluation: the closure on the serving profile, earlier runs and what was not run | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| FreedomBench | Political-context evaluation: the closure on the serving profile, earlier runs, the Japanese translation and the framing extension, and what was not run | [EN](freedombench.md) | [JA](freedombench.ja.md) |
+| HLE | Two 100-question HLE subsets on both profiles: results, how they were run, and why they are not comparable with published values | [EN](hle.md) | [JA](hle.ja.md) |
 | Harnesses | The accepted harness route (npm ZCode CLI), connection settings and the acceptance matrix | [EN](harnesses.md) | [JA](harnesses.ja.md) |
 | ZCode guard hook | Setup of the PreToolUse existing-file guard: why a hook, install, verify, limits | [EN](../examples/zcode-hooks/README.md) | [JA](../examples/zcode-hooks/README.ja.md) |
 | Licensing guide | Commercial use, modification and redistribution by artifact | [EN](licensing.md) | [JA](licensing.ja.md) |
@@ -61,9 +62,9 @@ Every document has one role; other documents link to it instead of repeating its
 | Distributed LPA projector URL, file hash, format, teacher and training provenance | [config/lpa-projector.lock.json](../config/lpa-projector.lock.json); package layout in [operations](operations.md#artifact-storage-and-paths) |
 | Server profile schema and every profile key | [examples/server.example.toml](../examples/server.example.toml) (the distributed defaults) and [examples/server.axl.example.toml](../examples/server.axl.example.toml) (the published option: repacked weights, two sequences, 6 GiB KV), explained in [server configuration](server-configuration.md) |
 | MTP speculative configuration (the launcher builds it from `mtp.*`; the files show it for a manual reproduction) | [examples/speculative.mtp1.json](../examples/speculative.mtp1.json), [speculative.mtp3.json](../examples/speculative.mtp3.json) |
-| FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json) |
+| FreedomBench item and answer pins | [config/freedombench.lock.json](../config/freedombench.lock.json); the reviewed Japanese translation in [config/freedombench-ja.lock.json](../config/freedombench-ja.lock.json) |
 | Initiative IDs, adoption decisions, reevaluation criteria | [Optimization catalog](optimization-catalog.md) |
-| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md) |
+| Measured numbers and their conditions | [Benchmarks](benchmarks.md), [image input](vision.md), [speculative decoding](speculative-decoding.md), [LPA](lpa.md), [component validation](component-validation.md), [candidate order](candidate-order.md), [indexer reuse](indexer-reuse.md), [NCCL validation](nccl-validation.md), [FreedomBench](freedombench.md), [HLE](hle.md) |
 | APC/LPA shared-state contract (N, H, T, R, B) | [APC-first LPA design](apc-lpa-design.md) |
 | Client authentication, allocator, rails, switch and recovery contracts | [Launch contracts](launch-safety.md) |
 | The decode check after a switch: its routine and the two tools | [Launch contracts](launch-safety.md#after-a-switch-the-decode-check); `tools/decode_check.py`, `tools/decode_divergence.py` |
