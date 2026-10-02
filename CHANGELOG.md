@@ -2,6 +2,16 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.27.2 — 2026-10-03
+
+### Fixed
+
+- `cluster resume` on a record that is not waiting on a readiness observation says it cannot resume; a record without launch rows raised `KeyError`, because the rows were read before the status was checked.
+
+### Changed
+
+- Twelve tests reach the coordinator's remaining branches: the running launch it describes for recovery and the fingerprint check on it, the `rpc` entry over stdin and stdout, the two-host minimum, an attempt record outside the checkout, the profile install's path and identity refusals, a stop whose supervisor has exited or that names no record, the Docker inventory taken before an inspection, and the action each backend operation sends. `cluster.py` is covered to 99%.
+
 ## 1.27.1 — 2026-10-03
 
 ### Documentation
