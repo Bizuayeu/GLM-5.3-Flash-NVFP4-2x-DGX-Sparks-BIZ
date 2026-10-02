@@ -13,7 +13,7 @@
 - **Two served profiles.** The **distributed defaults** serve the pinned weights exactly as NVIDIA distributes them. The **published option (NVFP4 BIZ AXL)** repacks the attention projections and `lm_head` to W4A16 for faster decode at a measured quality cost, and is an operator opt-in. [What has been verified](#what-has-been-verified) compares them and lists the status of every scope.
 - **Precision.** Serving runs Marlin W4A16 on GB10. NVIDIA's model card evaluated its checkpoint under a different recipe on different hardware, so its accuracy table does not describe this stack; [validation](docs/validation.md#evidence-not-production-qualification) says which numbers do.
 - **Licensing.** Apache-2.0 code; MIT weights that the operator downloads, not bundled; each artifact keeps its own terms ([licensing at a glance](#licensing-at-a-glance)).
-- **Not validated.** Concurrent serving beyond the accepted scopes (two sequences on the pair, three ~200K requests on the ring), video input, full application quality, production reliability and maximum performance ([status by scope](#status-by-scope)).
+- **Not validated.** Concurrent serving beyond the accepted scopes (two sequences on the pair, three ~200K requests on the ring's distributed defaults), video input, full application quality, production reliability and maximum performance ([status by scope](#status-by-scope)).
 
 ## What you deploy and supported hardware
 
