@@ -2,6 +2,22 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.26.2 — 2026-10-03
+
+### Fixed
+
+- `api.prompt_tokens_details` is type-checked like `api.dev_endpoints`. A string such as `"false"` used to pass validation and, being truthy, emitted `--enable-prompt-tokens-details`; it is now refused before launch.
+- `runtime.enforce_eager` beside `runtime.decode_graphs` must be true or false. Only the two values' agreement was checked, so `enforce_eager = "yes"` was accepted.
+- `cluster resume` refuses `--hosts` that do not name one host per recorded rank (exit 2, with the count), as `cluster switch` does; a three-rank record resumed with two hosts raised `IndexError` inside the SSH transport.
+- The tool-argument gate answers a request body over its limit once with 413 and never relays it (a `DELETE` was relayed after the 413 and answered twice), and answers a negative or non-numeric `Content-Length` with 400 instead of waiting for the client to close. A non-streamed request whose repair fails is logged with the violations it was for, as a streamed one is.
+- The launch checks report an absent model shard as "Missing or empty model shard"; `stat()` ran before the file check and raised `FileNotFoundError`.
+- `tools/decode_divergence.py`: when run A was longer, the first differing token was reported at A's own length rather than where B ended, and runs with different sample counts read as identical (the extra samples were dropped); the count difference is now printed.
+
+### Changed
+
+- One owner each for the chat `/tokenize` body (`ask`, `server prefix-gate` and `apc-history` count prompts the same way; `ask` no longer sends `"tools": null` when a request has no tools, which vLLM reads the same), the native-LPA guard, the tensor-parallel size written into the serve arguments (the launch goldens are unchanged), the prefix gate's default length and the reader-spin range in its error message.
+- 103 tests (773 to 876) cover failure paths no test reached: the tool gate's loopback guard and body handling, `cluster` stop, poll and readiness, `switch` rollback, the APC admission refusals and projector cache, profile validation branches, launch asset names, the exit codes of `verify-download`, `tools/assess_benchmark.py` and `tools/check_prefix_cache.py`, unreachable-model errors and several command entry points. Tests that passed on any exit now check the code and the message.
+
 ## 1.26.1 — 2026-10-02
 
 ### Documentation
