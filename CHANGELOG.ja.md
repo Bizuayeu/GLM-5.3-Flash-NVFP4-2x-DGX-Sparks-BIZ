@@ -4,6 +4,16 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.27.2 — 2026-10-03
+
+### Fixed
+
+- readiness の観測待ちでない記録に `cluster resume` を掛けると、再開できない旨を返します。状態を確かめる前に launch の行を読んでいたので、行の無い記録では `KeyError` になっていました。
+
+### Changed
+
+- coordinator の残りの分岐に 12 本の試験：復旧のために返す稼働中の launch とその fingerprint の照合、stdin と stdout を通る `rpc` の入口、host は 2 台以上という条件、checkout の外にある attempt の記録、profile を書き込むときの path と identity の拒否、supervisor が既に終わった stop と記録を名指ししない stop、inspect の前に取る Docker の一覧、backend の各操作が送る action。`cluster.py` の網羅率は 99% です。
+
 ## 1.27.1 — 2026-10-03
 
 ### Documentation

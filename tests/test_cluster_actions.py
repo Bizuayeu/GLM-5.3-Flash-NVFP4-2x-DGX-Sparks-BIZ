@@ -266,6 +266,41 @@ class ActionOutcomeTests(unittest.TestCase):
             self.assertTrue((out / "launch.json").exists())
             self.assertEqual(printed.getvalue(), "")
 
+    def test_the_transport_needs_at_least_two_hosts(self):
+        args = cluster.parser().parse_args(
+            ["resume", "--hosts", "only", "--checkout", "/srv/glm53"]
+        )
+        with self.assertRaisesRegex(ValueError, "at least two"):
+            cluster.ssh_backend(args)
+
+    def test_a_record_that_is_not_waiting_on_readiness_is_not_resumed(self):
+        # The host count is checked only for a resumable record; any other status
+        # is refused by resume itself, before a single SSH call.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            server.write_json(out / "result.json", {"status": "complete"})
+            with (
+                patch.object(cluster.subprocess, "run") as run,
+                self.assertRaisesRegex(ValueError, "Only a recorded, unconfirmed"),
+            ):
+                cluster.main(
+                    [
+                        "resume",
+                        "--output",
+                        str(out),
+                        "--hosts",
+                        "a",
+                        "b",
+                        "--checkout",
+                        "/srv/glm53",
+                    ]
+                )
+            run.assert_not_called()
+            self.assertEqual(
+                json.loads((out / "result.json").read_text(encoding="utf-8")),
+                {"status": "complete"},
+            )
+
 
 class RemoteProcedureGapTests(unittest.TestCase):
     """The two actions no test reached: ``current`` and ``prepare``."""
@@ -307,6 +342,81 @@ class RemoteProcedureGapTests(unittest.TestCase):
             ):
                 with self.assertRaises(ValueError):
                     cluster.rpc("current", 0, None)
+
+    def test_current_describes_the_running_launch_for_its_recovery(self):
+        # This answer is what a switch restores if the candidate fails.
+        running = profile()
+        fingerprint = config.fingerprint(running)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "state").mkdir()
+            server.write_json(root / "settings.json", running)
+            server.write_json(
+                root / "state/startup-rank0.json",
+                {
+                    "name": "owned",
+                    "fingerprint": fingerprint,
+                    "record": str(root),
+                    "config_path": "/srv/glm53/state/server.toml",
+                },
+            )
+            with (
+                rooted(root),
+                patch.object(
+                    server, "inspect_owned", return_value={"State": {"Running": True}}
+                ) as inspect,
+            ):
+                self.assertEqual(
+                    cluster.rpc("current", 0, None),
+                    {
+                        "name": "owned",
+                        "fingerprint": fingerprint,
+                        "launch": {
+                            "manifest": {
+                                "profile": running,
+                                "fingerprint": fingerprint,
+                            },
+                            "config_path": "/srv/glm53/state/server.toml",
+                        },
+                    },
+                )
+            inspect.assert_called_once_with("owned", fingerprint)
+
+    def test_current_refuses_settings_that_no_longer_match_the_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "state").mkdir()
+            server.write_json(root / "settings.json", profile())
+            server.write_json(
+                root / "state/startup-rank0.json",
+                {
+                    "name": "owned",
+                    "fingerprint": "0" * 64,
+                    "record": str(root),
+                    "config_path": "/srv/glm53/state/server.toml",
+                },
+            )
+            with (
+                rooted(root),
+                patch.object(
+                    server, "inspect_owned", return_value={"State": {"Running": True}}
+                ),
+                self.assertRaisesRegex(ValueError, "no longer matches"),
+            ):
+                cluster.rpc("current", 0, None)
+
+    def test_the_rpc_action_answers_one_json_operation_on_stdout(self):
+        # The coordinator's SSH call writes the operation to stdin and reads stdout.
+        request = json.dumps({"action": "current", "rank": 0, "value": None})
+        stdout = io.StringIO()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            rooted(Path(tmp)),
+            patch("sys.stdin", io.StringIO(request)),
+            contextlib.redirect_stdout(stdout),
+        ):
+            cluster.main(["rpc"])
+        self.assertEqual(json.loads(stdout.getvalue()), None)
 
     def test_an_invalid_rank_is_refused_before_any_action_runs(self):
         # Rank 2 is a ring's third node (tests/test_cluster.py RingClusterTests).
