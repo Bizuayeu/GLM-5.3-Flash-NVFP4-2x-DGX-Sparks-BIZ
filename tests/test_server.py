@@ -378,6 +378,22 @@ class ServerConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 config.validate(profile)
 
+    def test_prompt_tokens_details_must_be_a_boolean(self):
+        # A string "false" is truthy: it would emit the flag the operator meant to turn off.
+        for bad in (1, "false", None):
+            profile = copy.deepcopy(self.profile)
+            profile["api"]["prompt_tokens_details"] = bad
+            with self.assertRaisesRegex(
+                ValueError, "api.prompt_tokens_details must be true or false"
+            ):
+                config.validate(profile)
+        del self.profile["api"]["prompt_tokens_details"]
+        config.validate(self.profile)
+        self.assertNotIn(
+            "--enable-prompt-tokens-details",
+            config.serve_args(self.profile, 0, "/hf/x"),
+        )
+
     def test_stall_and_warmup_keys_are_optional_nonnegative(self):
         for section, key in (
             ("resources", "stall_seconds"),

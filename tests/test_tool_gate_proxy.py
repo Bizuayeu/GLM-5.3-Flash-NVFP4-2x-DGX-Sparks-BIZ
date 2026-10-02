@@ -2,8 +2,10 @@ import http.client
 import io
 import json
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 from glm53_setup.tool_gate import proxy
 
@@ -121,7 +123,7 @@ class FakeUpstream:
                 self.end_headers()
                 self.wfile.write(payload)
 
-            do_GET = do_POST = _answer
+            do_GET = do_POST = do_DELETE = _answer
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -132,6 +134,25 @@ class FakeUpstream:
 
     def push_sse(self, text):
         self.queue.append((200, "text/event-stream", text.encode()))
+
+
+class LoopbackOriginTests(unittest.TestCase):
+    # The only guard that keeps the gate from relaying requests, credentials included, off the host.
+    def test_only_a_plain_http_origin_on_the_loopback_is_accepted(self):
+        self.assertEqual(
+            proxy._loopback_origin("http://127.0.0.1:8893"), ("127.0.0.1", 8893)
+        )
+        self.assertEqual(proxy._loopback_origin("http://localhost/"), ("localhost", 80))
+        for url in (
+            "https://127.0.0.1:8893",
+            "http://10.41.12.1:8893",
+            "http://localhost.evil:8893",
+            "http://127.0.0.1:8893/v1",
+            "127.0.0.1:8893",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, "loopback"):
+                    proxy._loopback_origin(url)
 
 
 class ProxyTests(unittest.TestCase):
@@ -211,6 +232,60 @@ class ProxyTests(unittest.TestCase):
             (status, json.loads(body)), (400, {"error": {"message": "bad"}})
         )
 
+    def raw_request(self, method, path, length, body=b""):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.putrequest(method, path)
+        conn.putheader("Content-Length", length)
+        conn.endheaders(body)
+        response = conn.getresponse()
+        try:
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def test_an_oversized_body_is_refused_once_and_never_relayed(self):
+        # DELETE used to relay the refused request and answer a second time.
+        for method in ("POST", "DELETE"):
+            with self.subTest(method=method), patch.object(proxy, "MAX_BODY", 8):
+                status, _ = self.raw_request(method, "/v1/x", "9", b"123456789")
+                self.assertEqual(status, 413)
+        time.sleep(
+            0.3
+        )  # the old handler relayed after answering; give it the time to show
+        self.assertEqual(self.upstream.received, [])
+
+    def test_a_malformed_content_length_is_refused(self):
+        # A negative length made read(-n) wait for the client to close the connection.
+        for length in ("-1", "abc"):
+            with self.subTest(length=length):
+                status, _ = self.raw_request("POST", "/v1/chat/completions", length)
+                self.assertEqual(status, 400)
+        self.assertEqual(self.upstream.received, [])
+
+    def test_a_body_that_is_not_json_is_relayed_unchecked(self):
+        self.upstream.push_json({"error": {"message": "bad json"}}, status=400)
+        status, body = self.raw_request("POST", "/v1/chat/completions", "5", b"{oops")
+        self.assertEqual(status, 400)
+        self.assertEqual(self.upstream.received[0][3], b"{oops")
+        self.assertEqual(self.log.getvalue(), "")
+
+    def test_a_delete_is_relayed_with_its_body(self):
+        self.upstream.push_json({"deleted": True})
+        status, body = self.raw_request("DELETE", "/v1/files/f", "2", b"{}")
+        self.assertEqual((status, json.loads(body)), (200, {"deleted": True}))
+        self.assertEqual(self.upstream.received[0][:2], ("DELETE", "/v1/files/f"))
+
+    def test_a_stream_the_upstream_refuses_is_returned_as_it_is(self):
+        self.upstream.push_json({"error": {"message": "busy"}}, status=503)
+        status, headers, body = self.request(
+            "POST", "/v1/chat/completions", dict(TOOL_REQUEST, stream=True)
+        )
+        self.assertEqual(
+            (status, json.loads(body)), (503, {"error": {"message": "busy"}})
+        )
+        self.assertNotIn("x-glm53-tool-gate", headers)
+        self.assertEqual(self.log.getvalue(), "")
+
     def stream(self, body):
         status, headers, raw = self.request(
             "POST", "/v1/chat/completions", dict(body, stream=True)
@@ -276,14 +351,18 @@ class ProxyTests(unittest.TestCase):
             "POST", "/v1/chat/completions", TOOL_REQUEST
         )
         self.assertEqual(status, 503)
+        first = json.loads(self.log.getvalue().splitlines()[-1])
+        self.assertEqual(first["outcome"], "error")
+        # Both paths name the violation the failed repair was for.
         self.assertEqual(
-            json.loads(self.log.getvalue().splitlines()[-1])["outcome"], "error"
+            first["violations"],
+            [{"tool": "web_search", "kind": "empty", "argument": "query"}],
         )
         self.upstream.push_sse(sse(args={"query": ""}))
         self.upstream.push_json({"error": {"message": "busy"}}, status=503)
         status, events, chunks, comments = self.stream(TOOL_REQUEST)
         self.assertIn(": tool-gate error", comments)
         self.assertTrue(any("error" in c for c in chunks))
-        self.assertEqual(
-            json.loads(self.log.getvalue().splitlines()[-1])["outcome"], "error"
-        )
+        last = json.loads(self.log.getvalue().splitlines()[-1])
+        self.assertEqual(last["outcome"], "error")
+        self.assertEqual(last["violations"], first["violations"])

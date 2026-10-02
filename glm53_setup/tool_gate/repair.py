@@ -1,8 +1,9 @@
 """Stop a tool call whose arguments break its schema and let the model answer once more (assembly layer).
 
-The violating turn is not returned. It is added to the conversation with a tool reply per call,
-the one the model would have received had the call reached a real tool, and the model is asked
-once more. A second violation is returned as it is: the gate does not hide what the model does.
+A non-streamed violating turn is not returned; a streamed one has already relayed its content and
+reasoning by the time its calls are checked, and only its calls are withheld. Either way it is
+added to the conversation with a tool reply per call, the one the model would have received had
+the call reached a real tool, and the model is asked once more. A second violation is returned as it is: the gate does not hide what the model does.
 """
 
 import copy

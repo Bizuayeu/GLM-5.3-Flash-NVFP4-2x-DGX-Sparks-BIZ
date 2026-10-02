@@ -108,6 +108,43 @@ class ActionTableTests(unittest.TestCase):
                 ]
             )
 
+    def test_resume_needs_one_host_per_recorded_rank(self):
+        # A three-rank record resumed with two hosts used to reach rank 2 and
+        # raise IndexError inside the SSH backend instead of naming the misuse.
+        for status, key in (
+            ("readiness-unconfirmed", "assets"),
+            ("recovery-readiness-unconfirmed", "recovery_assets"),
+        ):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp)
+                server.write_json(
+                    out / "result.json", {"status": status, key: [{}, {}, {}]}
+                )
+                stderr = io.StringIO()
+                with (
+                    contextlib.redirect_stderr(stderr),
+                    patch.object(cluster, "resume") as resume,
+                    self.assertRaises(SystemExit) as raised,
+                ):
+                    cluster.main(
+                        [
+                            "resume",
+                            "--output",
+                            str(out),
+                            "--hosts",
+                            "a",
+                            "b",
+                            "--checkout",
+                            "/srv/glm53",
+                        ]
+                    )
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn(
+                    "resume needs one --hosts entry per recorded rank (3)",
+                    stderr.getvalue(),
+                )
+                resume.assert_not_called()
+
 
 class RemoteProcedureGapTests(unittest.TestCase):
     """The two actions no test reached: ``current`` and ``prepare``."""

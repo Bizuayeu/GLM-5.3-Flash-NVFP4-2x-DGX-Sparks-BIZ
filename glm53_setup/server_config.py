@@ -260,6 +260,8 @@ def check_optional_shapes(profile):
         )
     if type(optional(profile, "api", "dev_endpoints")) is not bool:
         raise ValueError("api.dev_endpoints must be true or false")
+    if type(optional(profile, "api", "prompt_tokens_details")) is not bool:
+        raise ValueError("api.prompt_tokens_details must be true or false")
     effort = profile["api"].get("default_reasoning_effort", "max")
     if type(effort) is not str or effort not in REASONING_EFFORTS:
         raise ValueError(
