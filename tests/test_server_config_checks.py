@@ -9,6 +9,7 @@ and the order lives in one readable sequence.
 
 import ast
 import copy
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -42,6 +43,33 @@ class OptionalKeyTests(unittest.TestCase):
                     without = profile()
                     without[section].pop(key, None)
                     config.validate(without)
+                # Beside decode_graphs, enforce_eager is only compared, never typed:
+                # see the expected failure below.
+                if key == "enforce_eager":
+                    continue
+                with self.subTest(section=section, key=key, value=[]):
+                    wrong = profile()
+                    wrong[section][key] = []
+                    with self.assertRaisesRegex(ValueError, re.escape(key)):
+                        config.validate(wrong)
+
+    def test_enforce_eager_alone_must_be_a_boolean(self):
+        alone = profile()
+        alone["runtime"].pop("decode_graphs")
+        alone["runtime"]["enforce_eager"] = "yes"
+        with self.assertRaisesRegex(
+            ValueError, "^runtime.enforce_eager must be true or false$"
+        ):
+            config.validate(alone)
+
+    # Until 1.26.2, with decode_graphs present, only the two values' equality was
+    # checked, so enforce_eager = "yes" (or []) was accepted silently.
+    def test_enforce_eager_beside_decode_graphs_must_still_be_a_boolean(self):
+        both = profile()
+        self.assertIn("decode_graphs", both["runtime"])
+        both["runtime"]["enforce_eager"] = "yes"
+        with self.assertRaisesRegex(ValueError, "runtime.enforce_eager"):
+            config.validate(both)
 
     def test_every_default_belongs_to_an_optional_key(self):
         for section, defaults in config.OPTIONAL_DEFAULTS.items():
@@ -141,7 +169,75 @@ class CheckMessageTests(unittest.TestCase):
                 self.assertIn(fragment, str(caught.exception))
 
 
+class ValidationRefusalTests(unittest.TestCase):
+    # (preset the rule needs, the edit, the sentence validate() reports).
+    CASES = [
+        (
+            {
+                ("validation", "component_worker"): True,
+                ("mtp", "enabled"): False,
+                ("cache", "prefix_caching"): False,
+            },
+            {("validation", "memory_probe"): True},
+            "validation.memory_probe excludes LPA and the other workers",
+        ),
+        ({}, {("generation", "max_tokens"): 262144}, "Reserve context space"),
+        (
+            {},
+            {("runtime", "reference_image"): "vllm/vllm-openai:latest"},
+            "runtime.reference_image must be an immutable image ID",
+        ),
+        ({}, {("lpa", "projector_sha256"): "ABC"}, "Invalid projector_sha256"),
+        ({}, {("nodes",): "x"}, "Invalid type in server.nodes"),
+    ] + [
+        (
+            {},
+            {("mtp", "view"): view},
+            "mtp.view must be a relative path inside the HF cache",
+        )
+        for view in ("../x", "/abs", "C:x")
+    ]
+
+    @staticmethod
+    def edited(edits):
+        value = profile()
+        for path, setting in edits.items():
+            target = value
+            for step in path[:-1]:
+                target = target[step]
+            target[path[-1]] = setting
+        return value
+
+    def test_validate_refuses_each_case_with_its_own_sentence(self):
+        for preset, edits, message in self.CASES:
+            with self.subTest(edits=edits):
+                # The preset alone passes, so the refusal is the edit's rule.
+                config.validate(self.edited(preset))
+                with self.assertRaisesRegex(ValueError, re.escape(message)):
+                    config.validate(self.edited({**preset, **edits}))
+
+    def test_thaw_refuses_a_manifest_with_extra_keys(self):
+        manifest = config.freeze(profile(), {})
+        config.thaw(copy.deepcopy(manifest))
+        with self.assertRaisesRegex(ValueError, "^Invalid frozen launch manifest$"):
+            config.thaw({**manifest, "extra": 1})
+
+    def test_a_request_naming_another_model_is_refused(self):
+        request = {"messages": [{"role": "user", "content": "hi"}], "model": "other"}
+        with self.assertRaisesRegex(
+            ValueError, "^Request model does not match server profile$"
+        ):
+            config.request_body(profile(), request)
+
+
 class ServeArgumentTests(unittest.TestCase):
+    def test_chunked_prefill_off_is_stated_as_a_negative_flag(self):
+        off = profile()
+        off["context"]["chunked_prefill"] = False
+        args = config.serve_args(off, 0, "/model")
+        self.assertIn("--no-enable-chunked-prefill", args)
+        self.assertNotIn("--enable-chunked-prefill", args)
+
     def test_the_assembly_steps_are_declared_in_one_sequence(self):
         names = [step.__name__ for step in config.SERVE_STEPS]
         self.assertEqual(len(names), len(set(names)))

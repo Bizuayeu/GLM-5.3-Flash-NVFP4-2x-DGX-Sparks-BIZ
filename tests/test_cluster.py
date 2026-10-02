@@ -528,6 +528,240 @@ class ReadinessPollTests(unittest.TestCase):
         self.assertEqual(result, {"ready": False})
 
 
+class AttemptStopTests(unittest.TestCase):
+    """A stop signals the attempt's own supervisor and waits for it to exit."""
+
+    PID = 4242
+
+    @contextlib.contextmanager
+    def supervised(self, cmdline=None):
+        """A reserved attempt whose job.json names PID; its /proc cmdline is a file.
+
+        ``cmdline`` is called with the resolved record (windows-latest TEMP is a
+        short 8.3 path that ``resolve`` expands) and returns the file's bytes.
+        """
+        real = Path
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            identity = cluster.rpc("reserve", 0, {"manifest": {"fingerprint": "f"}})
+            record = real(identity["record"]).resolve()
+            cluster.write_json(record / "job.json", {"pid": self.PID})
+            proc = real(tmp) / "cmdline"
+            proc.write_bytes(
+                cmdline(record)
+                if cmdline
+                else b"\0".join(
+                    [b"python3", b"-m", b"glm53_setup.cluster", b"job", b"--record"]
+                    + [str(record).encode(), b""]
+                )
+            )
+            with (
+                patch.object(
+                    cluster,
+                    "Path",
+                    lambda *parts: (
+                        proc if str(parts[0]).startswith("/proc/") else real(*parts)
+                    ),
+                ),
+                patch.object(cluster.os, "kill") as kill,
+                patch.object(cluster.time, "sleep") as sleep,
+                patch.object(cluster, "inspect_attempt", return_value=None) as inspect,
+            ):
+                yield identity, proc, kill, sleep, inspect
+
+    def test_a_pid_that_now_belongs_to_another_process_is_not_signalled(self):
+        for name, cmdline in (
+            ("another program", lambda record: b"sshd\0-D\0"),
+            (
+                "another attempt",
+                lambda record: (
+                    b"python3\0-m\0glm53_setup.cluster\0job\0--record\0"
+                    + str(record.with_name("switch-other-r0")).encode()
+                    + b"\0"
+                ),
+            ),
+        ):
+            with (
+                self.subTest(name),
+                self.supervised(cmdline) as (identity, _, kill, _, inspect),
+            ):
+                with self.assertRaisesRegex(ValueError, "no longer belongs"):
+                    cluster.rpc("stop", 0, identity)
+                kill.assert_not_called()
+                inspect.assert_not_called()
+
+    def test_the_supervisor_is_sent_sigterm_and_its_exit_awaited(self):
+        with self.supervised() as (identity, proc, kill, sleep, inspect):
+            sleep.side_effect = lambda seconds: proc.write_bytes(b"")
+            inspect.return_value = {"State": {"Running": True}}
+            with patch.object(cluster.host, "run") as run:
+                self.assertEqual(cluster.rpc("stop", 0, identity), {"stopped": True})
+            kill.assert_called_once_with(self.PID, cluster.signal.SIGTERM)
+            self.assertEqual(sleep.call_count, 1)
+            run.assert_called_once_with("docker", "stop", identity["name"])
+            self.assertTrue((Path(identity["record"]) / "cancel.json").exists())
+
+    def test_a_supervisor_that_never_exits_times_out_before_docker_is_read(self):
+        with self.supervised() as (identity, _, kill, sleep, inspect):
+            with self.assertRaisesRegex(TimeoutError, "did not terminate"):
+                cluster.rpc("stop", 0, identity)
+            kill.assert_called_once()
+            self.assertEqual(sleep.call_count, 60)
+            inspect.assert_not_called()
+
+
+class AttemptPollTests(unittest.TestCase):
+    """What a poll answers before it reaches the head's log and API."""
+
+    def poll(self, rank, *, finished=None, info=None, state=None):
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            identity = cluster.rpc(
+                "reserve",
+                rank,
+                {"manifest": {"fingerprint": "f"}, "config_path": "/srv/s.toml"},
+            )
+            if finished is not None:
+                cluster.write_json(Path(identity["record"]) / "finished.json", finished)
+            if state is not None:
+                server.state_path(rank).parent.mkdir()
+                cluster.write_json(
+                    server.state_path(rank),
+                    {"name": identity["name"] if state == "owned" else state},
+                )
+            with patch.object(cluster, "inspect_attempt", return_value=info) as inspect:
+                return cluster.rpc("poll", rank, identity), inspect
+
+    def test_a_finished_supervisor_is_a_failed_attempt_without_reading_docker(self):
+        result, inspect = self.poll(1, finished={"status": "failed", "error": "E"})
+        self.assertEqual(
+            result, {"failed": True, "finished": {"status": "failed", "error": "E"}}
+        )
+        inspect.assert_not_called()
+
+    def test_a_container_not_yet_created_is_not_ready_and_a_stopped_one_failed(self):
+        self.assertEqual(self.poll(1)[0], {"ready": False})
+        stopped = {"State": {"Running": False}}
+        self.assertEqual(self.poll(1, info=stopped)[0], {"failed": True})
+
+    def test_a_worker_is_ready_once_its_state_names_this_attempt(self):
+        running = {"State": {"Running": True}}
+        for state, ready in ((None, False), ("someone-else", False), ("owned", True)):
+            with self.subTest(state=state):
+                result, _ = self.poll(1, info=running, state=state)
+                self.assertEqual(result, {"ready": ready})
+
+
+class HeadHealthTests(unittest.TestCase):
+    """A started head is ready only on /health 200; a refused credential is raised."""
+
+    def health(self, error):
+        text = EXAMPLE.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp, rooted(Path(tmp)):
+            launch = {
+                "manifest": server_config.freeze(server_config.loads(text), {}),
+                "config_path": "/srv/glm53/state/server.toml",
+            }
+            identity = cluster.rpc("reserve", 0, launch)
+            (Path(tmp) / "state").mkdir()
+            cluster.write_json(server.state_path(0), {"name": identity["name"]})
+            with (
+                patch.object(
+                    cluster,
+                    "inspect_attempt",
+                    return_value={"State": {"Running": True}},
+                ),
+                patch.object(
+                    cluster.subprocess,
+                    "check_output",
+                    return_value=b"Application startup complete.\n",
+                ),
+                patch.object(cluster.model_http, "open_response", side_effect=error),
+            ):
+                return cluster.rpc("poll", 0, identity)
+
+    def test_an_authentication_failure_is_raised_not_read_as_not_ready(self):
+        for code in (401, 403):
+            with (
+                self.subTest(code=code),
+                self.assertRaises(cluster.model_http.ModelHTTPError) as caught,
+            ):
+                self.health(cluster.model_http.ModelHTTPError(code))
+            self.assertEqual(caught.exception.code, code)
+
+    def test_any_other_api_failure_is_not_ready(self):
+        for code in (500, None):
+            with self.subTest(code=code):
+                error = cluster.model_http.ModelHTTPError(code)
+                self.assertEqual(self.health(error), {"ready": False})
+
+
+class ReadinessWaitTests(unittest.TestCase):
+    """SSHBackend.ready polls every rank until all are ready, one fails, or time runs out."""
+
+    @contextlib.contextmanager
+    def clock(self):
+        # The fake sleep advances the fake clock, so the deadline is reached in
+        # a fixed number of rounds whatever else reads the time.
+        now = [0.0]
+        with (
+            patch.object(cluster.time, "monotonic", lambda: now[0]),
+            patch.object(
+                cluster.time,
+                "sleep",
+                side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+            ) as sleep,
+        ):
+            yield sleep
+
+    def setUp(self):
+        self.backend = cluster.SSHBackend(["head", "peer"], "/srv/model", None, 30)
+        self.rows = [{"rank": 1, "identity": "id-1"}, {"rank": 0, "identity": "id-0"}]
+
+    def test_a_terminated_rank_is_named_by_its_rank_not_its_row(self):
+        with (
+            self.clock(),
+            patch.object(
+                self.backend,
+                "call",
+                side_effect=[{"ready": True}, {"failed": True}],
+            ),
+            self.assertRaises(switch.OperationFailure) as caught,
+        ):
+            self.backend.ready(self.rows)
+        self.assertEqual(caught.exception.evidence["rank"], 0)
+        self.assertEqual(caught.exception.evidence["reason"], switch.RANK_TERMINATED)
+
+    def test_the_pair_is_ready_once_every_rank_is(self):
+        statuses = [{"ready": False}, {"ready": True}, {"ready": True}, {"ready": True}]
+        with (
+            self.clock() as sleep,
+            patch.object(self.backend, "call", side_effect=statuses) as call,
+        ):
+            self.assertIsNone(self.backend.ready(self.rows))
+        self.assertEqual(sleep.call_count, 1)
+        self.assertEqual(
+            [c.args for c in call.call_args_list[:2]],
+            [("poll", 1, "id-1"), ("poll", 0, "id-0")],
+        )
+
+    def test_a_pair_never_ready_runs_out_at_the_readiness_deadline(self):
+        with (
+            self.clock() as sleep,
+            patch.object(self.backend, "call", return_value={"ready": False}),
+            self.assertRaises(switch.OperationFailure) as caught,
+        ):
+            self.backend.ready(self.rows)
+        self.assertEqual(
+            caught.exception.evidence,
+            {
+                "action": "ready",
+                "rank": None,
+                "reason": switch.READINESS_DEADLINE,
+                "exit_code": None,
+            },
+        )
+        self.assertEqual(sleep.call_count, 6)  # 30 s timeout, 5 s between rounds
+
+
 class LostPair:
     """Two ranks whose first readiness observation fails with `lost`."""
 

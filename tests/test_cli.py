@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import subprocess
@@ -5,8 +6,10 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
+from glm53_setup import __main__ as cli
 from glm53_setup import server
 from tools import check_prefix_cache
 
@@ -54,11 +57,23 @@ class PublicCliTests(unittest.TestCase):
             ("freedombench", "--benchmark-dir"),
             ("profile-assess", "--prefill-control"),
             ("indexer-overlap", "capture"),
+            ("hle", "--questions"),
+            ("tool-gate", "--upstream"),
+            ("quant-error", "--quantized"),
+            ("agreement-fixture", "--repeats"),
+            ("agreement-compare", "candidate"),
         ]:
             with self.subTest(command=command):
                 result = self.invoke(command, "--help")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(option, result.stdout)
+
+    def test_an_unknown_command_exits_with_a_usage_error(self):
+        stderr = io.StringIO()
+        with self.assertRaises(SystemExit) as caught, redirect_stderr(stderr):
+            cli.main(["nope"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("unknown command: nope", stderr.getvalue())
 
     def test_checkout_resources_do_not_depend_on_callers_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

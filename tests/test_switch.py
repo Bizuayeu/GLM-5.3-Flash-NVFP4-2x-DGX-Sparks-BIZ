@@ -282,6 +282,102 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(len(reports[-1]["cleanup_errors"]), 2)
 
 
+class RollbackTests(unittest.TestCase):
+    """A failed candidate falls back to the old pair, or stops what it restarted."""
+
+    def test_old_ranks_that_differ_stop_nothing(self):
+        backend = Backend()
+        prepare = backend.prepare
+
+        def differ(rank, launch, *, recovery=False):
+            result = prepare(rank, launch, recovery=recovery)
+            return {**result, "common": "other"} if recovery and rank else result
+
+        backend.prepare = differ
+        with self.assertRaisesRegex(ValueError, "Old ranks differ"):
+            switch(backend, "new", save=lambda r: None)
+        self.assertEqual(backend.calls, [])
+
+    def test_a_recovery_that_cannot_start_stops_what_it_restarted(self):
+        backend = Backend()
+        start = backend.start
+
+        def start_old_fails(rank, identity):
+            start(rank, identity)
+            if identity["name"] == "old-0":
+                raise OperationFailure("start", 0, "ssh-unavailable", 255)
+
+        backend.start = start_old_fails
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        report = reports[-1]
+        self.assertEqual(report["status"], "failed")
+        self.assertNotIn("recovered", report)
+        self.assertEqual(
+            [(e["rank"], e["failure"]["action"]) for e in report["recovery_errors"]],
+            [(0, "start")],
+        )
+        self.assertNotIn("ready", [call[0] for call in backend.calls])
+        self.assertEqual(
+            backend.calls[-4:],
+            [
+                ("start", 1, "old-1"),
+                ("start", 0, "old-0"),
+                ("stop", 1, "old-1"),
+                ("stop", 0, "old-0"),
+            ],
+        )
+
+    def test_a_recovery_that_fails_readiness_is_stopped(self):
+        backend = Backend()
+
+        def ready(rows):
+            backend.calls.append(("ready", tuple(r["identity"]["name"] for r in rows)))
+            raise OperationFailure("ready", 1, "rank-terminated")
+
+        backend.ready = ready
+        reports = []
+        with self.assertRaises(RuntimeError):
+            switch(backend, "new", save=lambda r: reports.append(copy.deepcopy(r)))
+        report = reports[-1]
+        self.assertEqual(report["status"], "failed")
+        self.assertNotIn("recovered", report)
+        self.assertEqual(
+            report["recovery_errors"][0]["failure"]["reason"], "rank-terminated"
+        )
+        self.assertEqual(
+            backend.calls[-3:],
+            [
+                ("ready", ("old-1", "old-0")),
+                ("stop", 1, "old-1"),
+                ("stop", 0, "old-0"),
+            ],
+        )
+
+    def test_resume_refuses_when_a_rank_prepares_other_assets(self):
+        backend = Backend()
+        rows = [
+            {"rank": r, "identity": {"launch": "new", "name": f"new-{r}"}}
+            for r in (0, 1)
+        ]
+        backend.current = lambda rank: {"name": f"new-{rank}", "fingerprint": None}
+        for row in rows:
+            row["identity"]["fingerprint"] = None
+        backend.prepare = lambda rank, launch, **kw: {"rank": rank, "image": "rebuilt"}
+        report = {
+            "status": READINESS_UNCONFIRMED,
+            "new": rows,
+            "assets": [{"rank": 0}, {"rank": 1}],
+            "failure": {"action": "poll"},
+            "error": "OperationFailure",
+            "recovery": [],
+        }
+        with self.assertRaisesRegex(ValueError, "Assets changed"):
+            resume(backend, report)
+        self.assertEqual(backend.calls, [])
+
+
 def degenerate(backend):
     def warmup(rows):
         backend.calls.append(("warmup", tuple(r["identity"]["name"] for r in rows)))

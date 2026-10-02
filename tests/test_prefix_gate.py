@@ -99,6 +99,19 @@ class PrefixTests(unittest.TestCase):
         self.assertEqual(checked, {"correct": False, "mismatches": [phantom]})
         self.assertFalse(prefix_gate.verify(prefix, quote, "")["correct"])
 
+    def test_a_cited_record_beyond_the_prefix_is_a_mismatch(self):
+        prefix = prefix_gate.build_prefix(400, SEED)
+        lookup = next(t for t in prefix_gate.tasks(prefix) if t["kind"] == "lookup")
+        checked = prefix_gate.verify(
+            prefix,
+            lookup,
+            prefix_gate.answer(prefix, lookup) + "\nRecord 00400: ABCDE",
+        )
+        self.assertEqual(
+            checked,
+            {"correct": False, "mismatches": ["Record 00400: ABCDE (no such record)"]},
+        )
+
     def test_the_prefix_is_sized_to_the_token_limit_by_the_given_counter(self):
         prefix, used = prefix_gate.fit_prefix(count_tokens, 6000, SEED)
         self.assertLessEqual(used, 6000)

@@ -176,7 +176,14 @@ def make_server(port, upstream, log=sys.stderr, timeout=DEFAULT_TIMEOUT):
                 self.wfile.flush()
 
         def _body(self):
-            length = int(self.headers.get("Content-Length") or 0)
+            """The request body, or None after answering 400 or 413 itself."""
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self.send_error(400, "Bad Content-Length")
+                return None
             if length > MAX_BODY:
                 self.send_error(413)
                 return None
@@ -200,19 +207,22 @@ def make_server(port, upstream, log=sys.stderr, timeout=DEFAULT_TIMEOUT):
             if request.get("stream"):
                 self._stream(request)
                 return
-            sent = []
+            sent, checked = [], []
 
             def send(body):
                 sent.append(body)
                 return self._send_json(body)
 
+            def check(tools, calls):
+                checked.append(violations(tools, calls))
+                return checked[-1]
+
             try:
-                answer, outcome, found = gate(request, send)
+                answer, outcome, found = gate(request, send, check)
             except Passthrough as held:
-                if (
-                    len(sent) > 1
-                ):  # the repair request failed; the violating turn is not returned
-                    record(False, "error", [])
+                if len(sent) > 1:
+                    # The repair request failed; the violating turn is not returned.
+                    record(False, "error", checked[0])
                 self._start(held.status, held.headers)
                 self.wfile.write(held.body)
                 return
@@ -285,7 +295,9 @@ def make_server(port, upstream, log=sys.stderr, timeout=DEFAULT_TIMEOUT):
             self._relay_raw(self._upstream("GET", None))
 
         def do_DELETE(self):
-            self._relay_raw(self._upstream("DELETE", self._body()))
+            raw = self._body()
+            if raw is not None:
+                self._relay_raw(self._upstream("DELETE", raw))
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 

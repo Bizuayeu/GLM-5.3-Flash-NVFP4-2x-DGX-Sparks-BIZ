@@ -3,7 +3,8 @@
     python3 tools/decode_divergence.py records/<run-a>/tokens-prose.json records/<run-b>/tokens-prose.json
 
 Prints, per sample index, the token count, the first index where the ids differ (or "identical") and the text
-around it, so a launch difference reads as one tie-break flip or as an early systematic drift.
+around it, so a launch difference reads as one tie-break flip or as an early systematic drift. Runs holding
+different sample counts end with a line that says so.
 """
 
 import json
@@ -18,7 +19,7 @@ def main():
         if k is None and len(ia) == len(ib):
             print(f"sample {i}: identical ({len(ia)} tokens)")
             continue
-        k = len(ia) if k is None else k
+        k = min(len(ia), len(ib)) if k is None else k
         ta, tb = x["text"], y["text"]
         c = next(
             (j for j in range(min(len(ta), len(tb))) if ta[j] != tb[j]),
@@ -30,6 +31,8 @@ def main():
         )
         print("   A:", repr(ta[max(0, c - 60) : c + 60]))
         print("   B:", repr(tb[max(0, c - 60) : c + 60]))
+    if len(a["samples"]) != len(b["samples"]):
+        print(f"samples: A has {len(a['samples'])}, B has {len(b['samples'])}")
 
 
 if __name__ == "__main__":

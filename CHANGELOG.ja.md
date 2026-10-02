@@ -20,6 +20,22 @@
 - [ベンチマーク](docs/benchmarks.ja.md)は中身どおりの題（TP=3を含む）になり、版の表に1.25.0を足し、版の節の外にある実施の索引を加えました。施策台帳にしか無かった実測はベンチマークか[部品検証](docs/component-validation.ja.md)へ移し（P06、P10、P24、P26、P27）、台帳は採否とリンクを持ちます。RecoverSSMは[施策台帳P30](docs/optimization-catalog.ja.md#性能施策一覧)になり、P28は完了を一度だけ書きます。[全体像](docs/optimization-overview.ja.md)の問答はTP=3に合わせ、次の候補の一覧は台帳を指します。[性能調査](docs/performance-investigation.ja.md)は今も使う手順だけを残します。
 - READMEはTP=3の受け入れと状態を書き、状態表にFreedomBenchとHLEを加え、数値の持ち主が他にあるところは状態とリンクだけにしました。[文書一覧](docs/README.ja.md)は各文書の範囲を書き直し、3ノードの起動規則と動くGID indexの持ち主の行を加えました。
 
+## 1.26.2 — 2026-10-03
+
+### Fixed
+
+- `api.prompt_tokens_details` を `api.dev_endpoints` と同じく型で検査します。`"false"` のような文字列は検査を通り、真と読まれて `--enable-prompt-tokens-details` を出していました。今は起動前に拒否します。
+- `runtime.decode_graphs` と並んだ `runtime.enforce_eager` も true か false でなければなりません。二つの値が食い違わないかだけを見ていたので、`enforce_eager = "yes"` が通っていました。
+- `cluster resume` は、記録された rank ごとに一つずつ host を名指ししない `--hosts` を、`cluster switch` と同じく拒否します（exit 2、数を添えて）。3 rank の記録を 2 host で再開すると SSH の転送の中で `IndexError` になっていました。
+- tool 引数ゲートは、上限を超える要求本体に 413 を一度だけ返し、上流へ中継しません（`DELETE` は 413 の後に中継され、二度応答していました）。負または数でない `Content-Length` には、client が閉じるのを待たず 400 を返します。修復に失敗した stream でない要求も、stream と同じく修復の対象だった違反を記録します。
+- 起動前の検査は、無いモデルの shard を「Missing or empty model shard」として報告します。ファイルの検査より先に `stat()` が走り、`FileNotFoundError` になっていました。
+- `tools/decode_divergence.py`：A の方が長いとき、最初に食い違う token を B の終わった位置でなく A 自身の長さで報告していました。標本数の違う二つの run は同一と読まれていました（余った標本が捨てられていた）。今は数の違いを表示します。
+
+### Changed
+
+- chat の `/tokenize` 本体（`ask`、`server prefix-gate`、`apc-history` が同じ数え方をする。tools の無い要求で `ask` は `"tools": null` を送らなくなった。vLLM では同じ意味）、native LPA の判定、serve 引数に書く tensor parallel の大きさ（起動の golden は不変）、prefix gate の既定の長さ、読み手の spin の範囲を示すエラー文に、それぞれ持ち主を一つにしました。
+- どの試験も通っていなかった失敗の経路に 103 本の試験（773 から 876）：tool ゲートの loopback の防御と本体の扱い、`cluster` の stop・poll・readiness、`switch` の巻き戻し、APC の受付の拒否と projector の cache、profile の検査の分岐、起動資産の名前、`verify-download`・`tools/assess_benchmark.py`・`tools/check_prefix_cache.py` の終了コード、届かないモデルのエラー、いくつかのコマンドの入口。どんな終了でも通っていた試験は、終了コードと文言を確かめるようにしました。
+
 ## 1.26.1 — 2026-10-02
 
 ### Documentation

@@ -224,6 +224,13 @@ def switch(backend, launch, *, save, config=None, nodes=2):
     return finish(backend, report, save=save, config=config)
 
 
+def resumed_assets(report):
+    """The per-rank assets a resume re-prepares: the recovery's or the new launch's."""
+    if report["status"] == RECOVERY_READINESS_UNCONFIRMED:
+        return report["recovery_assets"]
+    return report["assets"]
+
+
 def resume(backend, report, *, config=None, save=lambda report: None):
     recovering = report["status"] == RECOVERY_READINESS_UNCONFIRMED
     rows = report["recovery"] if recovering else report["new"]
@@ -234,7 +241,7 @@ def resume(backend, report, *, config=None, save=lambda report: None):
         raise ValueError(
             "Only a recorded, unconfirmed readiness observation can resume"
         )
-    assets = report["recovery_assets"] if recovering else report["assets"]
+    assets = resumed_assets(report)
     if len(assets) < 2 or {r["rank"] for r in rows} != set(range(len(assets))):
         raise ValueError("A resumed launch needs every rank it recorded")
     for row in rows:

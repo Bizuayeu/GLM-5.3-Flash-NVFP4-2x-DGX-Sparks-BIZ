@@ -1,11 +1,16 @@
+import hashlib
 import json
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
-from glm53_setup.runtime.apc_runtime import POLICY_KEY, allocation_guard
+from glm53_setup.runtime.apc_runtime import POLICY_KEY, allocation_guard, settings
 from glm53_setup.runtime.apc_worker import (
+    _read_policy,
+    _verify_projector,
     before_forward,
     report,
     validate_worker,
@@ -194,6 +199,85 @@ class APCWorkerTests(unittest.TestCase):
             self.assertEqual(experiment.expected_position, 68)
             before_forward(self.worker, step(active={"a": 4}, cached=[("a", 60)]))
             self.assertFalse(experiment.speculative_decode)
+
+    def test_wire_shape_and_identity_mismatches_are_rejected(self):
+        config = settings()
+        self.assertEqual(_read_policy(data("a", 16), config).request_id, "a")
+        shape = "did not receive the cache manager's LPA policy"
+        identity = "^Worker policy identity mismatch$"
+        cases = (
+            (shape, lambda wire: wire.pop("override")),
+            (shape, lambda wire: wire.update(extra=1)),
+            (identity, lambda wire: wire.update(version=True)),
+            (identity, lambda wire: wire.update(version="1")),
+            (identity, lambda wire: wire.update(version=2)),
+            (identity, lambda wire: wire.update(request_id="b")),
+            (identity, lambda wire: wire.update(signature="0" * 64)),
+            (identity, lambda wire: wire.update(override="predict")),
+        )
+        for message, tamper in cases:
+            value = data("a", 16)
+            tamper(value.sampling_params.extra_args[POLICY_KEY])
+            with (
+                self.subTest(message=message),
+                self.assertRaisesRegex(ValueError, message),
+            ):
+                _read_policy(value, config)
+        for extra in ({POLICY_KEY: "forged"}, {}, None):
+            value = data("a", 16)
+            value.sampling_params.extra_args = extra
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, shape):
+                _read_policy(value, config)
+        value = data("a", 16)
+        value.sampling_params = None
+        with self.assertRaisesRegex(ValueError, shape):
+            _read_policy(value, config)
+
+
+class VerifyProjectorTests(unittest.TestCase):
+    def setUp(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "projector.pt"
+        self.path.write_bytes(b"projector-v1")
+        self.config = NS(
+            projector_path=str(self.path),
+            projector_sha256=hashlib.sha256(b"projector-v1").hexdigest(),
+            signature="sig",
+        )
+        self.worker = NS()
+
+    def test_digest_mismatch_raises_and_is_not_cached(self):
+        self.config.projector_sha256 = "0" * 64
+        for _ in range(2):
+            with self.assertRaisesRegex(ValueError, "projector digest mismatch"):
+                _verify_projector(self.worker, self.config)
+        self.assertFalse(hasattr(self.worker, "_glm53_apc_projector"))
+
+    def test_verified_identity_is_cached_by_mtime_and_size(self):
+        _verify_projector(self.worker, self.config)
+        before = self.path.stat()
+        # Same size and restored mtime: a re-hash would see the wrong bytes.
+        self.path.write_bytes(b"projector-v2")
+        os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = self.path.stat()
+        self.assertEqual(
+            (after.st_size, after.st_mtime_ns), (before.st_size, before.st_mtime_ns)
+        )
+        _verify_projector(self.worker, self.config)
+        self.path.write_bytes(b"projector-v2+")
+        os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        with self.assertRaisesRegex(ValueError, "projector digest mismatch"):
+            _verify_projector(self.worker, self.config)
+
+    def test_signature_change_forces_a_rehash(self):
+        _verify_projector(self.worker, self.config)
+        before = self.path.stat()
+        self.path.write_bytes(b"projector-v2")
+        os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.config.signature = "other"
+        with self.assertRaisesRegex(ValueError, "projector digest mismatch"):
+            _verify_projector(self.worker, self.config)
 
 
 if __name__ == "__main__":

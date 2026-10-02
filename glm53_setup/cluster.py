@@ -19,11 +19,14 @@ from .io import read_json, write_json
 from .switch import (
     RANK_TERMINATED,
     READINESS_DEADLINE,
+    READINESS_UNCONFIRMED,
+    RECOVERY_READINESS_UNCONFIRMED,
     REMOTE_OPERATION_FAILED,
     SSH_UNAVAILABLE,
     TRANSPORT_TIMEOUT,
     OperationFailure,
     resume,
+    resumed_assets,
     switch,
 )
 
@@ -287,7 +290,7 @@ class SSHBackend:
         ]
         # Reads, and the two mutations a rank makes harmless to replay: stop is
         # idempotent, start answers for an attempt already in flight. A switch has
-        # stopped both ranks by the time it starts the new ones, so one dropped
+        # stopped every rank by the time it starts the new ones, so one dropped
         # connection there used to cost a recovery.
         attempts = 3 if action in ("current", "prepare", "poll", "start", "stop") else 1
         for attempt in range(attempts):
@@ -324,7 +327,7 @@ class SSHBackend:
         nodes = (
             None
             if running is None
-            else len(running["launch"]["manifest"]["profile"]["nodes"])
+            else server_config.node_count(running["launch"]["manifest"]["profile"])
         )
         if nodes is not None and nodes != len(self.hosts):
             # Stopping only some of its ranks would leave the rest in a broken
@@ -384,9 +387,14 @@ def act_resume(cli, args):
         cli.error(
             "resume requires --output, --hosts, --checkout and a positive timeout"
         )
+    report = read_json(args.output / "result.json")
+    if report.get("status") in (READINESS_UNCONFIRMED, RECOVERY_READINESS_UNCONFIRMED):
+        ranks = len(resumed_assets(report))
+        if len(args.hosts) != ranks:
+            cli.error(f"resume needs one --hosts entry per recorded rank ({ranks})")
     result = resume(
         ssh_backend(args),
-        read_json(args.output / "result.json"),
+        report,
         config=args.config.read_text(encoding="utf-8") if args.config else None,
         save=lambda report: write_json(args.output / "result.json", report),
     )

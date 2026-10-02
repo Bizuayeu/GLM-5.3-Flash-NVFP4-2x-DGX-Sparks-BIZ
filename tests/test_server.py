@@ -265,6 +265,37 @@ class ServerConfigTests(unittest.TestCase):
             [("model", model), ("prompt", "hi"), ("add_special_tokens", False)],
         )
 
+    def test_native_lpa_is_lpa_without_prefix_caching(self):
+        for lpa, apc, native in (
+            (False, False, False),
+            (False, True, False),
+            (True, True, False),
+            (True, False, True),
+        ):
+            with self.subTest(lpa=lpa, apc=apc):
+                self.profile["lpa"]["enabled"] = lpa
+                self.profile["cache"]["prefix_caching"] = apc
+                self.assertIs(bool(config.native_lpa(self.profile)), native)
+
+    def test_chat_tokenize_request_counts_what_the_chat_request_serves(self):
+        body = config.request_body(
+            self.profile, {"messages": [{"role": "user", "content": "hi"}]}
+        )
+        self.assertEqual(
+            list(server.chat_tokenize_request(body).items()),
+            [
+                ("model", body["model"]),
+                ("messages", body["messages"]),
+                ("add_generation_prompt", True),
+                ("chat_template_kwargs", body["chat_template_kwargs"]),
+            ],
+        )
+        # Declared tools are part of the rendered prompt, so they are counted too.
+        tools = [{"type": "function", "function": {"name": "f"}}]
+        self.assertEqual(
+            server.chat_tokenize_request({**body, "tools": tools})["tools"], tools
+        )
+
     def test_every_cache_path_lies_in_the_mounted_runtime_cache(self):
         # A cache path outside the mount is rebuilt in every container; kernels
         # then compile while serving (the incident behind these variables).
@@ -377,6 +408,22 @@ class ServerConfigTests(unittest.TestCase):
             profile["api"]["dev_endpoints"] = bad
             with self.assertRaises(ValueError):
                 config.validate(profile)
+
+    def test_prompt_tokens_details_must_be_a_boolean(self):
+        # A string "false" is truthy: it would emit the flag the operator meant to turn off.
+        for bad in (1, "false", None):
+            profile = copy.deepcopy(self.profile)
+            profile["api"]["prompt_tokens_details"] = bad
+            with self.assertRaisesRegex(
+                ValueError, "api.prompt_tokens_details must be true or false"
+            ):
+                config.validate(profile)
+        del self.profile["api"]["prompt_tokens_details"]
+        config.validate(self.profile)
+        self.assertNotIn(
+            "--enable-prompt-tokens-details",
+            config.serve_args(self.profile, 0, "/hf/x"),
+        )
 
     def test_stall_and_warmup_keys_are_optional_nonnegative(self):
         for section, key in (
@@ -1464,6 +1511,14 @@ class ServerConfigTests(unittest.TestCase):
             )
         self.assertEqual(calls[1][1]["kwargs"]["mode"], "predict")
         self.assertEqual(calls[-1][1]["kwargs"]["mode"], "off")
+        self.assertEqual(
+            calls[0][1],
+            server.chat_tokenize_request(
+                config.request_body(
+                    self.profile, {"messages": [{"role": "user", "content": "hello"}]}
+                )
+            ),
+        )
 
     def test_request_does_not_rewrite_the_configure_it_sent(self):
         # A sender that keeps the bodies it was given (a log, a test double)

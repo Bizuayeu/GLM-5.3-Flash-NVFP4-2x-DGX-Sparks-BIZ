@@ -1,7 +1,14 @@
+import contextlib
+import gzip
 import importlib.metadata
+import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from glm53_setup.validation import profile_trace
 from glm53_setup.validation.profile_trace import (
     decode_delta,
     graph_launches,
@@ -96,3 +103,62 @@ class PackageVersionTests(unittest.TestCase):
                 package_versions(("torch", "flashinfer-python")),
                 {"torch": "2.9.0", "flashinfer-python": None},
             )
+
+
+def trace(*kernels):
+    return {
+        "traceEvents": [
+            {"cat": "kernel", "ph": "X", "name": name, "dur": 1} for name in kernels
+        ]
+    }
+
+
+class MainTests(unittest.TestCase):
+    def run_main(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            profile_trace.main(list(argv))
+        return out.getvalue(), err.getvalue()
+
+    def test_a_gzipped_trace_is_summarized_and_paired_with_its_control(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            measured = Path(tmp) / "measured.json.gz"
+            with gzip.open(measured, "wt", encoding="utf-8") as stream:
+                json.dump(trace("gemm", "gemm", "ncclAllReduce", "gemm"), stream)
+            control = Path(tmp) / "control.json"
+            control.write_text(json.dumps(trace("gemm")), encoding="utf-8")
+            out, _ = self.run_main(str(measured))
+            self.assertEqual(json.loads(out)["kernel_events"], 4)
+            self.assertNotIn("decode_delta", json.loads(out))
+            out, _ = self.run_main(
+                str(measured),
+                "--prefill-control",
+                str(control),
+                "--output-tokens",
+                "4",
+                "--control-tokens",
+                "1",
+            )
+        delta = json.loads(out)["decode_delta"]
+        self.assertEqual(delta["additional_output_tokens"], 3)
+        self.assertEqual(delta["kernel_event_delta_per_token"], 1)
+        self.assertEqual(delta["nccl_event_delta_per_token"], 1 / 3)
+
+    def test_a_prefill_control_without_both_token_counts_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "trace.json"
+            path.write_text(json.dumps(trace("gemm")), encoding="utf-8")
+            for counts in ((), ("--output-tokens", "4"), ("--control-tokens", "1")):
+                with self.subTest(counts=counts):
+                    with self.assertRaises(SystemExit) as caught:
+                        self.run_main(
+                            str(path), "--prefill-control", str(path), *counts
+                        )
+                    self.assertEqual(caught.exception.code, 2)
+
+    def test_a_trace_without_gpu_kernels_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "trace.json"
+            path.write_text(json.dumps({"traceEvents": []}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "No GPU kernel events"):
+                self.run_main(str(path))

@@ -68,3 +68,54 @@ class LaunchAssetTests(unittest.TestCase):
                 self.assertIs(preflight.call_args.kwargs["recovery"], recovery)
                 self.assertEqual(result["local"]["warnings"], warnings)
                 self.assertNotIn("warnings", result["common"])
+
+
+class WeightIndexTests(unittest.TestCase):
+    """What the weight index and its shards must be before any image is read."""
+
+    def refused(self, weight_map, shards=None):
+        """Run inspect over a model holding ``shards`` (name -> bytes); return the error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp)
+            for name in ("tokenizer.json", "tokenizer_config.json"):
+                (model / name).write_text("{}", encoding="utf-8")
+            for name, data in (shards or {}).items():
+                (model / name).write_bytes(data)
+            (model / "model.safetensors.index.json").write_text(
+                json.dumps({"weight_map": weight_map}), encoding="utf-8"
+            )
+            with (
+                patch.object(
+                    launch_assets.server, "preflight", return_value={"passed": True}
+                ),
+                patch.object(launch_assets.server, "model_path", return_value=model),
+                patch.object(launch_assets.host, "run") as run,
+                self.assertRaises(Exception) as caught,
+            ):
+                launch_assets.inspect({}, Path("profile.toml"), 0)
+            run.assert_not_called()
+        return caught.exception
+
+    def test_an_empty_weight_index_is_refused(self):
+        error = self.refused({})
+        self.assertIsInstance(error, ValueError)
+        self.assertEqual(str(error), "Empty model weight index")
+
+    def test_a_shard_name_that_is_not_a_plain_safetensors_file_is_refused(self):
+        for name in ("../x.safetensors", "a\\b.safetensors", "a.bin"):
+            with self.subTest(name=name):
+                error = self.refused({"t": name})
+                self.assertIsInstance(error, ValueError)
+                self.assertEqual(str(error), "Invalid model shard filename")
+
+    def test_an_empty_shard_is_refused(self):
+        error = self.refused({"t": "a.safetensors"}, {"a.safetensors": b""})
+        self.assertIsInstance(error, ValueError)
+        self.assertEqual(str(error), "Missing or empty model shard")
+
+    # Until 1.26.2 path.stat() ran before is_file(): an absent shard raised
+    # FileNotFoundError and the "Missing" half of the message was unreachable.
+    def test_a_missing_shard_is_refused_with_the_shard_message(self):
+        error = self.refused({"t": "a.safetensors"})
+        self.assertIsInstance(error, ValueError)
+        self.assertEqual(str(error), "Missing or empty model shard")

@@ -251,3 +251,10 @@ class FabricTests(unittest.TestCase):
         )
         profile["nodes"][0]["additional_rails"] = self.site["additional_rails"]
         server_config.validate(profile)
+        self.assertEqual(
+            server_config.environment(profile, 0)["NCCL_IB_HCA"], "=roce0:1,roce1:2"
+        )
+        # The node without rails keeps its single input.
+        self.assertEqual(
+            server_config.environment(profile, 1)["NCCL_IB_HCA"], "=roce0:1"
+        )
