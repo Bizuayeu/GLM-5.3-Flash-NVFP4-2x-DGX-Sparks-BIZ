@@ -6,7 +6,7 @@
 
 ## ランチャーは一つ
 
-checkoutの起動経路は `python -m glm53_setup server …` の一本です。[起動設定TOML](server-configuration.ja.md)で動き、稼働中の対がある場合は両rankの[切替・復旧手順](launch-safety.ja.md#全レール検査と両rankの切替)がこれを包みます。本リポジトリの全モデル実測はすべてこの経路で行い、起動前に行う検査は下記の[起動検査](#フルモデルの起動検査)です。
+checkoutの起動経路は `python -m glm53_setup server …` の一本です。[起動設定TOML](server-configuration.ja.md)で動き、稼働中の起動がある場合は[切替・復旧手順](launch-safety.ja.md#全レール検査と両rankの切替)がこれを包みます。本リポジトリの全モデル実測はすべてこの経路で行い、起動前に行う検査は下記の[起動検査](#フルモデルの起動検査)です。
 
 ## 資材の保管場所とパス
 
@@ -16,7 +16,7 @@ checkoutの起動経路は `python -m glm53_setup server …` の一本です。
 |---|---|---|
 | 本体checkpoint | `$HOME/.cache/huggingface/hub/models--nvidia--GLM-5.3-Flash-NVFP4/snapshots/<revision>/` | 固定したモデル・config・tokenizerのview。重みファイルは同階層の `blobs/` ディレクトリへリンクし、データ本体はそちらが持つ |
 | MTPメタデータview（配布既定で必要） | `$HOME/.cache/huggingface/local-views/glm53-mtp-compatible/<revision>/` | 既存のtensorデータをリンクし、checkpoint同梱のBF16 MTPに合わせて量子化メタデータを調整する。元のsnapshotを編集せずに[viewを作成](speculative-decoding.ja.md#各linuxホストでの準備)する |
-| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。両ホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
+| LPA projector（`lpa.enabled = true` のとき必要。テンプレートは無効） | `<checkout>/state/lpa/glm53-lpa-cut32-v1/projector.pt`。[起動設定TOML](server-configuration.ja.md)の`[lpa].projector`に、そのTOMLからの相対パスまたは絶対パスを指定 | NVIDIAのsnapshot・ソース配布物とは別のRelease添付物。すべてのホストで[取得・hash検証](lpa.ja.md#学習済みprojectorの取得)するか、対応するprojectorを学習する。[有効化](lpa.ja.md#起動profileでlpaを有効にする)はprofile編集と切替を伴う別手順。通常の推論とbatchingには不要 |
 | Dockerのbase／reference image | Dockerが管理する保管領域 | 固定したbaseをpullし、本ソースからreference imageをビルドする。ソースのcheckout、image、checkpointは別々の資材 |
 | ローカル設定と取得状態 | `<checkout>/state/` | サイト固有の起動設定と `download-status.json`。後者は実際に取得した `snapshot` のパスを記録する |
 | runtime／JIT cacheと証跡 | `<checkout>/state/tp2-runtime-cache/`（[3ノード](#3ノード)では `tp3-runtime-cache/`）、`<checkout>/records/` | 再生成できるruntimeデータと非公開の実行記録。モデル重みでも配布物の入力でもない。分散起動はTriton・TileLang・TorchInductorのcacheとCUDA driverのJIT cache（`CUDA_CACHE_PATH=/root/.cache/nv`。指定しなければcontainer内の `~/.nv/ComputeCache`）をruntime cacheへ向け、コンパイル済みkernelを再起動後も残す。それでもコンパイルされるものは[warmup ladder](#warmup-ladder)が記録する |
@@ -58,7 +58,7 @@ python -c 'from pathlib import Path; from glm53_setup.config import MODEL, REVIS
 python -c 'import json; from glm53_setup.config import STATE; s = json.loads((STATE / "download-status.json").read_text()); print(s.get("status"), s.get("snapshot", "not recorded"))'
 ```
 
-2つ目のコマンドは、このcheckoutで取得が登録済みであることを前提とします。表示されたパスも `status=complete` も、checksum検証の代わりにはなりません。起動設定は、両機で実際にビルドして確認したimageを指す必要があります。
+2つ目のコマンドは、このcheckoutで取得が登録済みであることを前提とします。表示されたパスも `status=complete` も、checksum検証の代わりにはなりません。起動設定は、すべてのホストで実際にビルドして確認したimageを指す必要があります。
 
 ## 一度取得して検証する
 
@@ -81,7 +81,7 @@ Dockerのoverlay2は、約125層を超えるimageを読み込めません。受�
 
 ## ホストカーネルと複数ノードRoCE
 
-**更新を入れる前と、2台で動かす手順の前に、カーネルとドライバーを確認してください。** 本リポジトリの実測は、MSI EdgeXpert（MS-C931）上の `6.17.0-1032-nvidia`、ドライバー 580.173.02、ConnectX-7 ファームウェア 28.45.4028 で行いました。カーネル `7.0.0-1019-nvidia` とドライバー 580.178.04 は、ここでは未検証です。
+**更新を入れる前と、複数台で動かす手順の前に、カーネルとドライバーを確認してください。** 本リポジトリの実測は、MSI EdgeXpert（MS-C931）上の `6.17.0-1032-nvidia`、ドライバー 580.173.02、ConnectX-7 ファームウェア 28.45.4028 で行いました。カーネル `7.0.0-1019-nvidia` とドライバー 580.178.04 は、ここでは未検証です。
 
 2026-09-15 時点の更新では、`linux-nvidia-hwe-24.04` 系のメタパッケージが `7.0.0-1019-nvidia` へ上がり、580 open ドライバーのモジュールもそのカーネル向けに入ります。同じ更新で `nvidia-driver-580-open` も 580.173.02 から 580.178.04 へ上がります（参照機2台の `apt list --upgradable` で 2026-09-18 に確認）。`apt` の更新でも DGX Dashboard の更新でも入るため、新しく導入した機体も最初の更新の後はこのカーネルで起動します。
 
@@ -89,7 +89,7 @@ Dockerのoverlay2は、約125層を超えるimageを読み込めません。受�
 
 [NV-Kernels PR #590](https://github.com/NVIDIA/NV-Kernels/pull/590)（未マージ。投稿者による分析で、NVIDIA の見解ではない）は、原因を Kexec HandOver（KHO）と特定しています。`7.0.0-1019-nvidia` のビルドは `CONFIG_KEXEC_HANDOVER_ENABLE_DEFAULT=y` です（パッケージの config で確認。`6.17.0-1032-nvidia` は KHO を既定では有効にしない）。KHO は起動時に、後の kexec 用の scratch メモリを確保し、CMA のページブロックとして解放します。その報告では約 9.3 GiB（4,761 ページブロック）で、`CmaTotal` には計上されません。RDMA のメモリ登録はページを長期間固定し、固定するページは先に CMA の外へ移す必要があります。GPU がメモリを使い込んでいるとこの移動が失敗し、登録が `ENOMEM` を返します。
 
-2台とも同じ対応にしてください。
+すべてのホストを同じ対応にしてください。
 
 | 選択 | 手順 | 補足 |
 |---|---|---|
@@ -110,42 +110,39 @@ Dockerのoverlay2は、約125層を超えるimageを読み込めません。受�
 
 各ホストで実測した値を、[起動設定TOML](server-configuration.ja.md)の `[nodes]` 節に記録します。同じファイルをすべてのホストに置きます。
 
-- 自機のfabric IPv4、headのfabric IPv4
-- Ethernet interface、RDMAのHCA、そのinterfaceのRoCEv2 GID index
+- 自機のfabric IPv4（headのものは最初のノードの値）、Ethernet interface、RDMAのHCA、そのinterfaceのRoCEv2 GID index
+- 3台のリングでは代わりに、他ノードごとに1つの `links` の項目と、各ホストの `host_address` と `host_interface`（[3ノード](server-configuration.ja.md#3ノード)）
 - `[api]` の未使用のAPIポートとrendezvousポート
 
 HCAとGIDの番号は、両ホストで一致している必要はありません。GIDが自機のIPv4とnet deviceに対応することを確認してください。MTU 9000は、両端と経路全体が対応する場合にだけ使います。フルモデルをロードする前に、実際のNCCL transportとcollectiveの正当性を検証します。SSHで接続できることはRDMAの試験ではありません。これらの値は `server plan` と `server preflight` が検査します（[起動検査](#フルモデルの起動検査)）。
 
 ## フルモデルの起動検査
 
-`server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、他のコンテナがGPUを使っていないこと、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。合格したときは検査結果・設定・containerコマンドを `records/<timestamp>-server-r<N>/` に保存します。`server plan` はそのコマンドを何も起動せずに表示し、`preflight` は検査結果をJSONで表示して、一つでも失敗すれば非ゼロで終了します。両rankの切替では、稼働中の対を止める前と新しい対を起動する前に、両rankでこの検査を繰り返します。
+`server preflight --rank N` は各ホストで、固定snapshotとMTP view、fabric設定、選択したimage IDと機能marker、LPA有効時のprojector checksum、他のコンテナがGPUを使っていないこと、空きメモリを検査します。`server start` も同じ検査を行い、失敗があれば起動しません。合格したときは検査結果・設定・containerコマンドを `records/<timestamp>-server-r<N>/` に保存します。`server plan` はそのコマンドを何も起動せずに表示し、`preflight` は検査結果をJSONで表示して、一つでも失敗すれば非ゼロで終了します。`cluster switch` は、稼働中の起動を止める前と新しい起動を始める前に、全rankでこの検査を繰り返します。
 
 `server preflight` はimageの機能markerも検査します。有効な機能はそれぞれ、[imageの契約](server-configuration.ja.md#現行イメージの契約)に挙げたmarkerをimageの環境変数に見つけなければなりません。一つのmarkerには復旧のための例外があります。`runtime.canonical_moe_order = true` の場合、新規の起動には `GLM53_MOE_ORDER_API=2` が必要です。marker 1は、token整列のbuffer長を誤っていた以前のimageも持っているためです。marker 1のimageを指すprofileは、`server preflight`・`server start`・`cluster switch` の停止前検査で `moe_order_support` が不合格になります。参照imageを作り直し、`reference_image` を更新してください。すでにmarker 1のimageで稼働している対が取り残されることはありません。切替はその対を復旧先として検査し、新しい対が失敗した場合はmarker 1のまま再起動して、rankの `warnings` に `moe_order_marker_1_accepted_for_recovery` を記録します。稼働中のmarker 1の対のprofileに同じ読み取り検査を手で行う場合は、`server preflight` に `--recovery` を付けます。このflagは切替の復旧経路のためのもので、古いimageを新規に起動する手段ではありません。
 
-三つのbuild時patchが上流vLLMの不具合を直しており、固定しているvLLMが上流の修正より先へ進んだら外します。四つ目は、この機材で重みの読み込みが遅いことへの回避策です。どれもほかのbuild時patchと同じくsourceのSHA-256を照合し、どの検査もそのmarkerを要求しません。
+四つのbuild時patchが上流vLLMの不具合を直しており、固定しているvLLMが上流の修正より先へ進んだら外します。五つ目は、この機材で重みの読み込みが遅いことへの回避策です。どれもほかのbuild時patchと同じくsourceのSHA-256を照合し、どの検査もそのmarkerを要求しません。
 
 - `GLM53_SLOT_MAPPING_GUARD=1`（1.7.0から作るimage。`glm53_setup/runtime/patch_slot_mapping.py`、vLLMのissue #53982）：slot対応付けのkernelが、block tableを行の中だけで読みます。これがないと、公開した任意設定は約25万tokenを超える要求で失敗します（[実測](benchmarks.ja.md#基準の2台の配信profile)）。このmarkerを要求する検査はないので、古いimageも起動できます。
 - `GLM53_KPOOL_SEED_STRIDE=1`（1.13.0から作るimage。`glm53_setup/runtime/patch_kpool_seed.py`、vLLMのpull request #57477と同じ変更）：kpoolのprefill seed kernelが、indexerの生tailのblockをtail自身のstrideで番地付けします。これがないと、prefillのたびに要求自身のtail blockがseedされず、最後のtokenのkeyとgateが番号の小さいindexer blockへ書き込まれます。そのblockは別の要求のものであり得ます。壊れるのは長い文脈での疎なtop-kの選択で、prefix cacheから再利用する長いpromptで最も効きます。基準の2台では、patchを入れても測った出力は一つも変わりませんでした（[実測](benchmarks.ja.md#1130での測定)）。このmarkerを要求する検査はありません。
 - `GLM53_KPOOL_RING=1`（1.19.0から作るimage。`glm53_setup/runtime/patch_kpool_ring.py`、vLLMのpull request #58454と同じ変更）：indexerの生tailのringを、1 pool分ではなく、MTPの深さkに対して `kpool * next_power_of_2(ceil((kpool + k) / kpool))` slotにします。MTPなしは4（従来どおり）、k = 1〜4は8、k = 5は16です。これがないと、kが2以上のとき、poolを完成させるdraftが棄却されると、その後ろのdraftが上書きした後のkeyからやり直すことになり、indexer cacheに誤った圧縮keyが入ります。壊れるのは、文脈が `index_topk`（2,048 token）を超えた後にdecode中に作られるpoolでの疎なtop-kの選択です。長さがpromptから来てもoutputから来ても同じです。kernelのfileへは `patch_kpool_seed` の後にだけ当たります（固定するhashはseed patchの出力）。上流はこれを部分的な修正とし、続く変更を予定しています。kernelの再現手順は[検証](validation.ja.md#kpool-tail-ringの再現)にあります。2026-09-26にGB10で、1 pool分のringは棄却されたdraftの後で投機なしの参照と食い違い、8 slotのringは一致し、上流のkernelテストも通りました（33件、skip 1件）。基準の2台（MTP k=3）では、tailのgroupが8 slotになり（`kv cache group sizes [4608, 8, 4608, 4608, 4608]`）、2,048 tokenのpromptでdecode中に作るpoolがすべて `index_topk` を超えるdecode検査3種は、どれも出力が変わり、反復はbit単位で一致したままでした（[実測](benchmarks.ja.md#1190での測定)）。このmarkerを要求する検査はないので、古いimageも `cluster switch` を通ります。
+- `GLM53_SAMPLER_VOCAB_BOUND=1`（1.25.0から作るimage。`glm53_setup/runtime/patch_sampler_nonfinite.py`、上流で未マージのvLLMのpull request #50843）：Gumbel sampler、rejection samplerのgreedyの統計とその再サンプリングが、tileのargmaxを語彙の範囲に収めます。これがないと、最後のtileが非有限のlogitだけの行は語彙の外のidを出すことがあり、embeddingはそれを0として読みます。MTPではrejection samplerがtemperature 0でも動きます。このmarkerを要求する検査はありません。
 - `GLM53_LOAD_CLONE=1`（1.19.0から作るimage。`glm53_setup/runtime/patch_load_clone.py`）：既定のsafetensorsの読み込みで、loaderがGPUへ送る前に各tensorを匿名メモリへcloneします。GB10でCUDA contextがある状態では、checkpointのfile mappingからの転送は約0.16 GiB/s、cloneしてからの転送は約1.55 GiB/sでした（GB10 1台、shardの3 GiB分を各回、2026-09-26）。基準の2台のrank 0は、1.18.0で重みの読み込みに532秒かかっていました。cloneが持つのは一度にtensor 1個分です。vLLMの `--safetensors-load-strategy eager` はこの機材では代わりになりません。読み込み中にshardを丸ごと二重に持ち（11.15 GiBのshardでピーク22.81 GiB）、2026-09-26に基準の2台で試したところ、片方のrankがメモリを使い切り、hostが約15分応答しなくなりました。`enable_multithread_load` も同じくshardを丸ごと持ちます。`prefetch` は効きません。遅いのはfile-backedのページからの転送で、page cacheに載っていても同じです。このmarkerを要求する検査はありません。
 
 `exclusive_gpu` は、このランチャーの `glm53.experiment.startup` ラベルを持たない稼働中のコンテナがGPUを要求していると不合格になり、該当するコンテナを結果の `foreign_gpu_containers` に並べます。GPUの要求は `HostConfig.DeviceRequests` が空でないことで判定します。`--gpus` とCDI（`--device nvidia.com/gpu=...`）の要求はどちらもここに表れ、GPUのデバイスノードは `Devices` には表れません。このランチャーの対はfingerprintによらずラベルを持つので、旧い対が動いたままでも `cluster switch` の停止前の検査は止まりません。値が空のラベルは数えません。検査の途中で終了・削除されたコンテナは飛ばし、一覧に残っているのに調べられないコンテナがあれば、合格にせず例外で止めます。部品試験や別のモデルなど、他のGPU負荷は起動前に止めてください。無効化のオプションはありません。`server assets` もメモリ以外の検査として同じ判定を行います。着想はsfxnz PR #12（コードは採用しない）です。
 
 preflightの合格は資材と設定の確認であり、品質や可用性の保証ではありません。通常運用の受け入れ項目と各項目の証拠の所在は[セットアップ手順](../SETUP.ja.md#6-フルモデルの検証)に、範囲別の現状はREADMEの状態表にあります。失敗した検査の緩和、attention候補の切り捨て、無断の精度変更で通過させないでください。
 
-rank 1をheadlessで先に起動し、workerがrendezvousを待つ状態になってからrank 0を起動します（[3ノード](#3ノード)では最も大きいrankから、headを最後に）。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
+workerをheadlessで先に起動し、rendezvousを待つ状態になってからheadを最後に起動します（[起動順](launch-safety.ja.md#3ノード)）。APIはhead側のloopbackアドレスにbindするため、遠隔クライアントからはSSHトンネルを使います。内部のrendezvousにはfabric IPを使います。事業サービスとして公開するには、別途検討した認証・TLS・アクセス制御の層が必要です。本リポジトリは、それを提供すると主張しません。
 
 ## 3ノード
 
-`[[nodes]]` が3つのprofileは、QSFPリング上でTP=3を動かします（[3ノード](server-configuration.ja.md#3ノード)、[`server.tp3.example.toml`](../examples/server.tp3.example.toml)）。rankは大きいほうから起動し、head以外はheadlessで、headを最後にします。止めるときはheadからです。`cluster switch` と `cluster resume` は起動の全rankを扱いますが、rank数の違う起動への切替は拒みます。対とリングの間を移るには、全rankを止めてからもう一方を起動します。
+`[[nodes]]` が3つのprofileは、QSFPリング上でTP=3を動かします。配線・アドレス・1台だけの再起動の確認は[QSFPネットワーク](qsfp-network.ja.md#8-3台をリングにつなぐ)に、設定は[起動設定](server-configuration.ja.md#3ノード)に、起動順・rank数の変わる切替の拒否・ホストごとのruntime cacheは[起動契約](launch-safety.ja.md#3ノード)にあります。リングのruntime cacheは各ホストの `state/tp3-runtime-cache/` に置きます（[保管場所](#資材の保管場所とパス)）。
 
-リングはTriton・Inductor・TileLangのcacheを各ホストの `state/tp3-runtime-cache/` に、対のcacheとは別に置きます。Tritonは一部のkernelの設定を時間で選ぶので、新しいcacheではあるrankが別の設定を選び、起動が別の数値状態になりえます。rankごとのheadは重ならないので、正しさには影響しません。TP=3の起動のdecode checkのhashは、ホストごとのcacheが同じときだけ保たれます。参照リングの配布既定では、counting `b00a842f`、prose `03184d52`、code `e9175d9b`（初出2026-09-29）で、どれも起動内ではbit単位で繰り返しました。cacheを消したり置き換えたりした後は読み直してください。
+derived checkpoint（公開した任意設定）とそのoverlayは、profileが指すパスにすべてのホストで置きます。`server preflight` は各rankでこれを確かめます。rankあたり22 headで読み込めるのは現行のKDA overlayだけです（[overlay](../overlays/README.md)）。
 
-**リングの1台だけを再起動するとき。** outstandlyの3台構成のレシピは、`/etc/nvidia/cx7-hotplug-enabled` があるままだと、1台の再起動で、それに直結した隣のホストのPCI busからConnectXのポートが消えることがあると報告しています。このレシピは全ノードでそのファイルを退避し、3台を同時に再起動します。参照リングでは再現していません。1台だけを再起動する前に各ホストでこのファイルの有無を確かめ、再起動の後は隣のホストでリングの2つのinterfaceとそのHCAがまだ並ぶことを確認します（`ibdev2netdev`）。
-
-derived checkpoint（公開した任意設定）とそのoverlayは、profileが指すパスにすべてのホストで置きます。`server preflight` は各rankでこれを確かめます。公開した任意設定のprofileには1.24.0のKDA overlay（SHA-256 `27a532ce…`）が要ります。rankあたり22 headでは、以前のものはMarlinが拒む入力を渡します。
-
-長いprefillは3台すべてに長時間の負荷をかけます。2026-10-01に、`max_model_len` 1,048,576で1,038,423 tokenのpromptは最初のtokenまで1,058秒、約17.6分の持続負荷でした。こうした要求の間はホストを冷ましてください（[GPUクロックの上限](#gpuクロックの上限)）。参照リングの `MemAvailable` の最小は、配布既定をKV 30 GiBで読み込む間が8.53 GiB、公開した任意設定を256Kで読み込む間が11.87 GiB、その1Mの要求の最中が5.75 GiB（保護余裕は4 GiB）でした。
+長いprefillは3台すべてに長時間の負荷をかけます。1M token近いpromptは最初のtokenまで何分も負荷をかけ続け、参照リングの `MemAvailable` の最小もそうした要求の最中に出ました（[1.24.0での測定](benchmarks.ja.md#1240での測定)）。こうした要求の間はホストを冷ましてください（[GPUクロックの上限](#gpuクロックの上限)）。
 
 ## 監視・停滞検知・warmup
 

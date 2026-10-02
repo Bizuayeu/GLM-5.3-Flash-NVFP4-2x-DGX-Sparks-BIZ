@@ -91,7 +91,7 @@ With the requantized attention projections (`runtime.derived_checkpoint`, route 
 | Code | 29.07 (1.88) | 34.84 (3.15) | 34.59 (3.65) | 30.27 (3.66) |
 | Short prompts (`glm_bench`) | 28.51 | 27.19 | 37.79 | 36.33 |
 
-Teacher-forced NLL was the same to four decimals at every depth, and the 199,652-token passphrase request was answered correctly at k=3 (166.5 s) and k=4 (164.3 s). k=2 was dropped from the sweep after its nine completions came out in three variants, and the k=4 prose run above came out in two; both were the [indexer top-k tie](validation.md#full-model-tp2-experimental-scope), not the depth, and with `runtime.stable_indexer_topk` k=4 repeats nine of nine (prose 24.68, counting 45.99, short prompts 38.82).
+Teacher-forced NLL was the same to four decimals at every depth, and the 199,652-token passphrase request was answered correctly at k=3 (166.5 s) and k=4 (164.3 s). k=2 was dropped from the sweep after its nine completions came out in three variants, and the k=4 prose run above came out in two; both were the [indexer top-k tie](validation.md#repeatability), not the depth, and with `runtime.stable_indexer_topk` k=4 repeats nine of nine (prose 24.68, counting 45.99, short prompts 38.82).
 
 With the pinned checkpoint as it is, both depths with the tie settled: counting 33.08 at k=4 against 32.50 at k=3, prose 19.60 against 21.00, code 28.37 against 28.30, short prompts 28.10 against 27.17. The requantized projections make every step cheaper, so the longer verification step of a deeper draft costs relatively less there; without them depth four gains 0 to 3% where the text is predictable and loses 7% on prose.
 

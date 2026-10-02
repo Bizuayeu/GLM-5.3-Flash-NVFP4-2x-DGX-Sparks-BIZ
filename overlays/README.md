@@ -16,7 +16,7 @@ own sources; these mount over them.
 The base SHA-256 is that of the file each overlay was made against, in the pinned image.
 
 `kda-quant-split.py` copies `f_a` and `g_a` into fresh storage before the `f_b_proj` and
-`g_b_proj` projections (2026-10-01). With 22 heads per rank (TP=3) the split leaves them as views
+`g_b_proj` projections. With 22 heads per rank (TP=3) the split leaves them as views
 with a row stride of 278 that start 44 and 300 bytes into the row, which Marlin rejects (it needs a
 stride divisible by 8 and a 16-byte aligned input); at TP=2 the views happened to fit. The copy
 carries the same values.
@@ -26,7 +26,7 @@ The launcher mounts them read-only over their targets, one
 `runtime.derived_checkpoint.overlays`. `server preflight` refuses the launch unless
 every overlay file has the declared SHA-256 and contains its marker, and unless the
 image's own target has the declared base SHA-256, so an overlay built for another
-image cannot be mounted ([runtime.derived_checkpoint](../docs/server-configuration.md)).
+image cannot be mounted ([runtime.derived_checkpoint](../docs/server-configuration.md#attention-cache-and-checkpoint)).
 
 They pair with the Hugging Face checkpoint
 [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16)

@@ -4,9 +4,9 @@
 
 The launcher and its client read [one server TOML](docs/server-configuration.md).
 
-**Routine use is accepted within a declared scope: both profiles for one active sequence (2026-09-22), and the published option's two-sequence profile for two (2026-09-23).** [Step 6](#6-qualify-the-full-model) records what each acceptance rests on; other hardware, more sequences than those and video input are outside it, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).
+**Routine use is accepted within a declared scope: on two hosts at TP=2, both profiles for one active sequence (2026-09-22) and the published option's two-sequence profile for two (2026-09-23); on three hosts at TP=3, both profiles (2026-10-01).** [Step 6](#6-qualify-the-full-model) records what each acceptance rests on; other hardware, more sequences than those and video input are outside it, and harness acceptance is recorded per case in [harnesses](docs/harnesses.md#acceptance-matrix-and-status).
 
-This is the ordered runbook for a human or an AI operator, for the two-host TP=2 deployment; three hosts at TP=3 on a QSFP ring follow the same steps with the additions in [Three hosts at TP=3](#three-hosts-at-tp3). Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. The distributed profile accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
+This is the ordered runbook for a human or an AI operator, for the two-host TP=2 deployment; three hosts at TP=3 on a QSFP ring follow the same steps with the additions in [Three hosts at TP=3](#three-hosts-at-tp3). Exact pins live in [the runtime lock](config/runtime.lock.json); command behavior and recovery belong to [operations](docs/operations.md); test commands and evidence belong to [validation](docs/validation.md). Read all three before execution. Every template accepts text, tool calls and images, with video rejected; qualify text and tool calls first, then [image input](docs/vision.md).
 
 ## Shortest path to a smoke test
 
@@ -101,7 +101,7 @@ Follow [host preparation](docs/operations.md#prepare-each-host): inspect the pin
 
 **Weight loading: use the image's clone patch; do not pass `--safetensors-load-strategy eager` or `enable_multithread_load` when launching vLLM yourself.** They hold whole shards in memory, and on 2026-09-26 eager ran a rank out of memory and its host stopped answering for about 15 minutes. The copy speeds and why the image clones each tensor are in the [launch checks](docs/operations.md#full-model-launch-checks) (`GLM53_LOAD_CLONE`).
 
-Run the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture) on the first host. Keep its resource limits, selected precision, output and assessment together. A fixture pass checks selected kernels/state behavior; it cannot establish full-model quality or TP=2 correctness. Repeat appropriate component checks on the peer once available.
+Run the [single-GPU fixture procedure](docs/validation.md#reproduce-the-single-gpu-fixture) on the first host. Keep its resource limits, selected precision, output and assessment together. A fixture pass checks selected kernels/state behavior; it cannot establish full-model quality or multi-rank correctness. Repeat appropriate component checks on the peer once available.
 
 **Checkpoint:** pinned base inspected; reference image identified; fixture assessment and remaining numerical limitations recorded.
 
@@ -119,7 +119,7 @@ Before full weights are loaded, follow the [two-rank NCCL diagnostic](docs/nccl-
 
 ## 6. Qualify the full model
 
-Acceptance for routine use was closed on recorded evidence, not by a separate launcher: on 2026-09-22 for both profiles with one active sequence, for the public demonstration at 生成AIなんでも展示会#6 (2026-09-23), and kept for routine use within the same scope; on 2026-09-23 for the published option's two-sequence profile ([full-model scope](docs/validation.md#full-model-tp2-experimental-scope)). The items below are what it rests on, and the tables after them say where each one is recorded for the reference pair; a new pair repeats them.
+Acceptance for routine use was closed on recorded evidence, not by a separate launcher: on 2026-09-22 for both profiles with one active sequence, for the public demonstration at 生成AIなんでも展示会#6 (2026-09-23), and kept for routine use within the same scope; on 2026-09-23 for the published option's two-sequence profile; on 2026-10-01 for both profiles on three hosts at TP=3 ([full-model scope](docs/validation.md#full-model-scope)). The items below are what it rests on, and the tables after them say where each one is recorded for the reference pair and ring; a new deployment repeats them.
 
 The template enables [MTP k=3](docs/speculative-decoding.md). Prepare its separate metadata view on each host before the first launch; a flag alone misclassifies the BF16 MTP tensors. The published option does not use the view: its checkpoint declares the BF16 draft layer itself.
 
@@ -136,18 +136,18 @@ Never relax a failing check, reuse the one-GPU fixture as two-rank evidence, tru
 
 Before calling a profile ready for routine use, verify and record at least:
 
-- All language layers load on two ranks; peak memory, reserve and KV allocation measured on each host; no OOM or swap thrashing.
+- All language layers load on every rank; peak memory, reserve and KV allocation measured on each host; no OOM or swap thrashing.
 - Short/long text, declared context boundaries, concurrent/serial requests, cancellation and repeated request/state behavior meet documented criteria.
 - Tool calls have parseable names/JSON arguments; a harmless tool round-trip returns a valid final answer. A model's tool request is not permission to execute arbitrary commands.
 - Precision/backend, quality and latency/throughput meet a declared baseline and acceptance criteria. Do not claim W4A4 behavior from W4A16 evidence.
-- Controlled stop/restart and distributed failure recovery succeed within the approved test window; both ranks recover together.
+- Controlled stop/restart and distributed failure recovery succeed within the approved test window; every rank recovers together.
 
 **Recorded evidence (2026-09-22):**
 
 | Item above | Where it is recorded |
 |---|---|
 | Layers, memory, reserve, KV, no OOM | [Measurements on 1.8.0](docs/benchmarks.md#measurements-on-180): both profiles the same night at 3 GiB of FP8 KV per rank, with the weights per rank and the head's lowest available memory over the long-input bench; and the [launch checks](docs/operations.md#full-model-launch-checks) each start performs |
-| Text, context boundary, repeated requests, cancellation | [benchmarks](docs/benchmarks.md): 199,652-token and 261,461-token requests answered correctly within the declared boundary of 262,144 tokens, and identical requests repeat bit for bit. The profile serves one active sequence (`max_num_seqs = 1`), so concurrent requests queue; that is the declared behaviour. Cancellation is [harnesses](docs/harnesses.md#acceptance-matrix-and-status) H-06 PASS (2026-09-28: generation interrupted, no automatic resend, the server kept serving) |
+| Text, context boundary, repeated requests, cancellation | [benchmarks](docs/benchmarks.md): 199,652-token and 261,461-token requests answered correctly within the declared boundary of 262,144 tokens, and identical requests repeat bit for bit. The profile serves one active sequence (`max_num_seqs = 1`), so concurrent requests queue; that is the declared behaviour. Cancellation is [harnesses](docs/harnesses.md#acceptance-matrix-and-status) H-06 PASS |
 | Tool calls | [harnesses](docs/harnesses.md#acceptance-matrix-and-status) API-03 PASS |
 | Precision/backend, quality, throughput | [validation](docs/validation.md) for W4A16 Marlin, [benchmarks](docs/benchmarks.md) for the teacher-forced NLL table and the throughput baselines. W4A4 behaviour is not claimed |
 | Controlled stop/restart and pair recovery | `cluster switch` with its warmup ladder: two switches on 2026-09-22 completed without recovery ([benchmarks](docs/benchmarks.md)); the recovery path itself was exercised by the earlier drills in [launch safety](docs/launch-safety.md#all-rail-checks-and-two-rank-switch) |
@@ -162,7 +162,21 @@ Before calling a profile ready for routine use, verify and record at least:
 | Precision/backend, quality, throughput | The published option's teacher-forced NLL and decode rows in [benchmarks](docs/benchmarks.md) and the README headline; decode with two sequences in [1.10.2](docs/benchmarks.md#measurements-on-1102) |
 | Controlled stop/restart and pair recovery | Three `cluster switch` runs into that profile on 2026-09-23 completed without recovery, each followed by the weight digest, the decode check and the traces of [launch safety](docs/launch-safety.md#after-a-switch-the-decode-check) |
 
-**Verdict:** routine use is accepted from 2026-09-22 for both profiles, one active sequence, and from 2026-09-23 for the published option's two-sequence profile, two active sequences at up to about 200K tokens each. Anything outside those scopes — more sequences than that, video input, other hardware — stays outside them ([concurrency scope](docs/validation.md#concurrency-scope)).
+**Verdict for two hosts at TP=2:** routine use is accepted from 2026-09-22 for both profiles, one active sequence, and from 2026-09-23 for the published option's two-sequence profile, two active sequences at up to about 200K tokens each.
+
+**Recorded evidence for three hosts at TP=3 (2026-09-29 and 10-01):**
+
+| Item above | Where it is recorded |
+|---|---|
+| Layers, memory, reserve, KV, no OOM | [Measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240): both profiles on every rank, with the weights per rank, the boot-line KV at each length and the lowest available memory on each host during load and during the longest request |
+| Text, context boundary, repeated requests, cancellation | [Measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240): a ~200K passphrase on both profiles; on the published option, passphrases at three positions in prompts of about 300K, 500K and 1M tokens; on the distributed defaults, two and three ~200K requests together, all correct, measured at 24 GiB of KV per rank rather than the 30 GiB of the twelve-request profile. Each decode-check task repeated bit for bit within a launch, and a second launch of the defaults on the same per-host runtime cache repeated the first ([launch safety](docs/launch-safety.md#three-nodes)). Cancellation was not run at TP=3 |
+| Tool calls | Not run at TP=3; the evidence is the TP=2 record above, with the same weights and chat template |
+| Precision/backend, quality, throughput | Teacher-forced NLL against TP=2 position by position, inside the tolerance in [validation](docs/validation.md#full-model-scope), and decode on both profiles ([measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240)); image input ([image input](docs/vision.md#three-hosts-at-tp3)) and the Japanese/Korean check ([multibyte output](docs/validation.md#multibyte-output)) on both profiles |
+| Controlled stop/restart and recovery | Moves from the pair to the ring and back on 2026-09-29 and 10-01 completed, each launch followed by the decode check; `cluster switch` refuses a change of rank count, so a move stops every rank first ([launch safety](docs/launch-safety.md#three-nodes)). No three-rank failure-recovery drill has been run |
+
+**Verdict for three hosts at TP=3:** routine use on three GB10 hosts in a switchless QSFP ring is accepted from 2026-10-01 for both profiles: up to three ~200K requests at once on the distributed defaults, and one request at a time up to the checkpoint's 1,048,576 tokens on the published option. Not covered: the distributed defaults beyond 262,144 tokens, more than three long requests at once, and cancellation, tool calls and failure recovery measured at TP=3.
+
+Anything outside these scopes — more sequences than stated, video input, other hardware — stays outside them ([concurrency scope](docs/validation.md#concurrency-scope)).
 
 ## 7. Serve and accept — only after step 6 passes
 
@@ -177,21 +191,21 @@ Keep this service on a trusted network. The host-network containers expose distr
 Three GB10 hosts cabled as a switchless QSFP ring serve TP=3 ([measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240)). The steps above apply on all three hosts, with these additions:
 
 - **Network (step 5).** Set up each of the three links as its own pair, then give each host one stable /32 on a dummy interface with static routes to the other two over the direct links ([QSFP network, section 8](docs/qsfp-network.md#8-three-hosts-in-a-ring)). Probe the three ranks together and each link alone ([NCCL diagnostics](docs/nccl-validation.md#three-hosts-in-a-ring)).
-- **Profile.** Start from [`examples/server.tp3.example.toml`](examples/server.tp3.example.toml): every node lists its links and sets `host_address` and `host_interface` ([server configuration](docs/server-configuration.md)). The image is the same reference image; the launcher sets the padding knob for three nodes. 30 GiB of KV per rank holds twelve 262,144-token requests (3,258,809 tokens), and `max_model_len` may go to 1,048,576.
+- **Profile.** Start from [`examples/server.tp3.example.toml`](examples/server.tp3.example.toml): every node lists its links and sets `host_address` and `host_interface` ([server configuration](docs/server-configuration.md)). The image is the same reference image; the launcher sets the padding knob for three nodes. The template serves one 262,144-token sequence; `max_model_len` may go to the checkpoint's 1,048,576, with the KV each length and sequence count needs in [server configuration](docs/server-configuration.md#three-nodes) and the measured capacity in [measurements on 1.24.0](docs/benchmarks.md#measurements-on-1240).
 - **Launch and switch.** Ranks start from the highest, the head last. Moving between the pair and the ring means stopping every rank first: `cluster switch` refuses a change of rank count ([launch safety](docs/launch-safety.md#three-nodes)).
-- **Acceptance (step 6).** The same checks, with the TP=3 decode-check hashes taken per launch and kept with each host's runtime cache, and teacher-forced NLL compared with a TP=2 record position by position ([validation](docs/validation.md)).
+- **Acceptance (step 6).** The same checks, with the TP=3 decode-check hashes kept with each host's runtime cache ([launch safety](docs/launch-safety.md#three-nodes)) and teacher-forced NLL compared with a TP=2 record position by position ([validation](docs/validation.md#full-model-scope)). Step 6 records the reference ring's evidence.
 
 ## Completion checklist and AI handoff
 
 Use **PASS / FAIL / PENDING / NOT RUN** with an evidence path for every item. Never infer PASS from absence of errors.
 
-- [ ] Two host inventories, authorized access, resource ownership and disk budgets recorded.
+- [ ] Inventories of every host, authorized access, resource ownership and disk budgets recorded.
 - [ ] Same reviewed source and pinned artifacts; applicable licenses/notices reviewed.
-- [ ] Both checkpoint copies checksum-verified; paused/partial acquisitions accounted for.
-- [ ] Exact runtime image IDs match; source patch checks and one-GPU diagnostics recorded.
-- [ ] Supported cable connected; per-host IP/interface/HCA/GID/MTU measured and recorded.
-- [ ] Two-rank collective correctness and intended RDMA transport verified.
-- [ ] Every acceptance item of [step 6](#6-qualify-the-full-model) verified on this pair, with its evidence path recorded.
+- [ ] Every checkpoint copy checksum-verified; paused/partial acquisitions accounted for.
+- [ ] Exact runtime image IDs match on every host; source patch checks and one-GPU diagnostics recorded.
+- [ ] Supported cables connected; per-host IP/interface/HCA/GID/MTU measured and recorded.
+- [ ] Collective correctness across every rank and intended RDMA transport verified.
+- [ ] Every acceptance item of [step 6](#6-qualify-the-full-model) verified on these hosts, with its evidence path recorded.
 - [ ] Actual API text/tool acceptance, memory, performance and recovery checks passed.
 - [ ] The [accepted harness route](docs/harnesses.md#acceptance-matrix-and-status) completed its required acceptance cases; failures/blockers remain visible.
 - [ ] Access boundary, logs, stop/restart procedure and operator handoff accepted.
@@ -200,4 +214,4 @@ Keep a private `records/<run-id>/REPORT.md` containing: timestamp/timezone; obje
 
 Suggested AI task:
 
-> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the two authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where a physical prerequisite or a piece of the recorded evidence is missing, record the blocker and continue independent preparation. Do not record a PASS or declare deployment complete without actual evidence.
+> Read AGENTS.md, SETUP.md and its linked operations/validation documents. Inspect current state on the authorized hosts before mutating anything. Execute eligible steps in order within the approved scope, preserve unrelated jobs, credentials, weights and past evidence, and keep the private deployment report current. Respect deliberate pauses and verify each result. Where a physical prerequisite or a piece of the recorded evidence is missing, record the blocker and continue independent preparation. Do not record a PASS or declare deployment complete without actual evidence.

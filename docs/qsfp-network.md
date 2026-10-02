@@ -175,4 +175,6 @@ ping -I 10.40.0.1 -c 4 -W 2 10.40.0.3
 
 The route must leave over the direct link to that host. On the reference ring the pings between the /32s took 0.47–1.05 ms (2026-09-29). Then set `host_address` (the /32) and `host_interface` (the dummy interface) on every node of the launch profile.
 
-This keeps the control traffic off the management network. Before the /32s existed, the reference ring's management Wi-Fi carried it and was unstable (2.9 s round trips and lost packets). A Wi-Fi `host_interface` is refused unless the node also sets `host_interface_wifi_test = true`, a test setting only.
+This keeps the control traffic off the management network. Before the /32s existed, the reference ring's management Wi-Fi carried it and was unstable (2.9 s round trips and lost packets); a Wi-Fi `host_interface` is accepted only as a test setting ([three nodes](server-configuration.md#three-nodes)).
+
+**Rebooting one host of a ring.** outstandly's three-host recipe reports that while `/etc/nvidia/cx7-hotplug-enabled` is in place, rebooting one host can make a ConnectX port disappear from the PCI bus of the neighbor cabled to it; the recipe moves that file aside on every node and reboots all three together. This has not been reproduced on the reference ring. Before rebooting a single host, check whether the file exists on each host, and afterwards confirm on its neighbors that both ring interfaces and their HCAs are still listed (`ibdev2netdev`).

@@ -2,10 +2,10 @@
 
 [English](hle.md) · [検証一覧](validation.ja.md)
 
-本書は、配信中のモデルが[HLE](https://huggingface.co/datasets/cais/hle)の100問の部分集合二つに、この機体で予算を限って、両profileでどう答えたかを記録する。**この数値は公開されているHLEの値と比べられず**、並べて示さない：
+本書は、配信中のモデルが[HLE](https://huggingface.co/datasets/cais/hle)の100問の部分集合二つ（テキストと画像）に、この機体で予算を限って、両profileでどう答えたかを記録する。**この数値は公開されているHLEの値と比べられず**、並べて示さない：
 
 - **予算。** 1回答あたりの新しいtokenは最大16,384。固定したモデルカードはベンチマーク（GPQA Diamondなど）を最大327,680で測っている。予算で切れた回答（`finish_reason` が `length`）は誤答ではなく欠測として数えるので、ここでの正答数はモデルが答え終えた問だけを対象にする。
-- **サンプリング。** 固定したモデルカードと `generation_config.json` のとおりtemperature 1.0・top_p 0.95、reasoning effortはlow（profileの既定）。
+- **サンプリング。** 固定したモデルカードと `generation_config.json` のとおりtemperature 1.0・top_p 0.95、reasoning effortはlow（runnerが送るprofileの `generation.reasoning_effort`）。
 - **採点。** モデルのホストの外で採点した。正規化した後の完全一致で決まる回答はそれで決め、それ以外の抽出できた回答はすべて、Claude Code CLIを通してClaude Opus 5.5（effort low）とClaude Sonnet 5の二つのjudgeに送った。HLEの公式のjudgeではない。両judgeの数を示す。
 - **設問。** 全問ではない。テキストの組は画像なしで答えが一つに決まる100問で、別の評価のために分野の比率で抽出したもの。画像の組は画像つきで答えが一つに決まる100問を同じ方法で抽出したもの。どちらもhashで固定した。
 
@@ -36,7 +36,7 @@ python -m glm53_setup hle --questions <固定した設問ファイル> --config 
 
 設問ファイルはホストの外で書き出し、正答を持たない。runnerは配信APIを通して一問ずつ尋ね、回答を一問ずつ保存し、答えた問を送り直さずに再開できる。`--max-new 1` は一問ごとに止まるので、driverが間にホストを休ませられる。`--limit` はpilotとして記録し、全問結果には数えない。
 
-サーバーがHTTPのclient error（401と403以外の4xx）で拒否した問は、`finish_reason` を `rejected` としてHTTP statusと共に保存し、次の問へ進む。予算で切れた回答と同じく、誤答ではなく欠測として数える。認証エラー・サーバーエラー・timeout・接続断はこれまでどおりrunを止め、再開すると次の未回答の問から続ける。配布のprofileで起きた拒否はencoder cacheの隙間による：7,922〜8,000 tokenの画像はHTTP 400で拒否される。profileのencoder cacheは7,921 tokenだが、モデルのprocessorは8,000まで許すため（[画像入力](vision.ja.md#限界と未解決の事項)）。
+サーバーがHTTPのclient error（401と403以外の4xx）で拒否した問は、`finish_reason` を `rejected` としてHTTP statusと共に保存し、次の問へ進む。予算で切れた回答と同じく、誤答ではなく欠測として数える。認証エラー・サーバーエラー・timeout・接続断はこれまでどおりrunを止め、再開すると次の未回答の問から続ける。ここで起きた拒否は、最大級の画像でのencoder cacheの隙間による（[画像入力](vision.ja.md#限界と未解決の事項)）。
 
 この予算にした理由：公開した任意設定でtemperature 0・8,192 tokenのpilot 5問はすべて最終回答なしで上限に達し、32,768を与えた1問もすべてを思考に使った。そこでcheckpointのサンプリングと16,384 tokenにした。測った中で最も遅いdecodeでも1,200秒のtimeoutに収まる。
 

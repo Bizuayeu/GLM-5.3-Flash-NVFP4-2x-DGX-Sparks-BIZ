@@ -51,7 +51,7 @@
 | `glm53_setup/runtime/memory_probe.py` | dev の `/collective_rpc` 経由で配信workerを調べるprobe。`validation.memory_probe` がこれを読み込み、checkoutの版をimageの上にmountする：`allocator_stats`、`host_stats`、`host_census`、`weight_digest`、`kernel_hashes`、`autotuners`、`inductor_state`、`fa2_stage`、`trace_begin`／`trace_end`（[起動設定](server-configuration.ja.md#apiと診断)） |
 | `glm53_setup/runtime/pipeline_state.py`、`patch_pipeline.py` | PP fixtureの転送と、そのsource固定patch（P17） |
 | `glm53_setup/validation/make_fixture.py`、`run_fixture.py`、`summarize_fixture.py`、`inspect_runtime.py`、`probe_attention.py`、`reference_check.py`、`parity.py` | fixtureの作成・実行・判定、コンテナ内の確認、NoPE dispatchの探査、参照Attentionの一致と、Attention部品ベンチが共有するBF16の許容幅と判定（[検証範囲](validation.ja.md)） |
-| `glm53_setup/validation/run_agreement_fixture.py`、`compare_agreement.py`、`quant_error.py`、`run_repeat_trace.py` | fixture上の再量子化検査と、反復実行で最初に出力が違うモジュールの特定（[検証範囲](validation.ja.md#フルモデルtp2の実験範囲)） |
+| `glm53_setup/validation/run_agreement_fixture.py`、`compare_agreement.py`、`quant_error.py`、`run_repeat_trace.py` | fixture上の再量子化検査と、反復実行で最初に出力が違うモジュールの特定（[検証範囲](validation.ja.md#再現性)） |
 | `glm53_setup/validation/run_components.py`、`run_graph_fixture.py`、`run_indexer_fixture.py`、`run_apc_lpa_fixture.py`、`indexer_overlap.py`、`expert_worker.py`、`pipeline_worker.py`、`apc_fixture_worker.py` | 部品A/B/A、Graph、indexer、APC/LPA、EP、PPの各fixtureと、fixture専用のworker（[部品検証](component-validation.ja.md)） |
 | `glm53_setup/validation/run_lpa.py`、`lpa_corpus.py`、`train_lpa.py` | LPA fixtureの検査、コーパスの準備、projectorの学習 |
 | `glm53_setup/validation/freedombench.py`、`freedom_scoring.py`、`apc_history.py`、`profile_trace.py`、`benchmark_*.py` | FreedomBenchの実行と採点、APC履歴の回帰試験、traceのevent集計、部品ベンチ |

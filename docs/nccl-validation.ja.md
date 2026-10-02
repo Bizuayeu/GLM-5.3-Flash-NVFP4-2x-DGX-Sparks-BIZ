@@ -65,9 +65,9 @@ NVIDIAの[Spark移植ガイド](https://docs.nvidia.com/dgx/dgx-spark-porting-gu
 
 ## GID indexが動く
 
-`server preflight` は、IPv4対応のRoCE v2 GIDが設定したindexにないレールを拒否し、その項目がいまどこにあるかを `gid_hints` に `fixes` とともに並べます。リンクが落ちて戻ると項目が動くことがあります（[起動契約](launch-safety.ja.md#全レール検査と両rankの切替)）。interfaceに2つ目のIPv6 link-localアドレスが付いても動きます。NetworkManagerの `ipv6.addr-gen-mode` の既定 `stable-privacy` がkernelのものとは別にもう1つ足し、そのGIDの項目が先に並ぶので、IPv4の項目が後ろのindexへずれます（MiaAI-Labのレシピ #291 は2と3が5と6になったと報告しています）。レールが2本のnodeでは、HCAごとに別のindexになりえますが、NCCLはrankごとに1つしか取りません。`gid_hints` は、レールのnet deviceに異なるlink-localのGIDが2つあり、IPv4のRoCE v2の項目が別のindexにあるとき、これを `likely_cause: nm_stable_privacy` と示します。link-localが1つなら原因は示しません。
+`server preflight` は、IPv4対応のRoCE v2 GIDが設定したindexにないレールを拒否し、その項目がいまどこにあるかを `gid_hints` に `fixes` とともに並べます。リンクが落ちて戻ると項目が動くことがあります。MiaAI-Labのレシピ #277 が報告しているほか、参照対でも2026-09-27にheadの電源断の後、peerのrail 0がindex 3から4に動きました。interfaceに2つ目のIPv6 link-localアドレスが付いても動きます。NetworkManagerの `ipv6.addr-gen-mode` の既定 `stable-privacy` がkernelのものとは別にもう1つ足し、そのGIDの項目が先に並ぶので、IPv4の項目が後ろのindexへずれます（MiaAI-Labのレシピ #291 は2と3が5と6になったと報告しています）。レールが2本のnodeでは、HCAごとに別のindexになりえますが、NCCLはrankごとに1つしか取りません。`gid_hints` は、レールのnet deviceに異なるlink-localのGIDが2つあり、IPv4のRoCE v2の項目が別のindexにあるとき、これを `likely_cause: nm_stable_privacy` と示します。link-localが1つなら原因は示しません。
 
-確かめるには、`ip -o addr show dev <interface>` に `inet6 fe80::` が2つ並び、`nmcli -g ipv6.addr-gen-mode connection show <connection>` が `eui64` 以外を返すことを見ます。レシピの直し方は2つで、どちらもrootで行います。接続の `ipv6.addr-gen-mode` を `eui64` にして接続を有効にし直すか、HCAの `mlx5_core` のPCI functionをrebindしてGIDの表を作り直します。項目が設定したindexに戻るまで検査は拒否を続けます。参照ホストではどちらの直し方も必要になっていません。
+確かめるには、`ip -o addr show dev <interface>` に `inet6 fe80::` が2つ並び、`nmcli -g ipv6.addr-gen-mode connection show <connection>` が `eui64` 以外を返すことを見ます。レシピの直し方は2つで、どちらもrootで行います。接続の `ipv6.addr-gen-mode` を `eui64` にして接続を有効にし直すか、HCAの `mlx5_core` のPCI functionをrebindしてGIDの表を作り直します。リンクが落ちて動いた場合は、そのnodeの全レールが揃っていればその `gid_index` を直し、そうでなければホスト側でindexを戻します（再起動か、rootでinterfaceを落として上げ直す）。項目が設定したindexに戻るまで検査は拒否を続けます。参照ホストではどちらの直し方も必要になっていません。
 
 ## チャネル数
 

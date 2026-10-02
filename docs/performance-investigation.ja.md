@@ -19,9 +19,9 @@ KV容量、256K／1Mコンテキスト、待ち時間、複数同時実行の考
 | 細粒度のlaunchを減らす | 調査用の計測は実装済み。kernelを回数と累計時間で順位付けし、API launch overhead、NCCL、copy、実際のkernel処理を分離します。融合は参照実装と突き合わせて検証してから、計測hookなしのレイテンシを測ります。 |
 | 展開した中間重みを避ける | Marlin／denseの実traceで、unpack・逆量子化・割当・copyの反復を確認します。block／global scaleと現行の算術契約は維持します。load時の並べ替えは、反復する処理を実測した場合にだけ候補になります。 |
 | MTPはstepあたりの有効な仕事を増やす | off／k=1／k=3を、採択token、verify時間、要求ごとのレイテンシとともに比較します。単一系列でも複数の投機行をverifyできるため、GEMM寄りの仕事を得るのにmax_num_seqs > 1は必要ありません。深さ1〜5は実測済みです（[投機デコード](speculative-decoding.ja.md#深さ152026-09-1920)）。 |
-| 似たタスクをまとめる | P14として実施し（[タスクgroup化の実験](#タスクgroup化の実験)）、不採用。 |
+| 似たタスクをまとめる | P14として実施（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）。方法と結果は[基準ベンチ](benchmarks.ja.md#同種タスクの投入順比較p14)にあります。 |
 | CPUへのexpert退避・x86の整数kernel | x86のVNNI／AMX経路を、このARM・unified memory構成へそのまま移植しません。CPU／GPUの競合と実際のcopyには別の証拠が必要です。 |
-| 独立した複製へ分割する | 現行の2ノード・フルcheckpointでは対象外です。1ノードにモデルが収まりません。PPは別の候補であり、前提となる実装は以下のとおりです。 |
+| 独立した複製へ分割する | 対象外です。1ノードにフルcheckpointが収まりません。代わりに台数を増やして分割します：3台はTP=3（P28）、2台のPP2は測って不採用（P17、[下記](#tpとppの比較)）。 |
 
 単位とトポロジは[NVIDIAのハードウェア仕様](https://docs.nvidia.com/dgx/dgx-spark/hardware.html)と[ネットワーク手引き](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html)に従います。公称のポート速度は200 **Gb/s**（overhead前で25 GB/s）であり、200 GB/sではありません。ローカルで実測した集団通信の速度は別の量です。E2M1のコード変換だけでは、scale付きNVFP4演算のend-to-endな等価性は示せません。
 
@@ -37,31 +37,25 @@ KV容量、256K／1Mコンテキスト、待ち時間、複数同時実行の考
 
 kernel側の作業はtraceに基づいて優先順位を付けます。LPAの層別profilerが持つCUDA eventはlaunch数を数えません。参照attentionはPythonでquery chunkを回し、LPAはeagerを必要とします。decode Graphs（P06）とNoPE kernelの融合（P04）は測って不採用です（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）。
 
-## Throughputと決定性
+## unpack融合と複数系列
 
-最初に実装したlaunch削減の候補は `cache.fused_unpack` です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です（直列併用の受入後はon）。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
+`cache.fused_unpack` はlaunch削減です。集めたMLA cacheレコードをunpackする際の、中間FP8 copy・FP32変換・scale copy・乗算を、1つのTriton kernelで置き換えます。attentionの候補とFP32のattention算術は変更しません。既定値は[起動設定](server-configuration.ja.md#配布用の既定設定)が正典です。FP8コードとscaleの網羅試験は部品のゲートであり、fixtureの状態比較と、計測hookなしの全モデルA/B実行は別の受け入れゲートです。
 
-部品単体の計測は、現在のソースをマウントしたGPUイメージ内で `python -m glm53_setup.validation.benchmark_unpack --output /path/to/new-record` を実行します。出力の厳密一致を検査し、warmupを除外して5回の計時batchを記録し、各経路を別々にprofileします。試験したGB10では、2,176件と17,408件のいずれもkernelが4回から1回に減り、観測された部品の中央値はそれぞれ約0.045→0.011 ms、0.630→0.212 msでした。この合成の部品サイズは候補行1本分と8本分に相当し、モデル全体の高速化を示すものではありません。trace／結果JSONは、イメージとソースの識別情報とともに保持します。
+部品単体の計測は、現在のソースをマウントしたGPUイメージ内で `python -m glm53_setup.validation.benchmark_unpack --output /path/to/new-record` を実行します。出力の厳密一致を検査し、warmupを除外して5回の計時batchを記録し、各経路を別々にprofileします（[結果](component-validation.ja.md#全モデルでのunpack-aba)）。合成のサイズ2,176件と17,408件は候補行1本分と8本分に相当し、モデル全体の高速化を示すものではありません。trace／結果JSONは、イメージとソースの識別情報とともに保持します。
 
 `context.max_num_seqs > 1` にはLPAなしの別profileを使います。LPAのhookは連続した単一系列を必要とします。他の要求とstepを共有した要求はcompletionが変わることがあり、その理由と範囲は[同時実行の範囲](validation.ja.md#同時実行の範囲)にあります。内容、tool引数、終了理由、要求間の分離、cancel、資源の安全性は、逐語の一致とは別に判定します。aggregate throughputと各要求のレイテンシ・品質を併記し、aggregateの値を単一要求のdecodeと比較しません。
 
-## タスクgroup化の実験
-
-**P14として実施し、この負荷では不採用**（[結果](benchmarks.ja.md#同種タスクの投入順比較p14)）。
-
-比較の仕方：コード・翻訳・要約の課題に事前ラベルを付けた固定の負荷で、決定的な混在順序と同種groupを比べ、要求ID、入出力のtoken予算、同時系列数、seed、cache方針、投入量、長さの分布を揃えました。LPAなしのthroughput profileで行い、レイテンシの対照は単一要求の測定です。共有された重みに利得を帰属させるには、さらに別の診断実行で、routingされたexpert IDを実際の選択境界で数える必要があります。logitsや課題ラベルだけではexpertの再利用は示せません。
-
 ## Expert Parallel（P21）
 
-**試験した負荷では不採用、既定off（2026-09-13）**（[結果](benchmarks.ja.md#expert-parallel-の独立評価p21)）。
+採否は[施策台帳のP21](optimization-catalog.ja.md#性能施策一覧)、実測は[基準ベンチ](benchmarks.ja.md#expert-parallel-の独立評価p21)にあります。
 
-比較の仕方：EPで変えたのはexpert層の分割だけで、TP=2・DP=1・2基のGPU・KVの予約はそのままです。固定版のFusedMoEの並列設定では、TP=2／DP=1にEPを加えると完全なexpertを2つの分割へ対応付け、DP／PCP／SPがすべて1なら `use_all2all_kernels` はfalseなので、この実験はDeepEPを呼ばず、集団通信もすべては無くしません（[vLLMのEP解説](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/#layer-behavior-with-ep-enabled)）。動機はtenhksparkのレシピの起動例ですが、その他の設定はここでのEPの利得を示しません。
+EPが変えるのはexpert層の分割だけで、TP=2・DP=1・2基のGPU・KVの予約はそのままです。固定版のFusedMoEの並列設定では、TP=2／DP=1にEPを加えると完全なexpertを2つの分割へ対応付け、DP／PCP／SPがすべて1なら `use_all2all_kernels` はfalseなので、ここでのEPはDeepEPを呼ばず、集団通信もすべては無くしません（[vLLMのEP解説](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/#layer-behavior-with-ep-enabled)）。動機はtenhksparkのレシピの起動例ですが、その他の設定はここでのEPの利得を示しません。
 
-既定offの[起動オプション](server-configuration.ja.md)（イメージのmarker付き）を2 rankのfixtureで確認し（expertの所有関係、tensorの形状、出力、EP offへの復帰）、全モデルで2系列のTP profileに対してA/B/Aで比べました。他はすべて固定です（イメージ、checkpoint、各rank 1 GiBのFP8 KV、16K、chunk 512、MTP／LPA／融合／Graphs／APCはoff。短文／2K入力・64出力、各条件5回）。続いて課題・tool・cancel・再起動・16K×2容量の検査を行いました。採用の条件は、観測されたばらつきを超える改善と、品質・容量・メモリ余裕・復旧の維持で、aggregate throughputは要求ごとのTTFT／ITL／TPOTと併記しました。
+比べ直すときは、既定offの[起動オプション](server-configuration.ja.md)を2 rankのfixtureで確認し（expertの所有関係、tensorの形状、出力、EP offへの復帰）、他をすべて固定して全モデルで2系列のTP profileに対してA/B/Aで比べ、続いて課題・tool・cancel・再起動・容量の検査を行います。採用の条件は、観測されたばらつきを超える改善と、品質・容量・メモリ余裕・復旧の維持で、aggregate throughputは要求ごとのTTFT／ITL／TPOTと併記します。
 
 ## TPとPPの比較
 
-**試験した生成負荷では不採用、既定TP2（2026-09-13）**（[結果と限界](benchmarks.ja.md#tp2pp2の独立評価p17)）。
+採否は[施策台帳のP17](optimization-catalog.ja.md#性能施策一覧)、実測は[基準ベンチ](benchmarks.ja.md#tp2pp2の独立評価p17)にあります。
 
 未改変の[固定版モデルソース](https://github.com/vllm-project/vllm/blob/385dce36bcee42309924a5ece951a96db3dce7f2/vllm/models/glm5next/nvidia/model.py)は、`make_empty_intermediate_tensors` が無いためPPを弾き、その部分的なPP分岐も遅延したmHCの `post`／`comb` 状態を落とします。本リポジトリの固定patchはこれらの契約を実装し、全モデル評価の前に、8層のfixtureで転送される4つのtensorすべてを検査します。[起動設定](server-configuration.ja.md)には、層分割を明示した実験用のPP2 profileがあります。eager実行、1系列、EP／LPA／MTP／融合／APCの無効が必要です。
 

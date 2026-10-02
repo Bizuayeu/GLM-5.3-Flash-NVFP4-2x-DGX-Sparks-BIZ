@@ -14,9 +14,9 @@
 flowchart LR
     R[要求] --> A[prefix復元<br/>P19 APC・checkpoint保持・P22 判定・P25 page重複排除]
     A --> P[prefill<br/>P11 chunk・P05 FA2 prefill・P02 LPA・P03 unpack融合]
-    P --> D[decode<br/>P01 MTP k=3・P08 非同期index検査・P23 再パックした重み・P26 decode分割は退役]
+    P --> D[decode<br/>P01 MTP k=3・P08 非同期index検査・P23 再パックした重み・P29 読み手のspin]
     D --> O[出力]
-    S[並列・throughput<br/>P13 公開した任意設定で2系列・P21 EP 不採用・P17 PP 不採用] -.- P
+    S[並列・throughput<br/>P13 公開した任意設定で2系列・P28 3台のTP=3・P21 EP 不採用・P17 PP 不採用] -.- P
     S -.- D
     B[attention backend・indexer<br/>P04 不採用・P16 中止・候補順序の正規化] -.- P
     B -.- D
@@ -24,13 +24,13 @@ flowchart LR
 
 ## 施策と現在地
 
-「状態」は台帳の判断を短く言ったもので、日付・理由・再評価条件は台帳の行にあります。「既定」は配布既定 `examples/server.example.toml` の値です（[起動設定](server-configuration.ja.md#配布用の既定設定)）。公開した任意設定との差は[公開した任意設定と配布既定の差](server-configuration.ja.md#公開した任意設定と配布既定の差)にあります。機能受入・性能採用・既定値・併用検収は別々に判断されており、採用でも既定onとは限りません。用途別の有効化は[用途別の構成](#用途別の構成)を参照してください。
+「状態」は台帳の判断を短く言ったもので、日付・理由・再評価条件は台帳の行にあります。「既定」は配布既定 `examples/server.example.toml` の値です（[起動設定](server-configuration.ja.md#配布用の既定設定)）。3ノードのテンプレート `examples/server.tp3.example.toml` も、TPの幅（P17・P28）を除き、以下の施策ではすべて同じ値です。公開した任意設定との差は[公開した任意設定と配布既定の差](server-configuration.ja.md#公開した任意設定と配布既定の差)にあります。機能受入・性能採用・既定値・併用検収は別々に判断されており、採用でも既定onとは限りません。用途別の有効化は[用途別の構成](#用途別の構成)を参照してください。
 
 ### prefix復元（繰り返す会話）
 
 | 施策 | 仕組み | 状態 | 既定 | 正典 |
 |---|---|---|---|---|
-| P19 APC | 通常計算由来の状態だけを共有cacheに登録し、同一prefixのprefillを省略する | 実測した直列・長文prefix再利用の用途で受入（実験用）。cold要求は小幅に遅い | on（`cache.prefix_caching=true`） | [P19](benchmarks.ja.md#全モデルのprefix-caching独立評価p19) |
+| P19 APC | 通常計算由来の状態だけを共有cacheに登録し、同一prefixのprefillを省略する | 実測した直列・長文prefix再利用の用途で受入（実験用）。cold要求は小幅に遅い | on（`cache.prefix_caching=true`） | [P19](benchmarks.ja.md#全モデルのprefix-caching独立評価p19)／[正しさの関門](validation.ja.md#prefix-cacheの正しさの関門) |
 | checkpoint保持（`cache.prefix_cache_retention_interval`） | KDA checkpointをscheduler blockごとに保持し、途中編集・分岐後に復元できるHを伸ばす | 通常priming済み・直列の途中編集用途で採用。実測したarmは標準の間隔4,352。`dense`は実測した整列配置で同じ標準KDA maskになるが、最終併用の検収は別 | `dense`（キー省略時のruntime既定は0） | [保持A/B/A](benchmarks.ja.md#apcの履歴保持の基準検査)／[契約](launch-safety.ja.md#apcの履歴検証) |
 | P22 APC優先LPA | 復元したHの先を、残余R＝N−T−Hが閾値Bを超えるときだけ近似する。近似状態は要求内に閉じる | 完了（校正・限定品質・最終併用・held-out）。B=128は保守的な候補閾値で、普遍的な損益分岐定数ではない | APCはon、LPAはoff（有効化時に `lpa.break_even_tokens=128` を適用） | [設計](apc-lpa-design.ja.md)／[校正](benchmarks.ja.md#apc優先lpaの損益分岐計測p22) |
 | P25 page重複排除 | 既にcache済みのblockを持つhashで満杯のblockを登録せず、MTP下で再送した履歴が古い履歴を追い出さないようにする | 採用（1.9.0） | off。公開した任意設定ではon（`runtime.prefix_page_dedup`） | [1.9.0](benchmarks.ja.md#190での測定) |
@@ -51,14 +51,14 @@ flowchart LR
 | P08 非同期index検査 | 範囲検査を省かずGPU assertへ移し、hostとの同期・copyを減らす代わりにGPU kernelが少し増える | 受入（独立opt-in） | async（`runtime.index_checks`） | [P08](benchmarks.ja.md#cpu同期削減の独立評価p08) |
 | P06 CUDA Graphs | decodeのみcapture／replay | 不採用（2026-09-21）：全モデルでeagerより1 stepあたり遅い。選択肢としては残し、後のruntimeで測り直す | off（`runtime.decode_graphs=false`） | [Graph fixture](component-validation.ja.md#decode-graphのfixture独立評価)／[全モデル](benchmarks.ja.md#全モデルでのdecode-graphs) |
 | P23 再パックした重み | attention projectionと `lm_head` をW4A16 NVFP4に再パック（route l）し、`runtime.derived_checkpoint` で配信 | 公開した任意設定として採用。losslessではないので配布既定には入れない | off。公開した任意設定ではon | [台帳](optimization-catalog.ja.md#性能施策一覧)／[配信profile](benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3) |
-| P26 系列ごとのdecode分割 | sparse MLA decodeの分け方を、step全体ではなく1系列のtoken数から決める | 退役（1.16.0）：servingでは届かない。参照attentionがpatchしたdecodeの呼び出しより前にreturnする | —（1.18.0でkeyを撤去。残っていれば拒否） | [到達性](benchmarks.ja.md#servingでの到達性2026-09-26) |
-| P29 共有メモリの読み手のspin | headのEngineCoreがworker 0の返答を読んだ後、zmqのpollで眠る前のspinを1秒から2 msに | テンプレートで採用（1.26.0）、headの温度のため：TP=2の対でheadのCPUとSoCが下がり、countingのdecodeは1.4%遅い。TP=3は延長での適用で未測定 | 0.002（`runtime.shm_spin_seconds`） | [1.25.0](benchmarks.ja.md#1250での測定) |
+| P29 共有メモリの読み手のspin | headのEngineCoreがworker 0の返答を読んだ後、zmqのpollで眠る前のspinを1秒から2 msに | すべてのテンプレートで採用（2026-10-02）、headの温度のため：TP=2の対でheadのCPUとSoCの温度が下がり、countingのdecodeは少し遅い。TP=3は延長での適用で未測定 | 0.002（`runtime.shm_spin_seconds`） | [1.25.0](benchmarks.ja.md#1250での測定) |
 
 ### 並列・throughput
 
 | 施策 | 仕組み | 状態 | 既定 | 正典 |
 |---|---|---|---|---|
 | P13 標準batching | `max_num_seqs=2`で実batch重複を作る。LPAは1系列限定 | 公開した任意設定は2系列を配信（2026-09-23受入、1要求あたり約200K tokenまで）。どんな負荷でもcompletionが反復するのは1系列のときだけ（[同時実行の範囲](validation.ja.md#同時実行の範囲)） | 1系列（`context.max_num_seqs=1`）。公開した任意設定では2 | [P13](benchmarks.ja.md#標準batchingの独立評価) |
+| P28 TP=3 | スイッチなしのQSFPリングで3台。head・expertの幅・語彙を読み込み時に0で詰め、3で割れるようにする | 実施。2026-10-01に通常運用として受入（[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)）：2台より長く、多くの要求を同時に持てる | 2台はTP=2。3台は `examples/server.tp3.example.toml` | [1.24.0](benchmarks.ja.md#1240での測定)／[3ノード](server-configuration.ja.md#3ノード) |
 | P21 Expert Parallel | Expert層の分割だけをTPからEPへ | 不採用（実測したthroughput負荷） | off（`runtime.expert_parallel=false`） | [P21](benchmarks.ja.md#expert-parallel-の独立評価p21) |
 | P17 TP2／PP2 | 同じ2台をTP1×PP2に | 不採用（実測した生成負荷） | TP2（`runtime.pipeline_parallel_size=1`） | [P17](benchmarks.ja.md#tp2pp2の独立評価p17) |
 | P14 同種タスクbatching | 投入順を同種でまとめる | 不採用（この負荷） | —（設定項目なし） | [P14](benchmarks.ja.md#同種タスクの投入順比較p14) |
@@ -70,7 +70,7 @@ flowchart LR
 | P04 NoPE attention融合 | Pythonのqueryループと多段演算の置換 | 不採用（launch削減だけでは速くならず） | —（serving未接続） | [P04](component-validation.ja.md#nope-attentionの融合とquery-batchingp04) |
 | P05 FA2 prefill（SM121 backend選定） | prefillの大きさのNoPE attentionを、BF16に展開した行でFlashInferのSM90 FA2 wrapperに通す。SM120の直接差し替えは不採用 | prefillに採用（1.6.0） | on（`runtime.fa2_attention`）。1系列のdecodeは参照経路、LPAと排他 | [1.6.0](benchmarks.ja.md#160でのprefillとdecode)／[SM90 FA2](component-validation.ja.md#sm90-fa2-mla-wrapperの試験)／[SM120の試験](component-validation.ja.md#padding付きnative-attentionの直接試験) |
 | P16 CSA2 | 層間の候補再利用・限定再採点 | 第一の門で中止（2026-09-21）：indexerがprefillに占める割合が小さすぎる。部品は保持 | —（未統合） | [CSA2](indexer-reuse.ja.md) |
-| 候補順序の正規化 | sparse MLA候補を物理index変換前に論理token順へ揃え、top-kの順序揺れを除く | 台帳外：すべての参照imageが持つruntimeの修正。上記の初期比較は変更前 | on（参照image） | [候補順序](candidate-order.ja.md) |
+| 再現性と正しさの修正 | imageに：sparse MLA候補順序の正規化と、samplerの語彙への上限。三つのスイッチで：expert内のtoken順を一つに、indexerのtop-kの同点をpool indexで決める、Inductorの設定を計時なしで選ぶ | 台帳外：同一要求を反復させ、サンプルしたidを語彙内に保つ修正。上記の初期比較は変更前 | on（参照image。スイッチはすべてのテンプレートで） | [候補順序](candidate-order.ja.md)／[再現性のスイッチ](server-configuration.ja.md#再現性のスイッチ)／[イメージの契約](server-configuration.ja.md#現行イメージの契約) |
 
 ### 運用（性能施策ではない）
 
@@ -90,48 +90,39 @@ flowchart LR
 
 | 用途 | 構成 | 根拠 | 注意 |
 |---|---|---|---|
-| 生成重視・直列（コード。配布既定） | 固定のcheckpoint、MTP k=3、unpack融合、非同期検査、FA2 prefill、APC、1系列 | [配布用の既定設定](server-configuration.ja.md#配布用の既定設定) | 1系列で通常運用として受入（[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)）。固定の重みに対してlossless |
-| 日本語散文 | 公開した任意設定（NVFP4 BIZ AXL） | [公開した任意設定と配布既定の差](server-configuration.ja.md#公開した任意設定と配布既定の差)／[配信profile](benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3) | losslessではない。その費用はREADMEの比較にある（[確認した範囲](../README.ja.md#確認した範囲)） |
+| 生成重視・直列（コード。配布既定） | 固定のcheckpoint、MTP k=3、unpack融合、非同期検査、FA2 prefill、APC、再現性のスイッチ、読み手のspin、1系列。effortを指定しない要求は `high` | [配布用の既定設定](server-configuration.ja.md#配布用の既定設定) | 1系列で通常運用として受入（[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)）。固定の重みに対してlossless |
+| 日本語散文 | 公開した任意設定（NVFP4 BIZ AXL） | [公開した任意設定と配布既定の差](server-configuration.ja.md#公開した任意設定と配布既定の差)／[配信profile](benchmarks.ja.md#基準の2台の配信profileattentionと-lm_head-の再パック深さ3) | losslessではない。その費用はREADMEの比較にある（[確認した範囲](../README.ja.md#確認した範囲)）。prefix cacheの関門は判定不能だった（[関門](validation.ja.md#prefix-cacheの正しさの関門)） |
 | 長い入力のバッチprefill | MTP k=3＋unpack融合＋非同期検査＋LPA cut32／tail512、FA2 prefillはoff、APCは任意 | P18／P22最終併用 | LPAはバッチ用opt-inで近似、FA2 prefillと排他、共有prefixの再利用を失う |
 | prefix再利用重視 | APC＋LPA（P22、B=128）＋`dense`保持、MTPなし | 同一入力再利用・途中編集のA/B/A | 通常primingで共有cacheを育てる。cold処理は小幅悪化 |
-| throughput | 2系列：公開した任意設定のexample | [同時実行の範囲](validation.ja.md#同時実行の範囲) | 要求が重なると処理量が増える。completionは同時に走る要求に依る。LPAは1系列限定。さらに系列を増やすにはrankを増やす |
+| throughput | 2系列：公開した任意設定のexample | [同時実行の範囲](validation.ja.md#同時実行の範囲) | 要求が重なると処理量が増える。completionは同時に走る要求に依る。LPAは1系列限定。3系列以上は3台が要る（次の行） |
+| 全長の文脈、多くの同時要求 | 3台のTP=3（`examples/server.tp3.example.toml`）、どちらのcheckpointも | [P28](optimization-catalog.ja.md#性能施策一覧)／[同時実行の範囲](validation.ja.md#同時実行の範囲) | 通常運用として受入（[SETUP手順6](../SETUP.ja.md#6-フルモデルの検証)）。テンプレートは各rank 3 GiBのKV・1系列なので、実測した容量には大きな予算が要る（[3ノード](server-configuration.ja.md#3ノード)）。PP2・EP・LPAは2ノード限定のまま |
 | 基準・切り分け | 全てoff、eager、1系列 | 基準ベンチ | 比較用。検収した配信profileではない |
 
 いずれも[起動設定TOML](server-configuration.ja.md)の`[mtp]`・`[lpa]`・`[cache]`・`[context]`・`[runtime]`で切り替え、対応imageのmarkerが必要です。
 
 ## 性能と容量のQ&A
 
-現在の構成を拡張するときの考え方を整理します。配信する二つのprofileはどちらも要求あたり入出力合計262,144 tokenが上限で、1Mは約100万tokenです。1Mと3系列以上は未検収、2系列は公開した任意設定でだけ検収済みです（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。
+現在の構成を拡張するときの考え方を整理します。どのテンプレートも要求あたり入出力合計262,144 tokenが上限で、1Mは約100万tokenです。台数ごとに何を検収したかは[同時実行の範囲](validation.ja.md#同時実行の範囲)にあります。
 
 ### Q. KVキャッシュを各rankに3 GiB確保すれば、256Kコンテキストを継続して利用できますか？
 
-**KV容量の観点では、現在と同じモデル・cache精度・MTP/LPA・並列方式・同時1系列なら、基本的にははい。** tokenが表す文字列によって、token当たりのKVの形式やサイズが変わるわけではありません。入力と生成の合計が上限内であることが条件です。[256Kの実入力確認](benchmarks.ja.md#256kでの実入力確認)で、この構成の容量と限定参照を検証しています。
-
-APCの履歴・分岐・checkpoint保持、blockの整列、同時数を変えた場合は、必要な状態と割当も確認します。KV以外の作業領域や他プロセスのRAM使用も変動するため、KVの収容条件と無停止運用の保証は分けて判断してください。[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件)
+**KV容量としては、モデル・cache精度・MTP/LPA・並列方式・同時1系列が同じなら、はい**（[256Kの実入力確認](benchmarks.ja.md#256kでの実入力確認)）。APCの履歴・分岐・保持、blockの整列、同時数を変えたら状態と割当を確かめ、KVの収容と無停止運用の保証は分けて判断してください（[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件)）。
 
 ### Q. KVキャッシュを各rankに12.5 GiB用意できれば、1Mコンテキストを利用できますか？
 
-**固定の重みで2台なら、できません。** 派生checkpointなしでは、ランチャーはrankあたり3 GiBを超えるKVを拒否します（`check_kv_budget`）。固定の重みでは、headに保護余裕を上回る余地がほとんど残らないためです（[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件)）。再パックした重みは軽く、6 GiBを配信しており、これがここで測った最大の予算です。12.5 GiBは未検証で、他所でメモリを空ける（次の問い）か、rankを増やす（TP=3、[同時実行の範囲](validation.ja.md#同時実行の範囲)）必要があります。
-
-必要量そのものも、256Kの量から長さに比例して決まるわけではありません。GLMはtoken数に応じる状態と固定量の再帰状態を併用し、blockの整列やcheckpoint保持もあるため、固定runtimeのcache groupと状態slot数から確認します。そのKV枠とは別に、重み・activation・indexerの一時領域・OS等のRAMが必要です。KVの確保、機体全体のRAMへの収容、1Mの実要求の完了を順に検証します。
+**固定の重みで2台なら、ランチャーがrankあたり3 GiBに抑えるのでできません。3台では1Mのpoolで動かしています**（[KV容量とRAMの条件](server-configuration.ja.md#kv容量とramの条件)、[1.24.0での測定](benchmarks.ja.md#1240での測定)）。
 
 ### Q. MTPを無効化し、保護用のメモリ余裕を減らせば、1M運用は可能でしょうか？
 
-**検証する自然な候補です。ただし再パックした重みか、rankを増やした構成で。** MTPを無効にすると[実測したdraftのメモリ](speculative-decoding.ja.md#k1の実測結果)が空きます。固定量で、コンテキストを伸ばしても大きくなりません。固定の重みでは、MTPの有無にかかわらず、ランチャーは3 GiBを超えるKVを拒否します。
-
-以前のprofileから外挿せず、公開した任意設定の実測メモリ（[1.10.2での測定](benchmarks.ja.md#1102での測定)）から出発し、実際に必要なKVを見積もって、長文用の追加作業領域まで収めます。保護余裕を減らす設定は、残す余白を小さくするものであり、RAM自体を増やすものではありません。
+**3台では不要で、約1M tokenの要求はMTPを有効にしたまま走りました。2台の固定の重みは、MTPの有無にかかわらず3 GiBが上限です。** MTPを無効にすると[draftのメモリ](speculative-decoding.ja.md#k1の実測結果)が空きますが固定量です。保護余裕を減らしても余白が小さくなるだけで、RAMは増えません。
 
 ### Q. 1Mコンテキストでは、どの程度の待ち時間を見込む必要がありますか？
 
-**初回やprefix cacheが効かない要求では、入力処理（prefill）に長く待つ可能性があります。数十分単位はありうる規模で、実測ではありません。** 約200Kの要求は、配信するどちらのprofileでも約3分です（[主要な測定値](../README.ja.md#確認した範囲)）。
-
-これは1Mの実測時間やTTFTの保証ではありません。構成変更、計算量の増え方、workspaceやメモリ帯域によってさらに延びる可能性があります。再利用できるprefixがあれば待ちを短縮できる場合がありますが、長い入力を毎回読み直す対話では、この待ち時間が実用上の制約になります。
+**prefix cacheの再利用がなければ最初のtokenまで20分弱。3台・公開した任意設定で1回測りました**（[1.24.0での測定](benchmarks.ja.md#1240での測定)）。約200Kの要求は、配信するどちらのprofileでも約3分です（[主要な測定値](../README.ja.md#確認した範囲)）。TTFTの保証ではなく、長い入力を毎回読み直す対話では実用上の制約になります。
 
 ### Q. KVキャッシュを各rankに5 GiBへ増やすと、複数同時実行やEP・PPが有効になる可能性はありますか？
 
-**固定の重みでは5 GiBは拒否されます。公開した任意設定は、すでに6 GiBから2系列を配信しています。** その受入は1要求あたり約200K tokenまでで、completionは同時に走る要求に依ります。最大長の要求2本の同時は未測定です（[同時実行の範囲](validation.ja.md#同時実行の範囲)）。LPAは1系列限定です。さらに系列を増やすにはrankを増やします（TP=3、施策台帳P28）。
-
-batchが大きくなればexpert計算の効率やpipelineの稼働率が改善する可能性がある一方、通信やstage間の待ちも増えます。過去の測定負荷では[EP](benchmarks.ja.md#expert-parallel-の独立評価p21)・[PP](benchmarks.ja.md#tp2pp2の独立評価p17)を速度面で不採用としました。同時数や負荷を変えて評価する価値はありますが、KVの増量だけで高速化が決まるわけではありません。
+**2台では固定の重みは5 GiBを拒否し、公開した任意設定はすでに6 GiBから2系列を配信しています。長い要求をさらに同時に持つには3台が要ります（P28）。** [EP](benchmarks.ja.md#expert-parallel-の独立評価p21)・[PP](benchmarks.ja.md#tp2pp2の独立評価p17)は測定した負荷で不採用で、KVの増量だけで高速化が決まるわけではありません。
 
 ## 読み替えの禁止事項
 
@@ -143,8 +134,4 @@ batchが大きくなればexpert計算の効率やpipelineの稼働率が改善�
 
 ## 次の候補
 
-- P24 要求単位のprefix cache無登録：必要性は実測済み、未着手（[台帳](optimization-catalog.ja.md#性能施策一覧)）
-- P28 GB10 3台でのTP=3（全長の要求を6本同時に）：次のminorの候補で、今は見積もりのみ（[施策台帳](optimization-catalog.ja.md#性能施策一覧)）
-- Euryale：本リポジトリ外の投機draft研究（[README](../README.ja.md#本リポジトリ外の関連研究)）
-- P09 FP8／BF16 KVのA/B、P20 indexer workspace、256Kを超えるcontextと長文の検証範囲拡大、複数系列×LPA
-- 固定版vLLM：source-pinnedのpatch（[構成](architecture.ja.md)）は、上流の修正を含む新しい固定版へ移る時に外す。その移行は上の施策すべての再検収を伴う
+候補とその再評価条件は、[施策台帳](optimization-catalog.ja.md#性能施策一覧)で候補・先送りとした行です。次に何をするかとその条件はREADMEの[Next Action](../README.ja.md#next-action)にあります。新しい固定版vLLMへ移るときは、上の施策すべてを再検収します。
