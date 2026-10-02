@@ -1,6 +1,6 @@
 # GLM-5.3-Flash-NVFP4-DGX-Sparks-BIZ
 
-**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.26.0」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
+**略称：NVFP4 BIZ**（引用は「NVFP4 BIZ 1.26.1」の形）。この配信スタックの呼び名で、NVIDIAの固定checkpointを配布のまま配信します。公開している任意設定の重みは **NVFP4 BIZ AXL**（AXL：attention projectionと `lm_head` をW4A16にしたもの。Hugging Faceの [Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16](https://huggingface.co/Bizuayeu/GLM-5.3-Flash-NVFP4-attn-lmhead-W4A16) で、リポジトリ名は中身の記述）。リポジトリ名はどちらもそのままです。
 
 **BIZ**は保守者の印（Bizuayeu）であり、意図を示す語です。商用利用できるライセンス、資産の固定、検査結果の記録、戻せる運用を整えた**業務利用向けの構成**という意味です。意味しないことは[免責事項](#免責事項)にあります。
 
@@ -212,6 +212,8 @@ fixtureは元の幅・experts・選択したtensor bytesを保持しますが、
 - [vLLM #57128](https://github.com/vllm-project/vllm/pull/57128)（Mambaのprefix cacheの一致が投機の余白を無視する、[#53912](https://github.com/vllm-project/vllm/issues/53912)）がmergeされる → source固定patchとして移植する。配信profileは報告の条件（prefix caching、MTP k=3、Mamba cache mode `align`）に当たります。別の構成での現場報告に、ある要求の内容が別の要求の応答に現れたというものがありますが、ここでは観測していません。
 - [vLLM #54296](https://github.com/vllm-project/vllm/pull/54296) がmergeされ固定に入る → slot対応付けのガード（`patch_slot_mapping`）を外す。
 - [vLLM #50843](https://github.com/vllm-project/vllm/pull/50843) がmergeされ固定に入る → samplerの語彙の範囲のガード（`patch_sampler_nonfinite`）を外す。
+- [vLLM #59565](https://github.com/vllm-project/vllm/pull/59565)（画像のencoder cacheをtoken数の上限ちょうどに合わせる修正、[#59539](https://github.com/vllm-project/vllm/issues/59539) 向け）がmergeされる → source-pinned patchとして取り込み、[画像入力](docs/vision.ja.md)の画像の大きさの上限の記述を見直す（今の記述は7,921 tokenのcacheの内側で測ったもの）。2026-10-02に参照対で検証済み：cacheは8,000 tokenになり、断られていた7,931〜8,000 tokenの画像に答え、decode検査のcompletionは変わらなかった。
+- [vLLM #48032](https://github.com/vllm-project/vllm/pull/48032)（Marlin MoEのrouteの整列を決定的にする、[#52525](https://github.com/vllm-project/vllm/issues/52525) 向け）がmergeされ固定に入る → 手元のexpert内のtoken順（`runtime.canonical_moe_order`、`patch_moe_order`）をこれに置き換えるかを検討する。2026-10-02の8層fixtureでは、手元の並べ替えと同じく反復で変わらず、順はslot単位で一致し、手元の並べ替えが約1%かかるdecodeの時間を測れるほどには増やさなかった。
 - sampledの `server mojibake`（`--temperature`・`--top-p`）で化け文字が見つかる → UTF-8のガードを別の計画で作る。
 - warmupの後でも、利用者の要求でサンプリングのkernelがコンパイルされる → その要求のサンプリング設定で段を足す。1.19.0で利用者の最初の要求がコンパイルした `_topp_sb_*` の3つは、temperature 0 で送るladderの段では通りませんでした。temperatureを送らない要求はcheckpointの1.0・top_p 0.95になり、これらをコンパイルするので、その設定の段を足しました。1.18.0で見た `_gumbel_sample_kernel` も同じで、2026-09-28 に配布既定を起動したとき、この段の中で `_topp_sb_*` の3つと一緒にコンパイルされ、その後の同じ設定の要求53件ではサンプリングのkernelは一つもコンパイルされませんでした。
 - KDAのblockより小さいblockのdraftのKV cache groupが加わる（独自の層を持つDFlash型のdraftなど） → prefix cacheとともに配信する前に、prefix cacheのhitがKDAのcheckpointと揃ったままかを確かめる（起動ログの `kv cache group sizes` と、workerの `Setting attention block size` の行。knapcioのissue #2）。固定vLLMはprefix cacheに載るgroupのうち最小のblockをschedulerのblockにするので、今はどちらも4,608 token（TP=3では3,072）で揃っています。`mamba_block_size` は `/metrics` から読まないでください：engineのプロセスはalignモードの大きさの変更を適用しないので、workerがKDAの状態を4,608 tokenごとに書いていても、要求した256を報告します。

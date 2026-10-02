@@ -4,6 +4,14 @@
 
 正典は[英語版](CHANGELOG.md)です。GitHub Releaseの本文は英語版の各版の節から作られます。1.5.0以前の節は後から訳して加えました。項目は英語版と同じ順に並べています。
 
+## 1.26.1 — 2026-10-02
+
+### Documentation
+
+- READMEのNext Action：#59539向けに画像のencoder cacheをtoken数の上限ちょうどに合わせる [vLLM #59565](https://github.com/vllm-project/vllm/pull/59565) は、mergeされたらsource-pinned patchとして取り込み、そのとき[画像入力](docs/vision.ja.md)の画像の大きさの上限も見直します。2026-10-02に参照対で検証しました：cacheは7,921から8,000 tokenになり、断られていた7,931〜8,000 tokenの画像に答え、decode検査のcompletionは変わりませんでした。#52525向けにMarlin MoEのrouteの整列を決定的にする [vLLM #48032](https://github.com/vllm-project/vllm/pull/48032) は、固定に入ったら手元のexpert内のtoken順の置き換えとして検討します。8層fixtureでは手元の順と同じく反復で変わらず、順はslot単位で一致し、手元の順が約1%足すdecodeの時間を測れるほどには足しませんでした。
+- [施策台帳P13](docs/optimization-catalog.ja.md#性能施策一覧)：RecoverSSMを先送りにしました。同時数の目標は記録済みの起動行で満たしているので、効果は主にメモリの節約です（MTP k=3で要求あたりのKDAの上乗せが16 blockから7 blockへ）。Kimi-K3の算術をそのまま移すとdecodeの出力が変わります。行には見直す条件と、そのときの形を書きました。
+- [運用](docs/operations.ja.md#gpuクロックの上限)：1.26.0の読み手のspinを、GPUクロックの上限の隣に。headで何が変わるか、vLLMの1秒に戻す方法。
+
 ## 1.26.0 — 2026-10-02
 
 ### Changed

@@ -2,6 +2,14 @@
 
 [日本語](CHANGELOG.ja.md) (this English file is canonical and the GitHub Release is made from it)
 
+## 1.26.1 — 2026-10-02
+
+### Documentation
+
+- README Next Action: [vLLM #59565](https://github.com/vllm-project/vllm/pull/59565), which sizes the image encoder cache from the exact token ceiling for #59539, is ported as a source-pinned patch once it merges, and the image-size limits in [image input](docs/vision.md) are revised then. It was verified on the reference pair on 2026-10-02: the cache grew from 7,921 to 8,000 tokens, images of 7,931–8,000 tokens that were refused now answer, and decode-check completions were unchanged. [vLLM #48032](https://github.com/vllm-project/vllm/pull/48032), deterministic Marlin MoE route alignment for #52525, is considered as a replacement for the local expert token order once it reaches the pin: on the eight-layer fixture it was as repeatable as the local order, matched it slot for slot and added no measurable decode time, where the local order adds about 1%.
+- [Catalog P13](docs/optimization-catalog.md#performance-initiatives): RecoverSSM is deferred. The concurrency targets are met on recorded boot lines, so it would mostly free memory (at MTP k=3 the per-request KDA overhead falls from 16 blocks to 7); a direct port of the Kimi-K3 arithmetic would change decode output. The row names the triggers for revisiting it and the form it would take.
+- [Operations](docs/operations.md#gpu-clock-cap): the reader spin of 1.26.0 next to the GPU clock cap, what it changes on the head and how to restore vLLM's 1 s.
+
 ## 1.26.0 — 2026-10-02
 
 ### Changed
