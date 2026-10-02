@@ -290,7 +290,7 @@ class SSHBackend:
         ]
         # Reads, and the two mutations a rank makes harmless to replay: stop is
         # idempotent, start answers for an attempt already in flight. A switch has
-        # stopped both ranks by the time it starts the new ones, so one dropped
+        # stopped every rank by the time it starts the new ones, so one dropped
         # connection there used to cost a recovery.
         attempts = 3 if action in ("current", "prepare", "poll", "start", "stop") else 1
         for attempt in range(attempts):
@@ -327,7 +327,7 @@ class SSHBackend:
         nodes = (
             None
             if running is None
-            else len(running["launch"]["manifest"]["profile"]["nodes"])
+            else server_config.node_count(running["launch"]["manifest"]["profile"])
         )
         if nodes is not None and nodes != len(self.hosts):
             # Stopping only some of its ranks would leave the rest in a broken

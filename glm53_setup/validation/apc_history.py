@@ -165,16 +165,9 @@ def read_metrics(profile):
 
 def encode_prompt(profile, body):
     """The token ids the server itself produces for this request."""
-    return server.post(
-        profile,
-        "/tokenize",
-        {
-            "model": body["model"],
-            "messages": body["messages"],
-            "add_generation_prompt": True,
-            "chat_template_kwargs": body["chat_template_kwargs"],
-        },
-    )["tokens"]
+    return server.post(profile, "/tokenize", server.chat_tokenize_request(body))[
+        "tokens"
+    ]
 
 
 def expected_omission(cut, eligible, layers=MODEL_LAYERS):

@@ -30,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 # 9,216 tokens on the 4,608-token block (docs/server-configuration.md); below
 # two blocks a repeat restores nothing.
 LENGTHS = {"long": 99_000, "short": 14_025}
+DEFAULT_LENGTH = "long"
 SEED = 7  # knapcio's default; the log is a function of it.
 # The lookups near the end reach 60 records back.
 MIN_RECORDS = 64

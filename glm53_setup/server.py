@@ -457,6 +457,16 @@ def tokenize_request(profile, text, special=True):
     return body
 
 
+def chat_tokenize_request(body):
+    """The /tokenize body that counts a chat request as the server renders it."""
+    request = {"model": body["model"], "messages": body["messages"]}
+    if "tools" in body:
+        request["tools"] = body["tools"]
+    request["add_generation_prompt"] = True
+    request["chat_template_kwargs"] = body["chat_template_kwargs"]
+    return request
+
+
 def collective_rpc(profile, method, **kwargs):
     body = {"method": method, "kwargs": kwargs, "timeout": 600}
     return post(profile, "/collective_rpc", body)["results"]
@@ -546,7 +556,7 @@ def mojibake_running(profile, sampling=None, repeats=None):
     )
 
 
-def prefix_gate_running(profile, length="long"):
+def prefix_gate_running(profile, length=prefix_gate.DEFAULT_LENGTH):
     """Cold/warm prefix-cache correctness gate on the running rank 0; recorded.
 
     The prompt is counted as ``ask`` counts LPA prompts: ``/tokenize`` over the
@@ -554,7 +564,7 @@ def prefix_gate_running(profile, length="long"):
     """
     limit = prefix_gate.LENGTHS[length]
     # A profile the gate cannot judge is refused before the head is read.
-    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
+    if settings.native_lpa(profile):
         raise ValueError(
             "prefix-gate requires LPA off or APC-first; native LPA publishes no shared prefix"
         )
@@ -572,16 +582,7 @@ def prefix_gate_running(profile, length="long"):
 
     def count_tokens(request):
         body = settings.request_body(profile, request)
-        return post(
-            profile,
-            "/tokenize",
-            {
-                "model": body["model"],
-                "messages": body["messages"],
-                "add_generation_prompt": True,
-                "chat_template_kwargs": body["chat_template_kwargs"],
-            },
-        )["count"]
+        return post(profile, "/tokenize", chat_tokenize_request(body))["count"]
 
     salt = "prefix-gate-" + uuid.uuid4().hex
     return recorded_on_head(
@@ -604,7 +605,7 @@ def agreement_senders(profile, sender=post):
     rewrites prefill outside the shared cache, so the reading is only taken
     with LPA off or in its APC-first form (the same guard as ``ask``).
     """
-    if profile["lpa"]["enabled"] and not settings.apc_lpa_enabled(profile):
+    if settings.native_lpa(profile):
         raise ValueError(
             "agreement requires LPA off or APC-first; native LPA rewrites prefill"
         )
@@ -649,7 +650,7 @@ def agreement_running(profile, reference=None):
 
 def ask(profile, request, sender=post):
     body = settings.request_body(profile, request)
-    if not profile["lpa"]["enabled"] or settings.apc_lpa_enabled(profile):
+    if not settings.native_lpa(profile):
         return sender(profile, "/v1/chat/completions", body)
     # Only text/tool chat fields whose tokenization was exercised are accepted.
     allowed = {
@@ -672,17 +673,7 @@ def ask(profile, request, sender=post):
         raise ValueError(
             "Unsupported LPA request fields; tokenization must stay identical"
         )
-    encoded = sender(
-        profile,
-        "/tokenize",
-        {
-            "model": body["model"],
-            "messages": body["messages"],
-            "tools": body.get("tools"),
-            "add_generation_prompt": True,
-            "chat_template_kwargs": body["chat_template_kwargs"],
-        },
-    )
+    encoded = sender(profile, "/tokenize", chat_tokenize_request(body))
     length = len(encoded["tokens"])
     if not length or length + body["max_tokens"] > profile["context"]["max_model_len"]:
         raise ValueError("Prompt plus max_tokens exceeds configured context")
@@ -826,7 +817,9 @@ def act_mojibake(cli, args, profile):
 
 def act_prefix_gate(cli, args, profile):
     """Check that a warm prefix-cache hit answers as the cold computation did."""
-    report_verdict(prefix_gate_running(profile, args.prefix_length or "long"))
+    report_verdict(
+        prefix_gate_running(profile, args.prefix_length or prefix_gate.DEFAULT_LENGTH)
+    )
 
 
 def act_agreement(cli, args, profile):

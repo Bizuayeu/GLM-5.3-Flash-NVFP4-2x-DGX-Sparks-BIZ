@@ -233,12 +233,14 @@ def addressing(nodes, rank):
     head's end of their direct link and advertises its own end (the head: its link to
     rank 1). Each rank picks for itself, so the two forms may be mixed.
 
-    cc-defer: provisional. The fallback reaches the master from every rank, but Gloo
-    pairs, NCCL's bootstrap ring and vLLM's broadcast queue connect every rank to each
-    address advertised once, and a /30 link-to-head address is not reachable from the
-    third node without routes; host_address needs a /32 on its own interface and
-    static routes over the direct links. Plan Stage 3 sets up and tests the /32 and
-    its routes on the ring, and settles which form the launcher keeps.
+    On two nodes the fallback is complete. On a ring it is not: Gloo pairs, NCCL's
+    bootstrap ring and vLLM's broadcast queue connect every rank to each advertised
+    address, and a /30 link-to-head address is not reachable from the third node
+    without routes. The reference ring therefore sets host_address on every node, a /32
+    on its own interface with static routes over the direct links (docs/qsfp-network.md).
+
+    cc-defer: a ring profile without host_address is still accepted, though its fallback
+    cannot reach the third node. Refuse it at validation when an operator launches one.
     """
     head, node = nodes[0], nodes[rank]
     if "host_address" in head:

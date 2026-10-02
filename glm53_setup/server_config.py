@@ -239,7 +239,9 @@ def check_optional_shapes(profile):
             or not SHM_SPIN_SECONDS[0] <= spin <= SHM_SPIN_SECONDS[1]
         ):
             raise ValueError(
-                "runtime.shm_spin_seconds must be a number from 0.002 to 1"
+                "runtime.shm_spin_seconds must be a number from {:g} to {:g}".format(
+                    *SHM_SPIN_SECONDS
+                )
             )
     if optional(profile, "runtime", "fa2_attention") and profile["lpa"]["enabled"]:
         # LPA's skip_mla_queries hooks the reference computation only.
@@ -745,8 +747,8 @@ def environment(profile, rank):
         split = profile["runtime"]["pipeline_split_layer"]
         result["VLLM_PP_LAYER_PARTITION"] = f"{split},{MODEL_LAYERS - split}"
     if padding(profile) > 1:
-        # 64 heads, the 2,048 MoE width and the vocabulary do not split evenly:
-        # the image zero-pads them at load time (runtime/tp_padding.py).
+        # The heads, MoE width and vocabulary do not split evenly across these
+        # ranks: the image zero-pads them at load time (runtime/tp_padding.py).
         result[TP_PAD_ENV] = str(padding(profile))
     return result
 
@@ -881,6 +883,11 @@ def dev_mode(profile):
 
 def apc_lpa_enabled(profile):
     return profile["lpa"]["enabled"] and profile["cache"]["prefix_caching"]
+
+
+def native_lpa(profile):
+    """LPA without prefix caching: requests go through ask's tokenize-and-configure path."""
+    return profile["lpa"]["enabled"] and not apc_lpa_enabled(profile)
 
 
 def asynchronous_index_checks(profile):
@@ -1083,8 +1090,8 @@ def apply_parallelism(args, profile):
     """Expert parallelism, and the PP2 shape that re-splits the two ranks."""
     if profile["runtime"]["expert_parallel"]:
         args.append("--enable-expert-parallel")
+    args[args.index("--tensor-parallel-size") + 1] = str(tensor_parallel_size(profile))
     if profile["runtime"]["pipeline_parallel_size"] == 2:
-        args[args.index("--tensor-parallel-size") + 1] = "1"
         args += ["--pipeline-parallel-size", "2"]
 
 
