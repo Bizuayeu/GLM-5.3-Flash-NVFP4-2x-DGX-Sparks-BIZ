@@ -1,13 +1,13 @@
-# TP=2 benchmark method
+# Benchmarks
 
 [日本語](benchmarks.ja.md) · [Validation](validation.md)
 
-This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (2026-09-12 to 14: P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention), the release-candidate, 200K and 256K real-input checks, and the measurements of each release listed below. Adoption decisions are in the [optimization catalog](optimization-catalog.md), MTP k=1/k=3 comparisons in [speculative decoding](speculative-decoding.md), and the current image-input defaults in [image input](vision.md).
+This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model runs of the independent initiatives (2026-09-12 to 14: P08, P11, P13–P15, P17–P19, P21, P22 and checkpoint retention), the release-candidate, 200K and 256K real-input checks, and the measurements of each release listed below, the three-host TP=3 runs from 1.24.0 among them. Adoption decisions are in the [optimization catalog](optimization-catalog.md), MTP k=1/k=3 comparisons in [speculative decoding](speculative-decoding.md), and the current image-input defaults in [image input](vision.md).
 
 | Release | Date | Measured |
 |---|---|---|
 | [1.3.1](#measurements-on-131) | 2026-09-17 | 200K image profile with LPA off: sparkDash, 200K real input |
-| [1.4.0](#measurements-on-140) | 2026-09-17 | Chunk 2048: sparkDash, 200K real input |
+| [1.4.0](#measurements-on-140) | 2026-09-17 | Chunk 2048: sparkDash, 200K real input; lanes beside a long conversation (P24) |
 | [1.5.0](#measurements-on-150) | 2026-09-17 to 18 | 256K image defaults: startup, prefill and decode, 256K and 200K real input, sparkDash |
 | [1.6.0](#measurements-on-160) | 2026-09-18 to 21 | Repeated identical requests, FA2 prefill, long input; the route g, k=4 serving profile and the slot-mapping guard |
 | [1.7.0](#measurements-on-170) | 2026-09-21 to 22 | The repack `l`, k=3 profile; decode Graphs |
@@ -19,9 +19,27 @@ This page owns the TP=2 benchmark method, the MTP-off baseline, the full-model r
 | [1.13.0](#measurements-on-1130) | 2026-09-25 | The kpool seed fix on both profiles; two-sequence completions |
 | [1.14.0](#measurements-on-1140) | 2026-09-25 to 26 | The sparse-MLA decode split, never reached in serving; repeatability with `max_num_seqs = 1`; a cached long prompt |
 | [1.15.0](#measurements-on-1150) | 2026-09-26 | CPU placement on the reference pair |
-| [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements) |
+| [1.19.0](#measurements-on-1190) | 2026-09-26, 2026-09-28 | The kpool tail ring (vLLM #58454) and weight loading through a clone, on the published option at two sequences; both profiles in one window with a GPU clock cap (the README's main measurements); the LPA split (P27) |
 | [1.22.0](#measurements-on-1220) | 2026-09-29 | tool-eval-bench on the model API and through the tool-argument gate |
 | [1.24.0](#measurements-on-1240) | 2026-09-29, 2026-10-01 | Three hosts at TP=3: both profiles, NLL position by position, 500K and 1M input, the prefill cap |
+| [1.25.0](#measurements-on-1250) | 2026-10-02 | The shared-memory reader spin on the reference pair (P29) |
+
+Runs outside the release sections:
+
+| Initiative | Run |
+|---|---|
+| Active batching | [Independent active batching](#independent-active-batching), with the maximum-length capacity check |
+| P08 | [CPU synchronization reduction](#independent-cpu-synchronization-reduction-p08) |
+| P11 | [Prefill chunk](#independent-prefill-chunk-evaluation-p11) |
+| P14 | [Task grouping order](#task-grouping-order-comparison-p14) |
+| P15 | [Context sweep through 32K](#independent-context-sweep-through-32k-p15) |
+| P17 | [TP2 versus PP2](#independent-tp2-versus-pp2-evaluation-p17) |
+| P18 | [Serial integration of MTP, LPA, fused unpack and async checks](#serial-integration-of-mtp-lpa-fused-unpack-and-async-checks-p18) |
+| P19 | [Full-model prefix caching](#independent-full-model-prefix-caching-p19) |
+| P21 | [Expert Parallel](#independent-expert-parallel-evaluation-p21) |
+| P22 | [APC-first LPA crossover](#apc-first-lpa-crossover-measurement-p22); [with MTP, fusion and asynchronous checks](#apclpa-with-mtp-fusion-and-asynchronous-checks-p22) |
+| Checkpoint retention | [APC history retention baseline](#apc-history-retention-baseline); [final combined regression](#final-combined-retention-regression) |
+| 256K capacity | [Real-input checks at 256K](#real-input-checks-at-256k) |
 
 Measure a known, functioning profile before changing kernels or throughput settings. A benchmark result is evidence for its exact image, precision, scheduler and workload; it does not establish production reliability or harness compatibility.
 
@@ -493,7 +511,7 @@ Between 2026-09-18 and 20 (Asia/Tokyo) the 1.6.0 defaults were measured on the r
 
 ### Identical requests repeat
 
-The same request sent nine times, 512 tokens after a fixed 2,048-token prompt at temperature 0, gave one completion for each of three prompts (counting, prose, code) with zero movement of the per-position log-probabilities. `server agreement` read its four texts teacher-forced twice with argmax agreement 1.0 and the same NLL to four decimals (Japanese 1.5963, English 2.0241, code 0.9479, mathematics 0.5931). On 1.5.0 the same check agreed on 0.926 to 0.977 of positions. [What was fixed and how it was found](validation.md#full-model-tp2-experimental-scope).
+The same request sent nine times, 512 tokens after a fixed 2,048-token prompt at temperature 0, gave one completion for each of three prompts (counting, prose, code) with zero movement of the per-position log-probabilities. `server agreement` read its four texts teacher-forced twice with argmax agreement 1.0 and the same NLL to four decimals (Japanese 1.5963, English 2.0241, code 0.9479, mathematics 0.5931). On 1.5.0 the same check agreed on 0.926 to 0.977 of positions. [What was fixed and how it was found](validation.md#repeatability).
 
 ### Prefill and decode on 1.6.0
 
@@ -526,7 +544,7 @@ The tie rule adds a check to every prefill chunk. On the serving profile below i
 
 ### The reference pair's serving profile
 
-From 2026-09-19 to 21 the pair served two settings that a fresh installation did not have: the attention projections requantized to W4A16 NVFP4 (`runtime.derived_checkpoint`, [P23](optimization-catalog.md)) and MTP depth 4 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). Fingerprint `9de4b4f73570…`, measured on 2026-09-19 and 20. **From 2026-09-21 the pair served the attention and `lm_head` repack with depth 3 ([measurements on 1.7.0](#measurements-on-170); its KDA input projection split from [1.8.0](#measurements-on-180)); since 2026-09-23 it serves the published option's two-sequence profile ([1.10.2](#measurements-on-1102), [1.14.0](#measurements-on-1140)).** The table below is the profile as it was served in between.
+From 2026-09-19 to 21 the pair served two settings that a fresh installation did not have: the attention projections requantized to W4A16 NVFP4 (`runtime.derived_checkpoint`, [P23](optimization-catalog.md)) and MTP depth 4 ([depths one to five](speculative-decoding.md#depths-one-to-five-2026-09-19-and-20)). Fingerprint `9de4b4f73570…`, measured on 2026-09-19 and 20. **From 2026-09-21 the pair served the attention and `lm_head` repack with depth 3 ([measurements on 1.7.0](#measurements-on-170); its KDA input projection split from [1.8.0](#measurements-on-180)); since 2026-09-23 it serves the published option's two-sequence profile ([1.10.2](#measurements-on-1102), [1.14.0](#measurements-on-1140)).** As recorded on 2026-10-02 (1.26.0 checkout, image `b9ae6459…`), that profile sets the reader spin and `api.default_reasoning_effort = "high"` as the [AXL example](../examples/server.axl.example.toml) does, and differs from the example in `validation.memory_probe` and `api.dev_endpoints` (on, for the checks after a switch), a 65,536-token long warmup rung, an LPA section that names the distributed projector while LPA stays off, `nodes[].cpuset_cpus`, and a KDA overlay from before 1.24.0 (`144a835f…`; the example's `27a532ce…` gave the same decode-check completions and teacher-forced record on the pair on 2026-10-01, [1.24.0](#measurements-on-1240)). The table below is the profile as it was served in between.
 
 | Measure | Serving profile | 1.6.0 defaults |
 |---|---|---|
@@ -598,7 +616,7 @@ Read on 2026-09-22 morning, prefill looked unchanged within the spread; the two 
 
 ### Decode Graphs on the full model
 
-`runtime.decode_graphs = true` on the profile served on 2026-09-21 morning (repack `g`, depth 4, `enforce_eager = false`; the launcher captures decode at size 5, and the pinned runtime auto-enabled its breakable-graph mode): every one of the ten inputs decoded slower than eager, by 7.2 to 8.5 ms per step (mean 109.3 against 101.1 ms), with identical completions and acceptance; the three decode prompts gave 22.59 / 42.19 / 32.33 tok/s against 24.01 / 45.13 / 34.85. Two eager launches of the same profile the same day differed by 0.9 ms per step. Not adopted; the option stays off ([P06](optimization-catalog.md#performance-initiatives)).
+`runtime.decode_graphs = true` on the profile served on 2026-09-21 morning (repack `g`, depth 4, `enforce_eager = false`; the launcher captures decode at size 5, and the pinned runtime auto-enabled its breakable-graph mode): every one of the ten inputs decoded slower than eager, by 7.2 to 8.5 ms per step (mean 109.3 against 101.1 ms), with identical completions and acceptance; the three decode prompts gave 22.59 / 42.19 / 32.33 tok/s against 24.01 / 45.13 / 34.85. Two eager launches of the same profile the same day differed by 0.9 ms per step. An earlier full-model launch with decode Graphs (2026-09-18), on the baseline where identical requests repeat, decoded at 31.90 tok/s against 31.78 and 30.99 eager, then stopped itself on the memory reserve during the prefill of the 199,652-token passphrase request (available memory 6.5 to 2.9 GiB, where eager kept 6.14). Not adopted; the option stays off ([P06](optimization-catalog.md#performance-initiatives)).
 
 ## Measurements on 1.7.1
 
@@ -778,6 +796,7 @@ Kernel runs on one GB10 (the serving image, no restart; `records/20260925-moe-ba
 - **The NVFP4 Marlin MoE** lays its (expert block, output tile) tiles out in block order and cuts the last ones along K, summing the pieces in fp32; where it cuts follows the number of expert blocks in the call. At decode sizes the kernel, its thread configuration and its grid stay the same (four and eight rows alike); only the block count moves. With a second request's four rows next to a request's four, 29 of 40 random routings and inputs changed at least one row. Pinning the launch and padding the blocks until no tile is cut made it 0 of 40, at 3 to 13% on the MoE call; the release does not adopt that (below).
 - **The sparse-MLA decode** (FlashInfer 0.6.18 through the SM120 backend with its reference flag set off; serving never reaches it, [below](#reachability-in-serving-2026-09-26)) lets each CTA take `chunks_per_block` of the 32 candidate chunks and picks the value from the call's token count: on 48 SMs 2 for one draft token and 3 for two, 6 for one verification step of four tokens and 15 for two. A second sequence therefore changed every row of a request's attention (all 128 rows of four tokens × 32 heads); with the value pinned, none.
 - The KDA recurrent decode and the draft layer's BF16 Triton MoE gave the same rows with and without a partner.
+- Running a shared step's decode rows and prefill rows separately cost the MoE +0.5 to 2.1 ms per layer on a shared step and does not by itself make two-sequence completions repeat; not adopted.
 
 `runtime.mla_decode_cpb` pins the second: the value comes from the tokens of one sequence (2 for a draft step, 6 for a verification step), the heuristic's own at one sequence. Through the patched backend on one GB10 a request alone computed bit for bit as before, and a call took 151 to 502 µs against 226 to 798 without the FlashInfer wrapper around it (synchronous timing). Serving never reaches the patched call ([below](#reachability-in-serving-2026-09-26)).
 
@@ -814,7 +833,7 @@ Reported upstream: [flashinfer-ai/flashinfer#5553](https://github.com/flashinfer
 
 What the trace did show changing with a partner is the attention's path. The reference attention sends calls of more than six query rows to FA2 (`runtime.fa2_attention`): a verification step at depth 3 was four rows alone, computed eagerly in FP32, and eight with a partner, through FA2 over BF16 KV. In kernel runs on one GB10 with synthetic inputs, the eager result for a sequence's rows was bit-identical whether the call had 4, 5 to 8 or 12 rows, wherever the sequence sat, beside a padded partner and over interleaved cache pages; FA2 moved every row by one BF16 ulp with the partner's row count and lengths (not its content, order or pages) and repeated bit for bit. That switch is not the main cause of two-sequence differences: with every attention call forced onto the eager path on the running pair (the memory probe's `fa2_stage("off")` for about eight minutes, then restored and checked), 7 of the 8 two-sequence completions still differed from their lone ones (one no longer did, five first differed at another token, two at the same one), and every pair still repeated. The MoE, whose rows change with another request's rows in the call (above), is the lead suspect. The operating rule stands: `max_num_seqs = 1` repeats under any load.
 
-Later the same day the serving pair ran with the Marlin MoE split pinned for decode-sized calls, the shared-expert and router GEMMs computed per sequence and FA2 off; the switches engaged, and eight of eight two-sequence completions still differed from their lone ones, so none was adopted ([optimization catalog](optimization-catalog.md), P26).
+Later the same day the serving pair ran with the Marlin MoE split pinned for decode-sized calls, the shared-expert and router GEMMs computed per sequence and FA2 off; the switches engaged, and eight of eight two-sequence completions still differed from their lone ones, so none was adopted (decision: [catalog P26](optimization-catalog.md#performance-initiatives)).
 
 ## Measurements on 1.15.0
 
@@ -853,7 +872,7 @@ The reference pair switched from 1.18.0 to the 1.19.0 image (`sha256:99e6cf7a…
 - **Loading.** The weight digest was the same on both ranks (2,382 tensors). The lowest MemAvailable is reached after the KV pool is allocated, not while weights load; `patch_load_clone` holds one tensor at a time.
 - **Completions.** The decode check's prompts are about 2,100 tokens, so every pool built during decode lies past `index_topk` and the ring fix can change it. All three completions changed; each still repeated bit for bit over three runs. The counting prompt, whose drafts are almost all accepted, changed as well.
 - The mojibake check passed, and `server capacity` reports two full-length requests fitting the pool.
-- **The eager attempt.** The first attempt at this switch used vLLM's `--safetensors-load-strategy eager` instead of the clone. It holds each shard twice (22.81 GiB for an 11.15 GiB shard, measured on one GB10), rank 1 ran out of memory and its host stopped answering for about 15 minutes; the pair was restored to 1.18.0 and the strategy was dropped ([operations](operations.md#full-model-launch-checks)).
+- **The eager attempt.** vLLM's `--safetensors-load-strategy eager`, tried first at this switch, holds each shard twice (22.81 GiB for an 11.15 GiB shard, one GB10); rank 1 ran out of memory and the strategy was dropped ([operations](operations.md#full-model-launch-checks)).
 
 ### Both profiles in one window, with a GPU clock cap (2026-09-28)
 
@@ -875,7 +894,6 @@ The README's main measurements are this window's values. On the 1.19.0 image (`s
 | Three-position reference at 261,573 tokens, fenced background | 239.8 / 237.9 / 242.5 s, correct three times | 234.9 / 235.4 / 235.0 s, correct three times |
 | Teacher-forced NLL: Japanese / English / code / math | 1.5963 / 2.0241 / 0.9479 / 0.5931 | 1.6270 / 1.9946 / 0.9601 / 0.6275 |
 | tool-eval-bench, 69 standard scenarios | 91/100, fails TC-21, 43 and 61, Safety Gate not met | 88/100, the same three fails, Safety Gate not met |
-| FreedomBench, the pinned English 60 / the long-prefix pilot | 60 correct, no refusals / 6 of 6 | 60 correct, no refusals / 6 of 6 |
 | Lowest head free memory in the `glm_bench` window | 6.2 GiB | 7.56 GiB (7.34 GiB with two 200K requests together) |
 
 - **Repetition.** The decode check repeated bit for bit three times per task type on both profiles. Served with `max_num_seqs = 1` (the defaults, and the published option at one sequence), two requests sent together queued and 18 of 18 matched their request's lone completion (17.7–26.6 s and 13.1–19.2 s to the second request's first token). The published option's three decode-check hashes were the same on all eight 1.19.0 launches (five without the cap and three with it, including the one-sequence launch).
@@ -883,6 +901,11 @@ The README's main measurements are this window's values. On the 1.19.0 image (`s
 - **Startup.** `Loading weights took` appears twice, for the main model and for the MTP draft; the table has the first line (the main model, Marlin NvFp4 MoE). The second line (the draft) was 108.3 s on the defaults and 104.2 s on the published option. The switches took 381 s to the defaults, 423 s to one sequence and 411 s back to the serving profile, none with a recovery.
 - **sparkDash.** The sparkDash on edgexpert01 moved to upstream `2dd2317` on 2026-09-26, and its code prompt changed from 108 to 66 tokens (structured 33, prose 39 and json 58 tokens are unchanged). The code values cannot be compared with those from the sparkDash used before 1.19.0.
 - **What the cap cost.** Against the same published option without the cap on 2026-09-27, prefill was 1.8% slower, long inputs took 0.8–1.9% longer and decode was 1–2% faster. The defaults' long inputs took 2–5% longer than the latest records without the cap (1.13.0 to 1.14.0). NLL, completions and correctness did not change.
+- **FreedomBench** ran in this window on both profiles ([results](freedombench.md#rerun-on-both-1190-profiles-2026-09-28)).
+
+### LPA split (P27, 2026-09-26)
+
+On the reference pair, with the 1.19.0 image (`99e6cf7a…`) and a measurement profile, the experimental `split-self` mode reproduced the normal computation bit for bit. With the distributed cut-32 projector `split` passed 6 of 15 long-reference checks (the current LPA 14 of 15). Refitted linear projectors (full rank; cuts 36, 40) still left 44–62% of the input energy unexplained at layers 43 and 44 on validation data. A cut-40 projector kept quality (15 of 15, tail-512 NLL within 0–12% of the current LPA), and skipping the late layers before a 16-token exact tail left the written state unchanged, but prefill was only 0.8–2.4% faster than off, against 14–20% for the current LPA at cut 32. Decision: [catalog P27](optimization-catalog.md#performance-initiatives).
 
 ## Measurements on 1.22.0
 
@@ -902,7 +925,7 @@ The gate intervened once per run, on TC-43 (the user asks to "just call web_sear
 
 ### Three hosts at TP=3 (2026-09-29 and 10-01)
 
-Three GB10 hosts cabled as a switchless QSFP ring ([network](qsfp-network.md#8-three-hosts-in-a-ring)) served TP=3 with the padding of 1.24.0: heads 64 → 66 (22 per rank), routed and shared expert width 2,048 → 2,112, vocabulary to a multiple of 192. Control traffic ran over one /32 per host with static routes on the direct links (from 2026-10-01; on 2026-09-29 over the management Wi-Fi as a test setting). Every profile: MTP k=3, FA2 prefill, the fixed expert order, settled indexer ties, deterministic Inductor configs, image input on, `cpuset_cpus = "5-9,15-19"` on all three hosts. Decode is three samples of 512 tokens after a fixed ~2,048-token prompt (median tok/s, mean acceptance length).
+Three GB10 hosts cabled as a switchless QSFP ring ([network](qsfp-network.md#8-three-hosts-in-a-ring)) served TP=3 with the zero-padding described in [server configuration](server-configuration.md#three-nodes). Control traffic ran over one /32 per host with static routes on the direct links (from 2026-10-01; on 2026-09-29 over the management Wi-Fi as a test setting). Every profile: MTP k=3, FA2 prefill, the fixed expert order, settled indexer ties, deterministic Inductor configs, image input on, `cpuset_cpus = "5-9,15-19"` on all three hosts. Decode is three samples of 512 tokens after a fixed ~2,048-token prompt (median tok/s, mean acceptance length).
 
 | Measure | Distributed defaults, TP=3 | Published option, TP=3 | Distributed defaults, TP=2 (1.19.0) |
 |---|---|---|---|
@@ -913,7 +936,7 @@ Three GB10 hosts cabled as a switchless QSFP ring ([network](qsfp-network.md#8-t
 | NLL: Japanese / English / code / mathematics | 1.6250 / 2.0395 / 0.9316 / 0.5843 | 1.6388 / 2.0137 / 0.9803 / 0.6355 | 1.5963 / 2.0241 / 0.9479 / 0.5931 |
 | ~200K passphrase (199,652 tokens), first token | 157.96 s, correct | 150.5 s, correct | about 178 s, correct |
 
-At 3 GiB per rank the distributed defaults held 323,824 tokens (TP=2: 301,645) in blocks of 3,072 tokens (TP=2: 4,608), about 42 blocks per GiB with ceil(L / 3,072) + 16 blocks per request; at 24 GiB, 2,606,019 tokens. Loading took about 120 s for the main weights and 102 s for the MTP draft on two hosts, 150 s and 105 s on the third, whose page cache was colder. Within each launch the three samples of each task gave one completion; a second launch of the distributed defaults on the same per-host runtime cache repeated the first launch's decode completions and its teacher-forced record bit for bit.
+At 3 GiB per rank the distributed defaults held 323,824 tokens (TP=2: 301,645) in blocks of 3,072 tokens (TP=2: 4,608), about 42 blocks per GiB with ceil(L / 3,072) + 16 blocks per request; at 24 GiB, 2,606,019 tokens. Loading took about 120 s for the main weights and 102 s for the MTP draft on two hosts, 150 s and 105 s on the third, whose page cache was colder. Within each launch the three samples of each task gave one completion; a second launch of the distributed defaults on the same per-host runtime cache repeated the first launch's decode completions and its teacher-forced record bit for bit. The distributed defaults' decode-check completions on the ring without the prefill cap (first recorded 2026-09-29) are counting `b00a842f`, prose `03184d52` and code `e9175d9b`; they hold only with the same per-host runtime caches ([launch contracts](launch-safety.md#three-nodes)).
 
 **NLL against TP=2, position by position.** The distributed defaults' record was compared with the TP=2 record of the same weights token by token: argmax agreement 0.947, and the mean move of the actual token's log-probability 0.61–1.30 times that between TP=2 launches of the same weights that differ only in numerical state (their argmax agreement 0.948–0.956), with the moves spread evenly up and down; changing the weights moves it about twice as much. The published option against TP=2's published option: argmax agreement 0.947 and moves the size of those between its own TP=2 launches (0.936–0.963, NLL up to +0.043). The tolerance for TP=3 is argmax agreement of at least 0.93 and a mean move within 1.5 times that between same-weight TP=2 launches; both profiles are inside it.
 
@@ -923,9 +946,11 @@ At 3 GiB per rank the distributed defaults held 323,824 tokens (TP=2: 301,645) i
 
 **Prefill cap.** With a ~200K-token prefill running on the published option, a short request sent 10 s later decoded 1.18 tok/s while it waited for the long request's 2,048-token chunks. With `context.long_prefill_token_threshold` 512 it decoded 5.67 tok/s and the long prefill fell from 1,326 to 1,082 tok/s (−18%); at 256, 7.92 tok/s and 806 tok/s (−39%). Every request answered correctly. The cap splits the decode check's ~2,048-token prompt too, so a profile with it has its own decode-check hashes.
 
-**NCCL.** Three ranks passed all 11 checks of `tools/nccl_probe.py`; AllReduce bus bandwidth was 7.87 GB/s at 16 MiB and 7.01 GB/s at 256 MiB in FP32 ([NCCL diagnostics](nccl-validation.md#three-hosts-in-a-ring)).
+**The revised KDA overlay on TP=2.** On 2026-10-01 the published option on the reference pair with the 1.24.0 KDA overlay (`27a532ce…`) and image (`e8ed139a…`) gave its 1.19.0 decode-check completions (`0ef555f7` / `d5247cf9` / `403411d6`) and its teacher-forced record exactly (argmax agreement 1.0, no log-probability movement).
 
-Not measured: the distributed defaults at 524,288 or 1,048,576; twelve 262,144-token requests or three 1,048,576-token requests at once (the boot lines give the capacity); the published option on TP=2 with the 1.24.0 KDA overlay.
+**NCCL.** Three ranks passed all 11 checks of `tools/nccl_probe.py` ([NCCL diagnostics](nccl-validation.md#three-hosts-in-a-ring)).
+
+Not measured: the distributed defaults at 524,288 or 1,048,576; twelve 262,144-token requests or three 1,048,576-token requests at once (the boot lines give the capacity).
 
 ## Measurements on 1.25.0
 
@@ -946,7 +971,7 @@ The published option's two-sequence profile on the reference pair, 1.25.0 checko
 
 Only the head's EngineCore spun: every dump of arms A1 and A2 found it in `sched_yield` under `SpinCondition.wait`, every dump of arm B in the zmq poll. Worker 0 was computing in every dump and both workers' CPU (about two busy threads each) did not move with the arm; the peer was never seen spinning in nine dumps. With 0.002 s the head's SoC averaged 2.2–3.1 °C below the A arms while the peer, the control, ran 0.95–1.85 °C warmer. Counting decode fell 1.4%, outside the A1–A2 spread (their ranges do not overlap B's); prose and code stayed inside it. The lead suspect is the wake-up from the zmq poll; why only counting shows it was not checked.
 
-The adoption line written before the window, cooler without slower decode, was missed on counting. The 1.26.0 templates set 0.002 s anyway, because the head's temperature matters under concurrent load; the TP=3 template carries it by extension ([server configuration](server-configuration.md#parallelism-and-transport)). Not measured: the distributed defaults with the key, TP=3, two requests in flight.
+The adoption decision, against a line written before the window, is in [catalog P29](optimization-catalog.md#performance-initiatives). Not measured: the distributed defaults with the key, TP=3, two requests in flight.
 
 ## Records of earlier profiles
 
@@ -1099,3 +1124,7 @@ Lowest available memory during each request, from two-second supervisor samples 
 | Three-position 200,095 | 6.40 GiB | 8.95 GiB | 6.97 / 9.45 GiB |
 
 Free memory in blocks of 2 MiB or more stayed between 0.44 and 0.48 GiB on both ranks. The head's lowest reading sits 0.6 GiB below 1.3.1, in line with the chunk-budget comparison; different starts also differ by a few hundred MiB. No `NV_ERR_NO_MEMORY` message appeared during the runs.
+
+#### Lanes beside a long conversation (P24)
+
+On the 1.4.0 image profile at 2.5 GiB KV (2026-09-17), against an 80,024-token conversation warm at 73,728 cached tokens and 14.9 s per turn: two untouched 15,025-token lanes left the conversation intact and four evicted it completely (next turn 182.6 s); one 42,026-token lane evicted it on its own (next turn 184.0 s), while single lanes of 9,025 and 18,025 tokens left it intact (15.0 s), so the single-lane boundary lies between 18K and 42K. On that profile the conversation alone nearly filled the pool. Not re-measured at 3 or 6 GiB. Decision: [catalog P24](optimization-catalog.md#performance-initiatives).

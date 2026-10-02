@@ -23,7 +23,7 @@ prefillと出力生成を含む、クライアント要求時間の中央値（�
 
 8Kの1出力の対照は約17%短縮しました。128出力の行はprefillを含み、**decode単独の速度ではありません**。短い文脈の生成はほとんど変わりません。少数サンプルであり、本番のtail latencyを示すものではありません。
 
-同じ64token入力で1／33出力を対にしたtraceでは、各rankの追加出力tokenあたりGPU kernelが **1,743→1,710** となり、CUDA launch APIの回数も一致しました。NCCLは追加tokenあたり92回のままです。この33 kernel/tokenの削減はprefillでの短縮より遥かに小さく、decode全体のボトルネックを解消したと説明してはいけません。別のunpack単体ベンチでは、全候補行のサイズで4 kernelを1 kernelへ減らしました。
+同じ64token入力で1／33出力を対にしたtraceでは、各rankの追加出力tokenあたりGPU kernelが **1,743→1,710** となり、CUDA launch APIの回数も一致しました。NCCLは追加tokenあたり92回のままです。この33 kernel/tokenの削減はprefillでの短縮より遥かに小さく、decode全体のボトルネックを解消したと説明してはいけません。別のunpack単体ベンチでは、全候補行のサイズで4 kernelを1 kernelへ減らしました（`validation.benchmark_unpack`：2,176件と17,408件、候補行1本分と8本分で、部品の中央値は約0.045→0.011 ms、0.630→0.212 ms）。
 
 ## 数値一致の範囲
 
@@ -54,7 +54,7 @@ P16は2026-09-21にコストの門で中止しました（[indexerの再利用](
 
 ## Decode Graphのfixture独立評価
 
-**decode Graphs（P06）：off。** 4層fixture、GB10 1台、context 16,384、chunk 512、1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperature 0で、64／2,048／8,192入力tokenのそれぞれで32 tokenを生成しました。2026-09-12にはGraphとeagerが2Kの出力token 12からlogprobの同点で分かれ、非同期eagerの対照はeagerと一致しました。2026-09-18にexpertのtoken順を固定して（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#再現性のスイッチ)有効、MTP k=3・融合unpack・非同期index検査、prefix cacheあり・なし）測り直すと、eagerと`FULL_DECODE_ONLY`のGraphsは全長・全実行で生成32 tokenとtop-10 logprobが一致したので、以前の分岐はexpert順によるものでした。prefix cacheにhitした実行はなく（hitには16,384のcontextを超えるprimingが要る）、hit経路は未検証です。全モデルではGraphsはeagerより遅く、採用していません（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。非公開run：`graph-component-v13-results/*`、driverは`eb30095`の`glm53_setup.validation.run_graph_fixture`。
+**decode Graphs（P06）：off。** 4層fixture、GB10 1台、context 16,384、chunk 512、1系列、FP8 KV 512 MiB、Marlin W4A16、seed 42、temperature 0で、64／2,048／8,192入力tokenのそれぞれで32 tokenを生成しました。2026-09-12にはGraphとeagerが2Kの出力token 12からlogprobの同点で分かれ、非同期eagerの対照はeagerと一致しました。2026-09-18にexpertのtoken順を固定して（image `sha256:e7a2a606…`、source `0957c4e`、[MoE順の固定](server-configuration.ja.md#再現性のスイッチ)有効、MTP k=3・融合unpack・非同期index検査、prefix cacheあり・なし）測り直すと、eagerと`FULL_DECODE_ONLY`のGraphsは全長・全実行（8実行31組）で生成32 tokenとtop-10 logprobが一致したので、以前の分岐はexpert順によるものでした。prefix cacheにhitした実行はなく（hitには16,384のcontextを超えるprimingが要る）、hit経路は未検証です。全モデルではGraphsはeagerより遅く、採用していません（[ベンチマーク](benchmarks.ja.md#全モデルでのdecode-graphs)）。非公開run：`graph-component-v13-results/*`、driverは`eb30095`の`glm53_setup.validation.run_graph_fixture`。
 
 ## padding付きnative attentionの直接試験
 
@@ -240,3 +240,7 @@ GB10 1台のbyte検証済み8層stock fixture（ロード重み23.91 GiB）で�
 両方ともOOMなし・正常終了し、測定要求でFA2を8回呼び、同じ1 tokenを返しました。FA2 NoPEの共有ライブラリと、Triton・TileLang・Inductor・NVIDIA cacheの新規生成物を確認しています。これは実行の確認で、言語品質の証明ではありません。ホスト／プロセスの標本間隔は2秒で、短いピークを取り逃がし得ます。
 
 **判断：env未指定を維持します。** 実行時にビルドするFlashInferのmoduleはFA2 NoPEの1個だけで（fixtureでも参照ペアでも翻訳単位3本）、制限なしのNinjaが同時に起こすnvccは3個、`MAX_JOBS=2` で減らせるのは1個までです。これが起きるのは新しいJIT cacheごとに1回で、FlashInferのNVCC thread数は既に既定1です。nvccが複数走る区間での両armの差は1 GiB未満で、各arm 1回ではばらつきと区別できません。fixtureの最小値は重みのロード中で、JIT中ではありません。
+
+### driverのJIT cache（2026-09-20）
+
+同じ8層fixture（GB10 1台、1.6.0のsource、image `3a396af5…`、eager、MTPなし）を、primeした1つのcacheの複製から4回起動しました（順序はcold・warm・warm・cold）。coldはNVIDIA driverのJIT cache（`CUDA_CACHE_PATH`）だけを空にしたものです。そのcacheだけを空にした起動は、全cacheがwarmの起動より遅くなりませんでした。readyまで189.8・172.3秒に対し203.9・197.0秒で、最初の要求の時間（0.82〜0.84秒）とメモリの谷も同じです。全部coldのprimeの起動は278.3秒で、そのうち約80〜100秒はすでに `/root/.cache` に残しているcacheによるものです。採否は[施策台帳P10](optimization-catalog.ja.md#性能施策一覧)。

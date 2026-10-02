@@ -1,13 +1,13 @@
-# TP=2ベンチマークの方法
+# ベンチマーク
 
 [English](benchmarks.md) · [検証範囲](validation.ja.md)
 
-本書はTP=2ベンチの方法、MTPなしの基準値、独立施策の全モデル実行（2026-09-12〜14：P08・P11・P13〜P15・P17〜P19・P21・P22・checkpoint保持）、リリース候補・200K・256Kの実入力確認と、下の表の各リリースの測定を所有します。採否の判断は[最適化カタログ](optimization-catalog.ja.md)、MTP k=1／k=3の比較は[投機的デコーディング](speculative-decoding.ja.md)、現在の画像入力の既定は[画像入力](vision.ja.md)を参照してください。
+本書はTP=2ベンチの方法、MTPなしの基準値、独立施策の全モデル実行（2026-09-12〜14：P08・P11・P13〜P15・P17〜P19・P21・P22・checkpoint保持）、リリース候補・200K・256Kの実入力確認と、下の表の各リリースの測定（1.24.0からの3台のTP=3を含む）を所有します。採否の判断は[最適化カタログ](optimization-catalog.ja.md)、MTP k=1／k=3の比較は[投機的デコーディング](speculative-decoding.ja.md)、現在の画像入力の既定は[画像入力](vision.ja.md)を参照してください。
 
 | リリース | 日付 | 測ったもの |
 |---|---|---|
 | [1.3.1](#131での測定) | 2026-09-17 | LPA offの200K画像profile：sparkDash、200K実入力 |
-| [1.4.0](#140での測定) | 2026-09-17 | chunk 2048：sparkDash、200K実入力 |
+| [1.4.0](#140での測定) | 2026-09-17 | chunk 2048：sparkDash、200K実入力。長い会話の傍らのレーン（P24） |
 | [1.5.0](#150での測定) | 2026-09-17〜18 | 256K画像の既定：起動、prefillとdecode、256K・200K実入力、sparkDash |
 | [1.6.0](#160での測定) | 2026-09-18〜21 | 同一要求の反復、FA2 prefill、長い入力。route g・k=4の配信profileとslot対応付けのguard |
 | [1.7.0](#170での測定) | 2026-09-21〜22 | 再パック `l`・k=3のprofile、decode Graphs |
@@ -19,9 +19,27 @@
 | [1.13.0](#1130での測定) | 2026-09-25 | 両profileでのkpool seedの修正、同時2系列のcompletion |
 | [1.14.0](#1140での測定) | 2026-09-25〜26 | sparse-MLA decodeの分け方（servingでは届かない）、`max_num_seqs = 1` での再現性、cacheした長いprompt |
 | [1.15.0](#1150での測定) | 2026-09-26 | 参照対でのCPU配置 |
-| [1.19.0](#1190での測定) | 2026-09-26、2026-09-28 | kpool tailのring（vLLM #58454）とcloneを通す重みの読み込み（公開した任意設定・同時2系列）。両profileを同じ枠でGPUクロックの上限つきで（READMEの主要な測定値） |
+| [1.19.0](#1190での測定) | 2026-09-26、2026-09-28 | kpool tailのring（vLLM #58454）とcloneを通す重みの読み込み（公開した任意設定・同時2系列）。両profileを同じ枠でGPUクロックの上限つきで（READMEの主要な測定値）。LPAのsplit（P27） |
 | [1.22.0](#1220での測定) | 2026-09-29 | モデルAPIとtool引数ゲートを通したtool-eval-bench |
 | [1.24.0](#1240での測定) | 2026-09-29、2026-10-01 | 3台のTP=3：両profile、位置ごとのNLL、500Kと1Mの入力、prefillの上限 |
+| [1.25.0](#1250での測定) | 2026-10-02 | 参照対での共有メモリの読み手のspin（P29） |
+
+リリースの節の外にある実行：
+
+| 施策 | 実行 |
+|---|---|
+| 標準batching | [標準batchingの独立評価](#標準batchingの独立評価)（最大長での容量確認を含む） |
+| P08 | [CPU同期削減](#cpu同期削減の独立評価p08) |
+| P11 | [Prefill chunk](#prefill-chunk-の独立評価p11) |
+| P14 | [同種タスクの投入順](#同種タスクの投入順比較p14) |
+| P15 | [32Kまでのコンテキスト](#32kまでの独立コンテキスト評価p15) |
+| P17 | [TP2／PP2](#tp2pp2の独立評価p17) |
+| P18 | [MTP・LPA・融合unpack・非同期検査の直列併用](#直列併用の評価p18) |
+| P19 | [全モデルのPrefix caching](#全モデルのprefix-caching独立評価p19) |
+| P21 | [Expert Parallel](#expert-parallel-の独立評価p21) |
+| P22 | [APC優先LPAの損益分岐](#apc優先lpaの損益分岐計測p22)、[MTP・融合・非同期検査との併用](#apclpamtp融合非同期検査の併用p22) |
+| checkpoint保持 | [APCの履歴保持の基準検査](#apcの履歴保持の基準検査)、[最終併用の回帰](#保持候補を含む最終併用の回帰) |
+| 256Kの容量 | [256Kでの実入力確認](#256kでの実入力確認) |
 
 まず動作を確認したprofileを測り、その後にkernelや高速化設定を変えます。数値はイメージ・精度・scheduler・負荷条件に依存し、本番信頼性やハーネス連携の合格を意味しません。
 
@@ -493,7 +511,7 @@ runtimeが報告したKV収容容量は301,645 tokenです。同じ固定LLM-jp 
 
 ### 同一要求が反復する
 
-固定の2,048 tokenのpromptに続く512 tokenを、temperature 0で同じ要求として9回送りました。三つのprompt（数え上げ・散文・コード）のどれでもcompletionは1種類で、位置ごとのlog確率の移動は0でした。`server agreement` は4文を教師強制で2回読み、argmaxの一致は1.0、NLLは小数4桁まで同じでした（日本語1.5963、英語2.0241、コード0.9479、数学0.5931）。1.5.0では、同じ検査の一致は位置の0.926〜0.977でした。[何を直し、どう見つけたか](validation.ja.md#フルモデルtp2の実験範囲)。
+固定の2,048 tokenのpromptに続く512 tokenを、temperature 0で同じ要求として9回送りました。三つのprompt（数え上げ・散文・コード）のどれでもcompletionは1種類で、位置ごとのlog確率の移動は0でした。`server agreement` は4文を教師強制で2回読み、argmaxの一致は1.0、NLLは小数4桁まで同じでした（日本語1.5963、英語2.0241、コード0.9479、数学0.5931）。1.5.0では、同じ検査の一致は位置の0.926〜0.977でした。[何を直し、どう見つけたか](validation.ja.md#再現性)。
 
 ### 1.6.0でのprefillとdecode
 
@@ -526,7 +544,7 @@ prefillは1.5.0の2.2倍で、FA2経路によるものです。decodeは速く�
 
 ### 基準の2台の配信profile
 
-2026-09-19から21まで、基準の2台は新規の導入には無い設定を二つ足して配信していました。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。**2026-09-21からはattentionと `lm_head` の再パックを深さ3で配信しました（[1.7.0での測定](#170での測定)。KDA input projectionは[1.8.0](#180での測定)から分割）。2026-09-23からは、公開した任意設定の同時2系列profileを配信しています（[1.10.2](#1102での測定)、[1.14.0](#1140での測定)）。** 下の表は、その間に配信していたprofileのものです。
+2026-09-19から21まで、基準の2台は新規の導入には無い設定を二つ足して配信していました。attention projectionをW4A16 NVFP4に再量子化したもの（`runtime.derived_checkpoint`、[P23](optimization-catalog.ja.md)）と、MTPの深さ4（[深さ1〜5](speculative-decoding.ja.md#深さ152026-09-1920)）です。fingerprintは `9de4b4f73570…`、2026-09-19と20に測りました。**2026-09-21からはattentionと `lm_head` の再パックを深さ3で配信しました（[1.7.0での測定](#170での測定)。KDA input projectionは[1.8.0](#180での測定)から分割）。2026-09-23からは、公開した任意設定の同時2系列profileを配信しています（[1.10.2](#1102での測定)、[1.14.0](#1140での測定)）。** 2026-10-02の記録（1.26.0のcheckout、image `b9ae6459…`）では、このprofileは[AXLの例](../examples/server.axl.example.toml)と同じく読み手のspinと `api.default_reasoning_effort = "high"` を持ち、例との違いは `validation.memory_probe` と `api.dev_endpoints`（切替後の検査のためon）、65,536 tokenのwarmupの長い段、LPAはoffのまま配布projectorを指すLPAの節、`nodes[].cpuset_cpus`、1.24.0より前のKDA overlay（`144a835f…`。例の `27a532ce…` は2026-10-01に参照対で同じdecode検査のcompletionと教師強制の記録を返しました、[1.24.0](#1240での測定)）です。 下の表は、その間に配信していたprofileのものです。
 
 | 項目 | 配信profile | 1.6.0の既定 |
 |---|---|---|
@@ -598,7 +616,7 @@ stepは同じ深さで全入力10 ms短くなりました（同じ再パック�
 
 ### 全モデルでのdecode Graphs
 
-2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。不採用で、選択肢はoffのままです（[P06](optimization-catalog.ja.md#性能施策一覧)）。
+2026-09-21朝の配信profile（再パック `g`、深さ4）に `runtime.decode_graphs = true`（`enforce_eager = false`。launcherはdecodeをsize 5でcaptureし、固定版のruntimeはbreakableなgraphのmodeを自動で有効にしました）：10入力すべてがeagerより1 stepあたり7.2〜8.5 ms遅く（平均109.3対101.1 ms）、completionと採択は同一でした。decodeの3 promptは22.59／42.19／32.33 tok/s（eagerは24.01／45.13／34.85）。同じ日の同じprofileのeagerの2起動の差は1 stepあたり0.9 msです。それ以前（2026-09-18）、同一要求が反復する基準の上でdecode Graphsを有効にした全モデルの起動は、decode 31.90 tok/s（eagerは31.78と30.99）の後、199,652 tokenの合言葉要求のprefill中にメモリの保護余裕で自己停止しました（空き6.5→2.9 GiB。eagerは6.14 GiBを保った）。不採用で、選択肢はoffのままです（[P06](optimization-catalog.ja.md#性能施策一覧)）。
 
 ## 1.7.1での測定
 
@@ -778,6 +796,7 @@ GB10一台でのkernel単体（配信image、再起動なし。`records/20260925
 - **NVFP4のMarlin MoE** は（expert block, 出力tile）のtileをblock順に並べ、末尾のtileをK方向で切って断片をfp32で足す。どこで切るかは呼び出しのexpert block数で決まる。decodeの大きさではkernel・thread設定・gridは変わらず（4行でも8行でも同じ）、動くのはblock数だけ。要求の4行の隣に別の要求の4行が入ると、乱数のroutingと入力40通りのうち29通りで少なくとも1行が変わった。launchを固定し、どのtileも切られなくなるまでblockを埋めると40通り中0になったが、MoEの呼び出しが3〜13%重く、このreleaseでは採らない（下記）。
 - **sparse MLAのdecode**（SM120 backendの参照flagを切って通したFlashInfer 0.6.18。servingでは届かない、[下記](#servingでの到達性2026-09-26)）は、32ある候補のchunkを各CTAに `chunks_per_block` 個ずつ受け持たせ、その値を呼び出しのtoken数から選ぶ：48 SMで、draftの1 tokenは2、2 tokenは3、深さ3の検証stepの4 tokenは6、2系列では15。そのため2本目の系列が来ると、要求のattentionの全行（4 token×32 headの128行）が変わった。値を固定すると0。
 - KDAのrecurrent decodeと、draft層のBF16 Triton MoEは、相手の有無で行が変わらなかった。
+- 共有stepのdecode行とprefill行を別に計算すると、共有stepでMoEが1層あたり+0.5〜2.1 ms重くなり、それだけでは2系列のcompletionは反復しない。不採用。
 
 `runtime.mla_decode_cpb` は二つ目を固定する：値を1系列あたりのtoken数から決める（draftのstepは2、検証のstepは6）。1系列のときのheuristicの値そのもの。GB10一台でpatch後のbackendを通すと、単独の要求は従来とbit単位で同じに計算し、呼び出しはFlashInferのwrapperを通らないぶん151〜502 µs（keyなしは226〜798 µs、同期して計測）だった。servingはpatchした呼び出しに届かない（[下記](#servingでの到達性2026-09-26)）。
 
@@ -814,7 +833,7 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 
 相方がいると変わるとtraceが示したのは、attentionの経路だった。参照attentionはquery行が6を超える呼び出しをFA2へ送る（`runtime.fa2_attention`）：深さ3の検証stepは単独で4行（eagerのFP32）、相方ありで8行（BF16 KVのFA2）。GB10一台の合成入力のkernel単体で、eagerはある系列の行を、呼び出しが4行でも5〜8行でも12行でも、系列の位置、paddingのある相方、cache pageの交互配置に依らずbit一致で計算した。FA2は相方の行数と長さで全行を1 BF16 ulp動かし（中身・順序・pageには依らない）、反復はbit一致だった。この切り替わりは2系列の差の主因ではない：稼働中の対でattentionの呼び出しを全部eagerにしても（memory probeの `fa2_stage("off")` を約8分、その後に戻して確認）、2系列のcompletion 8本のうち7本が単独のものと違ったままで（1本は一致、5本は最初に違うtokenが動き、2本は同じ位置）、どの組も反復した。容疑者の先頭は、呼び出しの中の他の要求の行で行が変わるMoE（上記）。運用の結論は変わらない：`max_num_seqs = 1` ならどんな負荷でも反復する。
 
-同じ日の後刻、配信中の対を、decode規模の呼び出しでMarlin MoEの分け方を固定し、shared expertとrouterのGEMMを系列ごとに計算し、FA2を切って動かした。スイッチは効いたが、2系列のcompletionは8本中8本が単独のものと違ったままで、どれも採らなかった（[施策台帳](optimization-catalog.ja.md)のP26）。
+同じ日の後刻、配信中の対を、decode規模の呼び出しでMarlin MoEの分け方を固定し、shared expertとrouterのGEMMを系列ごとに計算し、FA2を切って動かした。スイッチは効いたが、2系列のcompletionは8本中8本が単独のものと違ったままで、どれも採らなかった（採否は[施策台帳P26](optimization-catalog.ja.md#性能施策一覧)）。
 
 ## 1.15.0での測定
 
@@ -853,7 +872,7 @@ decodeの速度は動かなかった。servingで一度も実行されないkey�
 - **読み込み**：weight digestは両rankとも同じでした（2,382 tensor）。MemAvailableの最小は、重みの読み込み中ではなくKV poolを確保した後に来ます。`patch_load_clone` が持つのは一度にtensor 1個分です。
 - **completion**：decode検査のpromptは約2,100 tokenなので、decode中に作るpoolはすべて `index_topk` を超えた後にあり、ringの修正で変わり得ます。3種ともcompletionが変わり、それぞれ3回ともbit単位で反復しました。draftがほぼすべて受理される数え上げのpromptも変わりました。
 - 化け検査は合格し、`server capacity` は最大長の要求が2本poolに入ると報告しました。
-- **eagerの試行**：この切替の1回目は、cloneの代わりにvLLMの `--safetensors-load-strategy eager` を使いました。shardを二重に持つため（11.15 GiBのshardで22.81 GiB、GB10 1台で実測）、rank 1がメモリを使い切り、hostが約15分応答しなくなりました。2台を1.18.0に戻し、この読み方は採らないことにしました（[運用手順](operations.ja.md#フルモデルの起動検査)）。
+- **eagerの試行**：この切替で先に試したvLLMの `--safetensors-load-strategy eager` はshardを二重に持ち（11.15 GiBのshardで22.81 GiB、GB10 1台）、rank 1がメモリを使い切ったので採りませんでした（[運用手順](operations.ja.md#フルモデルの起動検査)）。
 
 ### 両profileを同じ枠で、GPUクロックの上限つきで（2026-09-28）
 
@@ -875,7 +894,6 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 | 261,573 tokenの3か所参照、背景を囲んだprompt | 239.8／237.9／242.5 s、3回とも正答 | 234.9／235.4／235.0 s、3回とも正答 |
 | 教師強制のNLL：日本語／英語／コード／数学 | 1.5963／2.0241／0.9479／0.5931 | 1.6270／1.9946／0.9601／0.6275 |
 | tool-eval-bench、標準69シナリオ | 91／100、failはTC-21・43・61、Safety Gate未達 | 88／100、failは同じ3件、Safety Gate未達 |
-| FreedomBench、固定の英語原版60問／長文付きpilot | 60問正解・拒否ゼロ／6問中6問 | 60問正解・拒否ゼロ／6問中6問 |
 | `glm_bench` の窓でのheadの最小空きメモリ | 6.2 GiB | 7.56 GiB（200K 2本の同時では7.34 GiB） |
 
 - **反復**：decode検査は両profileとも3文種それぞれ3回bit単位で同じでした。`max_num_seqs = 1` で配信した配布既定と公開した任意設定の同時1系列では、同時に送った2本が待ち行列に入り、18本中18本がその要求の単独のcompletionと同じでした（2本目の最初のtokenまで17.7〜26.6 sと13.1〜19.2 s）。公開した任意設定のdecode検査の3 hashは、1.19.0の起動8回（上限なしの5回と、上限つきの同時1系列を含む3回）ですべて同じでした。
@@ -883,6 +901,11 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 - **起動**：`Loading weights took` は本体とMTP draftで2行出ます。表は1行目（本体、MarlinのNvFp4 MoE）です。2行目（draft）は配布既定108.3 s、公開した任意設定104.2 sでした。切替は既定へ381 s、同時1系列へ423 s、配信profileへ411 sで、3回ともrecoveryなしでした。
 - **sparkDash**：01のsparkDashは2026-09-26に上流 `2dd2317` へ更新しており、codeのpromptが108 tokenから66 tokenに変わりました（structured 33・prose 39・json 58 tokenは同じ）。codeの値は1.19.0より前のsparkDashの値と比べられません。
 - **上限の代価**：同じ公開した任意設定で上限なしの2026-09-27の値と比べると、prefillは1.8%遅く、長い入力は0.8〜1.9%長く、decodeは1〜2%速くなりました。配布既定の長い入力は、上限なしの直近の記録（1.13.0〜1.14.0）より2〜5%長くなりました。NLL・completion・正答は変わりませんでした。
+- **FreedomBench** もこの枠で両profileに流しました（[結果](freedombench.ja.md#1190の両profileでの再実施2026-09-28)）。
+
+### LPAのsplit（P27、2026-09-26）
+
+参照対で、1.19.0のimage（`99e6cf7a…`）と計測用のprofileを使い、実験的なmode `split-self` は通常の計算とビット一致しました。配布したcut 32のprojectorでは `split` は長文照合の課題15件中6件（今のLPAは14件）。線形のprojectorを学習し直しても（full rank、cut 36・40）、検証データで層43・44の入力のエネルギーの44〜62%が説明できずに残りました。cut 40のprojectorは品質を保ち（15件中15件、末尾512のNLLは今のLPAの0〜12%増）、16トークンの正確な末尾より前で後段を省いても書く状態は変わりませんでしたが、prefillはoffより0.8〜2.4%しか速くなりませんでした（cut 32の今のLPAは14〜20%）。採否は[施策台帳P27](optimization-catalog.ja.md#性能施策一覧)。
 
 ## 1.22.0での測定
 
@@ -902,7 +925,7 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 
 ### 3台のTP=3（2026-09-29と10-01）
 
-スイッチなしのQSFPリングでつないだ3台のGB10（[ネットワーク](qsfp-network.ja.md#8-3台をリングにつなぐ)）で、1.24.0の詰めを使ってTP=3を配信しました。ヘッドは64→66（1 rank 22）、routed・shared expertの幅は2,048→2,112、語彙は192の倍数です。制御通信は、ホストごとの/32と直結リンク越しの静的経路で流しました（2026-10-01から。2026-09-29は試験設定として管理用Wi-Fi）。どのprofileもMTP k=3、FA2のprefill、expert順の固定、indexerの同点の規則、Inductorの決定的な設定、画像入力on、3台とも `cpuset_cpus = "5-9,15-19"` です。decodeは約2,048 tokenの固定promptの後の512 tokenを3回（tok/sの中央値、括弧内は受理長の平均）。
+スイッチなしのQSFPリングでつないだ3台のGB10（[ネットワーク](qsfp-network.ja.md#8-3台をリングにつなぐ)）で、[起動設定](server-configuration.ja.md#3ノード)にあるゼロ詰めでTP=3を配信しました。制御通信は、ホストごとの/32と直結リンク越しの静的経路で流しました（2026-10-01から。2026-09-29は試験設定として管理用Wi-Fi）。どのprofileもMTP k=3、FA2のprefill、expert順の固定、indexerの同点の規則、Inductorの決定的な設定、画像入力on、3台とも `cpuset_cpus = "5-9,15-19"` です。decodeは約2,048 tokenの固定promptの後の512 tokenを3回（tok/sの中央値、括弧内は受理長の平均）。
 
 | 項目 | 配布既定、TP=3 | 公開した任意設定、TP=3 | 配布既定、TP=2（1.19.0） |
 |---|---|---|---|
@@ -913,7 +936,7 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 | NLL：日本語／英語／コード／数学 | 1.6250／2.0395／0.9316／0.5843 | 1.6388／2.0137／0.9803／0.6355 | 1.5963／2.0241／0.9479／0.5931 |
 | 約200Kの合言葉（199,652 token）、最初のtokenまで | 157.96 s、正答 | 150.5 s、正答 | 約178 s、正答 |
 
-各rank 3 GiBで配布既定は323,824 token（TP=2は301,645）を、3,072 tokenのblock（TP=2は4,608）で持ちました。1 GiBあたり約42 block、要求1本にceil(L / 3,072) + 16 blockです。24 GiBでは2,606,019 token。読み込みは本体約120 s・MTPのdraft約102 sで、page cacheが冷えていた3台目は150 sと105 sでした。各起動の中で、課題ごとの3回は1種類のcompletionになりました。同じホストごとのruntime cacheで配布既定をもう一度起動すると、decodeのcompletionと教師強制の記録は1回目とbit単位で一致しました。
+各rank 3 GiBで配布既定は323,824 token（TP=2は301,645）を、3,072 tokenのblock（TP=2は4,608）で持ちました。1 GiBあたり約42 block、要求1本にceil(L / 3,072) + 16 blockです。24 GiBでは2,606,019 token。読み込みは本体約120 s・MTPのdraft約102 sで、page cacheが冷えていた3台目は150 sと105 sでした。各起動の中で、課題ごとの3回は1種類のcompletionになりました。同じホストごとのruntime cacheで配布既定をもう一度起動すると、decodeのcompletionと教師強制の記録は1回目とbit単位で一致しました。prefillの上限なしでのリング上の配布既定のdecode検査のcompletion（初出2026-09-29）は、counting `b00a842f`、prose `03184d52`、code `e9175d9b` で、ホストごとのruntime cacheが同じときだけ保たれます（[起動契約](launch-safety.ja.md#3ノード)）。
 
 **TP=2と位置ごとに比べたNLL。** 配布既定の記録を、同じ重みのTP=2の記録とtokenごとに比べました。argmax一致は0.947、実際のtokenのlog確率の動きの平均は、数値状態だけが違う同じ重みのTP=2の起動同士（argmax一致0.948〜0.956）の0.61〜1.30倍で、動きは上下に偏っていません。重みを変えるとおよそ2倍動きます。公開した任意設定はTP=2の公開した任意設定と比べて、argmax一致0.947、動きは自分のTP=2の起動同士（0.936〜0.963、NLLで最大+0.043）と同じ大きさです。TP=3の許容は、argmax一致0.93以上、動きの平均が同じ重みのTP=2の起動同士の1.5倍以内で、どちらのprofileも収まります。
 
@@ -923,9 +946,11 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 
 **prefillの上限。** 公開した任意設定で約200K tokenのprefillが走っている間、10秒後に送った短い要求は、長い要求の2,048 tokenの塊を待つため1.18 tok/sでdecodeしました。`context.long_prefill_token_threshold` 512では5.67 tok/sになり、長いprefillは1,326から1,082 tok/sへ（−18%）。256では7.92 tok/sと806 tok/s（−39%）。どの要求も正答しました。上限はdecode検査の約2,048 tokenのpromptも分けるので、上限を持つprofileは自分のdecode検査のhashを持ちます。
 
-**NCCL。** 3 rankで `tools/nccl_probe.py` の11検査をすべて通り、AllReduceのbus bandwidthはFP32で16 MiB 7.87 GB/s、256 MiB 7.01 GB/sでした（[NCCL診断](nccl-validation.ja.md#3台のリング)）。
+**改版したKDA overlayのTP=2。** 2026-10-01に参照対で、1.24.0のKDA overlay（`27a532ce…`）とimage（`e8ed139a…`）の公開した任意設定は、1.19.0のdecode検査のcompletion（`0ef555f7`／`d5247cf9`／`403411d6`）と教師強制の記録をそのまま返しました（argmax一致1.0、log確率の動きなし）。
 
-測っていないもの：配布既定の524,288・1,048,576、262,144 tokenの要求12本や1,048,576 tokenの要求3本の同時（容量は起動行による）、1.24.0のKDA overlayでのTP=2の公開した任意設定。
+**NCCL。** 3 rankで `tools/nccl_probe.py` の11検査をすべて通りました（[NCCL診断](nccl-validation.ja.md#3台のリング)）。
+
+測っていないもの：配布既定の524,288・1,048,576、262,144 tokenの要求12本や1,048,576 tokenの要求3本の同時（容量は起動行による）。
 
 ## 1.25.0での測定
 
@@ -946,7 +971,7 @@ READMEの主要な測定値は、この枠の値です。1.19.0のimage（`sha25
 
 spinしていたのはheadのEngineCoreだけでした。A1とA2のdumpではどれも `SpinCondition.wait` の下の `sched_yield` に、Bのdumpではどれもzmqのpollにいました。worker 0はどのdumpでも計算中で、両workerのCPU（どちらも約2スレッドが埋まる）は腕で変わりませんでした。peerは9回のdumpで一度もspinしていません。0.002秒ではheadのSoCの平均がAの腕より2.2〜3.1 °C低く、同じ時間に対照のpeerは0.95〜1.85 °C高くなりました。countingのdecodeは1.4%下がり、A1とA2の幅の外です（範囲がBと重ならない）。proseとcodeは幅の中に収まりました。第一の容疑はzmqのpollからの起床の遅れで、countingにだけ出る理由は確かめていません。
 
-窓の前に書いた採否の線（decodeを落とさずに冷える）は、countingで外れました。それでも1.26.0のテンプレートは0.002秒にしました。同時に要求を受けるとheadの温度が効くためです。TP=3のテンプレートは延長で同じ値を持ちます（[起動設定](server-configuration.ja.md#並列化と通信)）。測っていないもの：キーを付けた配布既定、TP=3、2本の要求を同時に流している間。
+窓の前に書いた線に照らした採否は[施策台帳P29](optimization-catalog.ja.md#性能施策一覧)にあります。測っていないもの：キーを付けた配布既定、TP=3、2本の要求を同時に流している間。
 
 ## 旧profileの記録
 
@@ -1099,3 +1124,7 @@ temperature 0のgreedyでも、同じ要求の結果は回ごとに再現しま�
 | 3か所 200,095 | 6.40 GiB | 8.95 GiB | 6.97／9.45 GiB |
 
 2 MiB以上のブロックの空きは、両rankとも0.44〜0.48 GiBでした。headの最小は1.3.1より0.6 GiB低く、chunk予算の比較と合います。起動ごとにも数百MiBの差があります。測定の間に `NV_ERR_NO_MEMORY` は出ていません。
+
+#### 長い会話の傍らのレーン（P24）
+
+1.4.0の画像profile・KV 2.5 GiB（2026-09-17）で、80,024 tokenの会話（warm 73,728 token復元・1ターン14.9秒）を相手に測りました。15,025 tokenのレーンを会話に触れずに2本流しても無傷でしたが、4本で完全に退避しました（次ターン182.6秒）。42,026 tokenのレーン1本は単独で退避させ（次ターン184.0秒）、9,025 tokenと18,025 tokenの単発レーンは無傷（15.0秒）だったので、単発での境界は18Kと42Kの間にあります。そのprofileでは会話だけでプールがほぼ埋まっていました。3 GiB・6 GiBでは測り直していません。採否は[施策台帳P24](optimization-catalog.ja.md#性能施策一覧)。
